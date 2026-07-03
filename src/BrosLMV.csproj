@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>BrosLMVClsMain</AssemblyName>
+    <RootNamespace>BrosLMV</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Rutas.cs" />
+    <Compile Include="ClsMain.cs" />
+    <Compile Include="Scripting.cs" />
+    <Compile Include="Datos.cs" />
+    <Compile Include="Consola.cs" />
+    <Compile Include="HostClient.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="assets\logo_blanco.png" />
+    <EmbeddedResource Include="assets\logo_app.png" />
+    <EmbeddedResource Include="assets\BrosLMV.ico" />
+    <EmbeddedResource Include="assets\notas_version.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="jacobslusser.ScintillaNET" Version="3.6.3" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
+    <!-- Cliente del canal v3.0 (C6): habla el mismo broslmv.proto que el host. -->
+    <PackageReference Include="Google.Protobuf" Version="3.28.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.68.1" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Genera el C# del contrato en cada build (el codigo generado vive en obj, no se versiona). -->
+  <ItemGroup>
+    <Protobuf Include="..\protocol\broslmv.proto" ProtoRoot="..\protocol" GrpcServices="None" Access="Public" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+
+</Project>

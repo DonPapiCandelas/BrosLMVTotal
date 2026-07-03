@@ -1,0 +1,1171 @@
+#r "System.Windows.Forms"
+#r "System.Drawing"
+#r "System.Data"
+#r "Microsoft.CSharp"
+
+// PLANTILLA_REQUISICION_COMPRA.ctx
+// Ejemplo comunitario completo: crea una Solicitud de Compra real (modulo 1040).
+//
+// Que ensena esta plantilla:
+// 1. Como construir una ventana WinForms dentro de la consola BrosLMV.
+// 2. Como leer proveedores, almacenes y productos con ctx.Query.
+// 3. Como crear el documento con ctx.erp.NuevoDocumento, no con INSERT manual.
+// 4. Como agregar partidas con ctx.erp.AgregarArticulo.
+// 5. Como aplicar solo el SQL directo necesario: perfil modulo 1040 y orgProductSupplier.
+// 6. Como cerrar el documento con ctx.erp.RecalcCompleto, ctx.erp.Save y ctx.erp.RefreshGrid.
+//
+// Regla de fidelidad:
+// La solicitud de compra NO afecta inventario; por eso este script NO llama AffectStockNEW.
+//
+// Nota para quien adapte:
+// El bloque importante para aprender la creacion del documento esta en la seccion
+// "CREAR REQUISICION", cerca del final del archivo. La UI solo recolecta los datos.
+
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Linq;
+using System.Windows.Forms;
+
+// REQUISICION.ctx - BrosLMV v2.19.0
+// Nueva requisicion de compra (modulo 1040)
+// UI operativa: proveedor, almacen, producto, cantidad solicitada y existencia.
+
+// ═══════════════════ TEMA ═══════════════════
+var C_HEADER_BG = Color.FromArgb(17, 24, 39);
+var C_PRIMARY   = Color.FromArgb(79, 70, 229);
+var C_PRIMARY_H = Color.FromArgb(67, 56, 202);
+var C_SUCCESS   = Color.FromArgb(16, 185, 129);
+var C_DANGER    = Color.FromArgb(239, 68, 68);
+var C_BG        = Color.FromArgb(226, 232, 240);
+var C_WHITE     = Color.White;
+var C_TEXT      = Color.FromArgb(17, 24, 39);
+var C_MUTED     = Color.FromArgb(107, 114, 128);
+var C_BORDER    = Color.FromArgb(209, 213, 219);
+var C_STRIPE    = Color.FromArgb(249, 250, 251);
+var C_BLUE_SEL  = Color.FromArgb(238, 242, 255);
+var C_INPUT_BG  = Color.FromArgb(255, 255, 255);
+var C_BADGE_BG  = Color.FromArgb(226, 232, 240);
+
+var F_H2   = new Font("Segoe UI", 10f, FontStyle.Bold);
+var F_BODY = new Font("Segoe UI", 9f);
+var F_SM   = new Font("Segoe UI", 8.5f);
+var F_BTN  = new Font("Segoe UI", 9f, FontStyle.Bold);
+var F_MONO = new Font("Consolas", 9f);
+
+int PAD = 14;
+
+// ═══════════════════ DATOS ═══════════════════
+var almacenes = ctx.Query(
+    "SELECT DepotID, DepotName FROM orgDepot WHERE DeletedOn IS NULL ORDER BY DepotName");
+
+var proveedores = ctx.Query(@"
+    SELECT be.BusinessEntityID, be.OfficialName,
+           ISNULL(m.OfficialNumber,'') AS RFC
+    FROM orgBusinessEntity be
+    INNER JOIN orgSupplier s ON s.BusinessEntityID=be.BusinessEntityID
+    LEFT JOIN orgBusinessEntityMainInfo m ON m.BusinessEntityID=be.BusinessEntityID
+    WHERE be.DeletedOn IS NULL
+    ORDER BY be.OfficialName");
+
+var partidas = new List<Item>();
+Prod productoSeleccionado = null;
+bool suspenderBusqueda = false;
+string solicitante = "";
+try { solicitante = ctx.erp.UserName; } catch { }
+if (string.IsNullOrWhiteSpace(solicitante)) solicitante = "Usuario " + ctx.UserIdReal();
+
+// ═══════════════════ VENTANA ═══════════════════
+var frm = new Form {
+    Text = "Nueva requisición de compra",
+    Size = new Size(1260, 820),
+    StartPosition = FormStartPosition.CenterScreen,
+    BackColor = C_BG,
+    Font = F_BODY,
+    FormBorderStyle = FormBorderStyle.FixedDialog,
+    MaximizeBox = false,
+    MinimizeBox = true,
+    ShowIcon = false,
+    KeyPreview = true
+};
+
+// ─── HEADER ─────────────────────────────────────────
+var head = new Panel {
+    Dock = DockStyle.Top,
+    Height = 76,
+    BackColor = C_HEADER_BG,
+    Parent = frm
+};
+head.Paint += (_, ev) => {
+    using (var br = new LinearGradientBrush(head.ClientRectangle, Color.FromArgb(6, 23, 52), Color.FromArgb(15, 23, 42), 0f))
+        ev.Graphics.FillRectangle(br, head.ClientRectangle);
+};
+
+var ico = new Panel {
+    Location = new Point(20, 18),
+    Size = new Size(42, 42),
+    BackColor = C_PRIMARY,
+    Parent = head
+};
+DrawBorder(ico);
+
+new Label {
+    Text = "SC",
+    ForeColor = C_WHITE,
+    Font = new Font("Segoe UI", 11f, FontStyle.Bold),
+    TextAlign = ContentAlignment.MiddleCenter,
+    Dock = DockStyle.Fill,
+    Parent = ico
+};
+
+new Label {
+    Text = "Requisición de compra",
+    ForeColor = C_WHITE,
+    Font = new Font("Segoe UI", 15.5f, FontStyle.Bold),
+    Location = new Point(78, 15),
+    AutoSize = true,
+    Parent = head
+};
+
+
+new Label {
+    Text = "Mod. 1040  Solicitud de compra  sin inventario",
+    ForeColor = Color.FromArgb(156, 163, 175),
+    Font = new Font("Segoe UI", 8.5f),
+    Location = new Point(79, 45),
+    AutoSize = true,
+    Parent = head
+};
+
+int headRX = frm.ClientSize.Width - 100;
+var txtFolio = new TextBox { Parent = head, Location = new Point(headRX, 20), Width = 80, Text = "Automático", ForeColor = C_MUTED, BorderStyle=BorderStyle.None };
+new Label { Parent = head, Location = new Point(headRX, 5), Text = "Folio", ForeColor = C_WHITE, AutoSize=true };
+
+headRX -= 100;
+var txtSerie = new TextBox { Parent = head, Location = new Point(headRX, 20), Width = 80, Text = "Automática", ForeColor = C_MUTED, BorderStyle=BorderStyle.None };
+new Label { Parent = head, Location = new Point(headRX, 5), Text = "Serie", ForeColor = C_WHITE, AutoSize=true };
+// ─── DATOS GENERALES ────────────────────────────────
+int cardW = frm.ClientSize.Width - PAD * 2;
+var cardTop = new Panel {
+    Location = new Point(PAD, head.Bottom + PAD),
+    Size = new Size(cardW, 132),
+    BackColor = C_WHITE,
+    Parent = frm
+};
+DrawBorder(cardTop);
+
+int x = 16;
+int y = 10;
+
+new Label {
+    Text = "Datos generales",
+    Location = new Point(16, 10),
+    Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
+    ForeColor = C_TEXT,
+    AutoSize = true,
+    Parent = cardTop
+};
+
+y = 38;
+
+Lbl("Proveedor", x, y, cardTop);
+var cboProv = Cbo(x, y + 22, 410, 380, cardTop);
+foreach (var p in proveedores) {
+    string rfc = Convert.ToString(p["RFC"]);
+    string texto = Convert.ToString(p["OfficialName"]);
+    cboProv.Items.Add(new Opt(texto, Convert.ToInt32(p["BusinessEntityID"]), rfc));
+}
+cboProv.DisplayMember = "Txt";
+if (cboProv.Items.Count > 0) cboProv.SelectedIndex = 0;
+
+x = 448;
+Lbl("Almacén", x, y, cardTop);
+var cboDep = Cbo(x, y + 22, 260, 260, cardTop);
+foreach (var d in almacenes)
+    cboDep.Items.Add(new Opt(Convert.ToString(d["DepotName"]), Convert.ToInt32(d["DepotID"])));
+cboDep.DisplayMember = "Txt";
+if (cboDep.Items.Count > 0) cboDep.SelectedIndex = 0;
+
+x = 730;
+Lbl("Fecha", x, y, cardTop);
+var lblFecha = new Label {
+    Text = DateTime.Today.ToString("dd/MM/yyyy") + "  (automática)",
+    Location = new Point(x, y + 22),
+    Size = new Size(170, 25),
+    Font = F_BODY,
+    ForeColor = C_TEXT,
+    BackColor = C_BADGE_BG,
+    TextAlign = ContentAlignment.MiddleLeft,
+    Padding = new Padding(8, 0, 0, 0),
+    Parent = cardTop
+};
+DrawBorder(lblFecha);
+
+
+x = 730;
+Lbl("Fecha req.", x + 85, y, cardTop);
+var dtpFechaReq = new DateTimePicker {
+    Location = new Point(x + 85, y + 22),
+    Size = new Size(95, 25),
+    Format = DateTimePickerFormat.Short,
+    Font = F_BODY,
+    Parent = cardTop
+};
+x = 922;
+Lbl("Solicitante", x, y, cardTop);
+var lblSolicitante = new Label {
+    Text = solicitante,
+    Location = new Point(x, y + 22),
+    Size = new Size(cardTop.Width - x - 16, 25),
+    Font = F_BODY,
+    ForeColor = C_TEXT,
+    BackColor = C_INPUT_BG,
+    TextAlign = ContentAlignment.MiddleLeft,
+    Padding = new Padding(8, 0, 0, 0),
+    Parent = cardTop
+};
+DrawBorder(lblSolicitante);
+
+var lblRfc = new Label {
+    Text = "",
+    Location = new Point(16, 88),
+    Size = new Size(410, 18),
+    Font = F_SM,
+    ForeColor = Color.FromArgb(30, 64, 175),
+    AutoEllipsis = true,
+    Parent = cardTop
+};
+
+Lbl("Prioridad", 448, 88, cardTop);
+var lblPrioridad = new Label {
+    Text = "Normal",
+    Location = new Point(448, 108),
+    Size = new Size(170, 18),
+    Font = F_SM,
+    ForeColor = C_MUTED,
+    AutoSize = true,
+    Parent = cardTop
+};
+
+Lbl("Centro de costo", 640, 88, cardTop);
+
+var cboCentro = new ComboBox {
+    Location = new Point(640, 108),
+    Size = new Size(190, 21),
+    Font = F_SM,
+    DropDownStyle = ComboBoxStyle.DropDown,
+    Parent = cardTop
+};
+cboCentro.Items.Add("");
+cboCentro.SelectedIndex = 0;
+Lbl("Observaciones", 852, 88, cardTop);
+var txtObs = new TextBox {
+    Location = new Point(852, 106),
+    Size = new Size(cardTop.Width - 868, 21),
+    Font = F_SM,
+    BorderStyle = BorderStyle.FixedSingle,
+    ForeColor = C_TEXT,
+    BackColor = C_INPUT_BG,
+    Parent = cardTop
+};
+
+// ─── CAPTURA VISIBLE DE PRODUCTO ────────────────────
+var cardAdd = new Panel {
+    Location = new Point(PAD, cardTop.Bottom + PAD),
+    Size = new Size(cardW, 118),
+    BackColor = C_WHITE,
+    Parent = frm
+};
+DrawBorder(cardAdd);
+
+new Label {
+    Text = "Agregar producto o servicio",
+    Location = new Point(16, 10),
+    Font = F_H2,
+    ForeColor = C_TEXT,
+    AutoSize = true,
+    Parent = cardAdd
+};
+
+new Label {
+    Text = "Busca por clave o descripción",
+    Location = new Point(16, 38),
+    Font = F_SM,
+    ForeColor = C_MUTED,
+    AutoSize = true,
+    Parent = cardAdd
+};
+
+var txtProducto = new TextBox {
+    Location = new Point(16, 58),
+    Size = new Size(600, 25),
+    Font = new Font("Segoe UI", 10f),
+    BorderStyle = BorderStyle.FixedSingle,
+    BackColor = C_INPUT_BG,
+    ForeColor = C_TEXT,
+    Parent = cardAdd
+};
+
+var btnAvanzada = new Button {
+    Text = "Búsqueda avanzada",
+    Location = new Point(626, 57),
+    Size = new Size(140, 28),
+    FlatStyle = FlatStyle.Flat,
+    BackColor = C_WHITE,
+    ForeColor = C_PRIMARY,
+    Font = F_BTN,
+    Cursor = Cursors.Hand,
+    Parent = cardAdd
+};
+btnAvanzada.FlatAppearance.BorderColor = C_BORDER;
+btnAvanzada.FlatAppearance.BorderSize = 1;
+
+var btnCatalogo = new Button {
+    Text = "Ver catálogo",
+    Location = new Point(776, 57),
+    Size = new Size(116, 28),
+    FlatStyle = FlatStyle.Flat,
+    BackColor = C_WHITE,
+    ForeColor = C_PRIMARY,
+    Font = F_BTN,
+    Cursor = Cursors.Hand,
+    Parent = cardAdd
+};
+btnCatalogo.FlatAppearance.BorderColor = C_PRIMARY;
+btnCatalogo.FlatAppearance.BorderSize = 1;
+
+new Label {
+    Text = "Cantidad",
+    Location = new Point(912, 38),
+    Font = F_SM,
+    ForeColor = C_MUTED,
+    AutoSize = true,
+    Parent = cardAdd
+};
+
+var nudCantidad = new NumericUpDown {
+    Location = new Point(912, 57),
+    Size = new Size(105, 28),
+    Minimum = 0.01M,
+    Maximum = 999999999M,
+    DecimalPlaces = 2,
+    Increment = 1M,
+    Value = 1M,
+    ThousandsSeparator = true,
+    TextAlign = HorizontalAlignment.Right,
+    Font = new Font("Segoe UI", 10f),
+    Parent = cardAdd
+};
+
+var btnAgregar = new Button {
+    Text = "+  Agregar",
+    Location = new Point(1032, 54),
+    Size = new Size(174, 34),
+    FlatStyle = FlatStyle.Flat,
+    BackColor = C_SUCCESS,
+    ForeColor = C_WHITE,
+    Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+    Cursor = Cursors.Hand,
+    Parent = cardAdd
+};
+btnAgregar.FlatAppearance.BorderSize = 0;
+
+var lblProductoInfo = new Label {
+    Text = "Escribe al menos parte de la clave o descripción; también puedes abrir el catálogo completo.",
+    Location = new Point(16, 90),
+    Size = new Size(1080, 18),
+    Font = F_SM,
+    ForeColor = C_MUTED,
+    AutoEllipsis = true,
+    Parent = cardAdd
+};
+
+// ─── LISTA FLOTANTE DE RESULTADOS ───────────────────
+var pnlDrop = new Panel {
+    Visible = false,
+    BackColor = C_BORDER,
+    Padding = new Padding(1),
+    Parent = frm
+};
+
+var lstMatch = new ListBox {
+    Visible = true,
+    Dock = DockStyle.Fill,
+    Font = F_BODY,
+    BorderStyle = BorderStyle.None,
+    IntegralHeight = false,
+    BackColor = C_WHITE,
+    ForeColor = C_TEXT,
+    DrawMode = DrawMode.OwnerDrawFixed,
+    ItemHeight = 50,
+    Parent = pnlDrop
+};
+
+lstMatch.DrawItem += (_, ev) => {
+    if (ev.Index < 0) return;
+
+    var p = lstMatch.Items[ev.Index] as Prod;
+    bool sel = (ev.State & DrawItemState.Selected) == DrawItemState.Selected;
+    Color bg = sel ? C_BLUE_SEL : C_WHITE;
+    Color fg = C_TEXT;
+
+    using (var br = new SolidBrush(bg))
+        ev.Graphics.FillRectangle(br, ev.Bounds);
+
+    if (p == null) return;
+
+    var r = ev.Bounds;
+    int left = r.Left + 10;
+    int top = r.Top + 6;
+
+    using (var brText = new SolidBrush(fg))
+    using (var brMuted = new SolidBrush(C_MUTED))
+    using (var brBadge = new SolidBrush(C_BADGE_BG))
+    using (var pen = new Pen(C_BORDER))
+    using (var keyFont = new Font("Segoe UI", 9f, FontStyle.Bold))
+    using (var badgeFont = new Font("Segoe UI", 8f, FontStyle.Bold)) {
+        var descRect = new RectangleF(left + 118, top, Math.Max(180, r.Width - 230), 18);
+        var metaRect = new RectangleF(left + 118, top + 22, Math.Max(180, r.Width - 230), 18);
+        ev.Graphics.DrawString(p.Key, keyFont, brText, left, top);
+        ev.Graphics.DrawString(p.Desc, F_BODY, brText, descRect);
+
+        string stock = p.Tipo == "Servicio"
+            ? "Servicio"
+            : "Existencia " + p.Stock.ToString("N2");
+        string meta = "Unidad " + p.Unit + " · " + stock;
+        ev.Graphics.DrawString(meta, F_SM, brMuted, metaRect);
+
+        var badge = new Rectangle(r.Right - 98, r.Top + 13, 82, 22);
+        ev.Graphics.FillRectangle(brBadge, badge);
+        ev.Graphics.DrawRectangle(pen, badge);
+        using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            ev.Graphics.DrawString(p.Tipo, badgeFont, brMuted, badge, sf);
+    }
+
+    ev.DrawFocusRectangle();
+};
+
+// ─── GRID ───────────────────────────────────────────
+int gridTop = cardAdd.Bottom + PAD;
+int cardBottom = frm.ClientSize.Height - PAD - 58;
+
+var cardGrid = new Panel {
+    Location = new Point(PAD, gridTop),
+    Size = new Size(cardW, cardBottom - gridTop),
+    BackColor = C_WHITE,
+    Parent = frm
+};
+DrawBorder(cardGrid);
+
+new Label {
+    Text = "Partidas agregadas",
+    Location = new Point(14, 9),
+    Font = F_H2,
+    ForeColor = C_TEXT,
+    AutoSize = true,
+    Parent = cardGrid
+};
+
+var txtFiltroPartidas = new TextBox {
+    Location = new Point(cardGrid.Width - 630, 14),
+    Size = new Size(210, 25),
+    Font = F_BODY,
+    BorderStyle = BorderStyle.FixedSingle,
+    ForeColor = C_TEXT,
+    BackColor = C_INPUT_BG,
+    Parent = cardGrid
+};
+
+var btnFiltrar = new Button {
+    Text = "Filtrar",
+    Location = new Point(cardGrid.Width - 410, 13),
+    Size = new Size(84, 28),
+    FlatStyle = FlatStyle.Flat,
+    BackColor = C_WHITE,
+    ForeColor = C_PRIMARY,
+    Font = F_BTN,
+    Cursor = Cursors.Hand,
+    Parent = cardGrid
+};
+btnFiltrar.FlatAppearance.BorderColor = C_BORDER;
+btnFiltrar.FlatAppearance.BorderSize = 1;
+
+var btnImportar = new Button {
+    Text = "Importar",
+    Location = new Point(cardGrid.Width - 316, 13),
+    Size = new Size(92, 28),
+    FlatStyle = FlatStyle.Flat,
+    BackColor = C_WHITE,
+    ForeColor = C_PRIMARY,
+    Font = F_BTN,
+    Cursor = Cursors.Hand,
+    Parent = cardGrid
+};
+btnImportar.FlatAppearance.BorderColor = C_BORDER;
+btnImportar.FlatAppearance.BorderSize = 1;
+
+var lblBadgePartidas = new Label {
+    Text = "0 partidas",
+    Location = new Point(cardGrid.Width - 120, 17),
+    Size = new Size(96, 20),
+    Font = F_SM,
+    ForeColor = C_PRIMARY,
+    BackColor = C_BLUE_SEL,
+    TextAlign = ContentAlignment.MiddleCenter,
+    Parent = cardGrid
+};
+DrawBorder(lblBadgePartidas);
+
+var gItems = new DataGridView {
+    Location = new Point(12, 52),
+    Size = new Size(cardGrid.Width - 24, cardGrid.Height - 64),
+    BackgroundColor = C_WHITE,
+    BorderStyle = BorderStyle.None,
+    AllowUserToAddRows = false,
+    AllowUserToDeleteRows = false,
+    AllowUserToResizeRows = false,
+    RowHeadersVisible = false,
+    ColumnHeadersHeight = 30,
+    ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
+    AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
+    EditMode = DataGridViewEditMode.EditOnEnter,
+    SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+    MultiSelect = false,
+    Font = F_BODY,
+    CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+    GridColor = Color.FromArgb(229, 231, 235),
+    Parent = cardGrid
+};
+
+gItems.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(249, 250, 251);
+gItems.ColumnHeadersDefaultCellStyle.ForeColor = C_MUTED;
+gItems.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 8f, FontStyle.Bold);
+gItems.ColumnHeadersDefaultCellStyle.Padding = new Padding(0, 3, 0, 3);
+gItems.DefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+gItems.DefaultCellStyle.SelectionBackColor = C_BLUE_SEL;
+gItems.DefaultCellStyle.SelectionForeColor = C_TEXT;
+gItems.EnableHeadersVisualStyles = false;
+gItems.RowTemplate.Height = 28;
+
+GridCol(gItems, "ID",    "",            0,   true,  null, null, false);
+var colSel = new DataGridViewCheckBoxColumn {
+    Name = "Sel",
+    HeaderText = "",
+    Width = 34,
+    ReadOnly = false
+};
+gItems.Columns.Add(colSel);
+GridCol(gItems, "Key",   "CLAVE",       135, true);
+GridCol(gItems, "Desc",  "DESCRIPCIÓN", 460, true);
+GridCol(gItems, "Unit",  "UNIDAD",       85, true,  DataGridViewContentAlignment.MiddleCenter);
+GridCol(gItems, "Qty",   "CANT. SOLICITADA", 130, false, DataGridViewContentAlignment.MiddleRight, "N2");
+GridCol(gItems, "Stock", "EXISTENCIA",   95, true,  DataGridViewContentAlignment.MiddleRight, "N2");
+GridCol(gItems, "Status", "ESTATUS",    95, true,  DataGridViewContentAlignment.MiddleCenter);
+
+gItems.Columns["Desc"].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+gItems.Columns["Key"].DefaultCellStyle.Font = F_MONO;
+gItems.Columns["Key"].DefaultCellStyle.ForeColor = Color.FromArgb(55, 65, 81);
+gItems.Columns["Status"].DefaultCellStyle.ForeColor = C_PRIMARY;
+gItems.Columns["Status"].DefaultCellStyle.BackColor = C_BLUE_SEL;
+
+// ─── FOOTER ─────────────────────────────────────────
+var cardFoot = new Panel {
+    Location = new Point(PAD, cardBottom + 6),
+    Size = new Size(cardW, 50),
+    BackColor = C_WHITE,
+    Parent = frm
+};
+DrawBorder(cardFoot);
+
+var lblCnt = new Label {
+    Text = "0 productos",
+    Location = new Point(16, 15),
+    Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+    ForeColor = C_TEXT,
+    AutoSize = true,
+    Parent = cardFoot
+};
+
+var lblTot = new Label {
+    Text = "",
+    Location = new Point(16, 16),
+    Font = F_SM,
+    ForeColor = C_MUTED,
+    AutoSize = true,
+    Parent = cardFoot
+};
+
+int rb = cardFoot.Width - 14;
+Button MakeBtn(string texto, int ancho, Color fondo, Color textoColor, bool principal) {
+    rb -= ancho + 6;
+    var b = new Button {
+        Text = texto,
+        FlatStyle = FlatStyle.Flat,
+        Location = new Point(rb, 10),
+        Size = new Size(ancho, 30),
+        Font = F_BTN,
+        Cursor = Cursors.Hand,
+        Parent = cardFoot,
+        TextAlign = ContentAlignment.MiddleCenter,
+        ForeColor = textoColor,
+        BackColor = fondo
+    };
+    b.FlatAppearance.BorderSize = principal ? 0 : 1;
+    b.FlatAppearance.BorderColor = principal ? fondo : C_BORDER;
+    return b;
+}
+
+var btnOK     = MakeBtn("Crear requisición", 155, C_PRIMARY, C_WHITE, true);
+var btnCancel = MakeBtn("Cancelar", 82, C_WHITE, C_MUTED, false);
+var btnQuitar = MakeBtn("Quitar partida", 110, C_WHITE, C_DANGER, false);
+var btnLimp   = MakeBtn("Limpiar", 76, C_WHITE, C_MUTED, false);
+
+btnOK.MouseEnter += (_, __) => btnOK.BackColor = C_PRIMARY_H;
+btnOK.MouseLeave += (_, __) => btnOK.BackColor = C_PRIMARY;
+btnAgregar.MouseEnter += (_, __) => btnAgregar.BackColor = Color.FromArgb(5, 150, 105);
+btnAgregar.MouseLeave += (_, __) => btnAgregar.BackColor = C_SUCCESS;
+btnCancel.Click += (_, __) => frm.Close();
+
+// ═══════════════════ LÓGICA DE UI ═══════════════════
+int DepotSel() {
+    var s = cboDep.SelectedItem as Opt;
+    return s != null ? s.Val : 1;
+}
+
+int ProvSel() {
+    var s = cboProv.SelectedItem as Opt;
+    return s != null ? s.Val : 0;
+}
+
+void ActualizarProveedorInfo() {
+    var s = cboProv.SelectedItem as Opt;
+    string rfc = s != null ? s.Extra : "";
+    lblRfc.Text = string.IsNullOrWhiteSpace(rfc) ? "RFC: sin RFC capturado" : "RFC: " + rfc;
+}
+
+void AplicarFiltroPartidas() {
+    string f = (txtFiltroPartidas.Text ?? "").Trim().ToUpperInvariant();
+    gItems.CurrentCell = null;
+    foreach (DataGridViewRow row in gItems.Rows) {
+        string key = Convert.ToString(row.Cells["Key"].Value ?? "").ToUpperInvariant();
+        string desc = Convert.ToString(row.Cells["Desc"].Value ?? "").ToUpperInvariant();
+        row.Visible = f.Length == 0 || key.Contains(f) || desc.Contains(f);
+    }
+}
+
+void RefreshGrid() {
+    gItems.Rows.Clear();
+
+    for (int i = 0; i < partidas.Count; i++) {
+        var it = partidas[i];
+        int row = gItems.Rows.Add(
+            it.PID,
+            false,
+            it.Key,
+            it.Desc,
+            it.Unit,
+            it.Qty,
+            it.Stock,
+            "Pendiente"
+        );
+
+        if (row % 2 == 0) {
+            foreach (DataGridViewCell c in gItems.Rows[row].Cells)
+                c.Style.BackColor = C_STRIPE;
+        }
+    }
+
+    UpdateTotal();
+    AplicarFiltroPartidas();
+}
+
+void UpdateTotal() {
+    int n = partidas.Count;
+    double total = partidas.Sum(z => z.Qty);
+
+    lblCnt.Text = n + " producto" + (n == 1 ? "" : "s");
+    lblBadgePartidas.Text = n + " partida" + (n == 1 ? "" : "s");
+    lblTot.Text = total > 0 ? "  ·  Unidades solicitadas: " + total.ToString("N2") : "";
+    lblTot.Location = new Point(lblCnt.Right + 4, 17);
+}
+
+void OcultarResultados() {
+    pnlDrop.Visible = false;
+}
+
+void Buscar(string texto) {
+    string q = (texto ?? "").Trim();
+
+    if (q.Length == 0) {
+        lstMatch.Items.Clear();
+        OcultarResultados();
+        return;
+    }
+
+    string safe = q.Replace("'", "''");
+    string filtro = q == "#"
+        ? ""
+        : "AND (p.ProductKey LIKE '%" + safe + "%' OR p.ProductName LIKE '%" + safe + "%') ";
+    string limite = q == "#" ? "TOP 300" : "TOP 80";
+
+    var rows = ctx.Query(
+        "SELECT " + limite + " p.ProductID, p.ProductKey, p.ProductName, p.Unit, p.TaxTypeID, " +
+        "ISNULL(t.TaxTypeName,'') AS TaxTypeName, " +
+        "CASE p.ProductTypeID WHEN 1 THEN 'Producto' WHEN 3 THEN 'Paquete' " +
+        "WHEN 4 THEN 'Servicio' WHEN 7 THEN 'Insumo' WHEN 2 THEN 'P.Term.' " +
+        "ELSE 'T'+CAST(p.ProductTypeID AS varchar) END AS Tipo, " +
+        "ISNULL((SELECT SUM(Quantity) FROM orgProductKardex k " +
+        "WHERE k.ProductID=p.ProductID AND k.DepotID=" + DepotSel() + " AND k.Cancelled=0),0) AS Stock " +
+        "FROM orgProduct p " +
+        "LEFT JOIN engTaxType t ON t.TaxTypeID=p.TaxTypeID " +
+        "WHERE p.DeletedOn IS NULL " +
+        "AND p.TaxTypeID IS NOT NULL AND p.TaxTypeID > 0 " +
+        filtro +
+        "ORDER BY p.ProductName");
+
+    lstMatch.BeginUpdate();
+    lstMatch.Items.Clear();
+
+    foreach (var r in rows) {
+        lstMatch.Items.Add(new Prod {
+            PID = Convert.ToInt32(r["ProductID"]),
+            Key = Convert.ToString(r["ProductKey"]),
+            Desc = Convert.ToString(r["ProductName"]),
+            Unit = Convert.ToString(r["Unit"]),
+            TaxTypeID = Convert.ToInt32(r["TaxTypeID"] ?? 0),
+            TaxName = Convert.ToString(r["TaxTypeName"]),
+            Stock = Convert.ToDouble(r["Stock"] ?? 0),
+            Tipo = Convert.ToString(r["Tipo"])
+        });
+    }
+
+    lstMatch.EndUpdate();
+
+    if (lstMatch.Items.Count == 0) {
+        lblProductoInfo.Text = "No se encontraron productos con esa búsqueda.";
+        lblProductoInfo.ForeColor = C_DANGER;
+        OcultarResultados();
+        return;
+    }
+
+    lstMatch.SelectedIndex = 0;
+
+    int alto = Math.Min(lstMatch.Items.Count * lstMatch.ItemHeight + 4, 286);
+    int posX = cardAdd.Left + txtProducto.Left;
+    int posY = cardAdd.Top + txtProducto.Bottom + 2;
+    int ancho = Math.Min(cardAdd.Width - txtProducto.Left - 16, 880);
+
+    pnlDrop.SetBounds(posX, posY, ancho, alto);
+    pnlDrop.Visible = true;
+    pnlDrop.BringToFront();
+
+    lblProductoInfo.Text = lstMatch.Items.Count + " resultado" + (lstMatch.Items.Count == 1 ? "" : "s") +
+        " · usa flechas y Enter para seleccionar.";
+    lblProductoInfo.ForeColor = C_MUTED;
+}
+
+void SeleccionarProducto() {
+    var p = lstMatch.SelectedItem as Prod;
+    if (p == null) return;
+
+    productoSeleccionado = p;
+
+    suspenderBusqueda = true;
+    txtProducto.Text = p.Key + " — " + p.Desc;
+    txtProducto.SelectionStart = txtProducto.TextLength;
+    suspenderBusqueda = false;
+
+    lblProductoInfo.Text =
+        "Seleccionado: " + p.Key + " · Unidad: " + p.Unit +
+        " · Existencia: " + p.Stock.ToString("N2");
+    lblProductoInfo.ForeColor = C_SUCCESS;
+
+    OcultarResultados();
+    nudCantidad.Focus();
+}
+
+void LimpiarCapturaProducto() {
+    productoSeleccionado = null;
+
+    suspenderBusqueda = true;
+    txtProducto.Clear();
+    suspenderBusqueda = false;
+
+    nudCantidad.Value = 1M;
+    lblProductoInfo.Text =
+        "Escribe al menos parte de la clave o descripción; también puedes abrir el catálogo completo.";
+    lblProductoInfo.ForeColor = C_MUTED;
+    OcultarResultados();
+}
+
+void AgregarProducto() {
+    if (productoSeleccionado == null) {
+        if (pnlDrop.Visible && lstMatch.SelectedItem != null) {
+            SeleccionarProducto();
+        } else {
+            ctx.Msg("Busca y selecciona un producto antes de agregarlo.");
+            txtProducto.Focus();
+            return;
+        }
+    }
+
+    double cantidad = Convert.ToDouble(nudCantidad.Value);
+    if (cantidad <= 0) {
+        ctx.Msg("La cantidad debe ser mayor que cero.");
+        nudCantidad.Focus();
+        return;
+    }
+
+    var p = productoSeleccionado;
+    var existente = partidas.FirstOrDefault(z => z.PID == p.PID);
+
+    if (existente != null) {
+        existente.Qty += cantidad;
+    } else {
+        partidas.Add(new Item {
+            PID = p.PID,
+            Key = p.Key,
+            Desc = p.Desc,
+            Unit = p.Unit,
+            TaxTypeID = p.TaxTypeID,
+            TaxName = p.TaxName,
+            Qty = cantidad,
+            Stock = p.Stock,
+            Tipo = p.Tipo
+        });
+    }
+
+    RefreshGrid();
+    LimpiarCapturaProducto();
+    txtProducto.Focus();
+}
+
+// ─── EVENTOS DE BÚSQUEDA Y CAPTURA ─────────────────
+txtProducto.TextChanged += (_, __) => {
+    if (suspenderBusqueda) return;
+    productoSeleccionado = null;
+    Buscar(txtProducto.Text);
+};
+
+btnCatalogo.Click += (_, __) => {
+    productoSeleccionado = null;
+    txtProducto.Focus();
+    Buscar("#");
+};
+
+btnAvanzada.Click += (_, __) => {
+    productoSeleccionado = null;
+    txtProducto.Focus();
+    Buscar("#");
+};
+
+cboProv.SelectedIndexChanged += (_, __) => ActualizarProveedorInfo();
+
+txtFiltroPartidas.TextChanged += (_, __) => AplicarFiltroPartidas();
+btnFiltrar.Click += (_, __) => AplicarFiltroPartidas();
+btnImportar.Click += (_, __) =>
+    ctx.Msg("Importar partidas queda como punto de extension de la plantilla.");
+
+btnAgregar.Click += (_, __) => AgregarProducto();
+
+lstMatch.MouseDoubleClick += (_, __) => SeleccionarProducto();
+
+lstMatch.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.Enter) {
+        SeleccionarProducto();
+        ev.Handled = true;
+    } else if (ev.KeyCode == Keys.Escape) {
+        OcultarResultados();
+        txtProducto.Focus();
+        ev.Handled = true;
+    }
+};
+
+txtProducto.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.Down && pnlDrop.Visible) {
+        lstMatch.Focus();
+        if (lstMatch.SelectedIndex < 0 && lstMatch.Items.Count > 0)
+            lstMatch.SelectedIndex = 0;
+        ev.Handled = true;
+    } else if (ev.KeyCode == Keys.Enter) {
+        if (pnlDrop.Visible && lstMatch.SelectedItem != null)
+            SeleccionarProducto();
+        else if (productoSeleccionado != null)
+            AgregarProducto();
+        ev.Handled = true;
+        ev.SuppressKeyPress = true;
+    } else if (ev.KeyCode == Keys.Escape) {
+        LimpiarCapturaProducto();
+        ev.Handled = true;
+    }
+};
+
+nudCantidad.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.Enter) {
+        AgregarProducto();
+        ev.Handled = true;
+        ev.SuppressKeyPress = true;
+    }
+};
+
+cboDep.SelectedIndexChanged += (_, __) => {
+    if (!string.IsNullOrWhiteSpace(txtProducto.Text) && productoSeleccionado == null)
+        Buscar(txtProducto.Text);
+};
+
+frm.Deactivate += (_, __) => OcultarResultados();
+
+// ─── EDICIÓN DE CANTIDAD EN GRID ────────────────────
+gItems.CellEndEdit += (_, ev) => {
+    if (ev.RowIndex < 0 || ev.RowIndex >= partidas.Count) return;
+    if (gItems.Columns[ev.ColumnIndex].Name != "Qty") return;
+
+    var it = partidas[ev.RowIndex];
+    double valor = it.Qty;
+
+    try {
+        valor = Convert.ToDouble(gItems.Rows[ev.RowIndex].Cells["Qty"].Value ?? it.Qty);
+    } catch {
+        valor = it.Qty;
+    }
+
+    if (valor <= 0) valor = 1;
+    it.Qty = valor;
+    gItems.Rows[ev.RowIndex].Cells["Qty"].Value = valor;
+    UpdateTotal();
+};
+
+gItems.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.Delete && gItems.CurrentRow != null) {
+        int i = gItems.CurrentRow.Index;
+        if (i >= 0 && i < partidas.Count) {
+            partidas.RemoveAt(i);
+            RefreshGrid();
+        }
+        ev.Handled = true;
+    }
+};
+
+// ─── BOTONES INFERIORES ─────────────────────────────
+btnLimp.Click += (_, __) => {
+    if (partidas.Count == 0) return;
+    if (ctx.Confirm("¿Limpiar todas las partidas agregadas?")) {
+        partidas.Clear();
+        RefreshGrid();
+        LimpiarCapturaProducto();
+    }
+};
+
+btnQuitar.Click += (_, __) => {
+    if (gItems.CurrentRow == null) return;
+
+    int i = gItems.CurrentRow.Index;
+    if (i < 0 || i >= partidas.Count) return;
+
+    var it = partidas[i];
+    if (ctx.Confirm("¿Quitar la partida " + it.Key + "?")) {
+        partidas.RemoveAt(i);
+        RefreshGrid();
+    }
+};
+
+// ═══════════════════ CREAR REQUISICION ══════════════
+btnOK.Click += (_, __) => {
+    int be = ProvSel();
+    if (be == 0) {
+        ctx.Msg("Selecciona un proveedor.");
+        return;
+    }
+
+    if (partidas.Count == 0) {
+        ctx.Msg("Agrega al menos un producto.");
+        txtProducto.Focus();
+        return;
+    }
+
+    long supplierID = Convert.ToInt64(ctx.Scalar(
+        "SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + be));
+
+    if (!ctx.Confirm(
+        "Crear requisición de compra con " + partidas.Count + " producto" +
+        (partidas.Count == 1 ? "" : "s") + "?")) return;
+
+    frm.Cursor = Cursors.WaitCursor;
+    btnOK.Enabled = false;
+    btnOK.Text = "Creando...";
+
+    try {
+        int dep = DepotSel();
+        ctx.Log("REQ be=" + be + " dep=" + dep + " supplier=" + supplierID + " items=" + partidas.Count);
+
+        ctx.NonQuery("SET XACT_ABORT OFF; SET IMPLICIT_TRANSACTIONS OFF");
+
+        int doc = ctx.erp.NuevoDocumento(1040, dep, be);
+        if (doc <= 0 || !string.IsNullOrEmpty(ctx.erp.LastError))
+            throw new Exception("NuevoDocumento: " + (ctx.erp.LastError ?? "doc=" + doc));
+
+        
+        ctx.NonQuery(
+            "UPDATE docDocument SET DepotIDFrom=0, UserID=0, " +
+            "CampaignID=NULL, CostCenterID=NULL, ProjectID=NULL, PaymentTermID=0, " +
+            "DateDocDelivery='" + dtpFechaReq.Value.ToString("yyyyMMdd") + "', " +
+            "Comments='" + txtObs.Text.Replace("'", "''") + "' " +
+            "WHERE DocumentID=" + doc);
+foreach (var it in partidas) {
+            ctx.erp.AgregarArticulo(doc, it.PID, it.Qty);
+            if (!string.IsNullOrEmpty(ctx.erp.LastError))
+                throw new Exception("AgregarArticulo PID=" + it.PID + ": " + ctx.erp.LastError);
+        }
+
+        foreach (var it in partidas) {
+            ctx.NonQuery(
+                "IF NOT EXISTS (SELECT 1 FROM orgProductSupplier " +
+                "WHERE ProductID=" + it.PID + " AND SupplierID=" + supplierID + ") " +
+                "INSERT INTO orgProductSupplier " +
+                "(ProductID, SupplierID, CostPrice, CurrencyID, RefSupplier, OrderNumber) " +
+                "VALUES (" + it.PID + ", " + supplierID + ", 0, 3, NULL, 0)");
+        }
+
+        ctx.erp.RecalcCompleto(doc);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError))
+            throw new Exception("RecalcCompleto: " + ctx.erp.LastError);
+
+        ctx.erp.Save(doc);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError))
+            throw new Exception("Save: " + ctx.erp.LastError);
+
+        try { ctx.erp.RefreshGrid(); } catch { }
+
+        ctx.Log("REQ-OK doc=" + doc);
+        ctx.Msg(
+            "Requisición de compra " + doc + " creada.\n" + partidas.Count + " productos.",
+            "OK");
+        frm.Close();
+    } catch (Exception ex) {
+        ctx.Log("ERROR REQ: " + ex.Message);
+        ctx.Msg(ex.Message, "Error");
+    } finally {
+        frm.Cursor = Cursors.Default;
+        btnOK.Enabled = true;
+        btnOK.Text = "Crear requisición";
+    }
+};
+
+// ═══════════════════ HELPERS ═══════════════════
+Label Lbl(string texto, int px, int py, Control padre) {
+    return new Label {
+        Text = texto,
+        Location = new Point(px, py),
+        Font = F_H2,
+        ForeColor = C_TEXT,
+        AutoSize = true,
+        Parent = padre
+    };
+}
+
+ComboBox Cbo(int px, int py, int ancho, int altoLista, Control padre) {
+    return new ComboBox {
+        Location = new Point(px, py),
+        Size = new Size(ancho, 25),
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        DropDownHeight = Math.Max(altoLista, 250),
+        Font = F_BODY,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = C_WHITE,
+        Parent = padre
+    };
+}
+
+void DrawBorder(Control c) {
+    c.Paint += (_, ev) => {
+        using (var pen = new Pen(C_BORDER, 1))
+            ev.Graphics.DrawRectangle(pen, 0, 0, c.Width - 1, c.Height - 1);
+    };
+}
+
+DataGridViewTextBoxColumn GridCol(
+    DataGridView g,
+    string name,
+    string header,
+    int width,
+    bool readOnly,
+    DataGridViewContentAlignment? alignment = null,
+    string format = null,
+    bool visible = true)
+{
+    var col = new DataGridViewTextBoxColumn {
+        Name = name,
+        HeaderText = header,
+        Width = width,
+        ReadOnly = readOnly,
+        Visible = visible
+    };
+
+    if (alignment != null)
+        col.DefaultCellStyle.Alignment = alignment.Value;
+    if (format != null)
+        col.DefaultCellStyle.Format = format;
+
+    g.Columns.Add(col);
+    return col;
+}
+
+class Opt {
+    public string Txt;
+    public int Val;
+    public string Extra;
+
+    public Opt(string texto, int valor) {
+        Txt = texto;
+        Val = valor;
+        Extra = "";
+    }
+
+    public Opt(string texto, int valor, string extra) {
+        Txt = texto;
+        Val = valor;
+        Extra = extra ?? "";
+    }
+
+    public override string ToString() {
+        return Txt;
+    }
+}
+
+class Item {
+    public int PID;
+    public int TaxTypeID;
+    public string Key = "";
+    public string Desc = "";
+    public string Unit = "";
+    public string TaxName = "";
+    public string Tipo = "";
+    public double Qty = 1;
+    public double Stock = 0;
+}
+
+class Prod {
+    public int PID;
+    public int TaxTypeID;
+    public string Key = "";
+    public string Desc = "";
+    public string Unit = "";
+    public string TaxName = "";
+    public string Tipo = "";
+    public double Stock = 0;
+
+    public override string ToString() {
+        string stock = Tipo == "Servicio"
+            ? "SERVICIO"
+            : "EXIST: " + Stock.ToString("N2");
+
+        return (Key ?? "") + " - " + (Desc ?? "") + " - " + (Unit ?? "") + " - " + stock;
+    }
+}
+
+ActualizarProveedorInfo();
+RefreshGrid();
+txtProducto.Focus();
+frm.ShowDialog();
