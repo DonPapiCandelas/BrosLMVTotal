@@ -1,0 +1,108 @@
+<Window x:Class="BrosLMV.Empresas.WelcomeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BrosLMV — Instalador" Height="600" Width="640"
+        WindowStartupLocation="CenterScreen" Background="#F4F6F9" FontFamily="Segoe UI"
+        ResizeMode="NoResize" Icon="pack://application:,,,/assets/app_icon.png">
+  <Window.Resources>
+    <Style TargetType="Button" x:Key="Primary">
+      <Setter Property="Background" Value="#2D6FE0"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="22,9"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border CornerRadius="6" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="Button" x:Key="Ghost">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="Foreground" Value="#64748B"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="18,9"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border CornerRadius="6" Background="{TemplateBinding Background}" BorderBrush="#CBD5E1" BorderThickness="1" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Cabecera oscura con logo -->
+    <Border Grid.Row="0" Height="150">
+      <Border.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+          <GradientStop Color="#15324F" Offset="0"/>
+          <GradientStop Color="#0B1E33" Offset="1"/>
+        </LinearGradientBrush>
+      </Border.Background>
+      <Image Source="pack://application:,,,/assets/logo_blanco.png" Height="84" Stretch="Uniform"
+             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+
+    <!-- Cuerpo -->
+    <StackPanel Grid.Row="1" Margin="40,22,40,0">
+      <TextBlock Text="Bienvenido al instalador de BrosLMV" FontSize="20" FontWeight="Bold" Foreground="#16263A"/>
+      <TextBlock Foreground="#64748B" Margin="0,7,0,14" TextWrapping="Wrap"
+                 Text="Instalará BrosLMV en C:\BrosLMV y registrará la consola en CONTPAQi Comercial PRO. Todo lo necesario viene incluido en este instalador: no descarga nada de internet."/>
+
+      <TextBlock Text="QUÉ SE INSTALA  (todo dentro de C:\BrosLMV)" FontSize="11" FontWeight="Bold" Foreground="#16263A" Margin="0,0,0,6"/>
+
+      <StackPanel Orientation="Horizontal" Margin="0,3">
+        <TextBlock Text="✓" Foreground="#1E9E5A" FontWeight="Bold" Margin="0,0,10,0"/>
+        <TextBlock TextWrapping="Wrap"><Run Text="Consola y addon de BrosLMV" FontWeight="SemiBold" Foreground="#16263A"/><Run Text=" — el componente (COM) que CONTPAQi Comercial carga al iniciar." Foreground="#334155"/></TextBlock>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,3">
+        <TextBlock Text="✓" Foreground="#1E9E5A" FontWeight="Bold" Margin="0,0,10,0"/>
+        <TextBlock TextWrapping="Wrap"><Run Text="Python 3.13 propio y portátil (~21 MB)" FontWeight="SemiBold" Foreground="#16263A"/><Run Text=" — para los botones escritos en Python. No toca tu Python ni el PATH del sistema." Foreground="#334155"/></TextBlock>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,3">
+        <TextBlock Text="✓" Foreground="#1E9E5A" FontWeight="Bold" Margin="0,0,10,0"/>
+        <TextBlock TextWrapping="Wrap"><Run Text="Motor de scripts .NET incluido (~82 MB)" FontWeight="SemiBold" Foreground="#16263A"/><Run Text=" — autocontenido; no instala .NET aparte en el equipo." Foreground="#334155"/></TextBlock>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,3">
+        <TextBlock Text="✓" Foreground="#1E9E5A" FontWeight="Bold" Margin="0,0,10,0"/>
+        <TextBlock TextWrapping="Wrap"><Run Text="Icono del botón" FontWeight="SemiBold" Foreground="#16263A"/><Run Text=" en CONTPAQi Comercial, para que el botón aparezca en la cinta." Foreground="#334155"/></TextBlock>
+      </StackPanel>
+
+      <Border Background="#F1F5FB" BorderBrush="#DCE3ED" BorderThickness="1" CornerRadius="6" Padding="12,9" Margin="0,12,0,0">
+        <TextBlock TextWrapping="Wrap" Foreground="#475569" FontSize="12">
+          <Run Text="Fuera de C:\BrosLMV solo se hace lo mínimo: " FontWeight="SemiBold"/><Run Text="registrar el componente COM (registro de Windows) y copiar el icono en CONTPAQi. No modifica otras aplicaciones. Todo se quita por completo con el Desinstalador."/>
+        </TextBlock>
+      </Border>
+
+      <TextBlock TextWrapping="Wrap" Foreground="#64748B" FontSize="12" Margin="0,10,0,0"
+                 Text="Tras instalar, en el SERVIDOR podrás registrar (provisionar) las empresas donde se usará (requiere acceso a SQL). En una TERMINAL, con instalar basta."/>
+      <TextBlock Text="Requiere permisos de administrador y .NET Framework 4.8 (incluido en Windows 10/11 y Server)." Foreground="#94A3B8" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+    </StackPanel>
+
+    <!-- Pie -->
+    <Border Grid.Row="2" Background="White" BorderBrush="#E6E9EF" BorderThickness="0,1,0,0" Padding="40,16">
+      <Grid>
+        <TextBlock x:Name="lblVer" Text="BrosLMV" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="btnSalir" Content="Salir" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="btnSalir_Click"/>
+          <Button x:Name="btnInstalar" Content="Instalar" Style="{StaticResource Primary}" Click="btnInstalar_Click"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

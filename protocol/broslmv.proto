@@ -1,0 +1,378 @@
+// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+// Copyright (C) 2026 Cristofer Candelas Garcia
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+// =============================================================================
+//  broslmv.proto — Contrato del canal C# (addon, en proceso) <-> Python (host, x64)
+//  Punto C2 del PLAN_DE_TRABAJO. Ver diseño en docs/ARQUITECTURA_V3.md.
+//
+//  Transporte: Named Pipe con framing propio  [4 bytes longitud BE][mensaje Protobuf].
+//  NO se usa gRPC (evita HTTP/2 dentro de ComercialSP 32-bit). Cada mensaje del canal
+//  es un Envelope. La correlación request/response va por 'request_id'.
+//
+//  Modelo de UI = Opción A "doble render" (decisión D9): Python solo DESCRIBE la UI
+//  (UiForm declarativo / UiShowHtml) y el addon C# la renderiza. Ningún objeto de UI,
+//  conexión SQL ni XEngine cruza el límite de proceso.
+// =============================================================================
+
+syntax = "proto3";
+
+package broslmv;
+
+option csharp_namespace = "BrosLMV.Protocol";
+
+// =============================================================================
+//  0. Envelope — todo mensaje del canal va envuelto aquí
+// =============================================================================
+message Envelope {
+  uint32 protocol_version = 1;   // versión del protocolo (incompatibilidades => rechazo)
+  string request_id       = 2;   // UUID; correlaciona una respuesta con su petición
+  string execution_id     = 3;   // UUID de la ejecución (un clic de botón)
+  int64  timestamp_unix_ms = 4;  // marca de tiempo del emisor
+  string auth_token       = 5;   // token UUID del pipe (D6); el host rechaza sin él
+
+  oneof message {
+    // Handshake / ciclo de vida
+    Hello               hello                = 10;
+    HelloResponse       hello_response       = 11;
+    ExecuteScript       execute_script       = 12;
+    ExecutionCompleted  execution_completed  = 13;
+    ExecutionFailed     execution_failed     = 14;
+    CancelExecution     cancel_execution     = 15;
+
+    // Llamadas del script de vuelta al addon/host (ctx.*)
+    ContextCall         context_call         = 16;
+    ContextResponse     context_response     = 17;
+
+    // UI (la renderiza el addon C# en proceso)
+    UiRequest           ui_request           = 18;
+    UiResponse          ui_response          = 19;
+
+    // Eventos asíncronos (no requieren respuesta)
+    ProgressEvent       progress_event       = 20;
+    LogEvent            log_event            = 21;
+    ArtifactEvent       artifact_event       = 22;
+
+    // Salud del host/worker
+    Heartbeat           heartbeat            = 23;
+    WorkerStatus        worker_status        = 24;
+  }
+}
+
+// =============================================================================
+//  1. Sistema de tipos — Value (preserva tipos a través del límite de proceso)
+// =============================================================================
+// Regla de oro: los IMPORTES MONETARIOS viajan como Decimal EXACTO (string), nunca
+// como double. Fechas/horas como ISO 8601 (string). NULL = oneof sin asignar.
+message Value {
+  oneof kind {
+    bool   bool_value            = 1;
+    int32  int32_value           = 2;
+    int64  int64_value           = 3;
+    string decimal_value         = 4;   // decimal exacto, p.ej. "1234.50"
+    double double_value          = 5;   // solo para cálculos no monetarios
+    string string_value          = 6;
+    bytes  bytes_value           = 7;
+    string date_value            = 8;   // "2026-06-26"
+    string time_value            = 9;   // "14:30:00"
+    string datetime_value        = 10;  // "2026-06-26T14:30:00"
+    string datetimeoffset_value  = 11;  // "2026-06-26T14:30:00-06:00"
+    string guid_value            = 12;  // "E593D5A9-..."
+    ValueList list_value         = 13;
+    ValueMap  map_value          = 14;
+    Table     table_value        = 15;
+  }
+  // kind sin asignar => valor NULL.
+}
+
+message ValueList { repeated Value items = 1; }
+
+message ValueMap  { map<string, Value> entries = 1; }
+
+// Tabla tabular (resultado de un SELECT). Filas como listas paralelas a 'columns'.
+message Table {
+  repeated Column columns = 1;
+  repeated Row    rows    = 2;
+}
+message Column {
+  string name      = 1;
+  string sql_type  = 2;   // tipo declarado por SQL Server (informativo)
+}
+message Row { repeated Value cells = 1; }
+
+// Error estándar de cualquier respuesta.
+message Error {
+  string code      = 1;   // p.ej. "SQL_ERROR", "PERMISSION_DENIED", "TIMEOUT"
+  string message   = 2;   // mensaje legible
+  string detail    = 3;   // detalle técnico opcional
+  string traceback = 4;   // stack de Python/C# (solo en modo desarrollo)
+}
+
+message Empty {}
+
+// =============================================================================
+//  2. Handshake / ciclo de vida
+// =============================================================================
+message Hello {
+  string worker_id       = 1;
+  string runtime         = 2;   // "python"
+  string runtime_version = 3;   // "3.13.1"
+  uint32 protocol_version = 4;
+}
+message HelloResponse {
+  bool   accepted = 1;
+  Error  error    = 2;   // si accepted=false
+  uint32 protocol_version = 3;
+}
+
+// Contexto CONGELADO al pulsar el botón. Inmutable durante la ejecución
+// (refresco explícito vía ContextCall "refresh_context").
+message ExecutionContext {
+  string app_key         = 1;
+  string empresa         = 2;   // nombre de la BD activa
+  string servidor        = 3;
+  string base_datos      = 4;
+  int32  user_id         = 5;
+  int32  module_id       = 6;
+  repeated int64 selected_ids = 7;
+  string script_path     = 8;
+  string language        = 9;   // "python"
+  string runtime_version = 10;
+  bool   solo_lectura    = 11;
+  repeated string capabilities = 12;   // ver §6 de ARQUITECTURA_V3 (db.read, ui.dialog, ...)
+  map<string, string> tokens_resueltos = 13;  // {pID}, {DATOS:Campo}, ... ya sustituidos
+  map<string, Value> fila_activa = 14; // Fila activa seleccionada en el grid
+}
+
+message ExecuteScript {
+  ExecutionContext context = 1;
+  string code              = 2;   // código fuente del script (si va embebido)
+  bool   code_is_path      = 3;   // si true, 'code' es una ruta de archivo
+  int32  timeout_ms        = 4;   // deadline (0 = default del host)
+}
+
+message ExecutionCompleted {
+  int64 elapsed_ms     = 1;
+  int32 rows_affected  = 2;
+  Value return_value   = 3;   // valor de retorno opcional del script
+}
+message ExecutionFailed {
+  Error error      = 1;
+  int64 elapsed_ms = 2;
+}
+message CancelExecution {
+  string reason = 1;   // "timeout", "user_cancel", "host_shutdown"
+}
+
+// =============================================================================
+//  3. ContextCall — el script llama de vuelta (ctx.*). El host/addon ejecuta.
+// =============================================================================
+message ContextCall {
+  oneof op {
+    SqlRequest         sql          = 1;   // ctx.scalar/query/query_one/execute/non_query
+    BulkInsert         bulk_insert  = 2;   // ctx.bulk_insert
+    QueryBatches       query_batches = 3;  // ctx.query_batches (streaming)
+    TransactionControl transaction  = 4;   // with ctx.transaction()
+    ErpCall            erp          = 5;   // ctx.erp.*  (espejo de ErpContext)
+    RefreshContext     refresh_context = 6; // ctx.refresh_context()
+    LiveSql            live         = 7;   // ctx.live.* (conexión viva del addon; restringido)
+  }
+}
+
+// --- SQL solo-proxy (D4): el script NUNCA ve la cadena/contraseña ---
+enum SqlMode {
+  SQL_QUERY     = 0;   // -> Table (varias filas)
+  SQL_QUERY_ONE = 1;   // -> 1 fila (o NULL)
+  SQL_SCALAR    = 2;   // -> 1 valor
+  SQL_NON_QUERY = 3;   // -> filas afectadas (int)
+}
+message SqlRequest {
+  string sql              = 1;
+  map<string, Value> params = 2;   // SIEMPRE parametrizado (@param -> Value)
+  SqlMode mode            = 3;
+  int32  max_rows         = 4;     // 0 = sin límite
+  int32  timeout_ms       = 5;
+}
+
+message BulkInsert {
+  string table              = 1;
+  repeated string columns   = 2;
+  Table  data               = 3;   // filas a insertar
+}
+
+message QueryBatches {
+  string sql              = 1;
+  map<string, Value> params = 2;
+  int32  batch_size       = 3;     // filas por lote (se devuelven como ProgressEvent/Table)
+}
+
+enum TxAction { TX_BEGIN = 0; TX_COMMIT = 1; TX_ROLLBACK = 2; }
+message TransactionControl {
+  TxAction action  = 1;
+  string   tx_id   = 2;   // identifica la transacción abierta en el host
+}
+
+message RefreshContext {}
+
+// --- ERP / XEngine: espejo de ErpContext (C#). Se ejecuta EN EL ADDON en proceso ---
+// 'method' = nombre del método de ctx.erp (afectar_stock, recalcular, precio_venta,
+// total_en_letra, get_folio_prefix, ...). Args posicionales tipados con Value.
+// El catálogo canónico de métodos es la clase ErpContext (ver SCRIPTING_CONTRATOS.md §7).
+message ErpCall {
+  string method            = 1;
+  repeated Value args      = 2;
+  map<string, Value> kwargs = 3;   // opcional, para parámetros con nombre
+}
+
+// --- Conexión viva del addon (avanzado/restringido por capability erp.live_connection) ---
+message LiveSql {
+  string sql              = 1;
+  map<string, Value> params = 2;
+  SqlMode mode            = 3;
+}
+
+// Respuesta a CUALQUIER ContextCall.
+message ContextResponse {
+  oneof result {
+    Value  value          = 1;   // scalar / erp / non_query(int) / query_one(map en Value)
+    Table  table          = 2;   // query
+    string tx_id          = 3;   // transaction BEGIN devuelve el id
+    Error  error          = 4;
+    Empty  ok             = 5;   // operaciones sin retorno (commit/rollback)
+  }
+}
+
+// =============================================================================
+//  4. UI — Opción A "doble render" (D9). El addon C# renderiza; Python describe.
+// =============================================================================
+message UiRequest {
+  oneof ui {
+    UiMessage      msg           = 1;   // ctx.msg
+    UiConfirm      confirm       = 2;   // ctx.confirm
+    UiProgress     progress      = 3;   // ctx.progress
+    UiForm         form          = 4;   // ctx.form  (WinForms nativo declarativo)
+    UiShowHtml     show_html     = 5;   // ctx.show_html (WebView2)
+    UiSelectFile   select_file   = 6;   // ctx.select_file
+    UiSelectFolder select_folder = 7;   // ctx.select_folder
+  }
+}
+
+enum MessageIcon { ICON_INFO = 0; ICON_WARNING = 1; ICON_ERROR = 2; ICON_QUESTION = 3; }
+message UiMessage { string text = 1; string title = 2; MessageIcon icon = 3; }
+message UiConfirm { string text = 1; string title = 2; }
+message UiProgress { string text = 1; int32 percent = 2; bool indeterminate = 3; bool close = 4; }
+message UiSelectFile   { string title = 1; string filter = 2; bool save = 3; string initial_dir = 4; }
+message UiSelectFolder { string title = 1; string initial_dir = 2; }
+
+// --- Formulario declarativo (DSL que el addon traduce a WinForms) ---
+message UiForm {
+  string title              = 1;
+  repeated FormField fields = 2;
+  FormGrid grid             = 3;   // opcional: grid editable de partidas
+  string ok_label           = 4;
+  string cancel_label       = 5;
+  int32  width              = 6;
+  int32  height             = 7;
+}
+enum FieldType {
+  FT_TEXT    = 0;
+  FT_NUMBER  = 1;   // entero
+  FT_DECIMAL = 2;   // decimal (importes)
+  FT_DATE    = 3;
+  FT_BOOL    = 4;   // checkbox
+  FT_COMBO   = 5;   // lista desplegable
+  FT_MEMO    = 6;   // texto multilínea
+}
+message FormField {
+  string name              = 1;
+  string label             = 2;
+  FieldType type           = 3;
+  Value default_value      = 4;
+  bool   required          = 5;
+  bool   read_only         = 6;
+  repeated ComboOption options = 7;   // solo para FT_COMBO
+}
+message ComboOption { Value value = 1; string label = 2; }
+
+message FormGrid {
+  repeated GridColumn columns = 1;
+  Table  initial_rows         = 2;   // filas precargadas (p.ej. partidas del documento origen)
+  bool   allow_add            = 3;
+  bool   allow_delete         = 4;
+}
+message GridColumn {
+  string name       = 1;
+  string caption    = 2;
+  FieldType type    = 3;
+  int32  width      = 4;
+  bool   editable   = 5;
+  repeated ComboOption options = 6;   // para columnas tipo combo
+}
+
+message UiShowHtml {
+  string html    = 1;
+  string title   = 2;
+  int32  width   = 3;
+  int32  height  = 4;
+  bool   modal   = 5;
+}
+
+// Respuesta de la UI.
+message UiResponse {
+  oneof result {
+    Empty      ok            = 1;   // msg / progress (sin retorno)
+    bool       confirmed     = 2;   // confirm
+    string     selected_path = 3;   // select_file / select_folder
+    FormResult form_result   = 4;   // form
+    Error      error         = 5;
+  }
+}
+message FormResult {
+  bool   submitted          = 1;   // false si el usuario canceló
+  map<string, Value> values = 2;   // valor final de cada FormField (por 'name')
+  Table  grid_rows          = 3;   // filas finales del grid (si había)
+}
+
+// =============================================================================
+//  5. Eventos asíncronos (del worker hacia el host/UI; sin respuesta)
+// =============================================================================
+message ProgressEvent { string text = 1; int32 percent = 2; bool indeterminate = 3; }
+
+enum LogLevel { LOG_DEBUG = 0; LOG_INFO = 1; LOG_WARN = 2; LOG_ERROR = 3; }
+message LogEvent { LogLevel level = 1; string message = 2; }
+
+// Artefacto generado por el script (Excel/PDF/HTML) que el addon entrega al usuario.
+message ArtifactEvent {
+  string name         = 1;   // nombre de archivo sugerido
+  string mime_type    = 2;
+  oneof content {
+    bytes  inline_data = 3;   // contenido embebido (archivos chicos)
+    string temp_path   = 4;   // ruta temporal (archivos grandes)
+  }
+  bool   open_after   = 5;   // abrir con la app por defecto al terminar
+}
+
+// =============================================================================
+//  6. Salud
+// =============================================================================
+message Heartbeat { int64 timestamp_unix_ms = 1; }
+
+enum WorkerState { WS_IDLE = 0; WS_BUSY = 1; WS_DRAINING = 2; WS_FAULTED = 3; }
+message WorkerStatus {
+  string worker_id      = 1;
+  WorkerState state     = 2;
+  int64  memory_bytes   = 3;
+  int32  executions_done = 4;
+}

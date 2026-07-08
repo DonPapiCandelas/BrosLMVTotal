@@ -1,0 +1,472 @@
+#r "System.Windows.Forms"
+#r "System.Drawing"
+#r "System.Data"
+#r "Microsoft.CSharp"
+
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+
+// REQUISICION.ctx — BrosLMV v2.18.0
+// Nueva requisición de compra (módulo 1040) con UI moderna
+
+// ═══════════════════ TEMA ═══════════════════
+var C_HEADER_BG = Color.FromArgb(17, 24, 39);
+var C_PRIMARY   = Color.FromArgb(79, 70, 229);
+var C_PRIMARY_H = Color.FromArgb(67, 56, 202);
+var C_SUCCESS   = Color.FromArgb(16, 185, 129);
+var C_DANGER    = Color.FromArgb(239, 68, 68);
+var C_BG        = Color.FromArgb(243, 244, 246);
+var C_WHITE     = Color.White;
+var C_TEXT      = Color.FromArgb(17, 24, 39);
+var C_MUTED     = Color.FromArgb(107, 114, 128);
+var C_BORDER    = Color.FromArgb(209, 213, 219);
+var C_STRIPE    = Color.FromArgb(249, 250, 251);
+var C_BLUE_SEL  = Color.FromArgb(238, 242, 255);
+
+var F_H1   = new Font("Segoe UI", 15f, FontStyle.Bold);
+var F_H2   = new Font("Segoe UI", 10f, FontStyle.Bold);
+var F_BODY = new Font("Segoe UI", 9f);
+var F_SM   = new Font("Segoe UI", 8.5f);
+var F_BTN  = new Font("Segoe UI", 9f, FontStyle.Bold);
+var F_MONO = new Font("Consolas", 9f);
+var F_CLAVE= new Font("Segoe UI", 10f, FontStyle.Bold);
+
+int PAD = 14;  // padding global entre cards
+
+// ═══════════════════ DATOS ═══════════════════
+var almacenes = ctx.Query(
+    "SELECT DepotID, DepotName FROM orgDepot WHERE DeletedOn IS NULL ORDER BY DepotName");
+var proveedores = ctx.Query(@"
+    SELECT be.BusinessEntityID, be.OfficialName,
+           ISNULL(m.OfficialNumber,'') AS RFC
+    FROM orgBusinessEntity be
+    INNER JOIN orgSupplier s ON s.BusinessEntityID=be.BusinessEntityID
+    LEFT JOIN orgBusinessEntityMainInfo m ON m.BusinessEntityID=be.BusinessEntityID
+    WHERE be.DeletedOn IS NULL ORDER BY be.OfficialName");
+
+var partidas = new List<Item>();
+partidas.Add(new Item());
+
+// ═══════════════════ VENTANA ═══════════════════
+var frm = new Form {
+    Text = "Nueva requisición de compra",
+    Size = new Size(1140, 760),
+    StartPosition = FormStartPosition.CenterScreen,
+    BackColor = C_BG,
+    Font = F_BODY,
+    FormBorderStyle = FormBorderStyle.FixedDialog,
+    MaximizeBox = false,
+    ShowIcon = false
+};
+
+// ─── HEADER ─────────────────────────────────────────
+var head = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = C_HEADER_BG };
+frm.Controls.Add(head);
+var hl = new Label { Text = "Requisición de compra", ForeColor = C_WHITE,
+    Font = new Font("Segoe UI", 14f, FontStyle.Bold),
+    Location = new Point(18, 12), AutoSize = true, Parent = head };
+var hs = new Label { Text = "Mód. 1040 · Solicitud de compra · sin inventario",
+    ForeColor = Color.FromArgb(156, 163, 175),
+    Font = new Font("Segoe UI", 8f),
+    Location = new Point(18, 36), AutoSize = true, Parent = head };
+
+// ─── SELECTORES ─────────────────────────────────────
+int cardW = frm.ClientSize.Width - PAD * 2;
+var cardTop = new Panel {
+    Location = new Point(PAD, head.Bottom + PAD),
+    Size = new Size(cardW, 80),
+    BackColor = C_WHITE, Parent = frm
+};
+DrawBorder(cardTop);
+
+int x = 14, y = 10;
+Lbl("Proveedor", x, y, cardTop);
+var cboProv = Cbo(x, y + 20, 440, 360, cardTop);
+foreach (var p in proveedores) {
+    string rfc = Convert.ToString(p["RFC"]);
+    if (rfc.Length > 0) rfc = "    " + rfc;
+    cboProv.Items.Add(new Opt(Convert.ToString(p["OfficialName"]) + rfc,
+        Convert.ToInt32(p["BusinessEntityID"])));
+}
+cboProv.DisplayMember = "Txt";
+if (cboProv.Items.Count > 0) cboProv.SelectedIndex = 0;
+
+x = 470;
+Lbl("Almacén", x, y, cardTop);
+var cboDep = Cbo(x, y + 20, 200, 200, cardTop);
+foreach (var d in almacenes)
+    cboDep.Items.Add(new Opt(Convert.ToString(d["DepotName"]), Convert.ToInt32(d["DepotID"])));
+cboDep.DisplayMember = "Txt";
+if (almacenes.Count > 0) cboDep.SelectedIndex = 0;
+
+x = 690;
+Lbl("Fecha", x, y, cardTop);
+var dtp = new DateTimePicker {
+    Location = new Point(x, y + 20), Size = new Size(130, 24),
+    Format = DateTimePickerFormat.Short, Value = DateTime.Today,
+    Font = F_BODY, Parent = cardTop
+};
+
+// ─── HINT ───────────────────────────────────────────
+var lblHint = new Label {
+    Text = "Doble clic en Clave o Descripción para buscar producto.  # = catálogo completo.",
+    Location = new Point(PAD + 2, cardTop.Bottom + 6),
+    AutoSize = true, Font = F_SM, ForeColor = C_MUTED, Parent = frm
+};
+
+// ─── GRID ───────────────────────────────────────────
+int gridTop = lblHint.Bottom + 8;
+int cardBottom = frm.ClientSize.Height - PAD - 56;  // deja espacio para footer 50 + 6 padding
+var cardGrid = new Panel {
+    Location = new Point(PAD, gridTop),
+    Size = new Size(cardW, cardBottom - gridTop),
+    BackColor = C_WHITE, Parent = frm
+};
+DrawBorder(cardGrid);
+
+new Label { Text = "Partidas", Location = new Point(14, 8),
+    Font = F_H2, ForeColor = C_TEXT, AutoSize = true, Parent = cardGrid };
+
+var gItems = new DataGridView {
+    Location = new Point(12, 30),
+    Size = new Size(cardGrid.Width - 24, cardGrid.Height - 42),
+    BackgroundColor = C_WHITE, BorderStyle = BorderStyle.None,
+    AllowUserToAddRows = false, AllowUserToResizeRows = false,
+    RowHeadersVisible = false, ColumnHeadersHeight = 28,
+    ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
+    AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
+    EditMode = DataGridViewEditMode.EditOnEnter,
+    SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+    MultiSelect = false, Font = F_BODY,
+    CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+    GridColor = Color.FromArgb(229, 231, 235),
+    Parent = cardGrid
+};
+gItems.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(249, 250, 251);
+gItems.ColumnHeadersDefaultCellStyle.ForeColor = C_MUTED;
+gItems.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 8f, FontStyle.Bold);
+gItems.ColumnHeadersDefaultCellStyle.Padding = new Padding(0, 3, 0, 3);
+gItems.DefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+gItems.DefaultCellStyle.SelectionBackColor = C_BLUE_SEL;
+gItems.DefaultCellStyle.SelectionForeColor = C_TEXT;
+gItems.EnableHeadersVisualStyles = false;
+gItems.RowTemplate.Height = 26;
+
+GridCol(gItems, "ID",   "",         0,  false);
+GridCol(gItems, "Key",  "CLAVE",   130, false);
+GridCol(gItems, "Desc", "DESCRIPCIÓN", 440, false);
+GridCol(gItems, "Unit", "UNIDAD",   80,  true,  DataGridViewContentAlignment.MiddleCenter);
+GridCol(gItems, "Qty",  "CANT.",    85,  false, DataGridViewContentAlignment.MiddleRight, "N2");
+GridCol(gItems, "IVA",  "IVA",      80,  true,  DataGridViewContentAlignment.MiddleCenter);
+gItems.Columns["Desc"].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+gItems.Columns["Key"].DefaultCellStyle.Font = F_MONO;
+gItems.Columns["Key"].DefaultCellStyle.ForeColor = Color.FromArgb(55, 65, 81);
+
+// ─── OVERLAY DE BÚSQUEDA ────────────────────────────
+var txtInline = new TextBox { Visible = false, Font = F_BODY,
+    BorderStyle = BorderStyle.FixedSingle,
+    BackColor = Color.FromArgb(255, 250, 232), ForeColor = C_TEXT };
+var pnlDrop = new Panel { Visible = false, BackColor = Color.FromArgb(55, 65, 81) };
+var lstMatch = new ListBox { Visible = false, Font = F_BODY, BorderStyle = BorderStyle.None,
+    IntegralHeight = false, BackColor = C_WHITE, ItemHeight = 22 };
+pnlDrop.Paint += (snd, ea) => { lstMatch.Location = new Point(1, 1); lstMatch.Size = new Size(pnlDrop.Width - 2, pnlDrop.Height - 2); };
+pnlDrop.Controls.Add(lstMatch);
+frm.Controls.Add(pnlDrop);
+frm.Controls.Add(txtInline);
+
+// ─── FOOTER ─────────────────────────────────────────
+var cardFoot = new Panel {
+    Location = new Point(PAD, cardBottom + 6),
+    Size = new Size(cardW, 50),
+    BackColor = C_WHITE, Parent = frm
+};
+DrawBorder(cardFoot);
+
+var lblCnt = new Label { Text = "0 productos", Location = new Point(16, 16),
+    Font = new Font("Segoe UI", 10f, FontStyle.Bold), ForeColor = C_TEXT,
+    AutoSize = true, Parent = cardFoot };
+var lblTot = new Label { Text = "", Location = new Point(16, 16),
+    Font = F_SM, ForeColor = C_MUTED, AutoSize = true, Parent = cardFoot };
+
+int rb = cardFoot.Width - 14;
+Button MakeBtn(string t, int w, Color? bg = null, Color? fg = null) {
+    rb -= w + 6;
+    var b = new Button { Text = t, FlatStyle = FlatStyle.Flat,
+        Location = new Point(rb, 10), Size = new Size(w, 30),
+        Font = F_BTN, Cursor = Cursors.Hand, Parent = cardFoot,
+        TextAlign = ContentAlignment.MiddleCenter,
+        ForeColor = fg ?? C_WHITE, BackColor = bg ?? C_PRIMARY };
+    b.FlatAppearance.BorderSize = bg == null ? 0 : 1;
+    if (bg == null) b.FlatAppearance.BorderColor = fg ?? C_BORDER;
+    return b;
+}
+var btnOK     = MakeBtn("Crear requisición", 130, null, null);
+var btnCancel = MakeBtn("Cancelar", 80, C_WHITE, C_MUTED);
+var btnQuitar = MakeBtn("Quitar", 70, C_WHITE, C_DANGER);
+var btnLimp   = MakeBtn("Limpiar", 75, C_WHITE, C_MUTED);
+
+btnOK.MouseEnter += (_, __) => btnOK.BackColor = C_PRIMARY_H;
+btnOK.MouseLeave += (_, __) => btnOK.BackColor = C_PRIMARY;
+btnCancel.Click += (_, __) => frm.Close();
+
+// ═══════════════════ LÓGICA ═══════════════════
+
+int DepotSel() { var s = cboDep.SelectedItem as Opt; return s != null ? s.Val : 1; }
+int ProvSel()  { var s = cboProv.SelectedItem as Opt; return s != null ? s.Val : 0; }
+
+void RefreshGrid() {
+    gItems.Rows.Clear();
+    for (int i = 0; i < partidas.Count; i++) {
+        var it = partidas[i];
+        if (it.PID == 0) {
+            int r = gItems.Rows.Add(0, "", "", "", null, "-");
+            if (r % 2 == 0)
+                foreach (DataGridViewCell c in gItems.Rows[r].Cells) c.Style.BackColor = C_STRIPE;
+            continue;
+        }
+        int row = gItems.Rows.Add(it.PID, it.Key, it.Desc, it.Unit, it.Qty, it.TaxName);
+        if (row % 2 == 0)
+            foreach (DataGridViewCell c in gItems.Rows[row].Cells) c.Style.BackColor = C_STRIPE;
+    }
+    UpdateTotal();
+}
+
+void UpdateTotal() {
+    int n = 0; double t = 0;
+    foreach (var it in partidas) if (it.PID != 0) { n++; t += it.Qty; }
+    lblCnt.Text = n + " producto" + (n != 1 ? "s" : "");
+    lblTot.Text = t > 0 ? "  ·  Total: " + t.ToString("N1") + " u" : "";
+    lblTot.Location = new Point(lblCnt.Right + 4, 16);
+}
+
+// ── BÚSQUEDA INLINE ────────────────────────────────
+int inlineRow = -1;
+
+void EditCell(int row, int col) {
+    HideInline();
+    inlineRow = row;
+    var rc = gItems.GetCellDisplayRectangle(col, row, false);
+    txtInline.Bounds = new Rectangle(
+        cardGrid.Left + gItems.Left + rc.X, cardGrid.Top + gItems.Top + rc.Y,
+        rc.Width, rc.Height);
+    var it = partidas[row];
+    txtInline.Text = it.PID == 0 ? "" : (gItems.Columns[col].Name == "Key" ? it.Key : it.Desc);
+    txtInline.Visible = true;
+    txtInline.Focus(); txtInline.SelectAll();
+    Buscar(txtInline.Text);
+}
+
+void Buscar(string text) {
+    string q = (text ?? "").Trim();
+    if (q == "") { pnlDrop.Visible = false; return; }
+    string safe = q.Replace("'", "''");
+    string filt = q == "#" ? "" : "AND (p.ProductKey LIKE '%" + safe + "%' OR p.ProductName LIKE '%" + safe + "%') ";
+    string lim = q == "#" ? "TOP 200" : "TOP 60";
+
+    var rows = ctx.Query(
+        "SELECT " + lim + " p.ProductID, p.ProductKey, p.ProductName, p.Unit, p.TaxTypeID, " +
+        "ISNULL(t.TaxTypeName,'') AS TaxTypeName, " +
+        "ISNULL((SELECT MAX(TaxPerc) FROM engTaxTypeItem ti WHERE ti.TaxTypeID=p.TaxTypeID),0) AS TaxPerc, " +
+        "CASE p.ProductTypeID WHEN 1 THEN 'Producto' WHEN 3 THEN 'Paquete' " +
+        "WHEN 4 THEN 'Servicio' WHEN 7 THEN 'Insumo' WHEN 2 THEN 'P.Term.' " +
+        "ELSE 'T'+CAST(p.ProductTypeID AS varchar) END AS Tipo, " +
+        "ISNULL((SELECT SUM(Quantity) FROM orgProductKardex k " +
+        "WHERE k.ProductID=p.ProductID AND k.DepotID=" + DepotSel() + " AND k.Cancelled=0),0) AS Stock " +
+        "FROM orgProduct p LEFT JOIN engTaxType t ON t.TaxTypeID=p.TaxTypeID " +
+        "WHERE p.DeletedOn IS NULL AND p.TaxTypeID IS NOT NULL AND p.TaxTypeID > 0 " +
+        filt + "ORDER BY p.ProductName");
+
+    lstMatch.Items.Clear();
+    foreach (var r in rows)
+        lstMatch.Items.Add(new Prod {
+            PID = Convert.ToInt32(r["ProductID"]),
+            Key = Convert.ToString(r["ProductKey"]),
+            Desc = Convert.ToString(r["ProductName"]),
+            Unit = Convert.ToString(r["Unit"]),
+            TaxTypeID = Convert.ToInt32(r["TaxTypeID"] ?? 0),
+            TaxName = Convert.ToString(r["TaxTypeName"]),
+            Stock = Convert.ToDouble(r["Stock"] ?? 0),
+            Tipo = Convert.ToString(r["Tipo"])
+        });
+
+    if (lstMatch.Items.Count > 0) {
+        int h = Math.Min(lstMatch.Items.Count * lstMatch.ItemHeight + 4, 260);
+        int py = txtInline.Bottom + 2;
+        if (py + h > frm.ClientSize.Height) py = txtInline.Top - h - 2;
+        pnlDrop.SetBounds(txtInline.Left - 1, py - 1, Math.Max(txtInline.Width, 520) + 2, h + 2);
+        pnlDrop.Visible = true; pnlDrop.BringToFront(); txtInline.BringToFront();
+    } else pnlDrop.Visible = false;
+}
+
+void SelectProduct() {
+    var p = lstMatch.SelectedItem as Prod;
+    if (p == null) return;
+    var it = partidas[inlineRow];
+    it.PID = p.PID; it.Key = p.Key; it.Desc = p.Desc; it.Unit = p.Unit;
+    it.TaxTypeID = p.TaxTypeID; it.TaxName = p.TaxName; it.Qty = 1;
+    if (inlineRow == partidas.Count - 1) partidas.Add(new Item());
+    HideInline();
+    RefreshGrid();
+    if (inlineRow < gItems.Rows.Count) {
+        gItems.CurrentCell = gItems.Rows[inlineRow].Cells["Qty"];
+    }
+}
+
+void HideInline() {
+    txtInline.Visible = false; pnlDrop.Visible = false; inlineRow = -1;
+}
+
+// ── Eventos grid ──────────────────────────────────
+gItems.CellDoubleClick += (_, ev) => {
+    if (ev.RowIndex < 0) return;
+    if (gItems.Columns[ev.ColumnIndex].Name is "Key" or "Desc")
+        EditCell(ev.RowIndex, ev.ColumnIndex);
+};
+gItems.CellBeginEdit += (_, ev) => {
+    if (gItems.Columns[ev.ColumnIndex].Name is "Key" or "Desc") { ev.Cancel = true;
+        EditCell(ev.RowIndex, ev.ColumnIndex); }
+};
+
+txtInline.TextChanged += (_, __) => Buscar(txtInline.Text);
+txtInline.KeyDown += (_, ev) => {
+    if (!pnlDrop.Visible) {
+        if (ev.KeyCode is Keys.Enter or Keys.Escape) { HideInline(); ev.Handled = true; }
+        return;
+    }
+    if (ev.KeyCode == Keys.Down) { if (lstMatch.SelectedIndex < lstMatch.Items.Count - 1) lstMatch.SelectedIndex++; ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Up) { if (lstMatch.SelectedIndex > 0) lstMatch.SelectedIndex--; ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Enter) { SelectProduct(); ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Escape) { HideInline(); ev.Handled = true; }
+};
+lstMatch.MouseDoubleClick += (_, __) => SelectProduct();
+lstMatch.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.Enter) { SelectProduct(); ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Escape) { HideInline(); ev.Handled = true; }
+};
+
+// ── Cantidad ──────────────────────────────────────
+gItems.CellEndEdit += (_, ev) => {
+    if (ev.RowIndex < 0 || ev.RowIndex >= partidas.Count) return;
+    var it = partidas[ev.RowIndex];
+    if (it.PID == 0) return;
+    if (gItems.Columns[ev.ColumnIndex].Name == "Qty")
+        try { it.Qty = Convert.ToDouble(gItems.Rows[ev.RowIndex].Cells["Qty"].Value ?? 1); } catch {}
+    UpdateTotal();
+};
+
+// ── Botones inferiores ────────────────────────────
+btnLimp.Click += (_, __) => {
+    if (partidas.Count > 1 && ctx.Confirm("¿Limpiar todas las partidas?")) {
+        partidas.Clear(); partidas.Add(new Item()); RefreshGrid(); }
+};
+btnQuitar.Click += (_, __) => {
+    if (gItems.CurrentRow == null) return;
+    int i = gItems.CurrentRow.Index;
+    if (i < 0 || i >= partidas.Count) return;
+    var it = partidas[i]; if (it.PID == 0) return;
+    if (ctx.Confirm("¿Quitar " + it.Key + "?")) { partidas.RemoveAt(i); RefreshGrid(); }
+};
+
+// ═══════════════════ CREAR ═══════════════════
+btnOK.Click += (_, __) => {
+    int be = ProvSel();
+    if (be == 0) { ctx.Msg("Selecciona un proveedor."); return; }
+    long supplierID = Convert.ToInt64(ctx.Scalar(
+        "SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + be));
+    var reales = new List<Item>();
+    foreach (var it in partidas) if (it.PID != 0) reales.Add(it);
+    if (reales.Count == 0) { ctx.Msg("Agrega al menos un producto."); return; }
+    if (!ctx.Confirm("Crear requisición con " + reales.Count + " producto" + (reales.Count != 1 ? "s" : "") + "?")) return;
+
+    frm.Cursor = Cursors.WaitCursor;
+    btnOK.Enabled = false; btnOK.Text = "Creando...";
+    try {
+        int dep = DepotSel();
+        ctx.Log("REQ be=" + be + " dep=" + dep + " supplier=" + supplierID + " items=" + reales.Count);
+
+        ctx.NonQuery("SET XACT_ABORT OFF; SET IMPLICIT_TRANSACTIONS OFF");
+        int doc = ctx.erp.NuevoDocumento(1040, dep, be);
+        if (doc <= 0 || !string.IsNullOrEmpty(ctx.erp.LastError))
+            throw new Exception("NuevoDocumento: " + (ctx.erp.LastError ?? "doc=" + doc));
+
+        ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=0, UserID=0, " +
+            "CampaignID=NULL, CostCenterID=NULL, ProjectID=NULL, PaymentTermID=0 WHERE DocumentID=" + doc);
+        foreach (var it in reales) {
+            ctx.erp.AgregarArticulo(doc, it.PID, it.Qty);
+            if (!string.IsNullOrEmpty(ctx.erp.LastError))
+                throw new Exception("AgregarArticulo PID=" + it.PID + ": " + ctx.erp.LastError);
+        }
+        foreach (var it in reales)
+            ctx.NonQuery("IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + it.PID + " AND SupplierID=" + supplierID + ") " +
+                "INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, RefSupplier, OrderNumber) " +
+                "VALUES (" + it.PID + ", " + supplierID + ", 0, 3, NULL, 0)");
+
+        ctx.erp.RecalcCompleto(doc);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError))
+            throw new Exception("RecalcCompleto: " + ctx.erp.LastError);
+        ctx.erp.Save(doc);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError))
+            throw new Exception("Save: " + ctx.erp.LastError);
+        try { ctx.erp.RefreshGrid(); } catch {}
+
+        ctx.Log("REQ-OK doc=" + doc);
+        ctx.Msg("Requisición " + doc + " creada.\n" + reales.Count + " productos.", "OK");
+        frm.Close();
+    } catch (Exception ex) {
+        ctx.Log("ERROR REQ: " + ex.Message);
+        ctx.Msg(ex.Message, "Error");
+    } finally {
+        frm.Cursor = Cursors.Default;
+        btnOK.Enabled = true; btnOK.Text = "Crear requisición";
+    }
+};
+
+// ═══════════════════ HELPERS ═══════════════════
+
+Label Lbl(string t, int x, int y, Control p) =>
+    new Label { Text = t, Location = new Point(x, y), Font = F_H2,
+        ForeColor = C_TEXT, AutoSize = true, Parent = p };
+
+ComboBox Cbo(int x, int y, int w, int h, Control p) =>
+    new ComboBox { Location = new Point(x, y), Size = new Size(w, h),
+        DropDownStyle = ComboBoxStyle.DropDownList, DropDownHeight = Math.Max(h, 250),
+        Font = F_BODY, FlatStyle = FlatStyle.Flat, BackColor = C_WHITE, Parent = p };
+
+void DrawBorder(Control c) {
+    c.Paint += (_, ev) => ev.Graphics.DrawRectangle(
+        new Pen(C_BORDER, 1), 0, 0, c.Width - 1, c.Height - 1);
+}
+
+DataGridViewTextBoxColumn GridCol(DataGridView g, string name, string hdr, int w,
+    bool ro = true, DataGridViewContentAlignment? al = null, string fmt = null, bool vis = true)
+{
+    var c = new DataGridViewTextBoxColumn { Name = name, HeaderText = hdr, Width = w, ReadOnly = ro, Visible = vis };
+    if (al != null) c.DefaultCellStyle.Alignment = al.Value;
+    if (fmt != null) c.DefaultCellStyle.Format = fmt;
+    g.Columns.Add(c);
+    return c;
+}
+
+class Opt { public string Txt; public int Val;
+    public Opt(string t, int v) { Txt = t; Val = v; } public override string ToString() => Txt; }
+class Item {
+    public int PID, TaxTypeID;
+    public string Key = "", Desc = "", Unit = "", TaxName = "";
+    public double Qty = 1;
+}
+class Prod {
+    public int PID, TaxTypeID;
+    public string Key, Desc, Unit, TaxName, Tipo;
+    public double Stock;
+    public override string ToString() {
+        string s = Stock <= 0 && Tipo != "Servicio" ? "  (sin stock)" : "";
+        return (Key + "").PadRight(14) + " | " + Desc + s;
+    }
+}
+
+RefreshGrid();
+frm.ShowDialog();

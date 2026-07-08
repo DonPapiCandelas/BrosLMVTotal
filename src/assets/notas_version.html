@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrosLMV — Notas de versión</title>
+<style>
+  :root{
+    --bg:#eef3fa; --card:#ffffff; --ink:#1f2937; --muted:#667085;
+    --line:#dce3ed; --primary:#2563eb; --ok:#16a34a; --warn:#d97706; --err:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 "Segoe UI",Inter,system-ui,Arial,sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:32px 20px 64px}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  header h1{font-size:22px;margin:0}
+  header .sub{color:var(--muted);font-size:14px}
+  .logo{width:42px;height:42px;border-radius:10px;background:var(--primary);
+        color:#fff;display:flex;align-items:center;justify-content:center;
+        font-weight:700;font-size:18px}
+  .ver{background:var(--card);border:1px solid var(--line);border-radius:12px;
+       padding:18px 22px;margin:18px 0;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .ver h2{margin:0 0 2px;font-size:18px}
+  .ver .date{color:var(--muted);font-size:13px;margin-bottom:10px}
+  .ver h2 .tag{font-size:12px;font-weight:600;color:var(--primary);
+       background:#e1ebfc;border-radius:999px;padding:2px 10px;margin-left:8px;vertical-align:middle}
+  .grp{margin:10px 0 0}
+  .grp .h{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .grp.add .h{color:var(--ok)} .grp.chg .h{color:var(--primary)}
+  .grp.fix .h{color:var(--warn)} .grp.rem .h{color:var(--err)}
+  ul{margin:6px 0 0;padding-left:20px}
+  li{margin:3px 0}
+  code{background:#f1f5fb;border:1px solid var(--line);border-radius:5px;
+       padding:.5px 5px;font-family:"Cascadia Code",Consolas,monospace;font-size:13px}
+  footer{color:var(--muted);font-size:12px;text-align:center;margin-top:30px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">B</div>
+    <div>
+      <h1>BrosLMV — Notas de versión</h1>
+      <div class="sub">Consola de scripts para CONTPAQi Comercial · C# · Python · SQL</div>
+    </div>
+  </header>
+
+  <div class="ver">
+    <h2>2.23.0 <span class="tag">actual</span></h2>
+    <div class="date">2026-07-03 — Ejemplo Premium: Recepción de Compra y Factura de Compra</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Recepción de Compra</b> (módulo 184): transforma una o varias Órdenes de Compra
+            del mismo proveedor en una Recepción, con partidas consolidadas por producto y
+            captura de <b>lote (+ caducidad)</b> o <b>número de serie</b> según lo requiera el
+            producto.</li>
+        <li><b>Factura de Compra</b> (módulo 152): a partir de Órdenes de Compra seleccionadas en
+            el grid de Comercial, con impuesto editable por partida y desglose de importes por
+            línea. No afecta inventario; genera la póliza contable automáticamente.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.12</h2>
+    <div class="date">2026-07-03 — Fin de la saga: sin transacción SQL + Unicode al guardar/cargar scripts</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li><code>NuevoDocumento</code>/<code>AgregarArticulo</code> ya no envuelven el INSERT en
+            un <code>BEGIN TRANSACTION</code>/<code>COMMIT</code> explícito — eso era lo que
+            seguía causando "la operación no está permitida si el objeto está cerrado" al crear
+            documentos desde un botón. <b>Confirmado</b> creando una Orden de Compra real.</li>
+        <li>Guardar y cargar un script desde la Consola podía dañar acentos/emoji (se veían como
+            "?" o "♦") — ahora ambas rutas prefieren una conexión directa a la base con Unicode
+            garantizado, con respaldo automático si no está disponible.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.9</h2>
+    <div class="date">2026-07-02 — Saga completa: "busy" de XEngine + "objeto cerrado" en botones Python</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>El botón "Ejecutar" de la <b>Consola</b> corría Python de forma síncrona (bloqueaba
+            Comercial mientras la ventana seguía abierta) — ahora corre en segundo plano igual
+            que el botón del ribbon, y hay una guardia contra ejecuciones encimadas por clics
+            repetidos.</li>
+        <li><code>NuevoDocumento</code> podía fallar con "la operación no está permitida si el
+            objeto está cerrado" <b>solo como botón de ribbon</b> (nunca desde la Consola): la
+            conexión a la base de datos ligada al grid activo se puede cerrar si el grid se
+            refresca mientras una ventana interactiva sigue abierta varios minutos. Ahora se
+            prefiere una conexión de propósito general y se revalida/renueva sola si deja de
+            servir.</li>
+        <li>Los mensajes de error de <code>NuevoDocumento</code>/<code>AgregarArticulo</code>
+            ahora incluyen el detalle real del error SQL/COM, no solo un mensaje genérico.</li>
+        <li>Un botón guardado desde Plantillas podía guardar acentos/emoji como "?" — corregido
+            (lectura de archivos con codificación UTF-8 explícita).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.2</h2>
+    <div class="date">2026-07-02 — Diagnóstico: traza de llamadas Python (ctx.erp/ctx.query)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Log <code>logs\PythonErp_AAAAMMDD.txt</code> con cada llamada de un botón Python al
+            motor (antes/después + tiempo), para diagnosticar el "busy" reportado en Orden de
+            Compra si vuelve a pasar. No cambia el comportamiento de los botones.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.1</h2>
+    <div class="date">2026-07-02 — Fix: ventana de detalle de producto amontonada</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>La ventana de <b>detalle de producto</b> se veía apretada — se rediseñó con más
+            espacio, columnas etiqueta/valor y tablas más grandes.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.0</h2>
+    <div class="date">2026-07-02 — Totales y detalle de producto en Orden de Compra</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Apartado de <b>Totales</b> (Subtotal, Descuento, Impuestos, Total y <b>Total en letra</b>)
+            en las plantillas de Orden de Compra (C# y Python).</li>
+        <li><b>Doble clic</b> en una partida abre el <b>detalle del producto</b>: datos generales,
+            clasificaciones, existencia por almacén, listas de precios y precios por proveedor.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.20.1</h2>
+    <div class="date">2026-07-01 — Fix: impuesto, descuento y estatus de entrega en OC</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>El <b>impuesto</b> ahora sí se aplica (antes se guardaba el tipo pero no el %) —
+            corregido en el motor, beneficia también a la Requisición.</li>
+        <li>Nueva columna y campo de <b>Descuento %</b> por partida.</li>
+        <li>Ya no queda "Estatus de entrega: No Aplica" al crear la orden de compra.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.20.0</h2>
+    <div class="date">2026-07-01 — Ejemplo Premium: Orden de Compra (C# y Python)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nuevo par de plantillas completas: <b>"Ejemplo Premium · C#/Python Orden de
+            Compra"</b> — a diferencia de la Requisición, captura <b>precio por partida</b> y
+            <b>fecha de entrega esperada</b>, con subtotal en vivo. No afecta inventario.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.19.1</h2>
+    <div class="date">2026-07-01 — Plantillas base para ventanas nuevas</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Dos <b>plantillas base</b> en el menú Plantillas: "Base · C# WinForms" y
+            "Base · Python WinForms" — ventana modeless en blanco, lista para copiar y adaptar
+            a un script nuevo, con las protecciones ya aplicadas.</li>
+        <li>Guía completa en el <b>Manual</b> (sección "Ventanas WinForms: modeless").</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.19.0</h2>
+    <div class="date">2026-07-01 — Botones modeless: minimiza y sigue trabajando en Comercial</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Las ventanas de los botones (C# y Python) ya se pueden <b>minimizar y seguir
+            trabajando en Comercial</b>, incluso con <b>varias abiertas a la vez</b>.</li>
+        <li>Los botones <b>Python ya no congelan Comercial</b> mientras su ventana está abierta.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.18.1</h2>
+    <div class="date">2026-07-01 — Diagnóstico real de errores + plantilla Python WinForms</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Los errores al ejecutar Python ya no muestran un mensaje genérico ("Se han producido
+            uno o varios errores."): ahora se ve la causa real.</li>
+        <li>Eliminado un riesgo de bloqueo en la comunicación con el host (proceso Python).</li>
+      </ul>
+    </div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Plantilla <b>"Ejemplo Premium · Python WinForms"</b>: la misma ventana de Requisición
+            de Compra que la versión C#, pero en Python puro (para quien no programa en C#).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.18.0</h2>
+    <div class="date">2026-06-29 — 4 anclas + campos universales + partida nativa completa</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>4 anclas automáticas:</b> <code>NuevoDocumento</code> ahora crea las 4 filas ancla 1:1 que todo documento nativo requiere: <code>docDocumentExt</code>, <code>docDocumentExtra</code>, <code>docDocumentCFD</code> y <code>docDocumentPaymentAgenda</code>. Antes solo creaba <code>docDocumentExt</code>.</li>
+        <li><b>Campos universales de docDocument:</b> <code>NuevoDocumento</code> ahora llena <code>MustBeSynchronized=1</code>, <code>ExportID=1</code>, <code>DateCost</code>, <code>DateDocDelivery</code>, <code>DateFrom</code>, <code>DateTo</code>, <code>DateLastPayment</code> — igual que el nativo. Ya no se necesita UPDATE posterior para estos campos.</li>
+        <li><b>Partida como el nativo:</b> <code>AgregarArticulo</code> ahora llena <code>ApplyGlobalDiscount=1</code>, <code>DeductiblePerc=1</code>, <code>IsBusinessOperation=1</code>, <code>MustBeDelivered=1</code>, <code>DateItem</code>, <code>CoefUnit=1</code>, <code>ClaveUnidad</code> y <code>ObjetoImpuesto</code> del producto.</li>
+        <li><b>API <code>ctx.erp.LastError</code>:</b> expone el último error de late-binding COM. Revisar después de operaciones críticas (<code>AffectStockNEW</code>, <code>Save</code>, <code>CancelDocument</code>, <code>Delete</code>).</li>
+        <li><b>Fix encoding Python:</b> el host ahora configura UTF-8 explícito en stdin/stdout/stderr del proceso Python. Corrige el bug Ñ→Ã.</li>
+        <li><b>MANUAL.md reescrito:</b> documentación completa de <code>ctx.erp</code> (84 métodos, fichas por función, recetas por tipo de documento, advertencias).</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Encoding UTF-8 en comunicación host↔Python (datos con acentos/Ñ ya no se corrompen).</li>
+        <li><code>Com.LastError</code> ahora captura y expone el mensaje de excepción de cada llamada COM fallida (antes se tragaba en silencio).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.17.0</h2>
+    <div class="date">2026-06-28 — Documentos más fieles al nativo (docDocumentExt + costo de entrada)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Documentos más fieles al nativo:</b> al crear un documento con
+            <code>ctx.erp.NuevoDocumento(...)</code> ahora se genera también la fila ancla en
+            <code>docDocumentExt</code> (igual que CONTPAQi nativo), necesaria para los campos
+            extra del documento.</li>
+        <li><b>Costo de entrada de inventario:</b> <code>ctx.erp.AgregarArticulo(...)</code> acepta
+            un parámetro opcional <code>costo</code>. Al indicarlo, la partida guarda su
+            <code>CostPrice</code>, para que las entradas de almacén/recepciones/traspasos costeen
+            bien (antes entraban a costo 0). Llamar antes de <code>RecalcCompleto</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.16.0</h2>
+    <div class="date">2026-06-27 — Editar registros existentes (ctx.registro)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Cargar y editar registros existentes</b> con
+            <code>ctx.registro("tabla", id)</code> en Python: carga todos los campos,
+            permite modificarlos y <code>.actualizar()</code> envía <b>solo los cambios</b>.
+            También se puede <code>.eliminar()</code> (borrado lógico).</li>
+        <li>Referencia de <code>ctx.registro</code> en el panel de la consola.</li>
+      </ul>
+    </div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li><code>.actualizar()</code> ahora detecta qué campos cambiaron y solo envía esos
+            (antes enviaba todos). Aplica tanto a registros nuevos como cargados.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.15.0</h2>
+    <div class="date">2026-06-27 — Crear documentos desde Python (y C#)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Crear documentos</b> (cotización, pedido, orden de compra…) en pocas líneas:
+            <code>ctx.erp.NuevoDocumento(modulo, almacen, proveedor)</code> +
+            <code>ctx.erp.AgregarArticulo(doc, producto, cantidad, precio)</code> +
+            <code>ctx.erp.RecalcCompleto(doc)</code>. Funciona igual en C# y en Python.</li>
+        <li><b>Active-record genérico</b> <code>ctx.nuevo("tabla")</code> en Python: setear campos y
+            <code>.guardar()</code> (INSERT que devuelve el ID), <code>.actualizar()</code>,
+            <code>.eliminar()</code> (borrado lógico). Cimiento del futuro no-code.</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Los scripts <b>C#</b> ya muestran en el panel lo que devuelven con <code>return ...;</code>
+            (antes solo decía "Ejecución terminada").</li>
+        <li>Las partidas creadas ahora guardan su <code>Total</code> (= cantidad × precio).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.14.0</h2>
+    <div class="date">2026-06-27 — Versión visible y control de versiones</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Versión visible</b> en el encabezado y la barra de estado de la consola.</li>
+        <li>Diálogo <b>Acerca de</b> (versión + fecha de compilación) y estas <b>notas de versión</b> (este archivo), que se abren en el navegador.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.13.0</h2>
+    <div class="date">2026-06-27 — Consola modeless</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>La <b>consola ya no es modal</b>: se puede <b>minimizar y seguir trabajando en Comercial</b>. Una sola instancia; si ya está abierta, se restaura y se trae al frente.</li>
+        <li>Refresca el <b>contexto actual</b> al volver a la ventana (pudo cambiar módulo/selección).</li>
+      </ul>
+    </div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Guardia de cambio de empresa</b>: la consola captura el motor al abrirse; si cambias de empresa, avisa en rojo y <b>pide confirmación antes de ejecutar</b> para no escribir en la BD equivocada.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.12.0</h2>
+    <div class="date">2026-06-27 — Python gana <code>ctx.erp</code></div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Python ya puede usar <code>ctx.erp.*</code> (existencias, folios, precios, recalcular, crear/cancelar documentos) con los mismos nombres que C#, vía relay al addon por el pipe. Sin copiar código de terceros.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.11.x</h2>
+    <div class="date">2026-06-27 — Referencias reales y verificación</div>
+    <div class="grp chg"><div class="h">Cambiado / Corregido</div>
+      <ul>
+        <li>Panel de <b>Referencias</b> fiel al API real en los 3 lenguajes (C# / Python / SQL).</li>
+        <li>Fix <code>GetPriceWithTaxes</code> (orden de argumentos) y verificación por lotes en CONTPAQi.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.10.0</h2>
+    <div class="date">Consola modo claro profesional + UX</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>Rediseño de la consola (tema claro), pestañas por lenguaje y mejoras de usabilidad.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>BrosLMV — software libre (GPL-3.0). El historial completo y técnico está en <code>docs/CHANGELOG.md</code>.</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,51 @@
+# === Temporales de compilación (NO ignorar instalador/bin: ese es el entregable) ===
+/src/obj/
+/src/bin/
+/build/out/
+*.user
+*.suo
+.vs/
+
+# === Pruebas locales / secretos (nunca subir) ===
+.env
+*.env
+*.local
+.temp_tests/
+
+# === Material de referencia local (NUNCA subir) ===
+/Entrenamiento/
+
+# === Host v3.0 (.NET 8). El codigo del .proto se GENERA en build (obj), no se versiona ===
+/host/*/obj/
+/host/*/bin/
+
+# === Empaque del runtime v3.0: BINARIOS REGENERABLES (NO versionar, ~100 MB) ===
+# host self-contained .NET 8 (build/generar_instalador.ps1), CPython embeddable
+# (build/descargar_python.ps1) y la copia del paquete Python. Se regeneran desde
+# las fuentes en host/ y workers/; no inflar el repo con binarios.
+/instalador/host/
+/instalador/runtimes/
+/instalador/workers/
+/instalador/lib/
+
+# === Salidas de compilacion de los instaladores .exe (regenerables) ===
+/dist/
+/instaladores/*/obj/
+/instaladores/*/bin/
+/instaladores/*/app.ico
+/instaladores/*/assets/
+/instaladores/Empresas/payload.zip
+
+# Nota: instalador/bin/broslmv_conn.txt es solo una PLANTILLA (sin credenciales
+# reales). Las credenciales reales, si llegan a usarse, viven en C:\BrosLMV\bin
+# del equipo, NUNCA en este proyecto.
+
+# Helper de despliegue local (rutas absolutas de la maquina, no publicar)
+/deploy.ps1
+
+# === Basura de compilacion / cache (nunca versionar) ===
+__pycache__/
+*.pdb
+# DLL suelta del addon en la RAIZ (artefacto de build mal ubicado; el entregable
+# real es instalador/bin/BrosLMVClsMain.dll, no este).
+/BrosLMVClsMain.dll

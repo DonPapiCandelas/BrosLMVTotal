@@ -1,0 +1,230 @@
+<Window x:Class="BrosLMV.Empresas.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BrosLMV — Instalar en empresas" Height="760" Width="1180"
+        WindowStartupLocation="CenterScreen" Background="#F4F6F9" FontFamily="Segoe UI"
+        Icon="pack://application:,,,/assets/app_icon.png">
+  <Window.Resources>
+    <Style TargetType="Button" x:Key="Primary">
+      <Setter Property="Background" Value="#2D6FE0"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="16,8"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border CornerRadius="6" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="Button" x:Key="Ghost">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="Foreground" Value="#2D6FE0"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="14,8"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border CornerRadius="6" Background="{TemplateBinding Background}" BorderBrush="#CBD5E1" BorderThickness="1" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="250"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- SIDEBAR -->
+    <Border Grid.Column="0">
+      <Border.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#15324F" Offset="0"/>
+          <GradientStop Color="#0B1E33" Offset="1"/>
+        </LinearGradientBrush>
+      </Border.Background>
+      <DockPanel LastChildFill="False">
+        <Image DockPanel.Dock="Top" Height="120" Margin="20,28,20,18" Stretch="Uniform"
+               Source="pack://application:,,,/assets/logo_blanco.png"/>
+        <Border DockPanel.Dock="Top" Background="#1E3D5C" Margin="12,6" CornerRadius="6">
+          <TextBlock Text="🏢   Instalar en empresas" Foreground="White" FontWeight="SemiBold" Margin="16,12"/>
+        </Border>
+        <TextBlock DockPanel.Dock="Top" Text="⚙   Configuración" Foreground="#9FB3C8" Margin="28,10"/>
+        <StackPanel DockPanel.Dock="Bottom" Margin="20,16">
+          <TextBlock x:Name="lblConnTitle" Text="Sin conexión" Foreground="White" FontWeight="SemiBold"/>
+          <TextBlock x:Name="lblConnSrv" Text="" Foreground="#9FB3C8" FontSize="11" Margin="0,2,0,0"/>
+          <TextBlock x:Name="lblConnUsr" Text="" Foreground="#9FB3C8" FontSize="11"/>
+          <TextBlock x:Name="lblVer" Text="BrosLMV" Foreground="#6E8198" FontSize="11" Margin="0,14,0,0"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- MAIN -->
+    <Grid Grid.Column="1" Margin="28,24,28,20">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+
+      <Grid Grid.Row="0">
+        <StackPanel>
+          <TextBlock Text="BrosLMV — Instalar en empresas" FontSize="24" FontWeight="Bold" Foreground="#16263A"/>
+          <TextBlock Text="Seleccione las empresas pendientes e instale Comercial PRO." Foreground="#64748B" Margin="0,4,0,0"/>
+        </StackPanel>
+        <Image Height="44" HorizontalAlignment="Right" VerticalAlignment="Top" Stretch="Uniform"
+               Source="pack://application:,,,/assets/logo_mono.png"/>
+      </Grid>
+
+      <!-- Cards -->
+      <Grid Grid.Row="1" Margin="0,18,0,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/><ColumnDefinition Width="16"/>
+          <ColumnDefinition Width="*"/><ColumnDefinition Width="16"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Grid.Column="0" Background="White" CornerRadius="10" BorderBrush="#E6E9EF" BorderThickness="1" Padding="18">
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Width="46" Height="46" CornerRadius="12" Background="#E8F0FE" VerticalAlignment="Top">
+              <TextBlock Text="🏢" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <StackPanel Grid.Column="1" Margin="14,0,0,0">
+              <TextBlock Text="Empresas detectadas" Foreground="#64748B"/>
+              <TextBlock x:Name="cardTotal" Text="0" FontSize="30" FontWeight="Bold" Foreground="#16263A"/>
+              <TextBlock Text="Total de bases de datos" Foreground="#2D6FE0" FontSize="11"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+        <Border Grid.Column="2" Background="White" CornerRadius="10" BorderBrush="#E6E9EF" BorderThickness="1" Padding="18">
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Width="46" Height="46" CornerRadius="12" Background="#FCEFE0" VerticalAlignment="Top">
+              <TextBlock Text="🕒" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <StackPanel Grid.Column="1" Margin="14,0,0,0">
+              <TextBlock Text="Pendientes" Foreground="#64748B"/>
+              <TextBlock x:Name="cardPend" Text="0" FontSize="30" FontWeight="Bold" Foreground="#16263A"/>
+              <TextBlock Text="Por instalar" Foreground="#E08A1E" FontSize="11"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+        <Border Grid.Column="4" Background="White" CornerRadius="10" BorderBrush="#E6E9EF" BorderThickness="1" Padding="18">
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Width="46" Height="46" CornerRadius="12" Background="#E6F6EE" VerticalAlignment="Top">
+              <TextBlock Text="✓" FontSize="24" FontWeight="Bold" Foreground="#1E9E5A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <StackPanel Grid.Column="1" Margin="14,0,0,0">
+              <TextBlock Text="Instaladas" Foreground="#64748B"/>
+              <TextBlock x:Name="cardInst" Text="0" FontSize="30" FontWeight="Bold" Foreground="#16263A"/>
+              <TextBlock Text="Ya instaladas" Foreground="#1E9E5A" FontSize="11"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <!-- Connection panel -->
+      <Border Grid.Row="2" Background="White" CornerRadius="10" BorderBrush="#E6E9EF" BorderThickness="1" Padding="18" Margin="0,16,0,0">
+        <StackPanel>
+          <TextBlock Text="Conexión a SQL Server" FontWeight="SemiBold" Foreground="#16263A" Margin="0,0,0,12"/>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/>
+              <ColumnDefinition Width="170"/><ColumnDefinition Width="12"/>
+              <ColumnDefinition Width="220"/><ColumnDefinition Width="12"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+              <TextBlock Text="Servidor\Instancia" Foreground="#64748B" FontSize="11"/>
+              <ComboBox x:Name="cbServer" IsEditable="True" Text="localhost\COMPAC2022" Margin="0,3,0,0" Height="32" Padding="6,4" VerticalContentAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="Usuario" Foreground="#64748B" FontSize="11"/>
+              <TextBox x:Name="txtUser" Text="SA" Margin="0,3,0,0" Height="32" Padding="6,5" VerticalContentAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Grid.Column="4">
+              <TextBlock Text="Contraseña" Foreground="#64748B" FontSize="11"/>
+              <Grid Margin="0,3,0,0">
+                <PasswordBox x:Name="pwdBox" Height="32" Padding="6,5" VerticalContentAlignment="Center"/>
+                <TextBox x:Name="pwdPlain" Height="32" Padding="6,5" VerticalContentAlignment="Center" Visibility="Collapsed"/>
+                <Button x:Name="btnEye" Content="👁" HorizontalAlignment="Right" Width="30" Background="Transparent" BorderThickness="0" Cursor="Hand" Click="btnEye_Click"/>
+              </Grid>
+            </StackPanel>
+            <Button x:Name="btnConn" Grid.Column="6" Content="Probar conexión" Style="{StaticResource Ghost}" VerticalAlignment="Bottom" Height="32" Click="btnConn_Click"/>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- Companies panel -->
+      <Border Grid.Row="3" Background="White" CornerRadius="10" BorderBrush="#E6E9EF" BorderThickness="1" Padding="18" Margin="0,16,0,0">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Empresas (bases de datos)" FontWeight="SemiBold" Foreground="#16263A" VerticalAlignment="Center"/>
+            <TextBox x:Name="txtSearch" Grid.Column="1" Margin="16,0" Padding="8,6" Height="34" VerticalContentAlignment="Center" HorizontalAlignment="Left" Width="300" TextChanged="txtSearch_TextChanged"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+              <TextBlock Text="Mostrar:" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <ComboBox x:Name="cbFiltro" Width="140" Height="34" Padding="8,4" VerticalContentAlignment="Center" SelectionChanged="cbFiltro_SelectionChanged"/>
+            </StackPanel>
+            <Button x:Name="btnRefresh" Grid.Column="3" Content="Actualizar" Style="{StaticResource Ghost}" Click="btnConn_Click"/>
+          </Grid>
+          <DataGrid x:Name="grid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column"
+                    GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#EEF1F5" BorderThickness="0"
+                    RowHeight="36" Background="White" RowBackground="White" SelectionMode="Single">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Width="46">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <CheckBox IsChecked="{Binding Sel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Empresa (base de datos)" Binding="{Binding DB}" Width="*" IsReadOnly="True"/>
+              <DataGridTemplateColumn Header="Estado" Width="200">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding EstadoIcon}" Foreground="{Binding EstadoColor}" FontWeight="Bold" FontSize="13" Margin="0,0,7,0"/>
+                      <TextBlock Text="{Binding Estado}" Foreground="{Binding EstadoColor}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+        </Grid>
+      </Border>
+
+      <!-- Footer -->
+      <Grid Grid.Row="4" Margin="0,14,0,0">
+        <TextBlock x:Name="lblFooter" Text="Conecta a tu SQL Server para listar las empresas." Foreground="#64748B" VerticalAlignment="Center"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="btnMark" Content="Marcar pendientes" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="btnMark_Click"/>
+          <Button x:Name="btnInstall" Content="Instalar seleccionadas (0)" Style="{StaticResource Primary}" IsEnabled="False" Click="btnInstall_Click"/>
+        </StackPanel>
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>

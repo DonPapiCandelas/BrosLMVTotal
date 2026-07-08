@@ -1,0 +1,390 @@
+// ═══════════════════════════════════════════════════════════════════
+//  SOLICITUD DE COMPRA — Plantilla de ejemplo
+//  Crea una solicitud de compra nueva usando ctx.erp.*
+//  ModuleID estándar CONTPAQi: 1040 (no cambia entre empresas)
+//  DocumentTypeID y DocRecipient se leen de engModuleParameter
+//  Requiere: BrosLMV v2.18.0+
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Módulo estándar CONTPAQi (fijo, ver docs/documentos/mapa_modulos_folios.md)
+int MODULO_SOLICITUD = 1040;
+
+// ── Leer perfil del módulo desde la BD (data-driven)
+var perfilModulo = ctx.Query(
+    "SELECT ParameterKey, ParameterValue FROM engModuleParameter WHERE ModuleID=" + MODULO_SOLICITUD);
+
+int DocTypeID = 49, DocRecipient = 2, DefaultDepotID = 0;
+foreach (var r in perfilModulo) {
+    string k = (r["ParameterKey"] is DBNull) ? "" : (string)r["ParameterKey"];
+    object vObj = r["ParameterValue"];
+    string v = (vObj == null || vObj is DBNull) ? "" : (string)vObj;
+    if (k == "DocumentTypeID") int.TryParse(v, out DocTypeID);
+    if (k == "DocRecipient")   int.TryParse(v, out DocRecipient);
+    if (k == "DefaultDepotID") int.TryParse(v, out DefaultDepotID);
+}
+
+// ── Cargar catálogos ──────────────────────────────────────
+var almacenes = ctx.Query(
+    "SELECT DepotID, DepotName FROM orgDepot WHERE DeletedOn IS NULL ORDER BY DepotName");
+
+var proveedores = ctx.Query(@"
+    SELECT be.BusinessEntityID, be.OfficialName, ISNULL(m.OfficialNumber,'') AS RFC
+    FROM orgBusinessEntity be
+    INNER JOIN orgSupplier s ON s.BusinessEntityID=be.BusinessEntityID
+    LEFT JOIN orgBusinessEntityMainInfo m ON m.BusinessEntityID=be.BusinessEntityID
+    WHERE be.DeletedOn IS NULL ORDER BY be.OfficialName");
+
+var condPago = ctx.Query(
+    "SELECT PaymentTermID, PaymentTermName FROM engPaymentTerm ORDER BY PaymentTermName");
+
+var proyectos = ctx.Query(
+    "SELECT ProjectID, ProjectName FROM orgProject WHERE DeletedOn IS NULL ORDER BY ProjectName");
+
+// ── Tema visual ───────────────────────────────────────────
+var C_HEADER  = Color.FromArgb(15, 23, 42);
+var C_PRIMARY = Color.FromArgb(59, 130, 246);
+var C_GREEN   = Color.FromArgb(34, 197, 94);
+var C_BG      = Color.FromArgb(241, 245, 249);
+var C_WHITE   = Color.White;
+var C_TEXT    = Color.FromArgb(15, 23, 42);
+var C_MUTED   = Color.FromArgb(148, 163, 184);
+var C_BORDER  = Color.FromArgb(226, 232, 240);
+var C_STRIPE  = Color.FromArgb(248, 250, 252);
+
+var F_TITLE = new Font("Segoe UI", 18f, FontStyle.Bold);
+var F_H2    = new Font("Segoe UI", 9.75f, FontStyle.Bold);
+var F_BODY  = new Font("Segoe UI", 9.25f);
+var F_SM    = new Font("Segoe UI", 8.25f);
+
+// ── Estado ────────────────────────────────────────────────
+var partidas = new List<Item>();
+
+// ═══════════════════════════════════════════════════════════
+//  VENTANA
+// ═══════════════════════════════════════════════════════════
+var frm = new Form {
+    Text = "Solicitud de Compra", Size = new Size(1160, 740),
+    StartPosition = FormStartPosition.CenterScreen,
+    BackColor = C_BG, Font = F_BODY,
+    FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false
+};
+
+// ── Cabecera ──────────────────────────────────────────────
+var head = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = C_HEADER, Parent = frm };
+new Label { Text = "Solicitud de Compra", ForeColor = Color.White,
+    Font = F_TITLE, Location = new Point(24, 8), AutoSize = true, Parent = head };
+new Label { Text = "Módulo " + MODULO_SOLICITUD + "  ·  DocumentTypeID=" + DocTypeID + "  ·  Destinatario=" + DocRecipient,
+    ForeColor = C_MUTED, Font = F_SM, Location = new Point(25, 36), AutoSize = true, Parent = head };
+
+// ── Panel: encabezado del documento ───────────────────────
+var p1 = Card(12, 68, 1136, 72);
+new Label { Text = "Proveedor", Location = new Point(16, 10), Font = F_H2, AutoSize = true, Parent = p1 };
+var cboProv = Combo(16, 30, 460, p1);
+foreach (var p in proveedores)
+    cboProv.Items.Add(Opto((string)p["OfficialName"], Convert.ToInt32(p["BusinessEntityID"]),
+        (string)p["RFC"]));
+if (cboProv.Items.Count > 0) cboProv.SelectedIndex = 0;
+
+new Label { Text = "Almacén", Location = new Point(496, 10), Font = F_H2, AutoSize = true, Parent = p1 };
+var cboDep = Combo(496, 30, 200, p1);
+foreach (var d in almacenes) cboDep.Items.Add(Opto((string)d["DepotName"], Convert.ToInt32(d["DepotID"])));
+if (cboDep.SelectedIndex < 0 && almacenes.Count > 0) cboDep.SelectedIndex = 0;
+
+new Label { Text = "Cond. Pago", Location = new Point(716, 10), Font = F_H2, AutoSize = true, Parent = p1 };
+var cboPay = Combo(716, 30, 220, p1);
+foreach (var c in condPago) cboPay.Items.Add(Opto((string)c["PaymentTermName"], Convert.ToInt32(c["PaymentTermID"])));
+
+new Label { Text = "Fecha", Location = new Point(956, 10), Font = F_H2, AutoSize = true, Parent = p1 };
+var dtp = new DateTimePicker { Location = new Point(956, 30), Size = new Size(150, 26),
+    Format = DateTimePickerFormat.Short, Value = DateTime.Today, Font = F_BODY, Parent = p1 };
+
+// ── Panel: búsqueda de productos ─────────────────────────
+var p2 = Card(12, 150, 1136, 44);
+new Label { Text = "Buscar:", Location = new Point(14, 12), Font = F_H2, AutoSize = true, Parent = p2 };
+var txtQ = new TextBox { Location = new Point(70, 9), Size = new Size(360, 26), Font = F_BODY, Parent = p2 };
+var btnQ = Btn("Buscar", 436, 8, 72, C_PRIMARY, Color.White, p2, false);
+var lblQ = new Label { Text = "", Location = new Point(520, 13), Font = F_SM, ForeColor = C_MUTED, AutoSize = true, Parent = p2 };
+
+// ── Grid resultado búsqueda ───────────────────────────────
+var gSearch = Grid(12, 202, 1136, 164, true);
+GCol(gSearch, "ID",    "",    0,  false);
+GCol(gSearch, "Clave", "Clave", 105);
+GCol(gSearch, "Desc",  "Descripción", 320);
+GCol(gSearch, "Unidad","Un.", 50, al: DataGridViewContentAlignment.MiddleCenter);
+GCol(gSearch, "Tipo",  "Tipo", 85);
+GCol(gSearch, "Tax",   "IVA", 68, al: DataGridViewContentAlignment.MiddleCenter);
+GCol(gSearch, "Stock", "Exist.", 68, al: DataGridViewContentAlignment.MiddleRight, fmt: "N0");
+GCol(gSearch, "Costo", "Costo $", 95, al: DataGridViewContentAlignment.MiddleRight, fmt: "N2");
+GCol(gSearch, "TaxID", "",    0,  false);
+GCol(gSearch, "TaxP",  "",    0,  false);
+gSearch.Columns["Costo"].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+
+// ── Grid partidas ─────────────────────────────────────────
+new Label { Text = "Partidas", Location = new Point(16, 374), Font = F_H2, Parent = frm, AutoSize = true };
+var gItems = Grid(12, 394, 1136, 190, false);
+GCol(gItems, "ID",    "",    0,  false);
+GCol(gItems, "Key",   "Clave", 100, true);
+GCol(gItems, "Desc",  "Descripción", 340, true);
+GCol(gItems, "Unit",  "Un.", 50,  true, al: DataGridViewContentAlignment.MiddleCenter);
+GCol(gItems, "Qty",   "Cant.", 70,  false, al: DataGridViewContentAlignment.MiddleRight, fmt: "N2");
+GCol(gItems, "Cost",  "Costo $", 98, false, al: DataGridViewContentAlignment.MiddleRight, fmt: "N2");
+GCol(gItems, "Tax",   "IVA", 62,  true, al: DataGridViewContentAlignment.MiddleCenter);
+GCol(gItems, "Total", "Total $", 108, true, al: DataGridViewContentAlignment.MiddleRight, fmt: "N2");
+GCol(gItems, "TaxID", "",    0,  false);
+gItems.Columns["Total"].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+
+// ── Barra inferior ────────────────────────────────────────
+var foot = new Panel { Location = new Point(12, 592), Size = new Size(1136, 52), BackColor = C_WHITE, Parent = frm };
+foot.Paint += (s, ev) => ev.Graphics.DrawLine(new Pen(C_BORDER), 0, 0, foot.Width, 0);
+
+var lblSum = new Label { Text = "$0.00", Location = new Point(18, 8),
+    Font = new Font("Segoe UI", 18f, FontStyle.Bold), ForeColor = C_TEXT, AutoSize = true, Parent = foot };
+var lblCnt = new Label { Text = "0 productos", Location = new Point(18, 34),
+    Font = F_SM, ForeColor = C_MUTED, AutoSize = true, Parent = foot };
+
+Btn("Limpiar",  820, 14, 95, C_MUTED, C_WHITE, foot, true);
+Btn("Cancelar", 920, 14, 95, C_TEXT,  C_WHITE, foot, false);
+var btnOK = Btn("Crear Solicitud", 1020, 14, 110, Color.White, C_GREEN, foot, true);
+btnOK.BackColor = C_GREEN; btnOK.FlatAppearance.BorderColor = C_GREEN;
+
+// ═══════════════════════════════════════════════════════════
+//  LÓGICA
+// ═══════════════════════════════════════════════════════════
+
+// Helpers de selección
+Opt Sel(ComboBox c) => c.SelectedItem as Opt;
+int  Val(ComboBox c) { var o = Sel(c); return o != null ? o.Val : 0; }
+string SqlStr(string s) => "N'" + (s ?? "").Replace("'", "''") + "'";
+
+void RefreshGrid() {
+    gItems.Rows.Clear();
+    for (int i = 0; i < partidas.Count; i++) {
+        var x = partidas[i];
+        int r = gItems.Rows.Add(x.PID, x.Key, x.Desc, x.Unit, x.Qty, x.Cost, x.TaxLabel, x.Total(), x.TaxTypeID);
+        if (r % 2 == 1) foreach (DataGridViewCell c in gItems.Rows[r].Cells) c.Style.BackColor = C_STRIPE;
+    }
+    UpdateTotal();
+}
+
+void UpdateTotal() {
+    double sum = 0;
+    for (int i = 0; i < partidas.Count; i++) {
+        double t = partidas[i].Total();
+        sum += t;
+        if (i < gItems.Rows.Count) gItems.Rows[i].Cells["Total"].Value = t;
+    }
+    lblSum.Text = sum.ToString("C2");
+    lblCnt.Text = partidas.Count + " producto" + (partidas.Count != 1 ? "s" : "");
+}
+
+// ── Buscar ────────────────────────────────────────────────
+btnQ.Click += (s, ev) => {
+    var q = (txtQ.Text ?? "").Trim();
+    if (q.Length < 2) { lblQ.Text = "2+ caracteres"; return; }
+    var safe = q.Replace("'", "''");
+    int depot = Val(cboDep);
+
+    var rows = ctx.Query(
+        "SELECT TOP 40 p.ProductID, p.ProductKey, p.ProductName, p.Unit, p.TaxTypeID, " +
+        "ISNULL(t.TaxPerc,0) AS TaxPerc, ISNULL(t.TaxName,'') AS TaxName, " +
+        "CASE p.ProductTypeID WHEN 1 THEN 'Producto' WHEN 3 THEN 'Paquete' " +
+        "WHEN 4 THEN 'Servicio' WHEN 7 THEN 'Insumo' WHEN 2 THEN 'P.Term.' " +
+        "ELSE 'T'+CAST(p.ProductTypeID AS varchar) END AS Tipo, " +
+        "ISNULL((SELECT SUM(Quantity) FROM orgProductKardex k " +
+        "WHERE k.ProductID=p.ProductID AND k.DepotID=" + depot + " AND k.Cancelled=0),0) AS Stock, " +
+        "ISNULL((SELECT TOP 1 CostPrice FROM orgProductCostComercial c " +
+        "WHERE c.ProductID=p.ProductID ORDER BY c.ID DESC),0) AS Costo " +
+        "FROM orgProduct p LEFT JOIN engTaxType t ON t.TaxTypeID=p.TaxTypeID " +
+        "WHERE p.DeletedOn IS NULL " +
+        "AND (p.ProductKey LIKE '%" + safe + "%' OR p.ProductName LIKE '%" + safe + "%') " +
+        "ORDER BY p.ProductName");
+
+    gSearch.Rows.Clear();
+    foreach (var r in rows) {
+        double taxP = Convert.ToDouble(r["TaxPerc"] ?? 0);
+        int taxID = Convert.ToInt32(r["TaxTypeID"] ?? 0);
+        string taxLbl = taxP > 0 ? "IVA " + (taxP*100).ToString("F0") + "%" : (taxID > 0 ? "Exento" : "-");
+        double stk = Convert.ToDouble(r["Stock"] ?? 0);
+        string tipo = (string)(r["Tipo"] ?? "");
+
+        int idx = gSearch.Rows.Add(r["ProductID"], r["ProductKey"], r["ProductName"],
+            r["Unit"], tipo, taxLbl, stk, r["Costo"] ?? 0, taxID, taxP);
+        if (idx % 2 == 1) foreach (DataGridViewCell c in gSearch.Rows[idx].Cells) c.Style.BackColor = C_STRIPE;
+        if (stk <= 0 && tipo != "Servicio")
+            gSearch.Rows[idx].Cells["Stock"].Style.BackColor = Color.FromArgb(254, 226, 226);
+    }
+    lblQ.Text = rows.Count + " resultados";
+};
+
+// ── Agregar partida (doble clic en búsqueda) ──────────────
+gSearch.CellDoubleClick += (s, ev) => {
+    if (ev.RowIndex < 0) return;
+    var r = gSearch.Rows[ev.RowIndex];
+    int pid = Convert.ToInt32(r.Cells["ID"].Value);
+    foreach (var x in partidas) { if (x.PID == pid) { ctx.Msg("Ya está en la lista."); return; } }
+
+    partidas.Add(new Item {
+        PID = pid,
+        Key = (string)(r.Cells["Clave"].Value ?? ""),
+        Desc = (string)(r.Cells["Desc"].Value ?? ""),
+        Unit = (string)(r.Cells["Unidad"].Value ?? ""),
+        TaxTypeID = Convert.ToInt32(r.Cells["TaxID"].Value ?? 0),
+        TaxLabel = (string)(r.Cells["Tax"].Value ?? "-"),
+        TaxPerc = Convert.ToDouble(r.Cells["TaxP"].Value ?? 0),
+        Cost = Convert.ToDouble(r.Cells["Costo"].Value ?? 0),
+        Qty = 1
+    });
+    RefreshGrid();
+};
+
+// ── Editar partida ────────────────────────────────────────
+gItems.CellEndEdit += (s, ev) => {
+    if (ev.RowIndex < 0 || ev.RowIndex >= partidas.Count) return;
+    try { partidas[ev.RowIndex].Qty = Convert.ToDouble(gItems.Rows[ev.RowIndex].Cells["Qty"].Value ?? 1); } catch { }
+    try { partidas[ev.RowIndex].Cost = Convert.ToDouble(gItems.Rows[ev.RowIndex].Cells["Cost"].Value ?? 0); } catch { }
+    UpdateTotal();
+};
+
+// ── Quitar partida ────────────────────────────────────────
+gItems.CellDoubleClick += (s, ev) => {
+    if (ev.RowIndex < 0 || ev.RowIndex >= partidas.Count) return;
+    if (ctx.Confirm("Quitar " + partidas[ev.RowIndex].Key + "?")) {
+        partidas.RemoveAt(ev.RowIndex); RefreshGrid();
+    }
+};
+
+// ── Botones ───────────────────────────────────────────────
+// Los handlers se asignan por orden de creación: Limpiar, Cancelar, Crear
+var botonesFoot = new List<Button>();
+foreach (Control c in foot.Controls) if (c is Button) botonesFoot.Add((Button)c);
+botonesFoot[0].Click += (s, ev) => {
+    if (partidas.Count > 0 && ctx.Confirm("Limpiar todo?")) { partidas.Clear(); RefreshGrid(); }
+};
+botonesFoot[1].Click += (s, ev) => frm.Close();
+
+// Enter busca
+txtQ.KeyDown += (s, ev) => { if (ev.KeyCode == Keys.Enter) btnQ.PerformClick(); };
+
+// ═══════════════════════════════════════════════════════════
+//  CREAR DOCUMENTO
+// ═══════════════════════════════════════════════════════════
+botonesFoot[2].Click += (s, ev) => {
+    int be = Val(cboProv);
+    if (be == 0) { ctx.Msg("Selecciona un proveedor."); return; }
+    if (partidas.Count == 0) { ctx.Msg("Agrega productos."); return; }
+
+    double total = 0;
+    for (int i = 0; i < partidas.Count; i++) total += partidas[i].Total();
+    if (!ctx.Confirm("Crear solicitud por " + total.ToString("C2") + "?")) return;
+
+    frm.Cursor = Cursors.WaitCursor;
+    try {
+        int depot = Val(cboDep), pay = Val(cboPay);
+
+        // ctx.erp.NuevoDocumento YA lee DocumentTypeID y DocRecipient de engModuleParameter.
+        // YA crea las 4 anclas (Ext/Extra/CFD/PaymentAgenda) y los campos universales.
+        int doc = ctx.erp.NuevoDocumento(MODULO_SOLICITUD, depot, be);
+        if (doc <= 0) { ctx.Msg("Error al crear documento."); return; }
+
+        // Perfil de solicitud: no afecta inventario, no genera entrega, sin proyecto
+        ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=0, PaymentTermID=" + pay +
+            ", UserID=0, CampaignID=NULL, CostCenterID=NULL, ProjectID=NULL" +
+            " WHERE DocumentID=" + doc);
+
+        for (int i = 0; i < partidas.Count; i++) {
+            var x = partidas[i];
+            ctx.erp.AgregarArticulo(doc, x.PID, x.Qty, -1, x.Cost);
+
+            // Relación producto↔proveedor
+            object exists = ctx.Scalar(
+                "SELECT COUNT(*) FROM orgProductSupplier " +
+                "WHERE ProductID=" + x.PID + " AND BusinessEntityID=" + be);
+            if (Convert.ToInt32(exists ?? 0) == 0)
+                ctx.NonQuery("INSERT INTO orgProductSupplier (ProductID, BusinessEntityID, CostPrice, CurrencyID) " +
+                    "VALUES (" + x.PID + "," + be + "," +
+                    x.Cost.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",3)");
+        }
+
+        // Post-proceso (sin AffectStockNEW: la solicitud NO afecta inventario)
+        ctx.erp.RecalcCompleto(doc);
+        ctx.erp.Save(doc);
+        ctx.erp.RefreshGrid();
+
+        ctx.Log("SOLICITUD: doc=" + doc + " prov=" + be + " items=" + partidas.Count);
+        ctx.Msg("Solicitud " + doc + " creada.\n" + partidas.Count + " productos · " + total.ToString("C2"), "Listo");
+        frm.Close();
+    }
+    catch (Exception ex) {
+        ctx.Log("ERROR SOL: " + ex.Message);
+        ctx.Msg(ex.Message, "Error");
+    }
+    finally { frm.Cursor = Cursors.Default; }
+};
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS VISUALES
+// ═══════════════════════════════════════════════════════════
+
+Panel Card(int x, int y, int w, int h) => new Panel {
+    Location = new Point(x, y), Size = new Size(w, h),
+    BackColor = C_WHITE, Parent = frm, Padding = new Padding(12) };
+
+ComboBox Combo(int x, int y, int w, Control p) {
+    var c = new ComboBox { Location = new Point(x, y), Size = new Size(w, 26),
+        DropDownStyle = ComboBoxStyle.DropDownList, Font = F_BODY,
+        FlatStyle = FlatStyle.Flat, Parent = p };
+    c.DisplayMember = "Txt";
+    return c;
+}
+
+DataGridView Grid(int x, int y, int w, int h, bool readOnly) => new DataGridView {
+    Location = new Point(x, y), Size = new Size(w, h),
+    BackgroundColor = C_WHITE, BorderStyle = BorderStyle.FixedSingle,
+    AllowUserToAddRows = false, AllowUserToResizeRows = false,
+    RowHeadersVisible = false, ColumnHeadersHeight = 28,
+    ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
+    ReadOnly = readOnly,
+    SelectionMode = readOnly ? DataGridViewSelectionMode.FullRowSelect : DataGridViewSelectionMode.CellSelect,
+    AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
+    Font = F_BODY, Parent = frm,
+    EditMode = readOnly ? DataGridViewEditMode.EditProgrammatically : DataGridViewEditMode.EditOnEnter
+};
+
+void GCol(DataGridView g, string name, string hdr, int w,
+    bool ro = true, DataGridViewContentAlignment? al = null, string fmt = null, bool vis = true) {
+    var c = new DataGridViewTextBoxColumn { Name = name, HeaderText = hdr, Width = w, ReadOnly = ro, Visible = vis };
+    if (al != null) c.DefaultCellStyle.Alignment = al.Value;
+    if (fmt != null) c.DefaultCellStyle.Format = fmt;
+    g.Columns.Add(c);
+}
+
+Button Btn(string text, int x, int y, int w, Color fg, Color bg, Control parent, bool bold) {
+    var b = new Button { Text = text, Location = new Point(x, y), Size = new Size(w, 32),
+        FlatStyle = FlatStyle.Flat, BackColor = bg, ForeColor = fg,
+        Font = bold ? new Font("Segoe UI", 9.25f, FontStyle.Bold) : F_BODY,
+        Cursor = Cursors.Hand, Parent = parent };
+    b.FlatAppearance.BorderColor = C_BORDER;
+    return b;
+}
+
+// ── Opción de combo con RFC visible ───────────────────────
+class Opt {
+    public string Txt; public int Val;
+    public Opt(string t, int v) { Txt = t; Val = v; }
+    public override string ToString() => Txt;
+}
+Opt Opto(string nombre, int id, string rfc = "") {
+    if (!string.IsNullOrEmpty(rfc)) nombre += "  ·  " + rfc;
+    return new Opt(nombre, id);
+}
+
+// ── Partida ───────────────────────────────────────────────
+class Item {
+    public int PID, TaxTypeID;
+    public string Key = "", Desc = "", Unit = "", TaxLabel = "";
+    public double Qty = 1, Cost, TaxPerc;
+    public double Total() => Qty * Cost;
+}
+
+// ═══════════════════════════════════════════════════════════
+frm.ShowDialog();
