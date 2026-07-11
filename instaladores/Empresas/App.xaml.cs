@@ -48,33 +48,73 @@ namespace BrosLMV.Empresas
         {
             base.OnStartup(e);
 
-            // Instalar el runtime necesita admin (RegAsm/HKLM, C:\BrosLMV). Si no lo
-            // somos, relanzamos con UAC y salimos.
-            if (!IsAdmin()) { Elevate(); Shutdown(); return; }
-
-            // Pantalla de bienvenida: nada se instala hasta que el usuario lo confirme.
-            var welcome = new WelcomeWindow();
-            if (welcome.ShowDialog() != true) { Shutdown(); return; }
-
-            var splash = new ProgressWindow();
-            splash.Show();
-
-            Task.Run(() =>
+            // Defensa en profundidad: si CUALQUIER paso de aquí truena (recurso faltante,
+            // XAML mal formado, lo que sea), se ve un mensaje de error real y la app cierra
+            // limpio -- nunca debe quedar una ventana en blanco sin explicación.
+            try
             {
-                string status; bool ok;
-                try { status = RuntimeInstaller.Install(); ok = true; }
-                catch (Exception ex) { status = "No se pudo instalar el runtime: " + ex.Message; ok = false; Log(ex); }
+                // Instalar el runtime necesita admin (RegAsm/HKLM, C:\BrosLMV). Si no lo
+                // somos, relanzamos con UAC y salimos.
+                if (!IsAdmin()) { Elevate(); Shutdown(); return; }
 
-                Dispatcher.Invoke(() =>
+                // Pantalla de bienvenida: nada se instala hasta que el usuario lo confirme.
+                WelcomeWindow welcome;
+                try { welcome = new WelcomeWindow(); }
+                catch (Exception ex) { FallarInicio("No se pudo abrir la ventana de bienvenida", ex); return; }
+
+                bool confirmo;
+                try { confirmo = welcome.ShowDialog() == true; }
+                catch (Exception ex) { FallarInicio("La ventana de bienvenida fallo al mostrarse", ex); return; }
+                if (!confirmo) { Shutdown(); return; }
+
+                ProgressWindow splash;
+                try { splash = new ProgressWindow(); splash.Show(); }
+                catch (Exception ex) { FallarInicio("No se pudo abrir la ventana de progreso", ex); return; }
+
+                Task.Run(() =>
                 {
-                    splash.Close();
-                    var main = new MainWindow();
-                    main.SetEstadoRuntime(status, ok);
-                    main.Closed += (s2, e2) => Shutdown();
-                    MainWindow = main;
-                    main.Show();
+                    string status; bool ok;
+                    try { status = RuntimeInstaller.Install(); ok = true; }
+                    catch (Exception ex) { status = "No se pudo instalar el runtime: " + ex.Message; ok = false; Log(ex); }
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        try
+                        {
+                            splash.Close();
+                            var main = new MainWindow();
+                            main.SetEstadoRuntime(status, ok);
+                            main.Closed += (s2, e2) => Shutdown();
+                            MainWindow = main;
+                            main.Show();
+                        }
+                        catch (Exception ex)
+                        {
+                            FallarInicio("No se pudo abrir la ventana principal", ex);
+                        }
+                    });
                 });
-            });
+            }
+            catch (Exception ex)
+            {
+                FallarInicio("Error inesperado al iniciar el instalador", ex);
+            }
+        }
+
+        // Muestra el error real (nunca una ventana en blanco), lo registra en
+        // %TEMP%\bros_inst_crash.txt, y cierra la aplicacion de forma limpia.
+        void FallarInicio(string contexto, Exception ex)
+        {
+            Log(ex);
+            try
+            {
+                MessageBox.Show(
+                    contexto + ":\n\n" + ex.Message +
+                    "\n\nDetalle guardado en: " + Path.Combine(Path.GetTempPath(), "bros_inst_crash.txt"),
+                    "BrosLMV - Instalador", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch { /* si hasta el MessageBox falla, al menos ya quedo el log */ }
+            Shutdown();
         }
 
         static bool IsAdmin()

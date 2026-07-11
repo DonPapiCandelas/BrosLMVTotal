@@ -76,11 +76,55 @@ Write-Host "4) Compilando BrosLMV-Desinstalador.exe..." -ForegroundColor Cyan
 dotnet build (Join-Path $pDes "Desinstalador.csproj") -c Release -o $dist "/p:Version=$addonVersion"
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR compilando Desinstalador" -ForegroundColor Red; exit 1 }
 
-Write-Host "5) Limpiando temporales..." -ForegroundColor Cyan
+Write-Host "5) Verificando recursos embebidos (evita instaladores con pantalla en blanco)..." -ForegroundColor Cyan
+function Verificar-Recursos($exePath, $esperados) {
+    $asm = [Reflection.Assembly]::LoadFile($exePath)
+    $nombres = @($asm.GetManifestResourceNames())
+
+    # Los <Resource> de WPF (imagenes, .baml) no aparecen sueltos en GetManifestResourceNames():
+    # quedan empacados dentro de un contenedor "<Assembly>.g.resources". Hay que abrirlo con
+    # ResourceReader para ver sus claves internas (ej. "assets/logo_blanco.png").
+    $gres = $nombres | Where-Object { $_ -like "*.g.resources" } | Select-Object -First 1
+    $clavesInternas = @()
+    if ($gres) {
+        $stream = $asm.GetManifestResourceStream($gres)
+        $reader = New-Object System.Resources.ResourceReader($stream)
+        $enum = $reader.GetEnumerator()
+        while ($enum.MoveNext()) { $clavesInternas += [string]$enum.Key }
+        $reader.Close()
+    }
+
+    $todo = $nombres + $clavesInternas
+    $faltantes = @()
+    foreach ($e in $esperados) {
+        if (-not ($todo | Where-Object { $_ -like "*$e" })) { $faltantes += $e }
+    }
+    if ($faltantes.Count -gt 0) {
+        Write-Host "   ERROR: $(Split-Path $exePath -Leaf) NO trae estos recursos esperados:" -ForegroundColor Red
+        $faltantes | ForEach-Object { Write-Host "     - $_" -ForegroundColor Red }
+        return $false
+    }
+    Write-Host "   OK: $(Split-Path $exePath -Leaf) trae los $($esperados.Count) recursos esperados." -ForegroundColor DarkGreen
+    return $true
+}
+
+$okInstalador = Verificar-Recursos (Join-Path $dist "BrosLMV-Instalador.exe") @(
+    "logo_blanco.png", "app_icon.png", "provision_empresa.sql", "payload.zip"
+)
+$okDesinstalador = Verificar-Recursos (Join-Path $dist "BrosLMV-Desinstalador.exe") @(
+    "logo_blanco.png", "app_icon.png", "desprovision_empresa.sql"
+)
+if (-not $okInstalador -or -not $okDesinstalador) {
+    Write-Host ""
+    Write-Host "ABORTADO: falta algun recurso embebido -- NO distribuyas estos .exe." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "6) Limpiando temporales..." -ForegroundColor Cyan
 foreach ($d in @((Join-Path $pInst "obj"),(Join-Path $pInst "bin"),(Join-Path $pDes "obj"),(Join-Path $pDes "bin"))) {
     Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host ""
-Write-Host "LISTO. Ejecutables en: $dist" -ForegroundColor Green
+Write-Host "LISTO. Ejecutables verificados en: $dist" -ForegroundColor Green
 Get-ChildItem $dist -Filter *.exe | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}} | Format-Table -AutoSize

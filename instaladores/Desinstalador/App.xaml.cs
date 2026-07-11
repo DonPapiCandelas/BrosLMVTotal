@@ -47,13 +47,38 @@ namespace BrosLMV.Desinstalador
         {
             base.OnStartup(e);
 
-            // Quitar el runtime/COM necesita admin. Si no lo somos, relanzamos con UAC.
-            if (!IsAdmin()) { Elevate(); Shutdown(); return; }
+            // Defensa en profundidad: si algo truena aqui, se ve un mensaje de error real
+            // y la app cierra limpio -- nunca debe quedar una ventana en blanco.
+            try
+            {
+                // Quitar el runtime/COM necesita admin. Si no lo somos, relanzamos con UAC.
+                if (!IsAdmin()) { Elevate(); Shutdown(); return; }
 
-            var main = new MainWindow();
-            main.Closed += (s2, e2) => Shutdown();
-            MainWindow = main;
-            main.Show();
+                var main = new MainWindow();
+                main.Closed += (s2, e2) => Shutdown();
+                MainWindow = main;
+                main.Show();
+            }
+            catch (Exception ex)
+            {
+                FallarInicio("No se pudo abrir el desinstalador", ex);
+            }
+        }
+
+        // Muestra el error real (nunca una ventana en blanco), lo registra en
+        // %TEMP%\bros_desinst_crash.txt, y cierra la aplicacion de forma limpia.
+        void FallarInicio(string contexto, Exception ex)
+        {
+            Log(ex);
+            try
+            {
+                MessageBox.Show(
+                    contexto + ":\n\n" + ex.Message +
+                    "\n\nDetalle guardado en: " + Path.Combine(Path.GetTempPath(), "bros_desinst_crash.txt"),
+                    "BrosLMV - Desinstalador", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch { /* si hasta el MessageBox falla, al menos ya quedo el log */ }
+            Shutdown();
         }
 
         static bool IsAdmin()
