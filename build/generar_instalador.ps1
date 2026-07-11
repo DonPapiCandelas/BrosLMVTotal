@@ -42,6 +42,11 @@ Write-Host "2) Actualizando instalador\bin..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force (Join-Path $bin "x86") | Out-Null
 Copy-Item (Join-Path $out "*.dll") $bin -Force
 Copy-Item (Join-Path $out "x86\SQLite.Interop.dll") (Join-Path $bin "x86") -Force
+# WebView2Loader.dll (nativo, x86 porque el addon corre EN PROCESO dentro de Comercial,
+# que es de 32 bits) -- lo necesita ctx.show_html. A diferencia de SQLite.Interop.dll,
+# el loader de WebView2 busca en el mismo directorio que la DLL que lo invoca (no en un
+# subdirectorio x86\), asi que va directo en $bin junto a BrosLMVClsMain.dll.
+Copy-Item (Join-Path $out "runtimes\win-x86\native\WebView2Loader.dll") $bin -Force
 
 Write-Host "3) Compilando host v3.0..." -ForegroundColor Cyan
 if (Test-Path $hostOut) { Remove-Item $hostOut -Recurse -Force }

@@ -47,7 +47,26 @@
   </header>
 
   <div class="ver">
-    <h2>2.23.0 <span class="tag">actual</span></h2>
+    <h2>2.24.0 <span class="tag">actual</span></h2>
+    <div class="date">2026-07-11 — ctx.show_html(): ventana HTML/WebView2 embebida (Python)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>ctx.show_html(html, title, width, height, modal)</b> (Python): muestra una
+            ventana con HTML/CSS/JS renderizado por WebView2, embebida dentro de CONTPAQi —
+            sin escribir archivos ni depender del navegador externo. Primer caso real: el
+            dashboard de flota de GGV_DE_MEXICO (miles de movimientos, filtros, exportación a
+            Excel, todo dentro de una sola ventana).</li>
+        <li>Los datos que no quepan comprimidos bajo ~2MB (límite real de WebView2) se pueden
+            comprimir con gzip+base64 y descomprimir en el navegador con la API nativa
+            <code>DecompressionStream</code> — sin necesidad de ninguna librería extra.</li>
+        <li><b>PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py</b>: diseñador visual de formularios
+            no-code construido sobre ctx.show_html.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.23.0</h2>
     <div class="date">2026-07-03 — Ejemplo Premium: Recepción de Compra y Factura de Compra</div>
     <div class="grp add"><div class="h">Agregado</div>
       <ul>

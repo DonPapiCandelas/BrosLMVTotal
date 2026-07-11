@@ -371,6 +371,8 @@ namespace BrosLMV
                 }
                 if (req.Form != null)
                     return RenderUiForm(req.Form);
+                if (req.ShowHtml != null)
+                    return RenderUiHtml(req.ShowHtml);
                 return new UiResponse { Error = new Error { Code = "UI_NOT_IMPL", Message = "Tipo de UI no implementado aún." } };
             }
             catch (Exception ex)
@@ -489,6 +491,100 @@ namespace BrosLMV
             }
 
             return new UiResponse { FormResult = result };
+        }
+
+        // ctx.show_html: ventana con un control WebView2 (Edge/Chromium, ya viene con
+        // Windows 10/11) mostrando el HTML/CSS/JS que mande el script.
+        //
+        // WebView2 exige un hilo COM en modo STA (apartment de un solo hilo). El hilo que
+        // atiende cada conexion del pipe (donde corre AtenderUiRequest) NO esta garantizado
+        // en STA -- si algo ya lo inicializo como MTA antes, crear el WebView2 ahi truena con
+        // RPC_E_CHANGED_MODE ("no se puede cambiar el modo de subproceso"), confirmado en
+        // pruebas reales. Por eso esto SIEMPRE corre en un hilo STA dedicado y nuevo.
+        private static UiResponse RenderUiHtml(UiShowHtml spec)
+        {
+            string perfil = Path.Combine(Path.GetTempPath(), "BrosLMV_WebView2_" + Guid.NewGuid().ToString("N"));
+            Exception hiloEx = null;
+            var listo = new System.Threading.ManualResetEventSlim(false);
+
+            var hilo = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    var frm = new Form();
+                    var webView = new Microsoft.Web.WebView2.WinForms.WebView2();
+                    frm.Text = string.IsNullOrWhiteSpace(spec.Title) ? "BrosLMV" : spec.Title;
+                    frm.StartPosition = FormStartPosition.CenterScreen;
+                    frm.Width = spec.Width > 0 ? spec.Width : 800;
+                    frm.Height = spec.Height > 0 ? spec.Height : 600;
+
+                    webView.Dock = DockStyle.Fill;
+                    frm.Controls.Add(webView);
+
+                    // EnsureCoreWebView2Async necesita que YA haya un bucle de mensajes
+                    // bombeando en este hilo -- por eso la carga se dispara desde Load (que
+                    // solo se activa una vez que ShowDialog()/Application.Run() ya esta
+                    // corriendo), nunca con .GetAwaiter().GetResult() antes de eso. Hacerlo
+                    // antes se cuelga para siempre (deadlock confirmado en pruebas reales:
+                    // WebView2 espera una continuacion que nadie bombea).
+                    frm.Load += async (s, e) =>
+                    {
+                        try
+                        {
+                            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment
+                                .CreateAsync(userDataFolder: perfil);
+                            await webView.EnsureCoreWebView2Async(env);
+                            webView.CoreWebView2.NavigateToString(spec.Html ?? "");
+                        }
+                        catch (Exception ex)
+                        {
+                            hiloEx = ex;
+                            frm.Close();
+                        }
+                        finally
+                        {
+                            listo.Set();
+                        }
+                    };
+
+                    if (spec.Modal)
+                    {
+                        frm.ShowDialog();
+                        webView.Dispose();
+                        frm.Dispose();
+                        try { Directory.Delete(perfil, true); } catch { /* limpieza best-effort */ }
+                    }
+                    else
+                    {
+                        frm.FormClosed += (s, e) =>
+                        {
+                            webView.Dispose();
+                            frm.Dispose();
+                            try { Directory.Delete(perfil, true); } catch { /* limpieza best-effort */ }
+                            Application.ExitThread();
+                        };
+                        frm.Show();
+                        Application.Run(frm);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    hiloEx = ex;
+                    listo.Set();
+                }
+            });
+            hilo.SetApartmentState(System.Threading.ApartmentState.STA);
+            hilo.IsBackground = true;
+            hilo.Start();
+
+            // Espera solo a que la pagina cargue (o falle) -- NO a que el usuario cierre la
+            // ventana. 'modal' controla si la ventana bloquea otras ventanas de Comercial
+            // mientras esta abierta (ShowDialog vs Show), no si bloquea al script Python.
+            listo.Wait();
+
+            if (hiloEx != null)
+                return new UiResponse { Error = new Error { Code = "SHOW_HTML_ERROR", Message = hiloEx.Message } };
+            return new UiResponse { Ok = new Empty() };
         }
 
         private static Control CreateFormControl(FormField field)

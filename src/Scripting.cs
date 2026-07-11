@@ -296,6 +296,10 @@ namespace BrosLMV
         public bool   SoloLectura    { get; set; }   // si true, NonQuery se bloquea
         public int    FilasAfectadas { get; private set; } // acumulado de NonQuery (para auditoria)
 
+        // ID numerico que traiga el AppKey de un evento nativo de Comercial (p. ej. "Evento=Guardar"
+        // con Funcion="BrosLMV.<Script>_[DocumentID]"). Null si el script se ejecuto normal (boton/consola).
+        public long? EventoId { get; set; }
+
         private object _ado;
         private bool   _adoTried;
 

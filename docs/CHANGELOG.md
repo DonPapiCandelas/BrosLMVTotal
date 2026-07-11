@@ -8,6 +8,56 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.24.0] — 2026-07-11 — `ctx.show_html()`: ventana HTML/WebView2 embebida (Python)
+
+> Primer caso real, verificado en producción contra GGV_DE_MEXICO (`ReporteXVehiculo.py`,
+> dashboard de flota): un botón Python arma un dashboard HTML/CSS/JS completo con datos reales
+> (3383 movimientos, 4693 días-vehículo, 220 compras) y lo muestra embebido dentro de
+> CONTPAQi, sin escribir ningún archivo ni depender del navegador externo.
+
+### Agregado
+- `ctx.show_html(html, title="BrosLMV", width=800, height=600, modal=True)` (Python): ventana
+  con un control **WebView2** (Edge/Chromium) que renderiza el HTML/CSS/JS que mande el script,
+  embebida dentro del proceso de Comercial. Protocolo de punta a punta: `ctx.py` (worker) →
+  `PythonProcess.HandleShowHtml` → `IHostCallbackSink.ShowHtml` (nuevo miembro de la interfaz,
+  implementado en `LoggingHostCallbackSink` y `RelayingCallbackSink`) → `UiRequest.ShowHtml`
+  (protobuf) → `HostClient.RenderUiHtml` (addon, `src/HostClient.cs`) — que crea el `Form` +
+  `WebView2` en un **hilo STA dedicado y nuevo** (el hilo que atiende el pipe no está
+  garantizado en STA; crear el WebView2 ahí truena con `RPC_E_CHANGED_MODE`, confirmado en
+  pruebas reales) y dispara `EnsureCoreWebView2Async` desde `Form.Load` (nunca antes de que
+  el bucle de mensajes esté bombeando — hacerlo antes cuelga para siempre, deadlock confirmado).
+- `PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py`: diseñador visual de formularios 100% no-code
+  construido sobre `ctx.show_html` (arrastrar/clic campos, vista previa real, copia el código
+  `ctx.form({...})` al portapapeles). Como `ctx.show_html` es de una sola vía (sin canal de
+  regreso), el resultado se entrega por portapapeles, no por retorno de la ventana.
+- `BrosLMV.csproj`: referencia a `Microsoft.Web.WebView2` 1.0.2792.45. `WebView2Loader.dll`
+  (nativo **x86**, porque el addon corre EN PROCESO dentro de Comercial de 32 bits) ahora se
+  copia junto a `BrosLMVClsMain.dll` en `generar_instalador.ps1` — a diferencia de
+  `SQLite.Interop.dll`, el loader de WebView2 busca en el mismo directorio que la DLL que lo
+  invoca, no en un subdirectorio `x86\`.
+- `ClsMain.cs`: soporte para el `AppKey` de eventos nativos de Comercial (p. ej.
+  `Propiedades > Avanzado > Evento=Guardar` con `Funcion="BrosLMV.<Script>_[DocumentID]"`) —
+  el motor sustituye el token como texto antes de invocar, así que el `AppKey` llega literal
+  como `"<Script>_12345"`. Si no hay match exacto, se reintenta con el nombre base y el ID
+  queda expuesto en `ctx.EventoId` (nuevo, `Scripting.cs`).
+
+### Límite real descubierto (documentado para no repetirlo)
+- `ctx.show_html` usa `NavigateToString` de WebView2 internamente, que tiene un **límite
+  documentado de 2MB** de contenido total (HTML+CSS+JS+datos, todo junto). Con un dataset de
+  24 meses de histórico el JSON de datos solo ya pesaba ~1.83MB — sumado a los assets estáticos
+  se pasaba del límite. **Solución aplicada en `ReporteXVehiculo.py` (GGV_DE_MEXICO):** los
+  datos viajan comprimidos `gzip` nivel 9 + `base64` desde Python, y se descomprimen en el
+  navegador embebido con la API nativa `DecompressionStream` (Chromium la trae desde 2020 —
+  **no hace falta vendorizar pako ni ninguna librería**). Medido con datos reales: JSON crudo
+  1,826,883 bytes → gzip 60,001 bytes → base64 80,004 bytes → HTML final completo 584,124
+  bytes (~0.56MB), muy por debajo del límite. Efecto colateral positivo: como el payload viaja
+  como base64 (alfabeto `A-Za-z0-9+/=`, sin `<`/`>`), un bug de U+2028/U+2029 rompiendo el
+  `<script>` (visto antes en un botón AccesoFacil/IronPython) queda eliminado **por
+  construcción**, no por un escapador. **Regla para el futuro:** si el contenido no comprime
+  bajo ~2MB, usar `Navigate()` a un archivo real en disco en vez de `show_html` (sin ese límite).
+
+---
+
 ## [2.22.0 → 2.23.0] — 2026-07-03 — Ejemplo Premium: Recepción de Compra y Factura de Compra (C#)
 
 > Dos documentos nuevos, ambos DERIVADOS de una o varias Órdenes de Compra del mismo proveedor

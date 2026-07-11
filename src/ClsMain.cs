@@ -25,9 +25,10 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.23.0.0")]
+[assembly: AssemblyVersion("2.24.0.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -129,6 +130,25 @@ namespace BrosLMV
             //    comparte entre todas las terminales de esa empresa.
             string codigo = null;
             try { if (ctx.BrosScriptsDisponible()) codigo = ctx.BrosCargar(appKey); } catch { }
+
+            // 1b) Eventos nativos de Comercial (p. ej. Propiedades > Avanzado > Evento=Guardar
+            //     con Funcion="BrosLMV.<Script>_[DocumentID]") sustituyen el token como texto
+            //     ANTES de invocar, asi que el AppKey llega literal como "<Script>_12345". Si no
+            //     hubo match exacto, se intenta con el nombre base + se expone el numero a ctx.
+            if (string.IsNullOrEmpty(codigo))
+            {
+                var mEvento = Regex.Match(appKey, @"^(.+)_(\d+)$");
+                if (mEvento.Success)
+                {
+                    string baseKey = mEvento.Groups[1].Value;
+                    try { if (ctx.BrosScriptsDisponible()) codigo = ctx.BrosCargar(baseKey); } catch { }
+                    if (!string.IsNullOrEmpty(codigo))
+                    {
+                        appKey = baseKey; // para el resto del flujo (lookup de archivo, auditoria, etc.)
+                        ctx.EventoId = long.Parse(mEvento.Groups[2].Value);
+                    }
+                }
+            }
 
             // 2) Compatibilidad: si no esta en SQL, buscar archivo (empresa y luego raiz).
             //    .py = Python (host v3.0); .ctx/.csx = C# (Roslyn, en proceso).

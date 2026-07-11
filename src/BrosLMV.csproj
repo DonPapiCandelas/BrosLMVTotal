@@ -35,6 +35,8 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <PackageReference Include="jacobslusser.ScintillaNET" Version="3.6.3" />
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
+    <!-- ctx.show_html: WebView2 embebido para renderizar HTML/CSS dentro de una ventana del addon. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
     <!-- Cliente del canal v3.0 (C6): habla el mismo broslmv.proto que el host. -->
     <PackageReference Include="Google.Protobuf" Version="3.28.3" />
     <PackageReference Include="Grpc.Tools" Version="2.68.1" PrivateAssets="all" />

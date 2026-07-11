@@ -84,6 +84,30 @@ public sealed class RelayingCallbackSink : IHostCallbackSink
         }
     }
 
+    public void ShowHtml(string executionId, string html, string title, int width, int height, bool modal)
+    {
+        try
+        {
+            UiResponse resp = _channel.SendUi(new UiRequest
+            {
+                ShowHtml = new UiShowHtml
+                {
+                    Html = html ?? "",
+                    Title = title ?? "BrosLMV",
+                    Width = width,
+                    Height = height,
+                    Modal = modal
+                }
+            });
+            if (resp.Error != null)
+                _logFallback.Log(executionId, "ERROR", "SHOW_HTML: " + resp.Error.Code + ": " + resp.Error.Message);
+        }
+        catch (Exception ex)
+        {
+            _logFallback.Log(executionId, "ERROR", "SHOW_HTML: " + ex.Message);
+        }
+    }
+
     private static UiForm ToUiForm(Dictionary<string, object?> spec)
     {
         var form = new UiForm

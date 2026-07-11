@@ -39,6 +39,29 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-11, v2.24.0)
+
+- **`ctx.show_html()` — ventana HTML/WebView2 embebida (Python), primer caso real verificado.**
+  Se probó contra una empresa real (GGV_DE_MEXICO, botón `ReporteXVehiculo.py`): un dashboard
+  de flota completo (HTML+CSS+JS+datos) armado en Python y mostrado embebido dentro de
+  CONTPAQi vía WebView2, sin escribir ningún archivo compartido ni depender del navegador
+  externo. Ver [`CHANGELOG.md`](CHANGELOG.md) [2.24.0] para el detalle completo del protocolo
+  (`ctx.py` → `PythonProcess.HandleShowHtml` → `IHostCallbackSink.ShowHtml` →
+  `HostClient.RenderUiHtml`) y del hilo STA dedicado que evita el deadlock/`RPC_E_CHANGED_MODE`
+  confirmado en pruebas reales. **Límite real descubierto y documentado:** `NavigateToString`
+  tope ~2MB — se resuelve comprimiendo el payload con gzip+base64 y descomprimiendo con
+  `DecompressionStream` nativo (sin vendorizar librerías). Efecto colateral: el bug de
+  U+2028/U+2029 rompiendo `<script>` queda eliminado por construcción (el payload es base64,
+  sin `<`/`>`). Camino de despliegue verificado en vivo: `dotnet build src\BrosLMV.csproj` +
+  `dotnet publish host\BrosLMV.Host` + sincronizar las **2 copias reales** de
+  `workers\python\broslmv\ctx.py` que carga el runtime (`C:\BrosLMV\workers\python\` y
+  `C:\BrosLMV\host\workers\python\` — esta última es la que el host de verdad usa). **Nuevo
+  ejemplo:** `PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py`, diseñador visual no-code de
+  formularios construido sobre `ctx.show_html`. **Pendiente:** regenerar el instalador
+  distribuible (`build\generar_instalador.ps1` + `build\generar_exes.ps1`) para que otros
+  equipos reciban WebView2 también — este despliegue fue directo a `C:\BrosLMV\bin`/`host\`
+  en un solo equipo, no pasó por el instalador oficial.
+
 ## Estás aquí (2026-07-03, v2.23.0)
 
 - **Investigación de un SDK alterno de CONTPAQi — completa, sin cambios de código.** Se evaluó si

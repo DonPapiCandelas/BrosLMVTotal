@@ -198,6 +198,16 @@ class Context:
         """
         return dict(_bridge.call("form", spec or {}))
 
+    def show_html(self, html: str, title: str = "BrosLMV", width: int = 800,
+                   height: int = 600, modal: bool = True) -> None:
+        """Muestra una ventana con HTML/CSS/JS renderizado por WebView2 (Edge/Chromium),
+        embebida en el addon dentro del proceso de Comercial.
+
+        Ejemplo:
+            ctx.show_html("<h1>Hola</h1><p>Reporte generado.</p>", title="Reporte", width=900, height=650)
+        """
+        _bridge.call("show_html", html or "", title, width, height, modal)
+
     def log(self, text: str, level: str = "INFO") -> None:
         # log(text) o log(level, text) segun cuantos argumentos lleguen al host.
         if level == "INFO":

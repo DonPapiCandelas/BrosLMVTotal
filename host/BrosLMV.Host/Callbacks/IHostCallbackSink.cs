@@ -30,6 +30,7 @@ public interface IHostCallbackSink
     void Log(string executionId, string level, string text);
     void Progress(string executionId, string text, int percent);
     Dictionary<string, object?> Form(string executionId, Dictionary<string, object?> spec);
+    void ShowHtml(string executionId, string html, string title, int width, int height, bool modal);
 }
 
 // Sink por defecto: registra los callbacks en C:\BrosLMV\logs\host-callbacks.log
@@ -56,6 +57,9 @@ public sealed class LoggingHostCallbackSink : IHostCallbackSink
         Append(executionId, "FORM", "Formulario solicitado sin addon conectado.");
         return new Dictionary<string, object?> { ["submitted"] = false };
     }
+
+    public void ShowHtml(string executionId, string html, string title, int width, int height, bool modal) =>
+        Append(executionId, "SHOW_HTML", "Ventana HTML solicitada sin addon conectado.");
 
     private void Append(string executionId, string kind, string detail)
     {

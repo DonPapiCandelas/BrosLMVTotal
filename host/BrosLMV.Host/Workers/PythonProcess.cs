@@ -173,6 +173,7 @@ public sealed class PythonProcess
                 "get_selected_ids" => _gateway.GetSelectedIds(request.Context),
                 "msg" => HandleMsg(msg),
                 "form" => HandleForm(msg),
+                "show_html" => HandleShowHtml(msg),
                 "log" => HandleLog(msg),
                 "progress" => HandleProgress(msg),
                 "query" => _gateway.Query(request.Context, GetStringArg(msg, 0), GetDictArg(msg, 1)),
@@ -198,6 +199,17 @@ public sealed class PythonProcess
     private object HandleForm(RunnerMessage msg)
     {
         return _callbacks.Form(_executionId, GetDictArg(msg, 0));
+    }
+
+    private object HandleShowHtml(RunnerMessage msg)
+    {
+        _callbacks.ShowHtml(_executionId,
+            GetStringArg(msg, 0),
+            GetStringArg(msg, 1, "BrosLMV"),
+            GetIntArg(msg, 2, 800),
+            GetIntArg(msg, 3, 600),
+            GetBoolArg(msg, 4, true));
+        return true;
     }
 
     private object HandleLog(RunnerMessage msg)
@@ -233,6 +245,17 @@ public sealed class PythonProcess
             double d => (int)d,
             decimal m => (int)m,
             _ => int.TryParse(v?.ToString(), out int p) ? p : fallback
+        };
+    }
+
+    private static bool GetBoolArg(RunnerMessage msg, int index, bool fallback = false)
+    {
+        if (msg.Args.Count <= index) return fallback;
+        object? v = FromJsonElement(msg.Args[index]);
+        return v switch
+        {
+            bool b => b,
+            _ => bool.TryParse(v?.ToString(), out bool p) ? p : fallback
         };
     }
 
