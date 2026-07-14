@@ -43,6 +43,11 @@ namespace BrosLMV
             public string Valor = "";
             public string CodigoError = "";
             public string MensajeError = "";
+            // Traceback/detalle técnico completo (viene de Error.Traceback o Error.Detail del
+            // protocolo -- runner.py ya captura traceback.format_exc() completo; hasta v2.29.0
+            // esto se descartaba aquí y en Consola.cs, dejando solo "mensaje [CODIGO]" sin
+            // línea/función/cadena de llamadas. Puede venir vacío (p.ej. timeouts sin traceback).
+            public string Detalle = "";
             public long ElapsedMs;
             public int FilasAfectadas;
         }
@@ -97,37 +102,49 @@ namespace BrosLMV
         }
 
         // Detección de lenguaje compartida (la usan el dispatch de botón y la consola).
-        // Un script es Python si su 1a línea no vacía trae un marcador.
+        // Un script es Python si trae el marcador en alguna de sus primeras líneas -- ANTES
+        // (v2.28.0 y antes) solo se revisaba la 1a línea no vacía y se salía del método sin
+        // revisar el resto, así que un salto de línea extra o un comentario previo al marcador
+        // rompía la detección en silencio (el script se corría como C# y tronaba con errores
+        // de compilación que no tenían nada que ver con el problema real). Ahora se revisan las
+        // primeras 10 líneas no vacías, y si de plano no hay marcador, se usa como respaldo un
+        // heurístico de contenido: "from broslmv import ctx" es exclusivo de Python real.
+        private const int LineasCabeceraARevisar = 10;
+
         public static bool EsPython(string codigo)
         {
             if (string.IsNullOrEmpty(codigo)) return false;
+            int revisadas = 0;
             foreach (var raw in codigo.Split('\n'))
             {
                 string line = raw.Trim();
                 if (line.Length == 0) continue;
                 string low = line.ToLowerInvariant();
-                return low.Contains("broslmv:python")
-                    || low.StartsWith("#py")
-                    || low.StartsWith("# lang: python")
-                    || low.StartsWith("#lang:python");
+                if (low.Contains("broslmv:python") || low.StartsWith("#py")
+                    || low.StartsWith("# lang: python") || low.StartsWith("#lang:python"))
+                    return true;
+                if (++revisadas >= LineasCabeceraARevisar) break;
             }
-            return false;
+            // Respaldo: sin marcador, pero el código es inequívocamente Python.
+            return codigo.Contains("from broslmv import ctx");
         }
 
-        // Detección del tipo de script 'sql' (T-SQL crudo). Marcador en la 1a línea.
+        // Detección del tipo de script 'sql' (T-SQL crudo). Marcador en alguna de las primeras
+        // líneas (mismo criterio que EsPython). Sin heurístico de respaldo por contenido: un
+        // script C#/Python puede traer SQL embebido en un string sin ser un script SQL puro.
         public static bool EsSql(string codigo)
         {
             if (string.IsNullOrEmpty(codigo)) return false;
+            int revisadas = 0;
             foreach (var raw in codigo.Split('\n'))
             {
                 string line = raw.Trim();
                 if (line.Length == 0) continue;
                 string low = line.ToLowerInvariant();
-                return low.Contains("broslmv:sql")
-                    || low.StartsWith("--sql")
-                    || low.StartsWith("-- lang: sql")
-                    || low.StartsWith("# lang: sql")
-                    || low.StartsWith("#sql");
+                if (low.Contains("broslmv:sql") || low.StartsWith("--sql")
+                    || low.StartsWith("-- lang: sql") || low.StartsWith("# lang: sql") || low.StartsWith("#sql"))
+                    return true;
+                if (++revisadas >= LineasCabeceraARevisar) break;
             }
             return false;
         }
@@ -278,7 +295,10 @@ namespace BrosLMV
                     if (msg.MessageCase == Envelope.MessageOneofCase.ExecutionFailed)
                     {
                         Error e = msg.ExecutionFailed.Error;
-                        return Fail(e != null ? e.Code : "PYTHON_ERROR", e != null ? e.Message : "Error en Python.");
+                        // Traceback (si vino) es más completo que Detail -- runner.py manda
+                        // traceback.format_exc() en el campo Traceback del protocolo.
+                        string detalle = e != null ? (!string.IsNullOrEmpty(e.Traceback) ? e.Traceback : e.Detail) : "";
+                        return Fail(e != null ? e.Code : "PYTHON_ERROR", e != null ? e.Message : "Error en Python.", detalle);
                     }
                     if (msg.MessageCase == Envelope.MessageOneofCase.UiRequest)
                     {
@@ -373,6 +393,10 @@ namespace BrosLMV
                     return RenderUiForm(req.Form);
                 if (req.ShowHtml != null)
                     return RenderUiHtml(req.ShowHtml);
+                if (req.SelectFile != null)
+                    return RenderSelectFile(req.SelectFile);
+                if (req.SelectFolder != null)
+                    return RenderSelectFolder(req.SelectFolder);
                 return new UiResponse { Error = new Error { Code = "UI_NOT_IMPL", Message = "Tipo de UI no implementado aún." } };
             }
             catch (Exception ex)
@@ -383,25 +407,28 @@ namespace BrosLMV
 
         private static UiResponse RenderUiForm(UiForm spec)
         {
+            bool hasGrid = spec.Grid != null && spec.Grid.Columns.Count > 0;
             var result = new FormResult { Submitted = false };
+            DataGridView grid = hasGrid ? new DataGridView() : null;
             using (var frm = new Form())
             using (var layout = new TableLayoutPanel())
             using (var buttons = new FlowLayoutPanel())
+            using (grid)
             {
                 frm.Text = string.IsNullOrWhiteSpace(spec.Title) ? "BrosLMV" : spec.Title;
                 frm.StartPosition = FormStartPosition.CenterScreen;
-                frm.FormBorderStyle = FormBorderStyle.FixedDialog;
-                frm.MaximizeBox = false;
+                frm.FormBorderStyle = hasGrid ? FormBorderStyle.Sizable : FormBorderStyle.FixedDialog;
+                frm.MaximizeBox = hasGrid;
                 frm.MinimizeBox = false;
                 frm.ShowIcon = false;
                 frm.Font = new System.Drawing.Font("Segoe UI", 9f);
                 frm.Width = spec.Width > 0 ? spec.Width : 720;
-                frm.Height = spec.Height > 0 ? spec.Height : Math.Min(760, 150 + Math.Max(1, spec.Fields.Count) * 58);
+                frm.Height = spec.Height > 0 ? spec.Height : Math.Min(760, 150 + Math.Max(1, spec.Fields.Count) * 58 + (hasGrid ? 260 : 0));
 
                 layout.Dock = DockStyle.Fill;
                 layout.Padding = new Padding(14);
                 layout.ColumnCount = 2;
-                layout.RowCount = spec.Fields.Count + 1;
+                layout.RowCount = spec.Fields.Count + (hasGrid ? 1 : 0) + 1;
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
                 frm.Controls.Add(layout);
@@ -430,6 +457,15 @@ namespace BrosLMV
                     layout.Controls.Add(lbl, 0, row);
                     layout.Controls.Add(ctl, 1, row);
                     controls[field.Name] = ctl;
+                    row++;
+                }
+
+                if (hasGrid)
+                {
+                    ConfigureFormGrid(grid, spec.Grid);
+                    layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+                    layout.SetColumnSpan(grid, 2);
+                    layout.Controls.Add(grid, 0, row);
                     row++;
                 }
 
@@ -487,10 +523,145 @@ namespace BrosLMV
                         if (!controls.TryGetValue(field.Name, out var ctl)) continue;
                         result.Values[field.Name] = ToValue(ReadFormControl(field, ctl));
                     }
+                    if (hasGrid)
+                        result.GridRows = ReadFormGrid(grid, spec.Grid);
                 }
             }
 
             return new UiResponse { FormResult = result };
+        }
+
+        // Arma las columnas del DataGridView a partir de GridColumn y precarga InitialRows.
+        private static void ConfigureFormGrid(DataGridView grid, FormGrid spec)
+        {
+            grid.Dock = DockStyle.Fill;
+            grid.AllowUserToAddRows = spec.AllowAdd;
+            grid.AllowUserToDeleteRows = spec.AllowDelete;
+            grid.AllowUserToResizeRows = false;
+            grid.RowHeadersVisible = false;
+            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+            grid.SelectionMode = DataGridViewSelectionMode.CellSelect;
+
+            foreach (var col in spec.Columns)
+            {
+                DataGridViewColumn dc;
+                if (col.Type == FieldType.FtBool)
+                {
+                    dc = new DataGridViewCheckBoxColumn();
+                }
+                else if (col.Type == FieldType.FtCombo && col.Options.Count > 0)
+                {
+                    var cbo = new DataGridViewComboBoxColumn { ValueType = typeof(object) };
+                    foreach (var opt in col.Options)
+                        cbo.Items.Add(new UiComboItem(opt.Label, FromValueClr(opt.Value)));
+                    dc = cbo;
+                }
+                else
+                {
+                    dc = new DataGridViewTextBoxColumn();
+                }
+                dc.Name = col.Name;
+                dc.HeaderText = string.IsNullOrWhiteSpace(col.Caption) ? col.Name : col.Caption;
+                dc.Width = col.Width > 0 ? col.Width : 100;
+                dc.ReadOnly = !col.Editable;
+                grid.Columns.Add(dc);
+            }
+
+            if (spec.InitialRows != null)
+            {
+                foreach (var row in spec.InitialRows.Rows)
+                {
+                    int idx = grid.Rows.Add();
+                    var gridRow = grid.Rows[idx];
+                    for (int i = 0; i < spec.Columns.Count && i < row.Cells.Count; i++)
+                    {
+                        object val = FromValueClr(row.Cells[i]);
+                        if (grid.Columns[i] is DataGridViewComboBoxColumn cboCol)
+                        {
+                            gridRow.Cells[i].Value = FindComboItem(cboCol, val) ?? val;
+                        }
+                        else
+                        {
+                            gridRow.Cells[i].Value = val;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static object FindComboItem(DataGridViewComboBoxColumn cbo, object val)
+        {
+            foreach (var item in cbo.Items)
+            {
+                if (item is UiComboItem ui && Equals(Convert.ToString(ui.Value, CultureInfo.InvariantCulture), Convert.ToString(val, CultureInfo.InvariantCulture)))
+                    return ui;
+            }
+            return null;
+        }
+
+        // Lee las filas finales del grid (excluye la fila "nueva" vacía que WinForms agrega
+        // automáticamente cuando AllowUserToAddRows=true) y las regresa como Table.
+        private static Table ReadFormGrid(DataGridView grid, FormGrid spec)
+        {
+            grid.EndEdit();
+            var table = new Table();
+            foreach (var col in spec.Columns) table.Columns.Add(new Column { Name = col.Name });
+
+            foreach (DataGridViewRow gridRow in grid.Rows)
+            {
+                if (gridRow.IsNewRow) continue;
+                var row = new Row();
+                for (int i = 0; i < spec.Columns.Count; i++)
+                {
+                    object val = gridRow.Cells[i].Value;
+                    if (val is UiComboItem ui) val = ui.Value;
+                    row.Cells.Add(ToValue(val));
+                }
+                table.Rows.Add(row);
+            }
+            return table;
+        }
+
+        private static UiResponse RenderSelectFile(UiSelectFile spec)
+        {
+            string ruta = null;
+            if (spec.Save)
+            {
+                using (var dlg = new SaveFileDialog
+                {
+                    Title = string.IsNullOrWhiteSpace(spec.Title) ? "Guardar archivo" : spec.Title,
+                    Filter = string.IsNullOrWhiteSpace(spec.Filter) ? "Todos los archivos|*.*" : spec.Filter,
+                    InitialDirectory = string.IsNullOrWhiteSpace(spec.InitialDir) ? null : spec.InitialDir
+                })
+                    if (dlg.ShowDialog() == DialogResult.OK) ruta = dlg.FileName;
+            }
+            else
+            {
+                using (var dlg = new OpenFileDialog
+                {
+                    Title = string.IsNullOrWhiteSpace(spec.Title) ? "Seleccionar archivo" : spec.Title,
+                    Filter = string.IsNullOrWhiteSpace(spec.Filter) ? "Todos los archivos|*.*" : spec.Filter,
+                    InitialDirectory = string.IsNullOrWhiteSpace(spec.InitialDir) ? null : spec.InitialDir,
+                    CheckFileExists = true
+                })
+                    if (dlg.ShowDialog() == DialogResult.OK) ruta = dlg.FileName;
+            }
+            return new UiResponse { SelectedPath = ruta ?? "" };
+        }
+
+        private static UiResponse RenderSelectFolder(UiSelectFolder spec)
+        {
+            string ruta = null;
+            using (var dlg = new FolderBrowserDialog
+            {
+                Description = string.IsNullOrWhiteSpace(spec.Title) ? "Seleccionar carpeta" : spec.Title
+            })
+            {
+                if (!string.IsNullOrWhiteSpace(spec.InitialDir) && Directory.Exists(spec.InitialDir))
+                    dlg.SelectedPath = spec.InitialDir;
+                if (dlg.ShowDialog() == DialogResult.OK) ruta = dlg.SelectedPath;
+            }
+            return new UiResponse { SelectedPath = ruta ?? "" };
         }
 
         // ctx.show_html: ventana con un control WebView2 (Edge/Chromium, ya viene con
@@ -809,8 +980,19 @@ namespace BrosLMV
             return buffer;
         }
 
-        private static Resultado Fail(string code, string message) =>
-            new Resultado { Exito = false, CodigoError = code, MensajeError = message };
+        private static Resultado Fail(string code, string message, string detalle = "") =>
+            new Resultado { Exito = false, CodigoError = code, MensajeError = message, Detalle = detalle ?? "" };
+
+        // Formato único de error para las 3 rutas que lo muestran (consola Python, botón de
+        // ribbon Python, y cualquier otro consumidor de Resultado): mismo estilo que ya usa
+        // Scripting.EjecutarConValor para C# ("EXCEPCION EN EJECUCION: tipo: mensaje\nstack"),
+        // para que no importe el lenguaje del script, el error se vea igual de completo.
+        public static string FormatearError(Resultado r)
+        {
+            string resumen = r.MensajeError + "  [" + r.CodigoError + "]";
+            if (string.IsNullOrWhiteSpace(r.Detalle)) return resumen;
+            return resumen + Environment.NewLine + Environment.NewLine + r.Detalle.TrimEnd();
+        }
 
         private static void TryKill(Process proc)
         {

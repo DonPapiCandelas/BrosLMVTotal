@@ -141,4 +141,27 @@ BEGIN
     EXEC('INSERT dbo.engRibbonMenu ('+@cm+') VALUES ('+@vm+')');
 END
 
+-- ============================================================
+-- 5) Versión de aprovisionamiento aplicada. NO es la versión del addon (esa vive por
+--    ESTACION, en C:\BrosLMV\bin, y es la misma para todas las empresas) -- esto registra
+--    qué versión de ESTE SCRIPT se corrió en esta empresa, para que el instalador pueda
+--    avisar "Actualizar disponible" cuando exista una versión más nueva de provisión
+--    (p.ej. porque se agregó una tabla zzBros* nueva) en vez de asumir a ciegas que ya
+--    está al día solo porque el botón del ribbon existe.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='zzBrosInfo')
+CREATE TABLE dbo.zzBrosInfo(
+    Clave NVARCHAR(50)  NOT NULL PRIMARY KEY,
+    Valor NVARCHAR(200) NULL);
+
+IF EXISTS (SELECT 1 FROM zzBrosInfo WHERE Clave='ProvisionVersion')
+    UPDATE zzBrosInfo SET Valor=@provisionVersion WHERE Clave='ProvisionVersion';
+ELSE
+    INSERT INTO zzBrosInfo (Clave, Valor) VALUES ('ProvisionVersion', @provisionVersion);
+
+IF EXISTS (SELECT 1 FROM zzBrosInfo WHERE Clave='UltimaInstalacion')
+    UPDATE zzBrosInfo SET Valor=CONVERT(NVARCHAR(30), GETDATE(), 120) WHERE Clave='UltimaInstalacion';
+ELSE
+    INSERT INTO zzBrosInfo (Clave, Valor) VALUES ('UltimaInstalacion', CONVERT(NVARCHAR(30), GETDATE(), 120));
+
 SELECT @grp AS GrupoBrosLMV, @ctrl AS ControlConsola, 'Reinicia CONTPAQi' AS Nota;

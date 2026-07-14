@@ -33,8 +33,15 @@ from broslmv import ctx
 | `ctx.scalar(sql, params=None)` | Un valor |
 | `ctx.execute(sql, params=None)` | DML → filas afectadas (`int`) |
 | `ctx.msg(text, title="BrosLMV")` | Mensaje al usuario |
+| `ctx.confirm(text, title="Confirmar")` | Pregunta Sí/No, bloquea hasta respuesta → `bool` |
 | `ctx.log(text)` | Log/auditoría |
 | `ctx.progress(text, percent)` | Progreso |
+| `ctx.form(spec)` | Formulario con campos y/o grid editable → `dict` (ver §2.3) |
+| `ctx.show_html(html, title="BrosLMV", width=800, height=600, modal=True)` | Ventana con HTML/CSS/JS real (WebView2) |
+| `ctx.select_file(title, filter, save=False, initial_dir="")` | Diálogo nativo elegir archivo → `str` ("" si canceló) |
+| `ctx.select_folder(title, initial_dir="")` | Diálogo nativo elegir carpeta → `str` |
+| `ctx.read_excel(path, sheet=None)` | Lee `.xlsx` → `list[dict]` (sin depender de Excel instalado) |
+| `ctx.write_excel(rows, path, sheet_name="Hoja1")` | Escribe `list[dict]` a `.xlsx` |
 
 **Valor de retorno:** el script devuelve un resultado asignando la variable global
 **`result`** (se muestra al usuario / se registra).
@@ -172,13 +179,13 @@ El instalador único deja en `C:\BrosLMV`: `bin\` (addon + `Google.Protobuf.dll`
 `host\` (BrosLMV.Host.exe x64), `runtimes\python\` (CPython embeddable) y `workers\`
 (paquete `broslmv` + runner). El addon lanza el host por un Named Pipe seguro (ACL + token).
 
-## 5. Límites actuales (en construcción)
+## 5. Límites actuales
 
-- **UI durante la ejecución:** `ctx.msg`/`ctx.progress` se registran y el `result` se
-  muestra al final; falta el relay para que se vean *mientras* corre el script
-  (punto **C6c-UI**). `ctx.form` / `ctx.show_html` (UI moderna, decisión D9) vendrán después.
 - **Arranque:** hoy se lanza un host por ejecución (≈1 s la 1ª vez). El host persistente
   es el punto **C6d**.
+- `ctx.msg`/`ctx.confirm`/`ctx.form`/`ctx.show_html`/`ctx.select_file`/`ctx.select_folder`
+  ya se ven en vivo durante la ejecución (relay al addon vía Named Pipe) — no hay que
+  esperar a que el script termine.
 
 Ver el diseño del host en [`ARQUITECTURA_V3.md`](ARQUITECTURA_V3.md) y el historial en
 [`CHANGELOG.md`](CHANGELOG.md).

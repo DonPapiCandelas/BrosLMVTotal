@@ -172,8 +172,11 @@ public sealed class PythonProcess
                 "context" => _gateway.Context(request.Context),
                 "get_selected_ids" => _gateway.GetSelectedIds(request.Context),
                 "msg" => HandleMsg(msg),
+                "confirm" => HandleConfirm(msg),
                 "form" => HandleForm(msg),
                 "show_html" => HandleShowHtml(msg),
+                "select_file" => HandleSelectFile(msg),
+                "select_folder" => HandleSelectFolder(msg),
                 "log" => HandleLog(msg),
                 "progress" => HandleProgress(msg),
                 "query" => _gateway.Query(request.Context, GetStringArg(msg, 0), GetDictArg(msg, 1)),
@@ -196,6 +199,11 @@ public sealed class PythonProcess
         return true;
     }
 
+    private object HandleConfirm(RunnerMessage msg)
+    {
+        return _callbacks.Confirm(_executionId, GetStringArg(msg, 0), GetStringArg(msg, 1, "Confirmar"));
+    }
+
     private object HandleForm(RunnerMessage msg)
     {
         return _callbacks.Form(_executionId, GetDictArg(msg, 0));
@@ -210,6 +218,22 @@ public sealed class PythonProcess
             GetIntArg(msg, 3, 600),
             GetBoolArg(msg, 4, true));
         return true;
+    }
+
+    private object HandleSelectFile(RunnerMessage msg)
+    {
+        return _callbacks.SelectFile(_executionId,
+            GetStringArg(msg, 0, "Seleccionar archivo"),
+            GetStringArg(msg, 1, ""),
+            GetBoolArg(msg, 2, false),
+            GetStringArg(msg, 3, ""));
+    }
+
+    private object HandleSelectFolder(RunnerMessage msg)
+    {
+        return _callbacks.SelectFolder(_executionId,
+            GetStringArg(msg, 0, "Seleccionar carpeta"),
+            GetStringArg(msg, 1, ""));
     }
 
     private object HandleLog(RunnerMessage msg)

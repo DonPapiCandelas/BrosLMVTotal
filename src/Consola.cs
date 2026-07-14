@@ -222,8 +222,15 @@ namespace BrosLMV
 
             // Interacción
             new MetodoCtx("ctx.msg", "ctx.msg(texto, titulo=\"BrosLMV\")", "Muestra un mensaje al usuario.", "ctx.msg(\"Proceso terminado\", \"Aviso\")"),
+            new MetodoCtx("ctx.confirm", "ctx.confirm(texto, titulo=\"Confirmar\") : bool", "Pregunta Sí/No y bloquea hasta que el usuario responda.", "if ctx.confirm(\"¿Continuar?\"):\r\n    ctx.msg(\"Confirmado\")"),
             new MetodoCtx("ctx.log", "ctx.log(texto, nivel=\"INFO\")", "Escribe a la bitácora/auditoría.", "ctx.log(\"Actualizados {} docs\".format(n))"),
             new MetodoCtx("ctx.progress", "ctx.progress(texto=\"\", porcentaje=0)", "Actualiza el progreso de la ejecución.", "ctx.progress(\"Procesando...\", 50)"),
+            new MetodoCtx("ctx.form", "ctx.form(spec) : dict", "Formulario con campos y/o grid editable. Ver plantilla PLANTILLA_EJEMPLO_CONTEO_GRID_PYTHON.py.", "r = ctx.form({\r\n    \"title\": \"Datos\",\r\n    \"fields\": [{\"name\": \"nota\", \"label\": \"Nota\", \"type\": \"text\"}],\r\n})\r\nif r[\"submitted\"]:\r\n    ctx.msg(r[\"values\"][\"nota\"])"),
+            new MetodoCtx("ctx.show_html", "ctx.show_html(html, titulo=\"BrosLMV\", ancho=800, alto=600, modal=True)", "Ventana con HTML/CSS/JS real (WebView2). Ver PLANTILLA_EJEMPLO_DASHBOARD_VENTAS_PYTHON.py.", "ctx.show_html(\"<h1>Hola</h1>\", \"Reporte\")"),
+            new MetodoCtx("ctx.select_file", "ctx.select_file(titulo=\"...\", filtro=\"Excel|*.xlsx\", guardar=False) : str", "Diálogo nativo para elegir archivo. \"\" si canceló.", "ruta = ctx.select_file(\"Elegir Excel\", \"Excel|*.xlsx\")"),
+            new MetodoCtx("ctx.select_folder", "ctx.select_folder(titulo=\"...\") : str", "Diálogo nativo para elegir carpeta. \"\" si canceló.", "carpeta = ctx.select_folder(\"Elegir destino\")"),
+            new MetodoCtx("ctx.read_excel", "ctx.read_excel(ruta, hoja=None) : list[dict]", "Lee un .xlsx como lista de dict (encabezados = 1ª fila). No requiere Excel instalado.", "filas = ctx.read_excel(ctx.select_file())"),
+            new MetodoCtx("ctx.write_excel", "ctx.write_excel(filas, ruta, hoja=\"Hoja1\")", "Escribe una lista de dict a .xlsx.", "ctx.write_excel([{\"Producto\": \"X\", \"Cant\": 10}], r\"C:\\reporte.xlsx\")"),
 
             // Valor de retorno
             new MetodoCtx("result", "result = <valor>", "Variable global que devuelve el script (se muestra al usuario).", "result = f\"Empresa={ctx.empresa}, seleccionados={ctx.get_selected_ids()}\""),
@@ -243,6 +250,8 @@ namespace BrosLMV
             new MetodoCtx("ctx.erp.OwnedBusinessEntityId", "ctx.erp.OwnedBusinessEntityId() : int", "Empresa propia (propiedad → con paréntesis).", "be = ctx.erp.OwnedBusinessEntityId()"),
             new MetodoCtx("ctx.erp.NuevoDocumento", "ctx.erp.NuevoDocumento(moduleID, depotID, businessEntityID=0) : int", "Crea el encabezado de un documento con los defaults del módulo y devuelve el DocumentID.", "doc_id = ctx.erp.NuevoDocumento(183, 1, 162)"),
             new MetodoCtx("ctx.erp.AgregarArticulo", "ctx.erp.AgregarArticulo(documentID, productID, cantidad=1, precio=-1) : int", "Agrega una partida (lee orgProduct). Tras agregar, llamar RecalcCompleto.", "ctx.erp.AgregarArticulo(doc_id, 1, 3, 100)\r\nctx.erp.RecalcCompleto(doc_id)"),
+            new MetodoCtx("ctx.erp.Timbrar", "ctx.erp.Timbrar(documentID, pruebas=False)", "Timbra el documento (motor nativo de Comercial). Operación fiscal real.", "if ctx.confirm(\"¿Timbrar?\"):\r\n    ctx.erp.Timbrar(doc_id, False)"),
+            new MetodoCtx("ctx.erp.RelacionarCFDI", "ctx.erp.RelacionarCFDI(documentID, sourceDocumentID, tipoRelacion)", "Liga un CFDI con otro (NC, devolución, anticipo).", "ctx.erp.RelacionarCFDI(doc_id, oc_id, \"07\")"),
             new MetodoCtx("ctx.erp.Call", "ctx.erp.Call(metodo, *args)", "Llama CUALQUIER miembro de XEngine por nombre.", "qr = ctx.erp.Call(\"GetQRCode\", \"datos\")"),
             new MetodoCtx("ctx.erp.Get", "ctx.erp.Get(propiedad)", "Lee CUALQUIER propiedad de XEngine por nombre.", "rfc = ctx.erp.Get(\"COMERCIAL_RFC\")"),
 
@@ -327,6 +336,26 @@ namespace BrosLMV
             new KeyValuePair<string,string>("Ejemplo Premium  ·  SQL Dashboard",
                 CargarPlantillaArchivo("PLANTILLA_EJEMPLO_SQL.sql",
                     "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+
+            // A partir de aqui: ejemplos de las capacidades agregadas en v2.24.0-2.31.0
+            // (ctx.form con grid, ctx.show_html, ctx.erp.Timbrar, ctx.read_excel/select_file).
+            // Deliberadamente CORTOS -- el punto es mostrar que estas funciones nuevas
+            // reemplazan cientos de lineas de WinForms a mano por unas cuantas declarativas.
+            new KeyValuePair<string,string>("Nuevo  ·  Timbrar CFDI (Python)",
+                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_TIMBRAR_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+
+            new KeyValuePair<string,string>("Nuevo  ·  Grid editable — conteo físico (Python)",
+                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_CONTEO_GRID_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+
+            new KeyValuePair<string,string>("Nuevo  ·  Dashboard HTML de ventas (Python)",
+                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_DASHBOARD_VENTAS_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+
+            new KeyValuePair<string,string>("Nuevo  ·  Importar Excel → Requisición (Python)",
+                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_IMPORTAR_EXCEL_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
         };
 
         private static string CargarPlantillaArchivo(string nombreArchivo, string fallback)
@@ -1524,7 +1553,7 @@ namespace BrosLMV
         private void NuevoScript()
         {
             _appKey = "";
-            _editor.Text = "// Nuevo script. 'ctx' ya viene inyectado.\r\nvar ids = ctx.GetSelectedIds();\r\nctx.Msg(\"Seleccionados: \" + ids.Count);\r\n";
+            _editor.Text = "";
             Text = "BrosLMV — Consola de scripts — (sin guardar)";
             _status.Text = "Nuevo script";
         }
@@ -1716,14 +1745,14 @@ namespace BrosLMV
                 {
                     HostClient.Resultado r;
                     try { r = HostClient.EjecutarPython(codigo, hctx, timeoutMs: timeoutMs, sqlRunner: sqlRunner, erpRunner: erpRunner); }
-                    catch (Exception ex) { r = new HostClient.Resultado { Exito = false, CodigoError = "CONSOLA_PYTHON_ERROR", MensajeError = ex.Message }; }
+                    catch (Exception ex) { r = new HostClient.Resultado { Exito = false, CodigoError = "CONSOLA_PYTHON_ERROR", MensajeError = ex.Message, Detalle = ex.StackTrace ?? "" }; }
 
                     if (IsDisposed) { _ejecutandoPython = false; return; }
                     try
                     {
                         BeginInvoke(new Action(() =>
                         {
-                            string res = r.Exito ? "" : (r.MensajeError + "  [" + r.CodigoError + "]");
+                            string res = r.Exito ? "" : HostClient.FormatearError(r);
                             if (r.Exito && !string.IsNullOrEmpty(r.Valor)) Salida(r.Valor, Color.Gainsboro);
                             TerminarEjecucion("consola-python", sw, filasAntes, res);
                             _ejecutandoPython = false;

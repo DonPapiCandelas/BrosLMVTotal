@@ -103,6 +103,12 @@ biblioteca de scripts, inspector de contexto y salida con pestañas.
 El ciclo de trabajo es ágil:
 **escribir → Ejecutar → leer error → corregir → Ejecutar**, sin cerrar CONTPAQi.
 
+> **La pestaña "Errores" muestra el traceback completo** (desde v2.31.0 en Python, ya lo
+> hacía C#): no solo el mensaje corto (`'BusinessEntityName'  [KeyError]`), sino también en
+> qué línea y función de TU script ocurrió, y toda la cadena de llamadas si el error viene de
+> una función que llamó a otra. No hace falta adivinar ni agregar `print()` de más para
+> ubicar el problema — el error ya trae el "mapa" completo.
+
 ---
 
 ## 4. Cómo crear un botón nuevo
@@ -496,6 +502,15 @@ int total = ctx.erp.DLookupInt("Total", "docDocument", "DocumentID=100");
 |--------|-------------|
 | `ctx.erp.AlreadyDocsSigned(documentId)` | ¿Está timbrado? → `bool` |
 | `ctx.erp.GetStatusPaidID(documentId)` | 0=sin pago, 1=parcial, 2=pagado → `int` |
+| `ctx.erp.Timbrar(documentId, pruebas=False)` | Timbra el documento ante el PAC configurado en la empresa. Lanza excepción si falla (revisar el mensaje: viene del PAC/SAT). `pruebas=True` usa el modo de pruebas del PAC (no genera timbre fiscal real). |
+| `ctx.erp.RelacionarCFDI(documentId, sourceDocumentId, tipoRelacion)` | Inserta en `docDocumentCFDIRelacionados` — liga un CFDI con otro (nota de crédito, devolución, aplicación de anticipo...). `tipoRelacion` es el código del catálogo SAT `c_TipoRelacion` como texto (p. ej. `"07"` = aplicación de anticipo). |
+
+> ⚠️ **`Timbrar` es una operación fiscal real.** Antes de llamarla en producción, confirma
+> que el documento está completo (partidas, cliente, forma de pago) y que el PAC/CSD de la
+> empresa está correctamente configurado. Usa `pruebas=True` para validar el flujo de tu
+> script sin generar un timbre real. Internamente usa el mismo componente de timbrado nativo
+> de Comercial que usa su propio módulo de facturación — no un PAC ni una firma implementados
+> por BrosLMV.
 
 ### 6.15 Auditoría / Log
 
@@ -818,6 +833,12 @@ Python corre fuera de proceso y **relaya** `ctx.erp.*` y SQL al addon vía Named
 - `ctx.*` (no erp): snake_case del SDK Python → `ctx.get_selected_ids()`, `ctx.query(...)`, `ctx.msg(...)`
 
 ### 9.2 Ejemplo Python
+
+> El encabezado `# lang: python` sigue siendo la forma recomendada de marcar el script (más
+> explícito, y funciona aunque el código no importe `ctx` de inmediato). Pero si se te olvida,
+> **ya no rompe**: desde v2.29.0, si el código contiene `from broslmv import ctx` en cualquier
+> parte, se detecta como Python igual. El marcador solo es indispensable en scripts Python que,
+> por algún motivo, no hagan ese import (poco común).
 
 ```python
 # lang: python

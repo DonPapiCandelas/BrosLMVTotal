@@ -8,6 +8,169 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.32.0] — 2026-07-14 — `ctx.confirm()`, `ctx.select_file()`/`ctx.select_folder()`, 4 ejemplos nuevos
+
+> Reportado por la comunidad (mismo issue del traceback, v2.31.0): un script Python que
+> llamaba `ctx.confirm(...)` tronaba con `'Context' object has no attribute 'confirm'`.
+> El método simplemente nunca se conectó del lado de Python, aunque el protocolo y el
+> addon (`ctx.Confirm` en C#, `UiConfirm` en `broslmv.proto`) ya lo soportaban.
+
+### Agregado
+- `ctx.confirm(texto, titulo="Confirmar") : bool` (Python) — diálogo Sí/No, bloquea hasta
+  que el usuario responde. Cableado de punta a punta: `IHostCallbackSink.Confirm` →
+  `RelayingCallbackSink.Confirm` (usa `UiRequest.Confirm`/`UiResponse.Confirmed`, ya
+  definidos en el protocolo) → `PythonProcess` case `"confirm"` → `ctx.py`.
+- `ctx.select_file(titulo, filtro, guardar=False, initial_dir="") : str` / `ctx.select_folder(...)`
+  (Python) — diálogos nativos de Windows para elegir archivo/carpeta. Tampoco estaban
+  implementados en el addon (`UiSelectFile`/`UiSelectFolder` del protocolo no se
+  renderizaban): `HostClient.RenderSelectFile`/`RenderSelectFolder` (addon, usa
+  `OpenFileDialog`/`SaveFileDialog`/`FolderBrowserDialog`) + el mismo relay de punta a
+  punta que `confirm`.
+- Panel de Referencias de la consola: agregadas las entradas de `ctx.confirm`, `ctx.form`,
+  `ctx.show_html`, `ctx.select_file`, `ctx.select_folder`, `ctx.read_excel`,
+  `ctx.write_excel`, `ctx.erp.Timbrar`, `ctx.erp.RelacionarCFDI` — antes no aparecían en
+  el panel a pesar de ya existir, así que nadie las descubría ahí.
+- 4 plantillas nuevas en el menú de ejemplos de la consola (`instalador/scripts/`),
+  deliberadamente cortas para mostrar que reemplazan cientos de líneas de WinForms a mano:
+  - `PLANTILLA_EJEMPLO_TIMBRAR_PYTHON.py` — timbrar con `ctx.erp.Timbrar` + `ctx.confirm`.
+  - `PLANTILLA_EJEMPLO_CONTEO_GRID_PYTHON.py` — conteo físico vs. sistema con el grid de
+    `ctx.form` (precarga, edición, diferencias con `ctx.show_html`).
+  - `PLANTILLA_EJEMPLO_DASHBOARD_VENTAS_PYTHON.py` — dashboard de ventas del mes con
+    `ctx.show_html` (datos reales, tarjetas + top 10 productos).
+  - `PLANTILLA_EJEMPLO_IMPORTAR_EXCEL_PYTHON.py` — `ctx.select_file` + `ctx.read_excel` →
+    crea una Requisición de Compra, con reporte de lo encontrado/no encontrado.
+
+## [2.31.1] — 2026-07-14 — "Nuevo script" empieza en blanco
+
+### Corregido
+- `Consola.cs` `NuevoScript()`: "Nuevo script" precargaba un mini ejemplo
+  (`ctx.GetSelectedIds()` + `ctx.Msg(...)`) en el editor — reportado por la comunidad como
+  confuso (parecía boilerplate obligatorio). Ahora el editor queda completamente vacío.
+
+## [2.31.0] — 2026-07-14 — Traceback completo en errores de Python
+
+> Reportado por la comunidad: los errores de scripts Python solo mostraban un resumen de una
+> línea ("`'BusinessEntityName'  [KeyError]`"), sin línea, función ni cadena de llamadas —
+> obligaba a adivinar dónde había fallado. El traceback completo YA se capturaba desde el
+> diseño original (`runner.py` con `traceback.format_exc()`, protocolo con campos
+> `Error.Detail`/`Error.Traceback`) pero se descartaba en el último tramo, en el addon.
+
+### Corregido
+- `runner.py`: el traceback que se manda ahora excluye el frame interno del propio runner
+  (el `exec()` de `main()`) — solo se ve el código del usuario y de los módulos que importe
+  (`broslmv/ctx.py` incluido si el error ocurre ahí), con archivo, línea, función y la cadena
+  completa de llamadas (`_traceback_del_usuario`).
+- `src/HostClient.cs`: `Resultado` ahora tiene `Detalle` (antes se recibía `Error.Traceback`/
+  `Error.Detail` del protocolo y se tiraba sin usar, en la línea que arma `Fail(...)` desde
+  `ExecutionFailed`). Nuevo `HostClient.FormatearError(Resultado)`: mismo formato en las 3
+  rutas que muestran errores (consola Python, botón de ribbon Python, auditoría) — mensaje +
+  código, y si hay traceback, el stack completo debajo.
+- `src/Consola.cs` / `src/ClsMain.cs`: usan `FormatearError` en vez de armar el resumen de una
+  línea a mano; la pestaña "Errores" y el `MessageBox` de error de botón ahora muestran el
+  traceback completo (ya podían mostrar texto multilínea — el límite nunca fue la UI, era que
+  no le llegaba el dato).
+
+### Pendiente (fases siguientes, no incluidas en esta versión)
+- Verificar si los errores SQL vía la conexión COM (`Com.Call` dentro de `Query`/`NonQuery`)
+  se están tragando silenciosamente (dejan el mensaje en `Com.LastError` sin propagarlo como
+  excepción) — sospecha sin confirmar, requiere una prueba dirigida antes de tocar código.
+- Botón "Copiar error completo" en la pestaña Errores de la consola.
+
+## [2.30.0] — 2026-07-14 — Instalador "Empresas": versión por empresa
+
+### Corregido
+- El instalador de empresas (`instaladores/Empresas`) detectaba "Ya instalado" con un solo
+  booleano (¿existe el botón del ribbon `BrosLMV.CONSOLA`?) sin registrar ni comparar ninguna
+  versión — no había forma de saber si una empresa se quedó con una provisión vieja (faltándole
+  tablas `zzBros*` agregadas después), ni de distinguir "instalar" de "actualizar".
+
+### Agregado
+- `assets/provision_empresa.sql` §5: nueva tabla `zzBrosInfo` (clave/valor). Cada corrida del
+  script registra `ProvisionVersion` (la versión del instalador que se usó) y
+  `UltimaInstalacion`. Recibe `@provisionVersion` desde C# (`MainWindow.Provision`).
+- `MainWindow.xaml.cs`: `DetectSql` ahora también lee `zzBrosInfo.ProvisionVersion` por empresa
+  (si la tabla existe). Nuevo estado **"Actualizar disponible"** (ícono ↑, azul) cuando la
+  versión registrada es más vieja que la del instalador actual — o desconocida (empresas
+  provisionadas antes de que existiera este registro se tratan como desactualizadas, ya que no
+  hay forma de saber qué tienen). Columna nueva "Versión instalada" en la grilla. Filtro nuevo
+  "Por actualizar". "Marcar pendientes" ahora también marca las que necesitan actualizarse.
+- Nota importante: la **versión del addon es por ESTACIÓN** (`C:\BrosLMV\bin`), no por empresa
+  — este registro es de la versión de **provisión** (ribbon + tablas `zzBros*`), que es lo que
+  de verdad varía por base de datos.
+
+### Corregido (post-release, encontrado al probar en vivo)
+- `DetectSql` original tronaba en **todas** las empresas y devolvía 0 filas sin ningún error
+  visible ("Probar conexión" parecía no hacer nada): el `CASE WHEN EXISTS(...) THEN (SELECT
+  ... FROM zzBrosInfo) ELSE NULL END` referenciaba `zzBrosInfo` directamente dentro del lote
+  dinámico — SQL Server intenta enlazar ese nombre de objeto al **analizar** el lote
+  (`sp_executesql`), no al ejecutarlo, así que fallaba con "Invalid object name ... zzBrosInfo"
+  en cualquier empresa que todavía no tuviera esa tabla (o sea, todas, por ser una tabla nueva).
+  Reescrito: cada verificación va en su propio `sp_executesql` con parámetro `OUTPUT`, y la
+  consulta a `zzBrosInfo` solo se construye/ejecuta **después** de confirmar (en un paso previo
+  que solo toca `sys.tables`, siempre seguro) que la tabla existe. Verificado en vivo: 12/12
+  empresas detectadas correctamente tras el fix.
+
+## [2.29.0] — 2026-07-13 — Detección de lenguaje más tolerante
+
+### Corregido
+- `HostClient.EsPython`/`EsSql`: antes solo revisaban la primera línea no vacía del script y
+  se detenían ahí — un salto de línea o comentario extra antes del marcador (`# lang: python`)
+  rompía la detección en silencio, y el script se corría como C# (error de compilación sin
+  relación con el problema real). Ahora se revisan las primeras 10 líneas no vacías.
+- `EsPython` agrega un respaldo por contenido: si el código contiene `from broslmv import ctx`
+  en cualquier parte, se trata como Python aunque falte el marcador `# lang: python` por
+  completo — cubre el caso de olvidarlo del todo, no solo de ponerlo mal.
+
+## [2.28.0] — 2026-07-13 — `ctx.erp.RelacionarCFDI()`
+
+### Agregado
+- `ctx.erp.RelacionarCFDI(documentId, sourceDocumentId, tipoRelacion)` (`src/Scripting.cs`,
+  `ErpContext`): inserta en `docDocumentCFDIRelacionados` para ligar un CFDI con otro (nota de
+  crédito, devolución, aplicación de anticipo — código de `tipoRelacion` según el catálogo SAT
+  `c_TipoRelacion`, p. ej. `"07"`). Reemplaza el INSERT manual que antes había que escribir a
+  mano en cada script que necesitara esta relación.
+- `docs/MANUAL.md` §6.14: documentado junto a `Timbrar`.
+
+## [2.27.0] — 2026-07-13 — `ctx.read_excel()` / `ctx.write_excel()`
+
+### Agregado
+- `ctx.read_excel(path, sheet=None)` / `ctx.write_excel(rows, path, sheet_name="Hoja1")`
+  (Python, `broslmv/ctx.py`): leer/escribir `.xlsx` como lista de `dict` usando `openpyxl`,
+  sin automatizar Excel.exe vía COM. No requiere Excel instalado en la máquina donde corre
+  Comercial — más rápido y confiable que instanciar `Excel.Application` con COM Interop.
+- `build/descargar_python.ps1`: `openpyxl` ahora se instala por defecto en el runtime Python
+  embebido (paso 12), con su propia prueba de humo (paso 13).
+
+## [2.26.0] — 2026-07-13 — `ctx.form()`: grid editable de partidas
+
+### Agregado
+- `ctx.form({"grid": {...}})` (Python): además de los campos sueltos, un formulario ahora
+  puede llevar una grilla editable (`DataGridView` real en el addon) para capturar listas de
+  renglones — partidas, productos, líneas de un documento, etc. Spec del grid: `columns`
+  (`name`, `caption`, `type`, `width`, `editable`, `options` para columnas tipo lista),
+  `rows` (precarga), `allow_add`/`allow_delete` (agregar/quitar renglones desde la UI). El
+  resultado trae `r["grid_rows"]` con la lista final de filas (lista de `dict`, una entrada
+  por columna). Protocolo: `broslmv.proto` ya traía `FormGrid`/`GridColumn` definidos; esta
+  versión los cablea de punta a punta — `RelayingCallbackSink.ToUiForm` (host) arma el
+  `FormGrid` desde el spec de Python y decodifica `FormResult.GridRows` de vuelta a
+  `grid_rows`; `HostClient.RenderUiForm` (addon) arma el `DataGridView`, precarga las filas
+  iniciales y lee el resultado final al cerrar (`ConfigureFormGrid`/`ReadFormGrid`).
+- Reemplaza de raíz la necesidad de construir ventanas WinForms/WPF a mano cada vez que un
+  script necesita capturar una lista editable de renglones.
+
+## [2.25.0] — 2026-07-13 — `ctx.erp.Timbrar()`: timbrado CFDI nativo
+
+### Agregado
+- `ctx.erp.Timbrar(documentId, pruebas=False)` (`src/Scripting.cs`, `ErpContext`): timbra un
+  documento usando el componente COM de timbrado que trae Comercial de fábrica (el mismo que
+  usa su propio módulo de facturación), sin depender del SDK oficial de CONTPAQi ni de ninguna
+  librería externa de firmado/PAC. Lee la ruta de destino de los XML desde
+  `orgBusinessEntityCFD.CFDDocumentsPath` de la empresa activa, y expone `pruebas=True` para
+  usar el modo de pruebas del PAC configurado sin generar un timbre fiscal real. Lanza
+  excepción si el timbrado falla (el mensaje viene directo del PAC/SAT). Disponible igual en
+  Python vía `ctx.erp.Timbrar(...)` (proxy genérico, sin cableado adicional en el host).
+- `docs/MANUAL.md` §6.14: documentado con su advertencia de uso (operación fiscal real).
+
 ## [2.24.0] — 2026-07-11 — `ctx.show_html()`: ventana HTML/WebView2 embebida (Python)
 
 > Primer caso real, verificado en producción contra GGV_DE_MEXICO (`ReporteXVehiculo.py`,

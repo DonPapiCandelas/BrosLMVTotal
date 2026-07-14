@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.24.0.0")]
+[assembly: AssemblyVersion("2.32.0.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -253,7 +253,7 @@ namespace BrosLMV
                 }
                 catch (Exception ex)
                 {
-                    r = new HostClient.Resultado { Exito = false, CodigoError = "BOTON_PYTHON_ERROR", MensajeError = ex.Message };
+                    r = new HostClient.Resultado { Exito = false, CodigoError = "BOTON_PYTHON_ERROR", MensajeError = ex.Message, Detalle = ex.StackTrace ?? "" };
                 }
                 sw.Stop();
 
@@ -266,12 +266,12 @@ namespace BrosLMV
                         Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
                             "boton-python", sw.ElapsedMilliseconds, r.FilasAfectadas,
                             r.Exito ? "OK" : "ERROR",
-                            r.Exito ? r.Valor : (r.CodigoError + ": " + r.MensajeError));
+                            r.Exito ? r.Valor : HostClient.FormatearError(r));
                     }
                     catch { }
 
                     if (!r.Exito)
-                        MessageBox.Show(r.MensajeError + "\n\n[" + r.CodigoError + "]",
+                        MessageBox.Show(HostClient.FormatearError(r),
                             "Error en script Python " + appKey, MessageBoxButtons.OK, MessageBoxIcon.Error);
                     else if (!string.IsNullOrEmpty(r.Valor))
                         MessageBox.Show(r.Valor, "BrosLMV - " + appKey,

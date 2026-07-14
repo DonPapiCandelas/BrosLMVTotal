@@ -76,11 +76,24 @@ def main() -> int:
                 "ok": False,
                 "errorCode": exc.__class__.__name__,
                 "errorMessage": str(exc),
-                "traceback": traceback.format_exc(),
+                "traceback": _traceback_del_usuario(exc),
                 "elapsedMs": elapsed_ms,
             }
         )
         return 0
+
+
+def _traceback_del_usuario(exc: BaseException) -> str:
+    """Traceback completo (linea, funcion, archivo, cadena de llamadas) SIN el frame interno
+    de este runner (el exec() de main()) -- a quien escribe un boton solo le sirve ver su
+    propio codigo, no la plomeria de BrosLMV. Los frames de modulos importados por el script
+    (broslmv/ctx.py, o librerias propias del usuario) SI se conservan: son parte real de la
+    cadena de llamadas."""
+    frames = traceback.extract_tb(exc.__traceback__)
+    propios = [f for f in frames if f.filename != __file__]
+    texto = "".join(traceback.format_list(propios))
+    texto += "".join(traceback.format_exception_only(type(exc), exc))
+    return texto
 
 
 def _write(obj: dict) -> None:

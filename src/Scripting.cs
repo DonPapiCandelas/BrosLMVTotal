@@ -964,6 +964,52 @@ namespace BrosLMV
             return Com.Call(lbs, "GetNextFolio", new object[] { moduleId, prefix, 0, depotId })?.ToString() ?? "";
         }
 
+        // ---- CFDI / Timbrado ----
+        // Timbra un documento usando el motor nativo de Comercial (COM CFDI3.clsMain) --
+        // el mismo componente que usa el propio modulo de facturacion, sin pasar por SDKPro.
+        // pruebas=true usa el modo de pruebas del PAC configurado (no genera timbre fiscal real).
+        // Lanza excepcion si el timbrado falla; revisar el mensaje para el detalle del PAC/SAT.
+        public void Timbrar(int documentId, bool pruebas = false)
+        {
+            string destino = "";
+            if (_owner != null)
+            {
+                var cfg = _owner.Query("SELECT TOP 1 CFDDocumentsPath FROM orgBusinessEntityCFD WHERE BusinessEntityID=" + OwnedBusinessEntityId);
+                if (cfg != null && cfg.Count > 0 && cfg[0].TryGetValue("CFDDocumentsPath", out var ruta) && ruta != null)
+                    destino = ruta.ToString();
+            }
+
+            var cfdi = CrearHelper("CFDI3.clsMain");
+            Com.SetProp(cfdi, "SDKMode", true);
+            Com.SetProp(cfdi, "SoftwareName", "XE");
+            Com.SetProp(cfdi, "SoftwareVersion", "2");
+            Com.SetProp(cfdi, "SoftwareType", 0);
+            Com.SetProp(cfdi, "DestinationDirectory", destino);
+            Com.SetProp(cfdi, "AllIDs", documentId.ToString());
+            Com.SetProp(cfdi, "TestMode", pruebas);
+
+            // "Timbrar" es una PROPIEDAD (get) con efecto secundario: al leerla, CFDI3.clsMain
+            // ejecuta el timbrado y regresa el resultado. No es un metodo.
+            var ok = Com.GetProp(cfdi, "Timbrar");
+            if (ok == null || !Convert.ToBoolean(ok))
+            {
+                var detalle = Com.GetProp(cfdi, "ErrorDescription") as string ?? Com.LastError ?? "";
+                throw new Exception("Error al timbrar el documento " + documentId + ": " + detalle);
+            }
+        }
+
+        // Relaciona un CFDI con otro documento (p. ej. nota de crédito que sustituye un
+        // anticipo aplicado). tipoRelacion es el catálogo SAT c_TipoRelacion como string:
+        // "01" nota de crédito de doctos relacionados, "03" devolución, "07" aplicación de
+        // anticipo, etc. — ver catálogo oficial del SAT para el resto de los códigos.
+        public void RelacionarCFDI(int documentId, int sourceDocumentId, string tipoRelacion)
+        {
+            if (_owner == null) throw new Exception("RelacionarCFDI requiere ScriptContext (SQL no disponible).");
+            string sql = "INSERT INTO docDocumentCFDIRelacionados (DocumentID, SourceDocumentID, CFDTipoRelacion) VALUES (" +
+                documentId + ", " + sourceDocumentId + ", N'" + (tipoRelacion ?? "").Replace("'", "''") + "')";
+            _owner.NonQuery(sql);
+        }
+
         // ---- Existencias / Precios ----
         public double GetProductStock(int productId, int depotId)
         {

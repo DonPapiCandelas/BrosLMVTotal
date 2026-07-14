@@ -202,6 +202,7 @@
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
               <DataGridTextColumn Header="Empresa (base de datos)" Binding="{Binding DB}" Width="*" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Versión instalada" Binding="{Binding VersionInstalada}" Width="130" IsReadOnly="True" Foreground="#64748B"/>
               <DataGridTemplateColumn Header="Estado" Width="200">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>

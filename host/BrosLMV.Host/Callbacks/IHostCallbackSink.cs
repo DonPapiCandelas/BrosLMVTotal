@@ -27,10 +27,13 @@ namespace BrosLMV.Host.Callbacks;
 public interface IHostCallbackSink
 {
     void Message(string executionId, string text, string title);
+    bool Confirm(string executionId, string text, string title);
     void Log(string executionId, string level, string text);
     void Progress(string executionId, string text, int percent);
     Dictionary<string, object?> Form(string executionId, Dictionary<string, object?> spec);
     void ShowHtml(string executionId, string html, string title, int width, int height, bool modal);
+    string SelectFile(string executionId, string title, string filter, bool save, string initialDir);
+    string SelectFolder(string executionId, string title, string initialDir);
 }
 
 // Sink por defecto: registra los callbacks en C:\BrosLMV\logs\host-callbacks.log
@@ -46,6 +49,15 @@ public sealed class LoggingHostCallbackSink : IHostCallbackSink
     public void Message(string executionId, string text, string title) =>
         Append(executionId, "MSG", $"[{title}] {text}");
 
+    // Sin addon conectado no hay forma de preguntarle al usuario -- False (no confirmar)
+    // es la respuesta segura por defecto (evita que una operación destructiva/fiscal
+    // proceda sin que nadie la haya confirmado de verdad).
+    public bool Confirm(string executionId, string text, string title)
+    {
+        Append(executionId, "CONFIRM", $"[{title}] {text} -> False (sin addon conectado)");
+        return false;
+    }
+
     public void Log(string executionId, string level, string text) =>
         Append(executionId, "LOG", $"[{level}] {text}");
 
@@ -60,6 +72,18 @@ public sealed class LoggingHostCallbackSink : IHostCallbackSink
 
     public void ShowHtml(string executionId, string html, string title, int width, int height, bool modal) =>
         Append(executionId, "SHOW_HTML", "Ventana HTML solicitada sin addon conectado.");
+
+    public string SelectFile(string executionId, string title, string filter, bool save, string initialDir)
+    {
+        Append(executionId, "SELECT_FILE", "Selector de archivo solicitado sin addon conectado.");
+        return "";
+    }
+
+    public string SelectFolder(string executionId, string title, string initialDir)
+    {
+        Append(executionId, "SELECT_FOLDER", "Selector de carpeta solicitado sin addon conectado.");
+        return "";
+    }
 
     private void Append(string executionId, string kind, string detail)
     {

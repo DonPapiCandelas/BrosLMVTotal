@@ -38,6 +38,14 @@ namespace BrosLMV.Empresas
         public bool Sel { get { return _sel; } set { _sel = value; PC("Sel"); } }
         public string DB { get; set; }
         public bool Instalado { get; set; }
+        public bool NecesitaActualizar { get; set; }
+
+        string _versionInstalada;
+        public string VersionInstalada
+        {
+            get { return _versionInstalada; }
+            set { _versionInstalada = value; PC("VersionInstalada"); }
+        }
 
         string _estado;
         public string Estado
@@ -51,7 +59,8 @@ namespace BrosLMV.Empresas
             {
                 string e = (_estado ?? "").ToLower();
                 if (e.Contains("error")) return "#DC2626";
-                if (e.Contains("instalad")) return "#1E9E5A";
+                if (e.Contains("actualizar")) return "#2D6FE0";
+                if (e.Contains("instalad") || e.Contains("actualizad")) return "#1E9E5A";
                 return "#E08A1E";
             }
         }
@@ -61,7 +70,8 @@ namespace BrosLMV.Empresas
             {
                 string e = (_estado ?? "").ToLower();
                 if (e.Contains("error")) return "✕";
-                if (e.Contains("instalad")) return "✓";
+                if (e.Contains("actualizar")) return "↑";
+                if (e.Contains("instalad") || e.Contains("actualizad")) return "✓";
                 return "●";
             }
         }
@@ -71,27 +81,62 @@ namespace BrosLMV.Empresas
     {
         readonly ObservableCollection<EmpresaRow> _rows = new ObservableCollection<EmpresaRow>();
         readonly string _provisionSql;
+        readonly Version _versionActual;
+        readonly string _versionActualTexto;
 
+        // Además de si existe el botón del ribbon, trae zzBrosInfo.ProvisionVersion (si la
+        // tabla/fila existe -- empresas provisionadas ANTES de que existiera esta columna
+        // simplemente regresan NULL, y se tratan como "versión desconocida" = ofrecer actualizar).
+        // OJO (bug real, encontrado en pruebas v2.30.0): NO se puede referenciar zzBrosInfo
+        // directamente dentro de una rama de CASE/subquery en el mismo lote dinámico, aunque
+        // esa rama solo se alcance cuando la tabla existe -- SQL Server intenta enlazar el
+        // nombre del objeto al ANALIZAR el lote (sp_executesql), no al ejecutarlo, así que
+        // tronaba "Invalid object name ... zzBrosInfo" en TODAS las empresas (ninguna tenía
+        // esa tabla todavía, por ser una columna nueva) y la consulta completa regresaba 0
+        // filas sin ningún error visible en la UI (WPF no repinta "Conectando..." hasta que
+        // termina la llamada síncrona, así que se sentía como "no hace nada"). Arreglo: cada
+        // verificación va en su propio sp_executesql con OUTPUT, y solo se construye/ejecuta
+        // la consulta a zzBrosInfo DESPUÉS de confirmar (en un paso previo, seguro) que existe.
         const string DetectSql = @"
 SET NOCOUNT ON;
 IF OBJECT_ID('tempdb..#r') IS NOT NULL DROP TABLE #r;
-CREATE TABLE #r(db sysname, instalado bit);
+CREATE TABLE #r(db sysname, instalado bit, version nvarchar(50) NULL);
 DECLARE @n sysname, @s nvarchar(max);
+DECLARE @tieneReq bit, @inst bit, @tieneInfo bit, @ver nvarchar(200);
 DECLARE c CURSOR LOCAL FAST_FORWARD FOR SELECT name FROM sys.databases WHERE database_id>4 AND state=0;
 OPEN c; FETCH NEXT FROM c INTO @n;
 WHILE @@FETCH_STATUS=0 BEGIN
-  SET @s=N'
-    IF EXISTS(SELECT 1 FROM '+QUOTENAME(@n)+'.sys.tables WHERE name=''engRibbonControl'')
+  BEGIN TRY
+    SET @tieneReq=0; SET @inst=0; SET @tieneInfo=0; SET @ver=NULL;
+
+    SET @s = N'SELECT @out = CASE WHEN EXISTS(SELECT 1 FROM '+QUOTENAME(@n)+'.sys.tables WHERE name=''engRibbonControl'')
        AND EXISTS(SELECT 1 FROM '+QUOTENAME(@n)+'.sys.tables WHERE name=''engRibbonGroup'')
        AND EXISTS(SELECT 1 FROM '+QUOTENAME(@n)+'.sys.tables WHERE name=''engModule'')
-       AND EXISTS(SELECT 1 FROM '+QUOTENAME(@n)+'.sys.tables WHERE name=''docDocument'')
-    INSERT #r(db,instalado) SELECT N'''+REPLACE(@n,'''','''''')+''',
-       CASE WHEN EXISTS(SELECT 1 FROM '+QUOTENAME(@n)+'.dbo.engRibbonControl WHERE ControlExecute=''BrosLMV.CONSOLA'') THEN 1 ELSE 0 END;';
-  BEGIN TRY EXEC sp_executesql @s; END TRY BEGIN CATCH END CATCH;
+       AND EXISTS(SELECT 1 FROM '+QUOTENAME(@n)+'.sys.tables WHERE name=''docDocument'') THEN 1 ELSE 0 END';
+    EXEC sp_executesql @s, N'@out bit OUTPUT', @out=@tieneReq OUTPUT;
+
+    IF @tieneReq = 1
+    BEGIN
+      SET @s = N'SELECT @out = CASE WHEN EXISTS(SELECT 1 FROM '+QUOTENAME(@n)+'.dbo.engRibbonControl WHERE ControlExecute=''BrosLMV.CONSOLA'') THEN 1 ELSE 0 END';
+      EXEC sp_executesql @s, N'@out bit OUTPUT', @out=@inst OUTPUT;
+
+      SET @s = N'SELECT @out = CASE WHEN EXISTS(SELECT 1 FROM '+QUOTENAME(@n)+'.sys.tables WHERE name=''zzBrosInfo'') THEN 1 ELSE 0 END';
+      EXEC sp_executesql @s, N'@out bit OUTPUT', @out=@tieneInfo OUTPUT;
+
+      IF @tieneInfo = 1
+      BEGIN
+        SET @s = N'SELECT @out = (SELECT TOP 1 Valor FROM '+QUOTENAME(@n)+'.dbo.zzBrosInfo WHERE Clave=''ProvisionVersion'')';
+        EXEC sp_executesql @s, N'@out nvarchar(200) OUTPUT', @out=@ver OUTPUT;
+      END
+
+      INSERT #r(db,instalado,version) VALUES (@n, @inst, @ver);
+    END
+  END TRY
+  BEGIN CATCH END CATCH
   FETCH NEXT FROM c INTO @n;
 END
 CLOSE c; DEALLOCATE c;
-SELECT db, instalado FROM #r ORDER BY db;";
+SELECT db, instalado, version FROM #r ORDER BY db;";
 
         public MainWindow()
         {
@@ -101,9 +146,23 @@ SELECT db, instalado FROM #r ORDER BY db;";
             cbFiltro.Items.Add("Todas");
             cbFiltro.Items.Add("Pendientes");
             cbFiltro.Items.Add("Instaladas");
+            cbFiltro.Items.Add("Por actualizar");
             cbFiltro.SelectedIndex = 0;
-            var _v = Assembly.GetExecutingAssembly().GetName().Version;
-            lblVer.Text = "BrosLMV v" + _v.Major + "." + _v.Minor + "." + _v.Build;
+            _versionActual = Assembly.GetExecutingAssembly().GetName().Version;
+            _versionActualTexto = _versionActual.Major + "." + _versionActual.Minor + "." + _versionActual.Build;
+            lblVer.Text = "BrosLMV v" + _versionActualTexto;
+        }
+
+        // Compara "X.Y.Z" contra la versión actual del instalador. NULL/vacío/ilegible = "más
+        // vieja" (se pide actualizar) -- son empresas provisionadas antes de que existiera el
+        // registro de versión, así que no hay forma de saber qué tienen y lo más seguro es
+        // ofrecer re-provisionar (el script es idempotente, no borra nada).
+        bool VersionDesactualizada(string versionInstalada)
+        {
+            Version v;
+            if (string.IsNullOrWhiteSpace(versionInstalada) || !Version.TryParse(versionInstalada, out v))
+                return true;
+            return v < _versionActual;
         }
 
         public void SetEstadoRuntime(string msg, bool ok)
@@ -147,11 +206,16 @@ SELECT db, instalado FROM #r ORDER BY db;";
                         while (rd.Read())
                         {
                             bool inst = Convert.ToInt32(rd["instalado"]) == 1;
+                            string ver = rd["version"] == DBNull.Value ? null : rd["version"].ToString();
+                            bool desact = inst && VersionDesactualizada(ver);
+                            string estado = !inst ? "Pendiente" : (desact ? "Actualizar disponible" : "Ya instalado");
                             list.Add(new EmpresaRow
                             {
                                 DB = rd["db"].ToString(),
                                 Instalado = inst,
-                                Estado = inst ? "Ya instalado" : "Pendiente",
+                                NecesitaActualizar = desact,
+                                VersionInstalada = inst ? (ver ?? "desconocida") : "—",
+                                Estado = estado,
                                 Sel = false
                             });
                         }
@@ -167,7 +231,11 @@ SELECT db, instalado FROM #r ORDER BY db;";
                 cn.Open();
                 using (var cmd = cn.CreateCommand())
                 {
-                    cmd.CommandText = _provisionSql; cmd.CommandTimeout = 120;
+                    // @provisionVersion la usa provision_empresa.sql §5 para dejar registro de
+                    // qué versión de este script quedó aplicada en la empresa (ver DetectSql).
+                    cmd.CommandText =
+                        "DECLARE @provisionVersion NVARCHAR(20) = '" + _versionActualTexto + "';\r\n" + _provisionSql;
+                    cmd.CommandTimeout = 120;
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -178,13 +246,15 @@ SELECT db, instalado FROM #r ORDER BY db;";
             int tot = _rows.Count;
             int inst = _rows.Count(r => r.Instalado);
             int pend = tot - inst;
+            int desact = _rows.Count(r => r.NecesitaActualizar);
             int sel = _rows.Count(r => r.Sel);
             cardTotal.Text = tot.ToString();
             cardInst.Text = inst.ToString();
             cardPend.Text = pend.ToString();
             btnInstall.Content = "Instalar seleccionadas (" + sel + ")";
             btnInstall.IsEnabled = sel > 0;
-            lblFooter.Text = tot + " empresa(s) detectada(s) · " + inst + " instalada(s) · " + pend + " pendiente(s)";
+            lblFooter.Text = tot + " empresa(s) detectada(s) · " + inst + " instalada(s) · " + pend + " pendiente(s)" +
+                (desact > 0 ? " · " + desact + " por actualizar" : "");
         }
 
         void ApplyFilter()
@@ -196,7 +266,10 @@ SELECT db, instalado FROM #r ORDER BY db;";
             {
                 var it = (EmpresaRow)o;
                 bool okTxt = string.IsNullOrWhiteSpace(txt) || it.DB.ToLower().Contains(txt);
-                bool okEst = modo == 1 ? !it.Instalado : (modo == 2 ? it.Instalado : true);
+                bool okEst = modo == 1 ? !it.Instalado
+                    : modo == 2 ? it.Instalado
+                    : modo == 3 ? it.NecesitaActualizar
+                    : true;
                 return okTxt && okEst;
             };
             view.Refresh();
@@ -263,7 +336,7 @@ SELECT db, instalado FROM #r ORDER BY db;";
         void btnMark_Click(object sender, RoutedEventArgs e)
         {
             var view = CollectionViewSource.GetDefaultView(_rows);
-            foreach (EmpresaRow it in view) if (!it.Instalado) it.Sel = true;
+            foreach (EmpresaRow it in view) if (!it.Instalado || it.NecesitaActualizar) it.Sel = true;
             grid.Items.Refresh();
             UpdateCounts();
         }
@@ -280,7 +353,9 @@ SELECT db, instalado FROM #r ORDER BY db;";
                 try
                 {
                     Provision(server, row.DB, user, pass);
-                    row.Instalado = true; row.Estado = "Instalado ahora"; row.Sel = false; ok++;
+                    row.Instalado = true; row.NecesitaActualizar = false;
+                    row.VersionInstalada = _versionActualTexto;
+                    row.Estado = "Instalado ahora"; row.Sel = false; ok++;
                 }
                 catch (Exception ex)
                 {

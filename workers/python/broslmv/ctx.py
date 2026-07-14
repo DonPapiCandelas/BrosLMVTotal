@@ -182,6 +182,15 @@ class Context:
     def msg(self, text: str, title: str = "BrosLMV") -> None:
         _bridge.call("msg", text, title)
 
+    def confirm(self, text: str, title: str = "Confirmar") -> bool:
+        """Pregunta Sí/No al usuario. Bloquea hasta que responda.
+
+        Ejemplo:
+            if ctx.confirm("¿Timbrar el documento " + str(doc) + "?"):
+                ctx.erp.Timbrar(doc)
+        """
+        return bool(_bridge.call("confirm", text, title))
+
     def form(self, spec: dict[str, Any]) -> dict[str, Any]:
         """Muestra un formulario WinForms renderizado por el addon.
 
@@ -195,6 +204,23 @@ class Context:
             })
             if r["submitted"]:
                 print(r["values"])
+
+        Grid editable opcional (partidas/renglones), con "grid": {...} en el spec:
+            r = ctx.form({
+                "title": "Partidas",
+                "grid": {
+                    "columns": [
+                        {"name": "producto", "caption": "Producto", "type": "text"},
+                        {"name": "cantidad", "caption": "Cantidad", "type": "decimal", "editable": True},
+                    ],
+                    "rows": [{"producto": "Tornillo", "cantidad": 10}],
+                    "allow_add": True,
+                    "allow_delete": True,
+                },
+            })
+            if r["submitted"]:
+                for fila in r["grid_rows"]:
+                    print(fila["producto"], fila["cantidad"])
         """
         return dict(_bridge.call("form", spec or {}))
 
@@ -207,6 +233,70 @@ class Context:
             ctx.show_html("<h1>Hola</h1><p>Reporte generado.</p>", title="Reporte", width=900, height=650)
         """
         _bridge.call("show_html", html or "", title, width, height, modal)
+
+    def read_excel(self, path: str, sheet: str | None = None) -> list[dict[str, Any]]:
+        """Lee un archivo .xlsx y regresa una lista de dict (una por fila, claves = encabezados
+        de la primera fila). No requiere Excel instalado (usa openpyxl, no automatiza Excel.exe).
+
+        Ejemplo:
+            filas = ctx.read_excel(r"C:\\Cotizaciones\\productos.xlsx")
+            for fila in filas:
+                print(fila["ProductID"], fila["Cantidad"])
+        """
+        import openpyxl
+
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        ws = wb[sheet] if sheet else wb.active
+        filas_iter = ws.iter_rows(values_only=True)
+        try:
+            encabezados = [str(h) if h is not None else "" for h in next(filas_iter)]
+        except StopIteration:
+            return []
+
+        resultado: list[dict[str, Any]] = []
+        for fila in filas_iter:
+            if all(v is None for v in fila):
+                continue
+            resultado.append({encabezados[i]: fila[i] for i in range(min(len(encabezados), len(fila)))})
+        return resultado
+
+    def write_excel(self, rows: list[dict[str, Any]], path: str, sheet_name: str = "Hoja1") -> None:
+        """Escribe una lista de dict a un archivo .xlsx (encabezados = claves del primer dict).
+        No requiere Excel instalado.
+
+        Ejemplo:
+            ctx.write_excel([{"Producto": "Tornillo", "Cantidad": 10}], r"C:\\Reportes\\salida.xlsx")
+        """
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = sheet_name
+
+        if rows:
+            encabezados = list(rows[0].keys())
+            ws.append(encabezados)
+            for fila in rows:
+                ws.append([fila.get(h) for h in encabezados])
+
+        wb.save(path)
+
+    def select_file(self, title: str = "Seleccionar archivo", filter: str = "Todos los archivos|*.*",
+                     save: bool = False, initial_dir: str = "") -> str:
+        """Abre un diálogo nativo de Windows para elegir un archivo (o dónde guardarlo, si
+        save=True). Regresa la ruta elegida, o "" si el usuario canceló.
+
+        Ejemplo:
+            ruta = ctx.select_file("Elegir Excel de productos", "Excel|*.xlsx;*.xls")
+            if ruta:
+                filas = ctx.read_excel(ruta)
+        """
+        return str(_bridge.call("select_file", title, filter, save, initial_dir) or "")
+
+    def select_folder(self, title: str = "Seleccionar carpeta", initial_dir: str = "") -> str:
+        """Abre un diálogo nativo de Windows para elegir una carpeta. Regresa la ruta
+        elegida, o "" si el usuario canceló."""
+        return str(_bridge.call("select_folder", title, initial_dir) or "")
 
     def log(self, text: str, level: str = "INFO") -> None:
         # log(text) o log(level, text) segun cuantos argumentos lleguen al host.

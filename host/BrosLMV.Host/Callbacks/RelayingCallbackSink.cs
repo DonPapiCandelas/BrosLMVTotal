@@ -19,6 +19,7 @@
 // muestra un MessageBox real en el proceso de Comercial. ctx.log y ctx.progress se registran
 // en el log del host (no viajan al addon).
 
+using System.Linq;
 using BrosLMV.Host.Workers;
 using BrosLMV.Protocol;
 
@@ -51,6 +52,74 @@ public sealed class RelayingCallbackSink : IHostCallbackSink
         }
     }
 
+    public bool Confirm(string executionId, string text, string title)
+    {
+        try
+        {
+            var req = new UiRequest { Confirm = new UiConfirm { Text = text ?? "", Title = title ?? "Confirmar" } };
+            UiResponse resp = _channel.SendUi(req);
+            if (resp.Error != null)
+            {
+                _logFallback.Log(executionId, "ERROR", "CONFIRM: " + resp.Error.Code + ": " + resp.Error.Message);
+                return false;
+            }
+            return resp.Confirmed;
+        }
+        catch
+        {
+            // Si el relay falla, False es la respuesta segura (no confirmar a ciegas).
+            return _logFallback.Confirm(executionId, text, title);
+        }
+    }
+
+    public string SelectFile(string executionId, string title, string filter, bool save, string initialDir)
+    {
+        try
+        {
+            UiResponse resp = _channel.SendUi(new UiRequest
+            {
+                SelectFile = new UiSelectFile
+                {
+                    Title = title ?? "",
+                    Filter = filter ?? "",
+                    Save = save,
+                    InitialDir = initialDir ?? ""
+                }
+            });
+            if (resp.Error != null)
+            {
+                _logFallback.Log(executionId, "ERROR", "SELECT_FILE: " + resp.Error.Code + ": " + resp.Error.Message);
+                return "";
+            }
+            return resp.SelectedPath ?? "";
+        }
+        catch
+        {
+            return _logFallback.SelectFile(executionId, title, filter, save, initialDir);
+        }
+    }
+
+    public string SelectFolder(string executionId, string title, string initialDir)
+    {
+        try
+        {
+            UiResponse resp = _channel.SendUi(new UiRequest
+            {
+                SelectFolder = new UiSelectFolder { Title = title ?? "", InitialDir = initialDir ?? "" }
+            });
+            if (resp.Error != null)
+            {
+                _logFallback.Log(executionId, "ERROR", "SELECT_FOLDER: " + resp.Error.Code + ": " + resp.Error.Message);
+                return "";
+            }
+            return resp.SelectedPath ?? "";
+        }
+        catch
+        {
+            return _logFallback.SelectFolder(executionId, title, initialDir);
+        }
+    }
+
     public void Log(string executionId, string level, string text) =>
         _logFallback.Log(executionId, level, text);
 
@@ -71,10 +140,24 @@ public sealed class RelayingCallbackSink : IHostCallbackSink
             foreach (var kv in resp.FormResult.Values)
                 values[kv.Key] = FromValue(kv.Value);
 
+            var gridRows = new List<Dictionary<string, object?>>();
+            if (resp.FormResult.GridRows != null)
+            {
+                var columnNames = resp.FormResult.GridRows.Columns.Select(c => c.Name).ToList();
+                foreach (var row in resp.FormResult.GridRows.Rows)
+                {
+                    var dict = new Dictionary<string, object?>();
+                    for (int i = 0; i < columnNames.Count && i < row.Cells.Count; i++)
+                        dict[columnNames[i]] = FromValue(row.Cells[i]);
+                    gridRows.Add(dict);
+                }
+            }
+
             return new Dictionary<string, object?>
             {
                 ["submitted"] = resp.FormResult.Submitted,
-                ["values"] = values
+                ["values"] = values,
+                ["grid_rows"] = gridRows
             };
         }
         catch (Exception ex)
@@ -160,7 +243,75 @@ public sealed class RelayingCallbackSink : IHostCallbackSink
             }
         }
 
+        if (spec.TryGetValue("grid", out var rawGrid) && rawGrid is Dictionary<string, object?> g)
+            form.Grid = ToFormGrid(g);
+
         return form;
+    }
+
+    private static FormGrid ToFormGrid(Dictionary<string, object?> g)
+    {
+        var grid = new FormGrid
+        {
+            AllowAdd = B(g, "allow_add", false),
+            AllowDelete = B(g, "allow_delete", false)
+        };
+
+        var columnNames = new List<string>();
+        if (g.TryGetValue("columns", out var rawCols) && rawCols is List<object?> cols)
+        {
+            foreach (var raw in cols)
+            {
+                if (raw is not Dictionary<string, object?> c) continue;
+                var col = new GridColumn
+                {
+                    Name = S(c, "name", ""),
+                    Caption = S(c, "caption", S(c, "name", "")),
+                    Type = FieldTypeOf(S(c, "type", "text")),
+                    Width = I(c, "width", 100),
+                    Editable = B(c, "editable", false)
+                };
+                if (c.TryGetValue("options", out var rawOpts) && rawOpts is List<object?> opts)
+                {
+                    foreach (var rawOpt in opts)
+                    {
+                        if (rawOpt is Dictionary<string, object?> opt)
+                            col.Options.Add(new ComboOption
+                            {
+                                Label = S(opt, "label", Convert.ToString(opt.GetValueOrDefault("value")) ?? ""),
+                                Value = ToValue(opt.GetValueOrDefault("value"))
+                            });
+                        else
+                            col.Options.Add(new ComboOption { Label = Convert.ToString(rawOpt) ?? "", Value = ToValue(rawOpt) });
+                    }
+                }
+                if (!string.IsNullOrWhiteSpace(col.Name))
+                {
+                    grid.Columns.Add(col);
+                    columnNames.Add(col.Name);
+                }
+            }
+        }
+
+        if (g.TryGetValue("rows", out var rawRows) && rawRows is List<object?> rows)
+            grid.InitialRows = ToTable(columnNames, rows);
+
+        return grid;
+    }
+
+    private static Table ToTable(List<string> columnNames, List<object?> rows)
+    {
+        var table = new Table();
+        foreach (var name in columnNames) table.Columns.Add(new Column { Name = name });
+        foreach (var raw in rows)
+        {
+            var row = new Row();
+            var dict = raw as Dictionary<string, object?>;
+            foreach (var name in columnNames)
+                row.Cells.Add(ToValue(dict != null && dict.TryGetValue(name, out var v) ? v : null));
+            table.Rows.Add(row);
+        }
+        return table;
     }
 
     private static string S(Dictionary<string, object?> d, string k, string fallback) =>

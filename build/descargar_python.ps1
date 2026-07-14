@@ -113,5 +113,13 @@ Write-Host "11) Prueba de humo pywebview..." -ForegroundColor Cyan
 & $py -c "import webview; print('pywebview OK')"
 if ($LASTEXITCODE -ne 0) { throw "pywebview no pudo importarse en el runtime embebido." }
 
+Write-Host "12) Instalando openpyxl (ctx.read_excel / ctx.write_excel, sin depender de Excel instalado)..." -ForegroundColor Cyan
+& $py -m pip install --no-warn-script-location openpyxl
+if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar openpyxl en el runtime embebido." }
+
+Write-Host "13) Prueba de humo openpyxl..." -ForegroundColor Cyan
+& $py -c "import openpyxl; print('openpyxl OK', openpyxl.__version__)"
+if ($LASTEXITCODE -ne 0) { throw "openpyxl no pudo importarse en el runtime embebido." }
+
 Write-Host ""
-Write-Host "LISTO. CPython embeddable + pythonnet + pywebview quedo en instalador\runtimes\python." -ForegroundColor Green
+Write-Host "LISTO. CPython embeddable + pythonnet + pywebview + openpyxl quedo en instalador\runtimes\python." -ForegroundColor Green
