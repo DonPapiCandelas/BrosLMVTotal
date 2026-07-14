@@ -59,8 +59,8 @@ Recetas previstas: *Crear documento a partir de otro* (estrella), *Cambiar estat
 Metadatos **por tipo de documento destino**: qué campos de encabezado son obligatorios,
 cómo mapear las partidas del origen, si afecta inventario, de dónde sale folio/serie, qué
 post-proceso de XEngine aplica. **Esto hace genérica** la receta de "crear documento"
-(sirve para Req→OC, Cotización→Pedido, etc.). Se llena con la ingeniería inversa
-(metodología) y se guarda como **JSON** (ver formato en esa doc).
+(sirve para Req→OC, Cotización→Pedido, etc.). Se llena analizando el comportamiento
+observado de cada documento y se guarda como **JSON** (ver formato en esa doc).
 
 ### 2.4 Receta estrella: "Crear documento a partir de otro"
 Generalización del `Boton ejemplo 1.py` (Req→OC) del cliente:
@@ -80,7 +80,7 @@ pasos en orden** (estilo eventos de AF): p. ej. *validar con SQL* → *crear doc
 > **Objetivo del motor de recetas:** un grid de captura definido solo con datos
 > (columnas + una vista SQL de origen) y procesos por pasos secuenciales (p. ej.
 > preparar tabla → insertar N filas → lanzar una acción), todo **sin escribir código**.
-> Se reimplementa de forma independiente, sin reutilizar binarios ni código de terceros.
+> Se implementa de forma independiente, con código propio.
 
 ---
 
@@ -100,7 +100,7 @@ pasos en orden** (estilo eventos de AF): p. ej. *validar con SQL* → *crear doc
 - Un botón no-code = una fila en `zzBrosScript` con `Tipo = 'receta'` y un **JSON de
   config** (qué receta + sus parámetros), en vez de código fuente.
 - Las **estructuras de documento** = JSON versionado (en repo y/o tabla `zzBros*`),
-  generado por la metodología de ingeniería inversa.
+  generado a partir del análisis del comportamiento observado.
 - Convive con los tipos existentes (`csharp`) y futuros (`python`, `sql`).
 
 ---
@@ -111,8 +111,8 @@ pasos en orden** (estilo eventos de AF): p. ej. *validar con SQL* → *crear doc
   lenguajes), no solo a las recetas.
 - La capa **`ctx.erp.*`** (ver [`XENGINE_FUNCIONES.md`](XENGINE_FUNCIONES.md)) es la que
   las recetas usan para escribir vía motor.
-- Las **estructuras de documento** salen de la ingeniería inversa de lo que Comercial PRO
-  hace al crear/cancelar cada documento (snapshot-diff + captura en vivo).
+- Las **estructuras de documento** salen de observar lo que Comercial PRO hace al
+  crear/cancelar cada documento (snapshot-diff + captura en vivo).
 
 ---
 

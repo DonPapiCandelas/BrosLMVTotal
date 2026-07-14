@@ -39,6 +39,31 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-14, v2.32.0)
+
+- **Historial de git unificado.** El repo tuvo dos líneas de trabajo divergentes (dos raíces
+  de historial sin ancestro común, cada una fruto de un squash independiente) que se
+  reconciliaron a mano con `git merge --allow-unrelated-histories`. Si algo de lo que sigue
+  te suena repetido o contradictorio contra un commit viejo, este merge es la explicación.
+- **Timbrado CFDI real:** `ctx.erp.Timbrar(documentId, pruebas)` — COM directo a
+  `CFDI3.clsMain` (el mismo componente que usa el propio módulo de facturación de Comercial),
+  sin depender del SDK oficial de CONTPAQi.
+- **Grid editable en `ctx.form()`:** columnas texto/número/decimal/fecha/bool/combo, precarga
+  de filas, agregar/quitar renglones — de punta a punta (`RelayingCallbackSink` + `HostClient`
+  con un `DataGridView` real). Reemplaza cientos de líneas de WinForms a mano.
+- **Traceback completo en errores de Python.** Antes solo se veía `mensaje [CODIGO]`; ahora se
+  ve línea, función y la cadena completa de llamadas — el dato ya se capturaba desde el diseño
+  original (`runner.py`), pero se descartaba en el addon.
+- **`ctx.confirm()` / `ctx.select_file()` / `ctx.select_folder()`** — existían en el protocolo
+  y en C#, pero nunca se conectaron del lado de Python (causaban `AttributeError` reportado
+  por la comunidad).
+- **`ctx.read_excel()` / `ctx.write_excel()`** — con `openpyxl`, sin automatizar Excel vía COM.
+- **Instalador "Empresas" con versión por empresa** (`zzBrosInfo`), estado "Actualizar
+  disponible" distinto de "Pendiente"/"Ya instalado".
+- **4 plantillas nuevas y cortas** en el menú de ejemplos, mostrando las capacidades de arriba.
+- Ver [`CHANGELOG.md`](CHANGELOG.md) [2.25.0]–[2.32.0] para el detalle línea por línea de cada
+  pieza.
+
 ## Estás aquí (2026-07-11, v2.24.0)
 
 - **`ctx.show_html()` — ventana HTML/WebView2 embebida (Python), primer caso real verificado.**
@@ -57,10 +82,7 @@ fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de
   `workers\python\broslmv\ctx.py` que carga el runtime (`C:\BrosLMV\workers\python\` y
   `C:\BrosLMV\host\workers\python\` — esta última es la que el host de verdad usa). **Nuevo
   ejemplo:** `PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py`, diseñador visual no-code de
-  formularios construido sobre `ctx.show_html`. **Pendiente:** regenerar el instalador
-  distribuible (`build\generar_instalador.ps1` + `build\generar_exes.ps1`) para que otros
-  equipos reciban WebView2 también — este despliegue fue directo a `C:\BrosLMV\bin`/`host\`
-  en un solo equipo, no pasó por el instalador oficial.
+  formularios construido sobre `ctx.show_html`.
 
 ## Estás aquí (2026-07-03, v2.23.0)
 

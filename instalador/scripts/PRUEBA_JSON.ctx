@@ -1,0 +1,13 @@
+#r "C:\BrosLMV\lib\Newtonsoft.Json.dll"
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+
+var obj = new JObject();
+obj["mensaje"] = "Newtonsoft.Json funciona";
+obj["fecha"] = DateTime.Now;
+obj["numero"] = 42;
+
+string texto = obj.ToString();
+var reparsed = JObject.Parse(texto);
+
+ctx.Msg(texto + "\n\nReparseado: " + (string)reparsed["mensaje"], "Prueba Newtonsoft.Json");

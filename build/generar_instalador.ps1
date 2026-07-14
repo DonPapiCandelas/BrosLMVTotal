@@ -25,6 +25,7 @@ $hostProj = Join-Path $root "host\BrosLMV.Host"
 $out  = Join-Path $root "build\out"
 $bin  = Join-Path $root "instalador\bin"
 $hostOut = Join-Path $root "instalador\host"
+$lib  = Join-Path $root "instalador\lib"
 
 Write-Host "==================================================="
 Write-Host " Generar instalador BrosLMV"
@@ -61,11 +62,21 @@ if (Test-Path $workersSrc) {
     Copy-Item $workersSrc $workersDst -Recurse -Force
 }
 
-Write-Host "5) Limpiando temporales..." -ForegroundColor Cyan
+Write-Host "5) Verificando instalador\lib (librerias externas para #r)..." -ForegroundColor Cyan
+New-Item -ItemType Directory -Force $lib | Out-Null
+$nLib = (Get-ChildItem (Join-Path $lib "*.dll") -ErrorAction SilentlyContinue).Count
+if ($nLib -eq 0) {
+    Write-Host "   AVISO: instalador\lib esta vacio. Corre primero:" -ForegroundColor Yellow
+    Write-Host "     .\build\descargar_librerias_externas.ps1" -ForegroundColor Yellow
+} else {
+    Write-Host "   $nLib archivo(s) en instalador\lib listos para copiarse."
+}
+
+Write-Host "6) Limpiando temporales..." -ForegroundColor Cyan
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $src "obj") -Recurse -Force -ErrorAction SilentlyContinue
 
 $n = (Get-ChildItem (Join-Path $bin "*.dll")).Count
 Write-Host ""
-Write-Host "LISTO. instalador\ actualizado ($n DLLs + x86\SQLite.Interop.dll + host)." -ForegroundColor Green
+Write-Host "LISTO. instalador\ actualizado ($n DLLs + x86\SQLite.Interop.dll + host + $nLib lib)." -ForegroundColor Green
 Write-Host "Distribuye la carpeta 'instalador' y corre Instalar.ps1 en cada equipo."

@@ -215,9 +215,46 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   1,826,883 bytes → gzip 60,001 bytes → base64 80,004 bytes → HTML final completo 584,124
   bytes (~0.56MB), muy por debajo del límite. Efecto colateral positivo: como el payload viaja
   como base64 (alfabeto `A-Za-z0-9+/=`, sin `<`/`>`), un bug de U+2028/U+2029 rompiendo el
-  `<script>` (visto antes en un botón AccesoFacil/IronPython) queda eliminado **por
+  `<script>` (un problema conocido en integraciones similares basadas en IronPython) queda eliminado **por
   construcción**, no por un escapador. **Regla para el futuro:** si el contenido no comprime
   bajo ~2MB, usar `Navigate()` a un archivo real en disco en vez de `show_html` (sin ese límite).
+
+## [sin cambio de versión del addon] — 2026-07-07 — Carpeta `lib\` para librerías externas en scripts C#
+
+> Cambio de **empaque/instalador únicamente** — no se tocó `src\` ni se recompiló
+> `BrosLMVClsMain.dll`, por eso no lleva bump de `AssemblyVersion` (sería falso: el DLL
+> desplegado seguiría siendo el mismo binario). Ver
+> [`PLAN_LIBRERIAS_EXTERNAS.md`](PLAN_LIBRERIAS_EXTERNAS.md) para el diseño completo.
+
+**Agregado**
+- `C:\BrosLMV\lib\` — carpeta nueva para librerías externas de terceros que los scripts
+  C# cargan con `#r "C:\BrosLMV\lib\Nombre.dll"` (mecanismo que Roslyn ya soportaba, ver
+  `CAPACIDADES.md` §10, simplemente no se había usado en la práctica hasta ahora).
+- 4 librerías incluidas de entrada (todas MIT, compatibles con GPL-3.0): Newtonsoft.Json
+  13.0.3, QRCoder 1.6.0, ClosedXML 0.102.3 (+ dependencias transitivas), Microsoft.Web.WebView2
+  1.0.2739.15 (con el `WebView2Loader.dll` de **32 bits**, porque `ComercialSP.exe` es un
+  proceso de 32 bits).
+- `PLANTILLA_BASE_CSHARP_WEBVIEW2.ctx` (en `scripts\`, compartida) — patrón de
+  inicialización asíncrona segura para WebView2 (por evento, nunca bloqueante) para que
+  cualquier script futuro lo copie en vez de reinventarlo.
+- 4 scripts de prueba en `scripts\Distribuciones_Candelas\`: `PRUEBA_JSON.ctx`,
+  `PRUEBA_QR.ctx`, `PRUEBA_EXCEL.ctx`, `PRUEBA_WEBVIEW2.ctx`.
+- `build\descargar_librerias_externas.ps1` (mismo patrón que `descargar_python.ps1`):
+  compila un proyecto NuGet desechable y deja los `.dll` en `instalador\lib\` — no se
+  versionan en git (binarios de terceros regenerables, igual criterio que
+  `instalador\runtimes\`/`host\`/`workers\`, ver `.gitignore`).
+- `Instalar.ps1`: crea `$base\lib` y copia `instalador\lib\*.dll` ahí (paso 3b).
+- `build\generar_instalador.ps1`: verifica que `instalador\lib` no esté vacío antes de
+  empacar (paso 5) y avisa si hace falta correr `descargar_librerias_externas.ps1`.
+- `PRUEBA_JSON.ctx`, `PRUEBA_QR.ctx`, `PRUEBA_EXCEL.ctx`, `PRUEBA_WEBVIEW2.ctx` también
+  agregados a `instalador\scripts\` como ejemplos genéricos (mismo criterio que
+  `EJEMPLO_suma.csx`).
+
+**Nota de validación:** antes de dejar los scripts de prueba, se compiló un proyecto
+`net48` desechable (`C:\Compac\Backups\nuget_fetch\`, fuera del repo) contra las mismas
+16 DLLs para confirmar que la API usada en los scripts compila sin errores — 0 errores.
+Encontró y corrigió un error propio: se había anotado que ClosedXML dependía de
+`RBush.dll`; la dependencia real es `XLParser.dll`.
 
 ---
 
@@ -1860,8 +1897,8 @@ Conexión automática a la empresa activa (sin archivo por empresa).
   falta, se copia el árbol del CLSID.
 
 ### Verificado en CONTPAQi real (2026-06-19)
-- Instalado junto a Agrimac (coexisten). `DIAGNOSTICO.csx` mostró
-  "Conexión ADO viva de CONTPAQi: SI", base `GRUPO_AGRIMAC_2021`. Cadena completa
+- Instalado junto a otro addon (coexisten). `DIAGNOSTICO.csx` mostró
+  "Conexión ADO viva de CONTPAQi: SI" con la base activa. Cadena completa
   validada: carga COM 32-bit + AssemblyResolve + Roslyn + conexión automática +
   consola.
 
@@ -1872,7 +1909,7 @@ Conexión automática a la empresa activa (sin archivo por empresa).
 - Nueva **`CAPACIDADES.md`**: alcance y poder de la herramienta (reportes HTML con
   gráficas, análisis de datos, Excel/PDF, automatización, integraciones, uso de
   librerías externas, extensión opcional a Python) con ejemplos.
-- La doc del prototipo `DOCUMENTACION.md` (Agrimac) se redujo a una **nota
+- La doc del prototipo `DOCUMENTACION.md` se redujo a una **nota
   histórica** para no inducir a error; la fuente de verdad es `instalacion\`.
 - Auditada toda la documentación: sin referencias obsoletas (conexión por archivo,
   C# 5, csc.exe) salvo donde se describe el cambio.

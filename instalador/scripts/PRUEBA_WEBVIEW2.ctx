@@ -1,0 +1,61 @@
+#r "C:\BrosLMV\lib\Microsoft.Web.WebView2.Core.dll"
+#r "C:\BrosLMV\lib\Microsoft.Web.WebView2.WinForms.dll"
+using Microsoft.Web.WebView2.WinForms;
+using Microsoft.Web.WebView2.Core;
+
+var frm = new Form {
+    Text = "Prueba WebView2",
+    Size = new Size(900, 650),
+    StartPosition = FormStartPosition.CenterScreen
+};
+
+var webView = new WebView2 { Dock = DockStyle.Fill };
+frm.Controls.Add(webView);
+
+string carpetaDatos = System.IO.Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrosLMV", "WebView2");
+
+frm.Load += async (s, e) => {
+    try {
+        var env = await CoreWebView2Environment.CreateAsync(userDataFolder: carpetaDatos);
+        await webView.EnsureCoreWebView2Async(env);
+
+        string html = @"
+<!doctype html><html><head><meta charset='utf-8'>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background:#f1f5f9; padding:24px; }
+  h1 { color:#1e293b; }
+  button { background:#2563eb; color:#fff; border:none; padding:10px 18px; border-radius:8px; cursor:pointer; font-size:13px; }
+  button:hover { background:#1d4ed8; }
+  #resultado { margin-top:16px; font-size:13px; color:#475569; }
+</style></head>
+<body>
+  <h1>WebView2 funcionando en Distribuciones Candelas</h1>
+  <p>Esta pagina corre dentro de un script C# de BrosLMV, sin tocar el nucleo.</p>
+  <button onclick=""enviarMensaje()"">Mandar mensaje a C#</button>
+  <div id='resultado'></div>
+  <script>
+    function enviarMensaje() {
+      window.chrome.webview.postMessage('Hola desde JavaScript, ' + new Date().toLocaleTimeString());
+      document.getElementById('resultado').innerText = 'Mensaje enviado, revisa el mensaje de Comercial.';
+    }
+  </script>
+</body></html>";
+
+        webView.CoreWebView2.NavigateToString(html);
+
+        webView.CoreWebView2.WebMessageReceived += (s2, e2) => {
+            try {
+                string mensaje = e2.TryGetWebMessageAsString();
+                ctx.Msg("Mensaje recibido de JavaScript:\n" + mensaje, "Puente JS -> C#");
+            } catch (Exception ex) {
+                ctx.Log("Error en WebMessageReceived: " + ex.Message);
+            }
+        };
+    } catch (Exception ex) {
+        ctx.Msg("Error al iniciar WebView2: " + ex.Message, "Error");
+        frm.Close();
+    }
+};
+
+frm.Show();

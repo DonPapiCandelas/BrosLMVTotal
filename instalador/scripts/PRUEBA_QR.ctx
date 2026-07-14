@@ -1,0 +1,16 @@
+#r "C:\BrosLMV\lib\QRCoder.dll"
+using QRCoder;
+
+string carpeta = @"C:\BrosLMV\temp";
+if (!System.IO.Directory.Exists(carpeta)) System.IO.Directory.CreateDirectory(carpeta);
+
+using (var qrGenerator = new QRCodeGenerator())
+using (var qrData = qrGenerator.CreateQrCode("PRUEBA-BROSLMV-" + DateTime.Now.Ticks, QRCodeGenerator.ECCLevel.Q))
+{
+    var qrCode = new PngByteQRCode(qrData);
+    byte[] png = qrCode.GetGraphic(10);
+    string ruta = System.IO.Path.Combine(carpeta, "prueba_qr.png");
+    System.IO.File.WriteAllBytes(ruta, png);
+    ctx.Msg("QR generado: " + ruta, "Prueba QRCoder");
+    ctx.erp.RunShellExecute(ruta, "");
+}

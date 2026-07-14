@@ -29,6 +29,7 @@
 /instalador/host/
 /instalador/runtimes/
 /instalador/workers/
+/instalador/lib/
 
 # === Salidas de compilacion de los instaladores .exe (regenerables) ===
 /dist/

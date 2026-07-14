@@ -41,7 +41,7 @@ Get-Process ComercialSP -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 2
 
 # 2) Crear carpetas
-New-Item -ItemType Directory -Force "$base\bin","$base\bin\x86","$base\scripts","$base\logs","$base\data" | Out-Null
+New-Item -ItemType Directory -Force "$base\bin","$base\bin\x86","$base\lib","$base\scripts","$base\logs","$base\data" | Out-Null
 Write-Host "Carpetas listas en $base"
 
 # 3) Copiar DLLs (host + Roslyn + Scintilla + SQLite + dependencias)
@@ -50,6 +50,13 @@ Copy-Item "$pkg\bin\*.dll" "$base\bin" -Force
 Copy-Item "$pkg\bin\x86\*.dll" "$base\bin\x86" -Force
 $nDll = (Get-ChildItem "$base\bin\*.dll").Count
 Write-Host "DLLs copiadas: $nDll"
+
+# 3b) Copiar librerias externas para scripts C#
+if (Test-Path "$pkg\lib") {
+    Copy-Item "$pkg\lib\*.dll" "$base\lib" -Force
+    $nLib = (Get-ChildItem "$base\lib\*.dll" -ErrorAction SilentlyContinue).Count
+    Write-Host "Librerias externas copiadas a $base\lib : $nLib"
+}
 
 # 4) Copiar scripts de ejemplo (sin sobrescribir los que ya existan)
 Get-ChildItem "$pkg\scripts\*.ctx","$pkg\scripts\*.csx" -ErrorAction SilentlyContinue | ForEach-Object {

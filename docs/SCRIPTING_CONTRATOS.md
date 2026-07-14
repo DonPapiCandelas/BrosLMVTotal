@@ -212,7 +212,7 @@ var pedidoId = ids[0];
 string serie = ctx.erp.GetFolioPrefix(moduleId, depotId);
 string folio = ctx.erp.GetNextFolio(moduleId, serie, depotId);
 
-// INSERT directo (la estructura JSON de ingeniería inversa documenta qué campos van)
+// INSERT directo (la estructura JSON documenta qué campos van)
 ctx.NonQuery($@"
     INSERT INTO docDocument (ModuleID, DocumentTypeID, Folio, FolioPrefix, DepotID,
         BusinessEntityID, SourceDocumentID, CreatedBy, CreatedOn, DateDocument, UserID)
@@ -373,7 +373,7 @@ Primera plantilla comunitaria:
 | Documento - Requisición de compra | `PLANTILLA_REQUISICION_COMPRA.ctx` | Abre una ventana WinForms para elegir proveedor, almacén y productos; crea una solicitud de compra módulo 1040 usando `ctx.erp.NuevoDocumento`, `ctx.erp.AgregarArticulo`, `ctx.erp.RecalcCompleto` y `ctx.erp.Save`. |
 | Documento - Requisición de compra (Python) | `PLANTILLA_REQUISICION_COMPRA_PY.py` | Ejemplo seguro y documentado de creación del mismo documento desde Python. No abre WinForms; usa `ctx.query`, `ctx.execute` y `ctx.erp.*`. |
 
-Este patrón concentra todo lo que sabemos de CybernovusLib + ingeniería inversa.
+Este patrón concentra todo el conocimiento acumulado del motor de documentos.
 Es la base de la **receta estrella** del motor no-code:
 
 ```csharp
@@ -393,7 +393,7 @@ int depotId  = (int)(long)pedido["DepotID"];
 string serie = ctx.erp.GetFolioPrefix(moduleId, depotId);
 string folio = ctx.erp.GetNextFolio(moduleId, serie, depotId);
 
-// Crear encabezado (INSERT directo + estructura de ingeniería inversa)
+// Crear encabezado (INSERT directo con la estructura documentada)
 ctx.NonQuery($@"
     INSERT INTO docDocument (ModuleID, DocumentTypeID, FolioPrefix, Folio, DepotID,
         BusinessEntityID, SourceDocumentID, OwnedBusinessEntityID,
@@ -460,7 +460,6 @@ Detalle y ejemplos completos en [`PYTHON.md`](PYTHON.md) §2.1 y §2.2.
 
 | Acción | Por qué no |
 |--------|-----------|
-| Timbrar/cancelar ante el SAT | Usa webservices + certificados. Hacerlo via `ctx.erp.XE` + método nativo de XEngine o Cybernovus.Funciones. |
 | Abrir pantallas nativas de Comercial | Pertenece a la UI del addon; no al script. |
 | Acceder a tablas de otras empresas | El script solo tiene acceso a la empresa activa. |
 | Ejecutar migraciones (`AplicarMigracion*`) | Internas de CONTPAQi; no son para scripts. |

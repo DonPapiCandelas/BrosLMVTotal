@@ -669,7 +669,6 @@ void CrearRecepcion(bool nueva) {
         try { ctx.erp.RefreshGrid(); } catch { }
 
         ctx.Msg("Recepción de compra " + doc + " creada exitosamente.", "OK");
-
         if (nueva) { LimpiarTodo(); PrecargarFolio(); }
         else frm.Close();
     } catch (Exception ex) {

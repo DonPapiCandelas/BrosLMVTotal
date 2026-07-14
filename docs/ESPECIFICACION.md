@@ -24,7 +24,8 @@ responder, los botones siguen funcionando).
    de **.NET Framework** (no .NET Core). Cualquier componente que cargue debe ser
    **.NET Framework** y registrarse como **COM de 32 bits**.
 2. CONTPAQi invoca botones mediante **COM por ProgID** (mecanismo de XEngine, ver
-   §2). No hay API pública; se descubre por ingeniería inversa de la interfaz COM.
+   §2). No hay API pública documentada; el comportamiento de la interfaz COM se
+   determinó mediante observación en tiempo de ejecución.
 3. Se busca que **editar un botón no requiera recompilar**: pegar texto y ejecutar.
    Solución: hospedar **Roslyn** y ejecutar scripts `.csx`.
 4. Multi-empresa sin configurar nada: **reutilizar la conexión viva** que CONTPAQi
@@ -282,7 +283,7 @@ lanza, la conexión es usable. Esto permite conectar desde la pestaña **General
 que `SqlClient` lo acepte).
 
 **Verificación en campo (2026-06-19):** `ActiveConnection` devolvió la conexión
-viva; `DiagConexion()` reportó base `GRUPO_AGRIMAC_2021`. `GetModuleConnectionString`
+viva; `DiagConexion()` reportó la base activa correctamente. `GetModuleConnectionString`
 no devolvió cadena (no se usó).
 
 ---
