@@ -365,6 +365,20 @@ Después de `NuevoDocumento` + `AgregarArticulo` × N, se llama en este orden:
 > Orden recomendado para un documento sin inventario (Solicitud, OC): `NuevoDocumento` →
 > `AgregarArticulo` × N → `RecalcCompleto` → `Save` → **`UpdateStatusDelivery`** → `RefreshGrid`.
 
+> ⚠️ **`RefreshGrid()` NO "pega" visualmente si se llama mientras tu propia ventana (`frm`)
+> sigue al frente** — Comercial no está en foco en ese instante, aunque la llamada no truene
+> y el dato en la base ya haya quedado correcto (confirmado en vivo dos veces: `RecepcionOc`
+> en Distribuciones_Candelas y `GenOrdenCompra` en Coctel_de_Ideas, ambos con ventana propia
+> tipo WinForms). **Patrón correcto**: no llamar `RefreshGrid()` inline después de `Save`;
+> engancharlo a `frm.FormClosed` en vez de eso, así corre siempre justo cuando el control
+> regresa a Comercial, sin importar por cuál salida se cierre la ventana:
+> ```csharp
+> frm.FormClosed += (_, __) => { try { ctx.erp.RefreshGrid(); } catch { } };
+> ```
+> Nota: con "Guardar y Nueva" (la ventana NO se cierra) el grid nativo no se refresca hasta
+> que el usuario cierre la ventana — limitación aceptada, no hay forma de "pegar" el refresco
+> mientras la ventana propia conserva el foco.
+
 ### 6.4 Cancelar / Eliminar
 
 | Método | Qué hace | ⚠️ Advertencia |
