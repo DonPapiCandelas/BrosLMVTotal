@@ -424,9 +424,13 @@ namespace BrosLMV
         public List<long> GetSelectedIds() { return GridSelection.GetSelectedIds(XEngineLib); }
 
         // Ejecuta un Execute sobre la conexion viva con UN reintento de reconexion forzada
-        // si el Execute REAL falla (no solo el chequeo previo de Ado()) -- ver comentario en
-        // Ado(bool forzarNueva). Sin esto, una ventana dejada abierta mucho tiempo podia
-        // pasar la revalidacion y morir de todos modos justo antes del Execute real.
+        // si el Execute REAL falla (no solo el chequeo previo de Ado()). Devuelve null si
+        // AMBOS intentos fallan -- eso significa que el objeto COM de CONTPAQi esta
+        // genuinamente atorado (no solo la referencia cacheada vencida): pedirle "otra"
+        // conexion por el MISMO camino COM devuelve el mismo objeto roto (confirmado en
+        // vivo: el reintento de v2.33.0 fallo identico). El llamador (Query/NonQuery/Scalar)
+        // debe entonces caer a OpenConn() -- una SqlConnection propia e independiente que
+        // NO pasa por el objeto COM de CONTPAQi en absoluto.
         private object EjecutarAdo(object cn, string sql)
         {
             object rs = Com.Call(cn, "Execute", new object[] { sql });
@@ -438,15 +442,21 @@ namespace BrosLMV
             return rs;
         }
 
-        // --- SQL (usa la conexion viva de CONTPAQi; si no, el archivo de respaldo) ---
+        // --- SQL (usa la conexion viva de CONTPAQi; si esta atorada o no hay, cae a la
+        // conexion propia independiente vía OpenConn()) ---
         public object Scalar(string sql)
         {
             object cn = Ado();
             if (cn != null)
             {
-                var rows = Conexion.Leer(EjecutarAdo(cn, sql));
-                if (rows.Count > 0) foreach (var v in rows[0].Values) return v;
-                return null;
+                object rs = EjecutarAdo(cn, sql);
+                if (rs != null)
+                {
+                    var rows = Conexion.Leer(rs);
+                    if (rows.Count > 0) foreach (var v in rows[0].Values) return v;
+                    return null;
+                }
+                // Los 2 intentos por COM fallaron: cae a conexion independiente (abajo).
             }
             using (var c = OpenConn()) using (var cmd = c.CreateCommand()) { cmd.CommandText = sql; return cmd.ExecuteScalar(); }
         }
@@ -455,7 +465,11 @@ namespace BrosLMV
         {
             object cn = Ado();
             if (cn != null)
-                return Conexion.Leer(EjecutarAdo(cn, sql));
+            {
+                object rs = EjecutarAdo(cn, sql);
+                if (rs != null) return Conexion.Leer(rs);
+                // Los 2 intentos por COM fallaron: cae a conexion independiente (abajo).
+            }
 
             var rows = new List<Dictionary<string, object>>();
             using (var c = OpenConn()) using (var cmd = c.CreateCommand())
@@ -479,12 +493,19 @@ namespace BrosLMV
                 throw new Exception("Modo SOLO LECTURA activo: las operaciones de escritura (NonQuery) estan bloqueadas.");
             int n = 0;
             object cn = Ado();
+            bool ejecutadoPorCom = false;
             if (cn != null)
             {
-                var rows = Conexion.Leer(EjecutarAdo(cn, "SET NOCOUNT ON; " + sql + "; SELECT @@ROWCOUNT AS Afectadas"));
-                if (rows.Count > 0 && rows[0].ContainsKey("Afectadas")) n = Com.ToInt(rows[0]["Afectadas"]);
+                object rs = EjecutarAdo(cn, "SET NOCOUNT ON; " + sql + "; SELECT @@ROWCOUNT AS Afectadas");
+                if (rs != null)
+                {
+                    var rows = Conexion.Leer(rs);
+                    if (rows.Count > 0 && rows[0].ContainsKey("Afectadas")) n = Com.ToInt(rows[0]["Afectadas"]);
+                    ejecutadoPorCom = true;
+                }
+                // Si rs sigue null, los 2 intentos por COM fallaron: cae a conexion independiente.
             }
-            else
+            if (!ejecutadoPorCom)
             {
                 using (var c = OpenConn()) using (var cmd = c.CreateCommand()) { cmd.CommandText = sql; n = cmd.ExecuteNonQuery(); }
             }
