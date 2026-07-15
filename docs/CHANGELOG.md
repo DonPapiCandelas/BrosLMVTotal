@@ -8,6 +8,24 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.33.5] — 2026-07-15 — `RefreshGrid`/`RefreshRibbon` llevaban SIEMPRE rotos: faltaba `Type.Missing`
+
+> El log de v2.33.4 lo probó: `RefreshGrid()` y `RefreshRibbon()` truenan con
+> `DISP_E_PARAMNOTOPTIONAL` ("Parámetro no opcional") — SIEMPRE, en cualquier módulo, no
+> solo en Listas custom. Nunca se había notado porque `Com.Call` atrapa la excepción
+> internamente (deja el error en `LastError`, no truena) y ambos métodos se llaman sin
+> revisar `LastError`. No era un problema de foco de ventana (la hipótesis de `FormClosed`
+> era razonable pero no la causa real): el método de XEngine exige que el/los parámetro(s)
+> "opcionales" originales se pasen EXPLÍCITOS como `Type.Missing` al invocarlo por
+> `Type.InvokeMember` (COM tardío) — omitirlos del todo no basta, a diferencia de VB6 nativo.
+
+### Corregido
+- `Com.CallConMissing(o, name, maxMissing=3)`: prueba con 0, 1, 2... `Type.Missing` hasta que
+  la llamada funcione (sin lanzar excepción real). `ErpContext.RefreshGrid()`/`RefreshRibbon()`
+  ahora lo usan en vez de `Com.Call(..., new object[0])`.
+
+---
+
 ## [2.33.4] — 2026-07-15 — `ctx.erp.Set(prop, valor)` genérico (diagnóstico de refresco de Listas)
 
 > Confirmado en vivo: la creación de la Orden de Compra (v2.33.3) ya funciona perfecto — la

@@ -108,6 +108,29 @@ namespace BrosLMV
                 return null;
             }
         }
+        // v2.33.5: algunos metodos de XEngine (via IDispatch tardio con Type.InvokeMember) EXIGEN
+        // que los parametros "opcionales" del COM original se pasen EXPLICITOS como Type.Missing
+        // -- omitirlos del todo (object[0]) truena con DISP_E_PARAMNOTOPTIONAL. Confirmado en vivo
+        // con RefreshGrid/RefreshRibbon: llevaban SIEMPRE rotos (el catch generico de Com.Call
+        // nunca dejaba ver el error real, asi que nadie lo habia notado). Como no hay forma de
+        // saber cuantos parametros opcionales exige cada metodo sin la libreria de tipos, se
+        // prueba con 0, 1, 2... Type.Missing hasta que uno funcione (LastError queda vacio).
+        public static object CallConMissing(object o, string name, int maxMissing = 3)
+        {
+            object r = Call(o, name, new object[0]);
+            if (string.IsNullOrEmpty(LastError)) return r;
+            string primerError = LastError;
+            for (int i = 1; i <= maxMissing; i++)
+            {
+                var args = new object[i];
+                for (int j = 0; j < i; j++) args[j] = Type.Missing;
+                r = Call(o, name, args);
+                if (string.IsNullOrEmpty(LastError)) return r;
+            }
+            LastError = primerError; // ninguno funciono -- reporta el error del intento original
+            return null;
+        }
+
         public static int  ToInt(object v)  { if (v == null || v is DBNull) return 0; try { return Convert.ToInt32(v); } catch { return 0; } }
         public static long ToLong(object v) { if (v == null || v is DBNull) return 0; try { return Convert.ToInt64(v); } catch { return 0; } }
     }
@@ -1123,8 +1146,8 @@ namespace BrosLMV
         }
 
         // ---- UI de CONTPAQi ----
-        public void RefreshGrid()                   { Com.Call(_xe, "RefreshGrid",   new object[0]); }
-        public void RefreshRibbon()                 { Com.Call(_xe, "RefreshRibbon", new object[0]); }
+        public void RefreshGrid()                   { Com.CallConMissing(_xe, "RefreshGrid"); }
+        public void RefreshRibbon()                 { Com.CallConMissing(_xe, "RefreshRibbon"); }
         public void GotoModuleID(int moduleId)      { Com.SetProp(_xe, "GotoModuleID", moduleId); }   // es PROPIEDAD-put, no método (verificado en dump)
         public void OpenModule(int moduleId)        { Com.Call(_xe, "OpenModule",    new object[] { moduleId }); }
         public void OpenBrowser(string url)         { Com.Call(_xe, "OpenBrowser",   new object[] { url }); }
