@@ -403,9 +403,18 @@ namespace BrosLMV
         // cerrado" al hacer Guardar en una Orden de Compra, con las consultas de arranque ya
         // hechas minutos antes). Por eso, si ya había una cacheada, se revalida con un SELECT 1
         // trivial antes de reusarla; si ya no sirve, se vuelve a resolver desde cero.
-        private object Ado()
+        //
+        // forzarNueva (v2.33.0): el chequeo de arriba (PuedeEjecutar) tiene una ventana de
+        // carrera -- la conexion puede pasar el SELECT 1 de prueba y morir de todos modos un
+        // instante despues, antes del Execute real (mas probable mientras mas tiempo lleve
+        // abierta la ventana). Query/NonQuery/Scalar usan este parametro para pedir una
+        // reconexion 100% desde cero (ignorando la cacheada) como reintento UNICO cuando el
+        // Execute real ya fallo, no solo el chequeo previo. Confirmado en vivo: "NuevoDocumento:
+        // no se pudo crear el encabezado ... La operación no está permitida si el objeto está
+        // cerrado" en una Orden de Compra dejada abierta varios minutos.
+        private object Ado(bool forzarNueva = false)
         {
-            if (_adoTried && _ado != null && Conexion.PuedeEjecutar(_ado)) return _ado;
+            if (!forzarNueva && _adoTried && _ado != null && Conexion.PuedeEjecutar(_ado)) return _ado;
             _adoTried = true;
             _ado = Conexion.ObtenerAdo(XEngineLib);
             return _ado;
@@ -414,13 +423,28 @@ namespace BrosLMV
         // --- Seleccion del grid ---
         public List<long> GetSelectedIds() { return GridSelection.GetSelectedIds(XEngineLib); }
 
+        // Ejecuta un Execute sobre la conexion viva con UN reintento de reconexion forzada
+        // si el Execute REAL falla (no solo el chequeo previo de Ado()) -- ver comentario en
+        // Ado(bool forzarNueva). Sin esto, una ventana dejada abierta mucho tiempo podia
+        // pasar la revalidacion y morir de todos modos justo antes del Execute real.
+        private object EjecutarAdo(object cn, string sql)
+        {
+            object rs = Com.Call(cn, "Execute", new object[] { sql });
+            if (rs == null && !string.IsNullOrEmpty(Com.LastError))
+            {
+                object cn2 = Ado(forzarNueva: true);
+                if (cn2 != null) rs = Com.Call(cn2, "Execute", new object[] { sql });
+            }
+            return rs;
+        }
+
         // --- SQL (usa la conexion viva de CONTPAQi; si no, el archivo de respaldo) ---
         public object Scalar(string sql)
         {
             object cn = Ado();
             if (cn != null)
             {
-                var rows = Conexion.Leer(Com.Call(cn, "Execute", new object[] { sql }));
+                var rows = Conexion.Leer(EjecutarAdo(cn, sql));
                 if (rows.Count > 0) foreach (var v in rows[0].Values) return v;
                 return null;
             }
@@ -431,7 +455,7 @@ namespace BrosLMV
         {
             object cn = Ado();
             if (cn != null)
-                return Conexion.Leer(Com.Call(cn, "Execute", new object[] { sql }));
+                return Conexion.Leer(EjecutarAdo(cn, sql));
 
             var rows = new List<Dictionary<string, object>>();
             using (var c = OpenConn()) using (var cmd = c.CreateCommand())
@@ -457,8 +481,7 @@ namespace BrosLMV
             object cn = Ado();
             if (cn != null)
             {
-                var rows = Conexion.Leer(Com.Call(cn, "Execute",
-                    new object[] { "SET NOCOUNT ON; " + sql + "; SELECT @@ROWCOUNT AS Afectadas" }));
+                var rows = Conexion.Leer(EjecutarAdo(cn, "SET NOCOUNT ON; " + sql + "; SELECT @@ROWCOUNT AS Afectadas"));
                 if (rows.Count > 0 && rows[0].ContainsKey("Afectadas")) n = Com.ToInt(rows[0]["Afectadas"]);
             }
             else

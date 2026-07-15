@@ -8,6 +8,26 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.33.0] — 2026-07-15 — Reintento de reconexión en `Query`/`NonQuery`/`Scalar`
+
+> Reportado en vivo: un botón de Orden de Compra (ventana WinForms interactiva, varios
+> minutos abierta) falló con `NuevoDocumento: no se pudo crear el encabezado ... La
+> operación no está permitida si el objeto está cerrado` — y como `NuevoDocumento` no es
+> atómico (sin transacción, ver v2.21.10), dejó un `docDocument` huérfano sin partidas.
+
+### Corregido
+- `ScriptContext.Ado(bool forzarNueva)`: la auto-sanación existente (v2.21.7) revalida la
+  conexión cacheada con un `SELECT 1` **antes** de reutilizarla, pero hay una ventana de
+  carrera — la conexión puede pasar esa prueba y morir de todos modos justo antes del
+  `Execute` real (más probable mientras más tiempo lleve abierta la ventana). `Query`,
+  `NonQuery` y `Scalar` ahora reintentan UNA vez con una reconexión 100% forzada (ignorando
+  la cacheada) si el `Execute` real falla, no solo si falla el chequeo previo. Cubre
+  `NuevoDocumento` y `AgregarArticulo` (ambos construidos sobre SQL crudo vía `ctx.Query`/
+  `NonQuery`); `RecalcCompleto`/`AffectStockNEW`/`Save` usan la llamada COM nativa de
+  CONTPAQi directamente y no pasan por este camino.
+
+---
+
 ## [2.32.0] — 2026-07-14 — `ctx.confirm()`, `ctx.select_file()`/`ctx.select_folder()`, 4 ejemplos nuevos
 
 > Reportado por la comunidad (mismo issue del traceback, v2.31.0): un script Python que
