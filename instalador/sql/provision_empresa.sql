@@ -54,18 +54,51 @@ CREATE TABLE dbo.zzBrosPref(
     CONSTRAINT PK_zzBrosPref PRIMARY KEY (Usuario, Tipo, Valor));
 
 -- ============================================================
--- 2) Grupo "BrosLMV" en la pestaña General genérica (RibbonTabID = 1)
---    INSERT adaptable: solo columnas que existan en engRibbonGroup.
+-- 2a) Pestaña propia "Soluciones LMV" (separada de General).
+--     INSERT adaptable: solo columnas que existan en engRibbonTab.
 -- ============================================================
-IF NOT EXISTS (SELECT 1 FROM engRibbonGroup WHERE GroupCaption='BrosLMV' AND RibbonTabID=1)
+IF NOT EXISTS (SELECT 1 FROM engRibbonTab WHERE TabCaption='Soluciones LMV')
+BEGIN
+    DECLARE @ct NVARCHAR(MAX), @vt NVARCHAR(MAX);
+    ;WITH m(col,val,ord) AS (
+        SELECT col,val,ord FROM (VALUES
+            ('RibbonTabIDBase','0',1),
+            ('ProductID','1',2),
+            ('ModuleID','0',3),
+            ('TabCaption','''Soluciones LMV''',4),
+            ('TabOrder','101',5),
+            ('Color','0',6),
+            ('ExtraMenuModuleID','0',7),
+            ('ShowIfSectionModuleIDIs','0',8),
+            ('ResID','0',9),
+            ('IfUserIDIs','0',10)
+        ) v(col,val,ord)
+        WHERE col IN (SELECT name FROM sys.columns WHERE object_id=OBJECT_ID('dbo.engRibbonTab'))
+    )
+    SELECT @ct = STUFF((SELECT ','+QUOTENAME(col) FROM m ORDER BY ord FOR XML PATH('')),1,1,''),
+           @vt = STUFF((SELECT ','+val            FROM m ORDER BY ord FOR XML PATH('')),1,1,'');
+    EXEC('INSERT dbo.engRibbonTab ('+@ct+') VALUES ('+@vt+')');
+END
+DECLARE @tab INT = (SELECT TOP 1 RibbonTabID FROM engRibbonTab WHERE TabCaption='Soluciones LMV');
+
+-- ============================================================
+-- 2b) Grupo "BrosLMV" dentro de la pestaña Soluciones LMV.
+--     Si ya existía en otra pestaña (instalaciones viejas: pestaña General),
+--     se MIGRA (UPDATE) en vez de duplicar. Idempotente: si ya está en
+--     Soluciones LMV, el UPDATE no cambia nada.
+--     INSERT adaptable: solo columnas que existan en engRibbonGroup.
+-- ============================================================
+IF EXISTS (SELECT 1 FROM engRibbonGroup WHERE GroupCaption='BrosLMV')
+    UPDATE engRibbonGroup SET RibbonTabID=@tab WHERE GroupCaption='BrosLMV';
+ELSE
 BEGIN
     DECLARE @cg NVARCHAR(MAX), @vg NVARCHAR(MAX);
     ;WITH m(col,val,ord) AS (
         SELECT col,val,ord FROM (VALUES
             ('RibbonGroupIDBase','0',1),
-            ('RibbonTabID','1',2),
+            ('RibbonTabID',CAST(@tab AS NVARCHAR(20)),2),
             ('GroupCaption','''BrosLMV''',3),
-            ('GroupOrder','99',4),
+            ('GroupOrder','0',4),
             ('ShowOptionButton','0',5),
             ('ExtraMenuModuleID','0',6),
             ('IfUserIDIs','0',7)
@@ -76,7 +109,7 @@ BEGIN
            @vg = STUFF((SELECT ','+val            FROM m ORDER BY ord FOR XML PATH('')),1,1,'');
     EXEC('INSERT dbo.engRibbonGroup ('+@cg+') VALUES ('+@vg+')');
 END
-DECLARE @grp INT = (SELECT TOP 1 RibbonGroupID FROM engRibbonGroup WHERE GroupCaption='BrosLMV' AND RibbonTabID=1);
+DECLARE @grp INT = (SELECT TOP 1 RibbonGroupID FROM engRibbonGroup WHERE GroupCaption='BrosLMV');
 
 -- ============================================================
 -- 3) Botón "Consola BrosLMV" (BrosLMV.CONSOLA) dentro del grupo BrosLMV

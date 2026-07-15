@@ -8,6 +8,24 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [sin cambio de versión del addon] — 2026-07-15 — Pestaña propia "Soluciones LMV" en el ribbon
+
+> El botón de la Consola vivía dentro del grupo "BrosLMV" en la pestaña genérica
+> "General" de Comercial, mezclado con el resto del ERP. Se mueve a su propia
+> pestaña, "Soluciones LMV", para que sea más visible y quede como espacio propio
+> para futuros botones no-code.
+
+### Cambiado
+- `provision_empresa.sql` §2a/2b: crea (si no existe) la pestaña `engRibbonTab`
+  "Soluciones LMV" (adaptable a columnas, como el resto del ribbon) y coloca ahí el
+  grupo "BrosLMV". Si el grupo ya existía en otra pestaña (instalaciones viejas en
+  "General"), lo **migra** con `UPDATE` en vez de duplicarlo — idempotente: correrlo
+  de nuevo no repite el grupo ni el botón.
+- La próxima vez que el instalador provisione/actualice cada empresa, la consola
+  se reubica sola en "Soluciones LMV"; no requiere pasos manuales por empresa.
+
+---
+
 ## [2.33.5] — 2026-07-15 — `RefreshGrid`/`RefreshRibbon` llevaban SIEMPRE rotos: faltaba `Type.Missing`
 
 > El log de v2.33.4 lo probó: `RefreshGrid()` y `RefreshRibbon()` truenan con
