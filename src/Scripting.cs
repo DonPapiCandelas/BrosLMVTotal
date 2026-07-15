@@ -1708,6 +1708,10 @@ namespace BrosLMV
         {
             return Com.GetProp(_xe, property);
         }
+        public bool Set(string property, object value)
+        {
+            return Com.SetProp(_xe, property, value);
+        }
 
         // ---- Wrappers tipados extra (análogos verificados de los existentes) ----
         // Precio de venta específico por entidad de negocio (cliente).

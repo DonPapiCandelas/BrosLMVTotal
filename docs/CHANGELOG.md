@@ -8,6 +8,22 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.33.4] — 2026-07-15 — `ctx.erp.Set(prop, valor)` genérico (diagnóstico de refresco de Listas)
+
+> Confirmado en vivo: la creación de la Orden de Compra (v2.33.3) ya funciona perfecto — la
+> base queda correcta (`zz_ReqMovimientos` muestra `Pendiente=0` de inmediato) — pero la
+> grilla en pantalla de "Req Movimientos" (una Lista/consulta personalizada, no un módulo de
+> documentos nativo) no se repinta con `RefreshGrid()`/`RefreshRibbon()`, aunque ninguno de
+> los dos truena. Para diagnosticar sin adivinar, se agrega `ctx.erp.Set` (paralelo a los ya
+> existentes `Call`/`Get` genéricos) y el script prueba 4 vías con log de cada una.
+
+### Agregado
+- `ErpContext.Set(string property, object value)`: análogo genérico a `Call`/`Get` ya
+  existentes, para setear cualquier propiedad de `XEngineLib` por nombre (p. ej.
+  `MustRefreshGrid`, que es propiedad, no método, y no tenía forma de probarse antes).
+
+---
+
 ## [2.33.3] — 2026-07-15 — Causa raíz real: `Conexion.Leer` tragaba el fallo de lectura, no el `Execute`
 
 > El log de v2.33.2 lo probó: `NuevoDocumento` fallaba SIN que apareciera ningún log de
