@@ -8,6 +8,23 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [sin cambio de versión del addon] — 2026-07-15 — `.exe` de `dist\` llevan la versión en el nombre
+
+> Con nombre fijo (`BrosLMV-Instalador.exe`) era fácil mandarle a un cliente un instalador
+> de otra versión sin darse cuenta. Ahora el nombre mismo lo dice.
+
+### Cambiado
+- `build\generar_exes.ps1`: los ejecutables finales se generan como
+  `BrosLMV-Instalador-X.Y.Z.exe` y `BrosLMV-Desinstalador-X.Y.Z.exe` (versión tomada del
+  addon empacado, la misma fuente de verdad de siempre). Antes de compilar, borra en
+  `dist\` cualquier `.exe` de una versión anterior, así nunca quedan varias versiones
+  sueltas ahí para confundirse.
+- Documentación (`README.md`, `docs/INSTALACION.md`, `docs/DESARROLLO.md`,
+  `docs/MANUAL.md`, `instalador/INSTALACION.md`) actualizada al nuevo patrón de nombre y
+  a la pestaña "Soluciones LMV" (ver entrada anterior).
+
+---
+
 ## [sin cambio de versión del addon] — 2026-07-15 — Pestaña propia "Soluciones LMV" en el ribbon
 
 > El botón de la Consola vivía dentro del grupo "BrosLMV" en la pestaña genérica

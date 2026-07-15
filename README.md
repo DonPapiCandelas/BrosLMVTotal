@@ -64,7 +64,7 @@ BrosLMV/
 │   ├── compilar.ps1            solo compila el núcleo → build\out
 │   ├── generar_instalador.ps1  compila el núcleo → instalador\bin
 │   └── generar_exes.ps1        empaqueta y compila los .exe → dist\
-└── dist/                Salida: BrosLMV-Instalador.exe / BrosLMV-Desinstalador.exe
+└── dist/                Salida: BrosLMV-Instalador-X.Y.Z.exe / BrosLMV-Desinstalador-X.Y.Z.exe
 ```
 
 ## Instalación rápida
@@ -72,16 +72,17 @@ BrosLMV/
 Guía detallada (servidor, terminales, multi-empresa, problemas comunes):
 [`docs/INSTALACION.md`](docs/INSTALACION.md).
 
-Se entregan dos ejecutables autocontenidos en `dist/`:
+Se entregan dos ejecutables autocontenidos en `dist/`, con la **versión en el nombre**
+(p.ej. `BrosLMV-Instalador-2.33.5.exe`) para no confundir cuál mandar:
 
-1. `BrosLMV-Instalador.exe` — doble clic, aceptar UAC, **Instalar** (despliega el runtime a
+1. `BrosLMV-Instalador-X.Y.Z.exe` — doble clic, aceptar UAC, **Instalar** (despliega el runtime a
    `C:\BrosLMV`, copia el icono y registra el componente COM), luego abre el GUI de provisión.
 2. En el GUI: servidor\instancia + usuario/contraseña → **Probar conexión** → marca las
    empresas → **Instalar seleccionadas**. En una terminal sin acceso al SQL, cierra el GUI: el
    runtime ya quedó instalado igual.
-3. Reinicia CONTPAQi. Debería aparecer el botón **Consola BrosLMV** en la pestaña General.
+3. Reinicia CONTPAQi. Debería aparecer el botón **Consola BrosLMV** en la pestaña "Soluciones LMV".
 
-Para quitarlo: `BrosLMV-Desinstalador.exe` (quita de empresas específicas o del equipo
+Para quitarlo: `BrosLMV-Desinstalador-X.Y.Z.exe` (quita de empresas específicas o del equipo
 completo).
 
 ## Compilar y generar los instaladores
@@ -98,8 +99,11 @@ Requiere .NET SDK (y, la primera vez, internet para restaurar NuGet). Guía paso
 .\build\generar_exes.ps1
 ```
 
-Resultado: `dist\BrosLMV-Instalador.exe` y `dist\BrosLMV-Desinstalador.exe`. Sube la versión en
-`src/ClsMain.cs` (`AssemblyVersion`) y anótala en [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
+Resultado: `dist\BrosLMV-Instalador-X.Y.Z.exe` y `dist\BrosLMV-Desinstalador-X.Y.Z.exe` (la versión
+sale sola del `AssemblyVersion` empacado en `instalador\bin`, y `generar_exes.ps1` borra los
+`.exe` de versiones anteriores en `dist\` antes de compilar, para que no quede ninguno viejo
+dando vueltas). Sube la versión en `src/ClsMain.cs` (`AssemblyVersion`) y anótala en
+[`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 
 ## Documentación
 

@@ -10,7 +10,8 @@ arma los ejecutables autocontenidos.
 - `Instalar.ps1` / `Desinstalar.ps1` — métodos **manuales de respaldo** (uso avanzado).
 
 **Para instalar/desinstalar normalmente usa los ejecutables** de `dist\`:
-`BrosLMV-Instalador.exe` y `BrosLMV-Desinstalador.exe`.
+`BrosLMV-Instalador-X.Y.Z.exe` y `BrosLMV-Desinstalador-X.Y.Z.exe` (el nombre lleva la
+versión para no confundir cuál mandar).
 
 Guía completa: [`..\docs\INSTALACION.md`](../docs/INSTALACION.md).
 Compilar: [`..\docs\DESARROLLO.md`](../docs/DESARROLLO.md).

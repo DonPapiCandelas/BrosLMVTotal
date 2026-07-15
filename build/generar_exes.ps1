@@ -68,13 +68,22 @@ Compress-Archive -Path (Join-Path $pl "*") -DestinationPath $zip -Force
 $addonVersion = [Reflection.AssemblyName]::GetAssemblyName((Join-Path $inst "bin\BrosLMVClsMain.dll")).Version.ToString(3)
 Write-Host "   Version tomada del addon empacado: $addonVersion" -ForegroundColor DarkCyan
 
+# Los .exe finales llevan la version en el NOMBRE (BrosLMV-Instalador-X.Y.Z.exe) para que
+# nunca se mande por error un instalador de otra version. Se borran los .exe viejos de
+# dist\ antes de compilar para que solo quede el de la version actual.
+Remove-Item (Join-Path $dist "BrosLMV-Instalador*.exe"), (Join-Path $dist "BrosLMV-Desinstalador*.exe") -Force -ErrorAction SilentlyContinue
+$instaladorExe = Join-Path $dist "BrosLMV-Instalador-$addonVersion.exe"
+$desinstaladorExe = Join-Path $dist "BrosLMV-Desinstalador-$addonVersion.exe"
+
 Write-Host "3) Compilando BrosLMV-Instalador.exe..." -ForegroundColor Cyan
 dotnet build (Join-Path $pInst "Empresas.csproj") -c Release -o $dist "/p:Version=$addonVersion"
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR compilando Instalador" -ForegroundColor Red; exit 1 }
+Move-Item (Join-Path $dist "BrosLMV-Instalador.exe") $instaladorExe -Force
 
 Write-Host "4) Compilando BrosLMV-Desinstalador.exe..." -ForegroundColor Cyan
 dotnet build (Join-Path $pDes "Desinstalador.csproj") -c Release -o $dist "/p:Version=$addonVersion"
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR compilando Desinstalador" -ForegroundColor Red; exit 1 }
+Move-Item (Join-Path $dist "BrosLMV-Desinstalador.exe") $desinstaladorExe -Force
 
 Write-Host "5) Verificando recursos embebidos (evita instaladores con pantalla en blanco)..." -ForegroundColor Cyan
 function Verificar-Recursos($exePath, $esperados) {
@@ -108,10 +117,10 @@ function Verificar-Recursos($exePath, $esperados) {
     return $true
 }
 
-$okInstalador = Verificar-Recursos (Join-Path $dist "BrosLMV-Instalador.exe") @(
+$okInstalador = Verificar-Recursos $instaladorExe @(
     "logo_blanco.png", "app_icon.png", "provision_empresa.sql", "payload.zip"
 )
-$okDesinstalador = Verificar-Recursos (Join-Path $dist "BrosLMV-Desinstalador.exe") @(
+$okDesinstalador = Verificar-Recursos $desinstaladorExe @(
     "logo_blanco.png", "app_icon.png", "desprovision_empresa.sql"
 )
 if (-not $okInstalador -or -not $okDesinstalador) {

@@ -3,8 +3,11 @@
 Guía para **instalar** y **desinstalar** BrosLMV (consola de scripts para CONTPAQi
 Comercial PRO) usando los ejecutables autocontenidos.
 
-> Resultado: en CONTPAQi, pestaña **General**, grupo **BrosLMV**, aparece el botón
+> Resultado: en CONTPAQi, pestaña **Soluciones LMV**, grupo **BrosLMV**, aparece el botón
 > **"Consola BrosLMV"**.
+
+> Los `.exe` de `dist/` llevan la versión en el nombre (p.ej. `BrosLMV-Instalador-2.33.5.exe`)
+> para no confundir cuál mandar. En esta guía se abrevia como `BrosLMV-Instalador.exe`.
 
 ---
 
@@ -76,7 +79,7 @@ En la ventana que abre el instalador (o ejecutándolo de nuevo):
 3. Marca las que quieras y presiona **Instalar seleccionadas** (o **Marcar pendientes**
    para todas las que falten). Es **idempotente**: las ya instaladas no se duplican.
 4. **Reinicia CONTPAQi** en las terminales → aparece el botón **Consola BrosLMV** en
-   la pestaña General.
+   la pestaña **Soluciones LMV**.
 
 > La conexión de los scripts es **automática** (reutiliza la de CONTPAQi); no se
 > configuran credenciales por empresa. El filtro detecta solo Comercial Start/Pro
@@ -117,7 +120,7 @@ Ejecuta **`BrosLMV-Desinstalador.exe`** (pide UAC). Tiene dos acciones:
 
 ## 7. Verificación rápida (end-to-end)
 
-1. CONTPAQi → pestaña **General** → botón **Consola BrosLMV** → abre la consola.
+1. CONTPAQi → pestaña **Soluciones LMV** → botón **Consola BrosLMV** → abre la consola.
 2. Abre `DIAGNOSTICO.csx` y presiona **Ejecutar (F5)**: debe reportar la conexión
    automática (`Conexión viva (grid/DataLayer): SI`) y el nombre de la base activa.
 3. Abre `EJEMPLO_suma.csx` y ejecútalo: debe mostrar un total.

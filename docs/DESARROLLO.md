@@ -56,7 +56,7 @@ C:\MLVTotal\
 │   ├── generar_instalador.ps1  Compila addon + host y actualiza instalador\
 │   └── generar_exes.ps1      Empaqueta y compila los .exe → dist\
 │
-├── dist\                     ← SALIDA: BrosLMV-Instalador.exe / BrosLMV-Desinstalador.exe
+├── dist\                     ← SALIDA: BrosLMV-Instalador-X.Y.Z.exe / BrosLMV-Desinstalador-X.Y.Z.exe
 ├── docs\                     Documentación
 └── BrosLMV.sln               Solución (abre el núcleo en Visual Studio)
 ```
@@ -94,17 +94,19 @@ y compila ambos:
 C:\MLVTotal\build\generar_exes.ps1
 ```
 
-Resultado en `dist\`:
-- **`BrosLMV-Instalador.exe`** (~50 MB con host .NET self-contained + CPython embeddable; lleva el runtime
-  embebido como `payload.zip`).
-- **`BrosLMV-Desinstalador.exe`** (~0.1 MB).
+Resultado en `dist\` (el nombre lleva la versión del addon empacado, p.ej. `2.33.5`, para
+no confundir cuál mandar; `generar_exes.ps1` borra los `.exe` de versiones anteriores antes
+de compilar, así `dist\` nunca acumula versiones viejas):
+- **`BrosLMV-Instalador-X.Y.Z.exe`** (~50 MB con host .NET self-contained + CPython embeddable;
+  lleva el runtime embebido como `payload.zip`).
+- **`BrosLMV-Desinstalador-X.Y.Z.exe`** (~0.1 MB).
 
 ### Flujo típico de una mejora (de principio a fin)
 
 1. Editas `src\*.cs` (o `instaladores\…` si tocas el GUI/instalador).
 2. `build\generar_instalador.ps1`  → recompila la DLL a `instalador\bin`.
 3. `build\generar_exes.ps1`  → genera los `.exe` en `dist\`.
-4. Pruebas: corre `dist\BrosLMV-Instalador.exe` (instala el runtime y abre el GUI).
+4. Pruebas: corre `dist\BrosLMV-Instalador-X.Y.Z.exe` (instala el runtime y abre el GUI).
 5. Subes la versión en `src\ClsMain.cs` (`AssemblyVersion`) y anotas en
    [`CHANGELOG.md`](CHANGELOG.md); actualizas los `.md` afectados (ver §7).
 

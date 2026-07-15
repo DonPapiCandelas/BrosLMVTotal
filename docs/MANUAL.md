@@ -1203,7 +1203,7 @@ Necesitas **.NET SDK**. La guía completa está en [`DESARROLLO.md`](DESARROLLO.
 
 ```powershell
 .\build\generar_instalador.ps1   # recompila la DLL → instalador\bin
-.\build\generar_exes.ps1         # genera dist\BrosLMV-Instalador.exe
+.\build\generar_exes.ps1         # genera dist\BrosLMV-Instalador-X.Y.Z.exe
 ```
 
 Datos fijos del componente:
