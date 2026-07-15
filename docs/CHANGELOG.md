@@ -8,23 +8,41 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
-## [2.33.0] — 2026-07-15 — Reintento de reconexión en `Query`/`NonQuery`/`Scalar`
+## [2.33.2] — 2026-07-15 — Log de diagnóstico de conexión + credencial de respaldo incompleta
 
-> Reportado en vivo: un botón de Orden de Compra (ventana WinForms interactiva, varios
-> minutos abierta) falló con `NuevoDocumento: no se pudo crear el encabezado ... La
-> operación no está permitida si el objeto está cerrado` — y como `NuevoDocumento` no es
-> atómico (sin transacción, ver v2.21.10), dejó un `docDocument` huérfano sin partidas.
+> v2.33.1 (fallback a `OpenConn()`) NO resolvió el error en la prueba en vivo — volvió a
+> aparecer el mismo `NuevoDocumento: no se pudo crear el encabezado ... La operación no
+> está permitida si el objeto está cerrado`. Sin un log real de qué camino se tomó en cada
+> intento, seguir "arreglando a ciegas" no es confiable. Además se encontraron dos huecos
+> reales que pueden explicar por qué el fallback no salvó la ejecución:
+>
+> 1. `C:\BrosLMV\bin\broslmv_conn.txt` (credencial de respaldo para `OpenConn()`) NO traía
+>    `Database=` — el login SA tiene como base por defecto `master`. Si en el momento del
+>    fallo el `DataLayer` de CONTPAQi tampoco podía resolver el nombre de la base (no solo
+>    el `Execute` de la conexión), `OpenConn()` se hubiera conectado a `master` en vez de
+>    la empresa activa. Corregido en el archivo desplegado (fuera de este repo).
+> 2. El registro COM de Windows (`HKLM\...\CLSID\{...}\InprocServer32`, `Assembly=
+>    BrosLMVClsMain, Version=2.32.0.0`) seguía apuntando a la versión 2.32.0.0 — `deploy.ps1`
+>    nunca ha corrido `regasm` para refrescarlo, solo copia el `.dll`. No confirmado que esto
+>    causara el fallo (el `CodeBase` sí apunta a la ruta correcta), pero es una fuente de
+>    duda que vale la pena eliminar; el próximo despliegue re-registra con `regasm /codebase`.
+
+### Agregado
+- `Com.DiagLog(string)`: log de diagnóstico SIEMPRE activo (no solo en éxito, a diferencia de
+  `ctx.Log`), en `C:\BrosLMV\logs\Conexion_YYYYMMDD.txt`, con hora exacta y la versión del
+  ensamblado realmente cargado en memoria (`Com.Version`). Instrumentado en `Ado`,
+  `EjecutarAdo`, `Query`, `NonQuery`, `Scalar`, `OpenConn` — registra cada intento COM, cada
+  caída a `OpenConn()`, y si el fallback también falla.
+- `ExecuteFunction` loguea `appKey`, `UserID`, `ModuleID`, proceso y PID al iniciar cada
+  ejecución — para confirmar sin dudas qué build corrió una ejecución dada.
+- `NuevoDocumento`/`AgregarArticulo`: el mensaje de error ahora incluye `[BrosLMV vX.X.X.X]`
+  (versión real cargada) y la ruta del log del día, para no depender de que el usuario
+  copie el texto exacto del `MessageBox`.
 
 ### Corregido
-- `ScriptContext.Ado(bool forzarNueva)`: la auto-sanación existente (v2.21.7) revalida la
-  conexión cacheada con un `SELECT 1` **antes** de reutilizarla, pero hay una ventana de
-  carrera — la conexión puede pasar esa prueba y morir de todos modos justo antes del
-  `Execute` real (más probable mientras más tiempo lleve abierta la ventana). `Query`,
-  `NonQuery` y `Scalar` ahora reintentan UNA vez con una reconexión 100% forzada (ignorando
-  la cacheada) si el `Execute` real falla, no solo si falla el chequeo previo. Cubre
-  `NuevoDocumento` y `AgregarArticulo` (ambos construidos sobre SQL crudo vía `ctx.Query`/
-  `NonQuery`); `RecalcCompleto`/`AffectStockNEW`/`Save` usan la llamada COM nativa de
-  CONTPAQi directamente y no pasan por este camino.
+- `Query`/`NonQuery`/`Scalar`: si el fallback `OpenConn()` TAMBIÉN falla (antes esa excepción
+  se propagaba cruda, con el mensaje genérico de SqlClient), ahora se atrapa y se relanza
+  con AMBOS motivos (el de COM y el de `OpenConn()`) en un solo mensaje.
 
 ---
 

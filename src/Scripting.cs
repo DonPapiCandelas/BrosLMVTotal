@@ -42,6 +42,37 @@ namespace BrosLMV
     {
         public static string LastError { get; internal set; }
 
+        // Log de diagnostico de conexion (v2.33.2) -- separado del Log() del script (que solo
+        // se llama en el camino de EXITO). Escribe SIEMPRE, con hora exacta, para poder
+        // reconstruir en cual de las 2 vias (COM vs OpenConn independiente) fallo cada intento,
+        // sin depender de que el usuario copie el texto del MessageBox.
+        private static readonly object _diagLogLock = new object();
+        public static void DiagLog(string msg)
+        {
+            try
+            {
+                lock (_diagLogLock)
+                {
+                    if (!Directory.Exists(Rutas.Logs)) Directory.CreateDirectory(Rutas.Logs);
+                    File.AppendAllText(Path.Combine(Rutas.Logs, "Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt"),
+                        "[" + DateTime.Now.ToString("HH:mm:ss.fff") + "] [v" + Version + "] " + msg + Environment.NewLine);
+                }
+            }
+            catch { /* el log nunca debe tronar el flujo real */ }
+        }
+
+        // Version del ensamblado realmente cargado en memoria -- para confirmar en el log
+        // (y en el mensaje de error) cual build esta corriendo de verdad, sin dudas sobre si
+        // el registro COM/CodeBase esta apuntando a una version vieja.
+        public static string Version
+        {
+            get
+            {
+                try { return typeof(Com).Assembly.GetName().Version.ToString(); }
+                catch { return "?"; }
+            }
+        }
+
         public static object GetProp(object o, string name)
         {
             try { LastError = null; return o.GetType().InvokeMember(name, BindingFlags.GetProperty | BindingFlags.Public | BindingFlags.Instance, null, o, null); }
@@ -417,6 +448,7 @@ namespace BrosLMV
             if (!forzarNueva && _adoTried && _ado != null && Conexion.PuedeEjecutar(_ado)) return _ado;
             _adoTried = true;
             _ado = Conexion.ObtenerAdo(XEngineLib);
+            Com.DiagLog("Ado(forzarNueva=" + forzarNueva + ") -> " + (_ado != null ? "conexion COM resuelta" : "NULL (ObtenerAdo no encontro ninguna conexion COM viva)"));
             return _ado;
         }
 
@@ -436,17 +468,24 @@ namespace BrosLMV
             object rs = Com.Call(cn, "Execute", new object[] { sql });
             if (rs == null && !string.IsNullOrEmpty(Com.LastError))
             {
+                string err1 = Com.LastError;
+                Com.DiagLog("EjecutarAdo: 1er intento (COM) fallo: " + err1 + " | SQL=" + Recorte(sql));
                 object cn2 = Ado(forzarNueva: true);
                 if (cn2 != null) rs = Com.Call(cn2, "Execute", new object[] { sql });
+                if (rs == null) Com.DiagLog("EjecutarAdo: 2do intento (COM, forzarNueva) TAMBIEN fallo: " + Com.LastError);
+                else Com.DiagLog("EjecutarAdo: 2do intento (COM, forzarNueva) OK.");
             }
             return rs;
         }
+
+        private static string Recorte(string sql) { sql = sql ?? ""; return sql.Length > 200 ? sql.Substring(0, 200) + "..." : sql; }
 
         // --- SQL (usa la conexion viva de CONTPAQi; si esta atorada o no hay, cae a la
         // conexion propia independiente vía OpenConn()) ---
         public object Scalar(string sql)
         {
             object cn = Ado();
+            string errCom = null;
             if (cn != null)
             {
                 object rs = EjecutarAdo(cn, sql);
@@ -456,35 +495,55 @@ namespace BrosLMV
                     if (rows.Count > 0) foreach (var v in rows[0].Values) return v;
                     return null;
                 }
-                // Los 2 intentos por COM fallaron: cae a conexion independiente (abajo).
+                errCom = Com.LastError;
             }
-            using (var c = OpenConn()) using (var cmd = c.CreateCommand()) { cmd.CommandText = sql; return cmd.ExecuteScalar(); }
+            Com.DiagLog("Scalar: cayendo a OpenConn() (motivo COM: " + (errCom ?? "Ado() devolvio null") + ") | SQL=" + Recorte(sql));
+            try
+            {
+                using (var c = OpenConn()) using (var cmd = c.CreateCommand()) { cmd.CommandText = sql; var v = cmd.ExecuteScalar(); Com.DiagLog("Scalar: OpenConn() OK."); return v; }
+            }
+            catch (Exception exFb)
+            {
+                Com.DiagLog("Scalar: OpenConn() TAMBIEN fallo: " + exFb);
+                throw new Exception("Scalar fallo por COM (" + (errCom ?? "sin conexion") + ") y por conexion independiente (" + exFb.Message + ").", exFb);
+            }
         }
 
         public List<Dictionary<string, object>> Query(string sql)
         {
             object cn = Ado();
+            string errCom = null;
             if (cn != null)
             {
                 object rs = EjecutarAdo(cn, sql);
                 if (rs != null) return Conexion.Leer(rs);
-                // Los 2 intentos por COM fallaron: cae a conexion independiente (abajo).
+                errCom = Com.LastError;
             }
 
-            var rows = new List<Dictionary<string, object>>();
-            using (var c = OpenConn()) using (var cmd = c.CreateCommand())
+            Com.DiagLog("Query: cayendo a OpenConn() (motivo COM: " + (errCom ?? "Ado() devolvio null") + ") | SQL=" + Recorte(sql));
+            try
             {
-                cmd.CommandText = sql;
-                using (var r = cmd.ExecuteReader())
-                    while (r.Read())
-                    {
-                        var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-                        for (int i = 0; i < r.FieldCount; i++)
-                            row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
-                        rows.Add(row);
-                    }
+                var rows = new List<Dictionary<string, object>>();
+                using (var c = OpenConn()) using (var cmd = c.CreateCommand())
+                {
+                    cmd.CommandText = sql;
+                    using (var r = cmd.ExecuteReader())
+                        while (r.Read())
+                        {
+                            var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                            for (int i = 0; i < r.FieldCount; i++)
+                                row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
+                            rows.Add(row);
+                        }
+                }
+                Com.DiagLog("Query: OpenConn() OK, " + rows.Count + " fila(s).");
+                return rows;
             }
-            return rows;
+            catch (Exception exFb)
+            {
+                Com.DiagLog("Query: OpenConn() TAMBIEN fallo: " + exFb);
+                throw new Exception("Query fallo por COM (" + (errCom ?? "sin conexion") + ") y por conexion independiente (" + exFb.Message + ").", exFb);
+            }
         }
 
         public int NonQuery(string sql)
@@ -494,6 +553,7 @@ namespace BrosLMV
             int n = 0;
             object cn = Ado();
             bool ejecutadoPorCom = false;
+            string errCom = null;
             if (cn != null)
             {
                 object rs = EjecutarAdo(cn, "SET NOCOUNT ON; " + sql + "; SELECT @@ROWCOUNT AS Afectadas");
@@ -503,11 +563,21 @@ namespace BrosLMV
                     if (rows.Count > 0 && rows[0].ContainsKey("Afectadas")) n = Com.ToInt(rows[0]["Afectadas"]);
                     ejecutadoPorCom = true;
                 }
-                // Si rs sigue null, los 2 intentos por COM fallaron: cae a conexion independiente.
+                else errCom = Com.LastError;
             }
             if (!ejecutadoPorCom)
             {
-                using (var c = OpenConn()) using (var cmd = c.CreateCommand()) { cmd.CommandText = sql; n = cmd.ExecuteNonQuery(); }
+                Com.DiagLog("NonQuery: cayendo a OpenConn() (motivo COM: " + (errCom ?? "Ado() devolvio null") + ") | SQL=" + Recorte(sql));
+                try
+                {
+                    using (var c = OpenConn()) using (var cmd = c.CreateCommand()) { cmd.CommandText = sql; n = cmd.ExecuteNonQuery(); }
+                    Com.DiagLog("NonQuery: OpenConn() OK, " + n + " fila(s) afectada(s).");
+                }
+                catch (Exception exFb)
+                {
+                    Com.DiagLog("NonQuery: OpenConn() TAMBIEN fallo: " + exFb);
+                    throw new Exception("NonQuery fallo por COM (" + (errCom ?? "sin conexion") + ") y por conexion independiente (" + exFb.Message + ").", exFb);
+                }
             }
             FilasAfectadas += n;
             return n;
@@ -518,12 +588,21 @@ namespace BrosLMV
         {
             string cs = ResolverCadena();
             if (string.IsNullOrEmpty(cs))
+            {
+                Com.DiagLog("OpenConn: ResolverCadena() vacio -- ni GetModuleConnectionString, ni credencial cifrada, ni " + Rutas.ConnFile + " utilizable.");
                 throw new Exception("No hay conexion disponible (ni automatica de CONTPAQi, ni credencial cifrada " + Rutas.CredFile + ", ni " + Rutas.ConnFile + ").");
+            }
             // Timeout corto: si la cadena de respaldo no fuera válida, falla rápido
             // (4s) en vez de colgar 15s.
             if (cs.IndexOf("Timeout", StringComparison.OrdinalIgnoreCase) < 0)
                 cs = cs.TrimEnd(';') + ";Connect Timeout=4";
+            Com.DiagLog("OpenConn: conectando con -> " + MaskPwd(cs));
             var c = new SqlConnection(cs); c.Open(); return c;
+        }
+
+        private static string MaskPwd(string cs)
+        {
+            return Regex.Replace(cs ?? "", "(Password=)[^;]*", "$1***", RegexOptions.IgnoreCase);
         }
 
         public string JoinIds(IEnumerable<long> ids) { return string.Join(",", ids); }
@@ -1221,15 +1300,22 @@ namespace BrosLMV
                 "INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, PartialityNumber, CreatedOn, CreatedBy) VALUES (@newDocId, GETDATE(), 100, 1, GETDATE(), " + userID + "); " +
                 "SELECT @newDocId AS NewDocId;";
 
+            // Si _owner.Query(batch) falla por COM Y por OpenConn() independiente, ya lanza su
+            // propia excepcion (con ambos motivos) -- eso se propaga tal cual, no llega aqui abajo.
             var rows = _owner.Query(batch);
             int nuevoDocumentId = (rows.Count > 0 && rows[0].ContainsKey("NewDocId")) ? Com.ToInt(rows[0]["NewDocId"]) : 0;
             if (nuevoDocumentId <= 0)
             {
-                // Com.Call() atrapa la excepcion real de la conexion ADO y solo la deja en
-                // Com.LastError (para no tronar por errores de propiedades opcionales) -- sin
-                // esto, aqui solo se veia el mensaje generico sin decir POR QUE fallo el INSERT.
-                string detalle = !string.IsNullOrEmpty(Com.LastError) ? " — " + Com.LastError : " (sin detalle de Com.LastError; revisar SQL Profiler/log)";
-                throw new Exception("NuevoDocumento: no se pudo crear el encabezado. ModuleID=" + moduleId + " DepotID=" + depotId + detalle);
+                // Query() SI devolvio (no truena) pero sin el NewDocId esperado -- distinto de
+                // que Query() haya fallado del todo. Com.LastError() puede quedar con texto viejo
+                // de un Com.Call anterior (es un campo estatico compartido) asi que se marca
+                // explicito "(no confiable, ver Conexion_YYYYMMDD.txt)" para no confundir.
+                string detalle = !string.IsNullOrEmpty(Com.LastError)
+                    ? " — ultimo Com.LastError (puede ser de un paso anterior, no confiable por si solo): " + Com.LastError
+                    : " (sin Com.LastError; Query devolvio " + rows.Count + " fila(s) sin NewDocId)";
+                Com.DiagLog("NuevoDocumento: FALLO nuevoDocumentId<=0. ModuleID=" + moduleId + " DepotID=" + depotId + " filas=" + rows.Count + " LastError=" + Com.LastError);
+                throw new Exception("NuevoDocumento [BrosLMV v" + Com.Version + "]: no se pudo crear el encabezado. ModuleID=" + moduleId + " DepotID=" + depotId + detalle +
+                    "\n\nRevisa C:\\BrosLMV\\logs\\Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt para el detalle completo de esta ejecucion.");
             }
             return nuevoDocumentId;
         }
@@ -1333,8 +1419,12 @@ namespace BrosLMV
             int itemId = (rows.Count > 0 && rows[0].ContainsKey("NewItemId")) ? Com.ToInt(rows[0]["NewItemId"]) : 0;
             if (itemId <= 0)
             {
-                string detalle = !string.IsNullOrEmpty(Com.LastError) ? " — " + Com.LastError : "";
-                throw new Exception("AgregarArticulo: no se pudo crear la partida. DocID=" + documentId + " ProdID=" + productId + detalle);
+                string detalle = !string.IsNullOrEmpty(Com.LastError)
+                    ? " — ultimo Com.LastError (puede ser de un paso anterior, no confiable por si solo): " + Com.LastError
+                    : " (sin Com.LastError; Query devolvio " + rows.Count + " fila(s) sin NewItemId)";
+                Com.DiagLog("AgregarArticulo: FALLO itemId<=0. DocID=" + documentId + " ProdID=" + productId + " filas=" + rows.Count + " LastError=" + Com.LastError);
+                throw new Exception("AgregarArticulo [BrosLMV v" + Com.Version + "]: no se pudo crear la partida. DocID=" + documentId + " ProdID=" + productId + detalle +
+                    "\n\nRevisa C:\\BrosLMV\\logs\\Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt para el detalle completo de esta ejecucion.");
             }
             return itemId;
         }

@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.33.1.0")]
+[assembly: AssemblyVersion("2.33.2.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -79,6 +79,8 @@ namespace BrosLMV
             try
             {
                 Rutas.AsegurarCarpetas();
+                Com.DiagLog("ExecuteFunction: appKey=" + appKey + " UserID=" + UserID + " ModuleID=" + ModuleID +
+                    " proceso=" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + " pid=" + System.Diagnostics.Process.GetCurrentProcess().Id);
                 UiPump.Asegurar(); // deja lista la bomba de marshaling para botones Python
                 switch (appKey)
                 {
