@@ -8,6 +8,30 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.33.3] — 2026-07-15 — Causa raíz real: `Conexion.Leer` tragaba el fallo de lectura, no el `Execute`
+
+> El log de v2.33.2 lo probó: `NuevoDocumento` fallaba SIN que apareciera ningún log de
+> `EjecutarAdo`/`Query: cayendo a OpenConn()` — es decir, el `Execute()` por COM **sí tuvo
+> éxito**. El error real ocurría un paso después, leyendo el recordset (`EOF`/`Fields`), y
+> `Conexion.Leer` atrapaba esa excepción con el mismo `catch { }` que usa para "consulta
+> legítimamente sin filas", devolviendo una lista vacía indistinguible de las dos. Por eso
+> v2.33.0/v2.33.1/v2.33.2 (que solo cubrían el `Execute()`) nunca podían activarse para este
+> caso: el `Execute()` no había fallado.
+
+### Corregido
+- `Conexion.Leer` ahora tiene una sobrecarga `Leer(rs, out bool ok)` que distingue EOF
+  limpio (fin legítimo) de una excepción a medio camino (recordset muerto). `Query`/
+  `NonQuery`/`Scalar` la usan para saber si el resultado es de fiar.
+- **Importante para no duplicar efectos**: si el `Execute()` por COM SÍ tuvo éxito pero la
+  lectura murió después, `Query`/`NonQuery`/`Scalar` YA NO caen a `OpenConn()` a reintentar
+  el mismo SQL (eso duplicaría un `INSERT`) — lanzan `SqlYaEjecutadoException`.
+- `NuevoDocumento`/`AgregarArticulo` atrapan `SqlYaEjecutadoException` y se **recuperan por
+  una consulta de solo lectura** (por Folio+Módulo+Almacén+Proveedor, o por
+  DocumentID+ProductID) en vez de reintentar el `INSERT` — evita tanto el documento huérfano
+  como la partida duplicada.
+
+---
+
 ## [2.33.2] — 2026-07-15 — Log de diagnóstico de conexión + credencial de respaldo incompleta
 
 > v2.33.1 (fallback a `OpenConn()`) NO resolvió el error en la prueba en vivo — volvió a

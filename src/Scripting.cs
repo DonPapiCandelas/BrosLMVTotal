@@ -38,6 +38,16 @@ namespace BrosLMV
     // =========================================================
     //   Helpers de late-binding sobre System.__ComObject
     // =========================================================
+    // v2.33.3: el Execute() por COM SI corrio (posibles efectos ya aplicados, p.ej. un INSERT)
+    // pero la conexion murio leyendo el resultado -- Query/NonQuery/Scalar lanzan ESTE tipo
+    // especifico (en vez de Exception generico) para que NuevoDocumento/AgregarArticulo puedan
+    // distinguirlo y hacer una RECUPERACION de solo lectura (buscar la fila que probablemente
+    // ya se inserto) en vez de reintentar ciegamente el mismo INSERT (que la duplicaria).
+    internal class SqlYaEjecutadoException : Exception
+    {
+        public SqlYaEjecutadoException(string msg) : base(msg) { }
+    }
+
     internal static class Com
     {
         public static string LastError { get; internal set; }
@@ -204,16 +214,31 @@ namespace BrosLMV
         }
 
         // Lee un ADO Recordset (devuelto por Connection.Execute) a lista de diccionarios.
-        public static List<Dictionary<string, object>> Leer(object rs)
+        public static List<Dictionary<string, object>> Leer(object rs) { bool ok; return Leer(rs, out ok); }
+
+        // v2.33.3: distingue "consulta legitimamente sin filas" (EOF=true limpio) de "el
+        // recordset se cerro/murio a medio camino" (falla GetProp EOF/Fields/Value) -- antes
+        // ambos devolvian una lista vacia IDENTICA, asi que Query/NonQuery/Scalar nunca se
+        // enteraban de que debian caer al respaldo OpenConn() cuando Execute() SI devolvio un
+        // recordset valido pero la conexion moria un instante despues, durante la lectura.
+        // Confirmado en vivo (log Conexion_20260715.txt): Execute() no fallaba -- "La operación
+        // no está permitida si el objeto está cerrado" aparecia AQUI, leyendo EOF, no en el
+        // Execute -- por eso v2.33.1/v2.33.2 (que solo reintentaban/logueaban el Execute) no
+        // alcanzaban a activar el fallback para este caso.
+        public static List<Dictionary<string, object>> Leer(object rs, out bool ok)
         {
             var rows = new List<Dictionary<string, object>>();
+            ok = true;
             if (rs == null) return rows;
             try
             {
                 while (true)
                 {
+                    Com.LastError = null;
                     object eof = Com.GetProp(rs, "EOF");
-                    if (!(eof is bool) || (bool)eof) break;
+                    if (eof == null && !string.IsNullOrEmpty(Com.LastError))
+                        throw new Exception(Com.LastError); // GetProp fallo de verdad (recordset muerto)
+                    if (!(eof is bool) || (bool)eof) break; // fin legitimo (EOF=true, sin error)
                     object fields = Com.GetProp(rs, "Fields");
                     int n = Com.ToInt(Com.GetProp(fields, "Count"));
                     var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
@@ -229,7 +254,11 @@ namespace BrosLMV
                     Com.Call(rs, "MoveNext", new object[0]);
                 }
             }
-            catch { } // recordset cerrado (consulta sin filas) -> lista vacia
+            catch (Exception ex)
+            {
+                ok = false;
+                Com.DiagLog("Conexion.Leer: el recordset se cerro A MEDIO CAMINO (" + rows.Count + " fila(s) leidas antes de fallar): " + ex.Message);
+            }
             try { Com.Call(rs, "Close", new object[0]); } catch { } // liberar recordset para no bloquear la conexion
             return rows;
         }
@@ -491,9 +520,18 @@ namespace BrosLMV
                 object rs = EjecutarAdo(cn, sql);
                 if (rs != null)
                 {
-                    var rows = Conexion.Leer(rs);
-                    if (rows.Count > 0) foreach (var v in rows[0].Values) return v;
-                    return null;
+                    bool leidoOk;
+                    var rows = Conexion.Leer(rs, out leidoOk);
+                    if (leidoOk)
+                    {
+                        if (rows.Count > 0) foreach (var v in rows[0].Values) return v;
+                        return null;
+                    }
+                    // Execute() por COM SI corrio (pudo tener efectos si el SQL escribe) -- NO se
+                    // reintenta por OpenConn(), porque re-ejecutar el MISMO sql duplicaria esos
+                    // efectos (p.ej. un INSERT). Se reporta como fallo distinto e irrecuperable.
+                    Com.DiagLog("Scalar: Execute() por COM SI corrio pero el recordset se cerro leyendo el resultado -- NO se reintenta (evitar duplicar efectos). SQL=" + Recorte(sql));
+                    throw new SqlYaEjecutadoException("Scalar: el SQL se ejecutó por COM pero la conexión murió leyendo el resultado; no se reintenta para no duplicar efectos si el SQL escribe. Revisa Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt.");
                 }
                 errCom = Com.LastError;
             }
@@ -516,7 +554,16 @@ namespace BrosLMV
             if (cn != null)
             {
                 object rs = EjecutarAdo(cn, sql);
-                if (rs != null) return Conexion.Leer(rs);
+                if (rs != null)
+                {
+                    bool leidoOk;
+                    var rowsCom = Conexion.Leer(rs, out leidoOk);
+                    if (leidoOk) return rowsCom;
+                    // Execute() por COM SI corrio -- NO se reintenta por OpenConn() (duplicaria
+                    // efectos si el batch escribe, como los INSERT de NuevoDocumento/AgregarArticulo).
+                    Com.DiagLog("Query: Execute() por COM SI corrio pero el recordset se cerro leyendo el resultado -- NO se reintenta (evitar duplicar efectos). SQL=" + Recorte(sql));
+                    throw new SqlYaEjecutadoException("Query: el SQL se ejecutó por COM pero la conexión murió leyendo el resultado; no se reintenta para no duplicar efectos si el SQL escribe. Revisa Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt.");
+                }
                 errCom = Com.LastError;
             }
 
@@ -559,9 +606,20 @@ namespace BrosLMV
                 object rs = EjecutarAdo(cn, "SET NOCOUNT ON; " + sql + "; SELECT @@ROWCOUNT AS Afectadas");
                 if (rs != null)
                 {
-                    var rows = Conexion.Leer(rs);
-                    if (rows.Count > 0 && rows[0].ContainsKey("Afectadas")) n = Com.ToInt(rows[0]["Afectadas"]);
-                    ejecutadoPorCom = true;
+                    bool leidoOk;
+                    var rows = Conexion.Leer(rs, out leidoOk);
+                    if (leidoOk)
+                    {
+                        if (rows.Count > 0 && rows[0].ContainsKey("Afectadas")) n = Com.ToInt(rows[0]["Afectadas"]);
+                        ejecutadoPorCom = true;
+                    }
+                    else
+                    {
+                        // Execute() por COM SI corrio (el UPDATE/INSERT/DELETE ya se aplico) -- NO
+                        // se reintenta por OpenConn() (duplicaria el efecto). Se reporta distinto.
+                        Com.DiagLog("NonQuery: Execute() por COM SI corrio pero el recordset se cerro leyendo @@ROWCOUNT -- NO se reintenta (evitar duplicar efectos). SQL=" + Recorte(sql));
+                        throw new SqlYaEjecutadoException("NonQuery: el SQL se ejecutó por COM pero la conexión murió leyendo el resultado; no se reintenta para no duplicar efectos. Revisa Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt.");
+                    }
                 }
                 else errCom = Com.LastError;
             }
@@ -1302,7 +1360,27 @@ namespace BrosLMV
 
             // Si _owner.Query(batch) falla por COM Y por OpenConn() independiente, ya lanza su
             // propia excepcion (con ambos motivos) -- eso se propaga tal cual, no llega aqui abajo.
-            var rows = _owner.Query(batch);
+            List<Dictionary<string, object>> rows;
+            try
+            {
+                rows = _owner.Query(batch);
+            }
+            catch (SqlYaEjecutadoException)
+            {
+                // El INSERT probablemente SI corrio (el Execute por COM tuvo exito) pero la
+                // conexion murio leyendo el DocumentID de vuelta. NO se reintenta el INSERT
+                // (duplicaria el encabezado) -- se recupera por una consulta de SOLO LECTURA
+                // usando Folio+Modulo+Almacen+Proveedor, que ya son unicos para este intento
+                // (el folio se reservo ANTES del INSERT, vía GetFolioPrefix/GetNextFolio).
+                Com.DiagLog("NuevoDocumento: recuperando por folio tras SqlYaEjecutadoException. Folio=" + prefix + folio + " ModuleID=" + moduleId + " DepotID=" + depotId);
+                rows = _owner.Query(
+                    "SELECT TOP 1 DocumentID AS NewDocId FROM docDocument WHERE ModuleID=" + moduleId +
+                    " AND DepotID=" + depotId + " AND BusinessEntityID=" + businessEntityId +
+                    " AND FolioPrefix=" + Lit(prefix) + " AND Folio=" + Lit(folio) +
+                    " AND CreatedOn >= DATEADD(MINUTE,-5,GETDATE()) ORDER BY DocumentID DESC");
+                if (rows.Count > 0) Com.DiagLog("NuevoDocumento: recuperado doc=" + rows[0]["NewDocId"] + " por folio (no por el INSERT original).");
+                else Com.DiagLog("NuevoDocumento: NO se encontro nada por folio -- el INSERT probablemente si fallo de verdad.");
+            }
             int nuevoDocumentId = (rows.Count > 0 && rows[0].ContainsKey("NewDocId")) ? Com.ToInt(rows[0]["NewDocId"]) : 0;
             if (nuevoDocumentId <= 0)
             {
@@ -1415,7 +1493,26 @@ namespace BrosLMV
                 "SET @newItemId = SCOPE_IDENTITY(); " +
                 "SELECT @newItemId AS NewItemId;";
 
-            var rows = _owner.Query(batch);
+            List<Dictionary<string, object>> rows;
+            try
+            {
+                rows = _owner.Query(batch);
+            }
+            catch (SqlYaEjecutadoException)
+            {
+                // Mismo caso que en NuevoDocumento: el INSERT probablemente SI corrio pero la
+                // conexion murio leyendo el DocumentItemID de vuelta. NO se reintenta (duplicaria
+                // la partida) -- se recupera de solo lectura: la partida MAS RECIENTE para este
+                // documento+producto (el script llama AgregarArticulo una sola vez por PID, ya
+                // deduplicado en las partidas antes de llegar aqui).
+                Com.DiagLog("AgregarArticulo: recuperando por DocID+ProdID tras SqlYaEjecutadoException. DocID=" + documentId + " ProdID=" + productId);
+                rows = _owner.Query(
+                    "SELECT TOP 1 DocumentItemID AS NewItemId FROM docDocumentItem " +
+                    "WHERE DocumentID=" + documentId + " AND ProductID=" + productId + " AND DeletedOn IS NULL " +
+                    "ORDER BY DocumentItemID DESC");
+                if (rows.Count > 0) Com.DiagLog("AgregarArticulo: recuperado item=" + rows[0]["NewItemId"] + " por DocID+ProdID (no por el INSERT original).");
+                else Com.DiagLog("AgregarArticulo: NO se encontro nada por DocID+ProdID -- el INSERT probablemente si fallo de verdad.");
+            }
             int itemId = (rows.Count > 0 && rows[0].ContainsKey("NewItemId")) ? Com.ToInt(rows[0]["NewItemId"]) : 0;
             if (itemId <= 0)
             {
