@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.34.0.0")]
+[assembly: AssemblyVersion("2.35.0.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -148,6 +148,38 @@ namespace BrosLMV
                     {
                         appKey = baseKey; // para el resto del flujo (lookup de archivo, auditoria, etc.)
                         ctx.EventoId = long.Parse(mEvento.Groups[2].Value);
+                    }
+                }
+            }
+
+            // 1c) Integridad (T2.3, v2.35.0): solo aplica a scripts que vinieron de
+            //     zzBrosScript (los de archivo no tienen hash que comparar). Best-effort
+            //     total -- BrosVerificarIntegridad() nunca lanza; si regresa null (empresa
+            //     vieja, sin permiso), simplemente no hay nada que verificar y se sigue igual
+            //     que siempre.
+            if (!string.IsNullOrEmpty(codigo))
+            {
+                var integridad = ctx.BrosVerificarIntegridad(appKey, codigo);
+                if (integridad != null)
+                {
+                    if (integridad.ExigeAprobacion && !integridad.EstaAprobado)
+                    {
+                        MessageBox.Show(
+                            "El botón \"" + appKey + "\" requiere aprobación antes de ejecutarse " +
+                            "(preferencia \"ExigirAprobacion\" activa para tu usuario).\n\n" +
+                            "Ábrelo en la Consola BrosLMV y apruébalo.",
+                            "BrosLMV — Requiere aprobación", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    if (integridad.TieneHash && !integridad.Coincide)
+                    {
+                        // Primera version: solo avisa, no bloquea -- el script sigue corriendo
+                        // despues de que el usuario confirma que lo sabe.
+                        MessageBox.Show(
+                            "El botón \"" + appKey + "\" fue modificado por fuera de la Consola BrosLMV " +
+                            "(el código no coincide con la última vez que se guardó desde ahí).\n\n" +
+                            "Va a ejecutarse igual. Si no reconoces este cambio, avisa al responsable.",
+                            "BrosLMV — Integridad", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
                 }
             }

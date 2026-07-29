@@ -214,15 +214,25 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T2.3 — Integridad de scripts (hash + aprobación ligera)
 
+> **Estado (2026-07-29): HECHO y desplegado en vivo (v2.35.0).** Compilado con 0 errores,
+> migración corrida contra `GGV_DE_MEXICO` y `Distribuciones_Candelas` (idempotencia
+> verificada corriéndola dos veces). Hash verificado por comparación cruzada contra
+> `SHA256` de PowerShell — mismo algoritmo, mismo resultado. **Pendiente real:** el
+> aviso de "script modificado" todavía no escribe en `zzBrosAuditoria` (eso llega con
+> T2.1, siguiente en la cola) — por ahora solo el `MessageBox` al usuario. Tampoco se
+> probó el flujo completo dentro de CONTPAQi real (clic en un botón manipulado a
+> propósito) — solo se verificó la lógica SQL y que compila.
+
 - **Qué:** detectar (y opcionalmente bloquear) scripts modificados por fuera de la consola.
 - **Por qué (H8):** es el vector #1 de accidente/abuso. No necesita criptografía fuerte: necesita trazabilidad y un freno opcional.
 - **Cómo:**
-  1. Migración de esquema: `zzBrosScript` + columna `HashSHA256 char(64) NULL`, `AprobadoPor int NULL`, `AprobadoEl datetime NULL`. Agregar al `provision_empresa.sql` **y** crear `upgrade_2.34.0.sql` para empresas ya provisionadas (el instalador ya tiene concepto de "Actualizar disponible").
-  2. `BrosGuardar`: calcula y guarda el hash del código.
-  3. Al ejecutar desde ribbon (`ClsMain.cs`): si `HashSHA256` no coincide con el hash calculado → advertencia "script modificado fuera de la consola" + fila en `zzBrosAuditoria` (T2.1). Primera versión: **solo avisa**.
-  4. `zzBrosPref Tipo='ExigirAprobacion', Valor='1'` → los scripts con `AprobadoEl IS NULL` no corren desde ribbon (mensaje claro). La consola los aprueba con un clic (registra `AprobadoPor = ctx.UserID`).
-- **Esfuerzo: L. Riesgo: medio** (migración de esquema en clientes).
-- **Criterio:** un UPDATE manual de `Codigo` desde SSMS dispara la advertencia al ejecutar el botón.
+  1. ✅ Migración de esquema: `zzBrosScript` + `HashSHA256 char(64) NULL`, `AprobadoPor int NULL`, `AprobadoEl datetime NULL` — en `provision_empresa.sql` (para empresas nuevas) **y** como `ALTER TABLE ... IF COL_LENGTH(...) IS NULL` idempotente en el mismo script (para las ya provisionadas — no hizo falta un `upgrade_*.sql` aparte).
+  2. ✅ `BrosGuardar`: calcula y guarda `HashSHA256` (`Scripting.CalcularHashSHA256`, SHA256+UTF8+hex minúsculas).
+  3. ✅ Al ejecutar desde ribbon (`ClsMain.cs` → `EjecutarScript`): `ctx.BrosVerificarIntegridad(appKey, codigo)` compara el hash guardado contra el del código que se va a correr. Si no coincide → `MessageBox` de advertencia, **sigue corriendo** (primera versión: solo avisa). Scripts guardados antes de esta versión (`HashSHA256 IS NULL`) no disparan advertencia — no hay línea base con la que comparar.
+  4. ✅ `zzBrosPref Tipo='ExigirAprobacion', Valor='1'` → bloquea la ejecución desde el ribbon si `AprobadoEl IS NULL`, con mensaje claro. Botón nuevo **"Aprobar"** en la Consola (`Aprobar()` en `Consola.cs`) registra `AprobadoPor`/`AprobadoEl`.
+- **Archivos:** `instalador/sql/provision_empresa.sql`, `src/Scripting.cs`, `src/ClsMain.cs`, `src/Consola.cs`.
+- **Esfuerzo: L. Riesgo: medio** (migración de esquema en clientes) — mitigado: idempotente, ya corrida en ambas empresas reales sin incidentes.
+- **Criterio de aceptación real, pendiente de probar:** un UPDATE manual de `Codigo` desde SSMS debe disparar la advertencia al ejecutar el botón **desde CONTPAQi real** (no solo verificado por SQL/compilación).
 
 ---
 

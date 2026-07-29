@@ -1132,6 +1132,33 @@ ctx.Msg("Recepción creada: doc=" + rc);
 
 ## 12. Advertencias y buenas prácticas
 
+### 🔒 Integridad de scripts: hash y aprobación (desde v2.35.0)
+Cada vez que guardas un script desde la Consola (**Guardar**/**Guardar como**), BrosLMV
+calcula un hash SHA-256 del código y lo guarda junto con él (`zzBrosScript.HashSHA256`).
+Al ejecutar un botón desde el **ribbon**, se recalcula el hash del código que se va a
+correr y se compara contra el guardado:
+
+- **Coinciden** (lo normal) → corre sin avisos.
+- **No coinciden** → alguien modificó `Codigo` por fuera de la Consola (p. ej. un `UPDATE`
+  manual desde SSMS). Aparece una advertencia, pero **el script igual se ejecuta**
+  (primera versión: solo avisa, no bloquea) — revisa con el responsable si no reconoces
+  el cambio.
+- **Scripts guardados antes de v2.35.0** (`HashSHA256` vacío) no disparan la advertencia
+  — no hay una versión anterior con la que comparar. Se activa automáticamente la
+  próxima vez que lo guardes desde la Consola.
+
+**Modo estricto opcional — exigir aprobación:** si quieres que un botón no corra hasta
+que alguien lo revise explícitamente, marca la preferencia por usuario:
+
+```sql
+INSERT INTO zzBrosPref (Usuario, Tipo, Valor) VALUES (<UserID>, 'ExigirAprobacion', '1');
+```
+
+Con eso activo, cualquier botón sin aprobar (`AprobadoEl IS NULL`) se bloquea al
+ejecutarse desde el ribbon con un mensaje claro. Se aprueba con un clic desde la Consola
+(botón **"Aprobar"** en la barra de herramientas) — registra quién y cuándo
+(`AprobadoPor`/`AprobadoEl`).
+
 ### ⚠️ `Delete` vs `CancelDocument`
 - **`ctx.erp.Delete(doc)`** = soft-delete. Marca `DeletedOn` pero **NO revierte kardex ni costos**.
   El inventario queda inflado. Solo seguro para documentos sin afectación (solicitudes).

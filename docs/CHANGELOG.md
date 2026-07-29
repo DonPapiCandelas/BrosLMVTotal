@@ -8,6 +8,37 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.35.0] — 2026-07-29 — Integridad de scripts: hash y aprobación (T2.3, H8)
+
+> Vector de seguridad #1 del proyecto (H8): cualquier login con escritura en SQL podía
+> insertar código arbitrario en `zzBrosScript` que corre dentro del ERP con la conexión
+> viva, sin hash, firma ni aprobación. Primera mitigación: trazabilidad (detectar cuándo
+> pasó) y un freno opcional (exigir aprobación explícita).
+
+### Agregado
+- **`zzBrosScript.HashSHA256`/`AprobadoPor`/`AprobadoEl`** — migración idempotente en
+  `provision_empresa.sql` (`ALTER TABLE ... IF COL_LENGTH(...) IS NULL`), corrida en vivo
+  contra `GGV_DE_MEXICO` y `Distribuciones_Candelas` sin incidentes, verificada idempotente
+  (corrida dos veces).
+- **`BrosGuardar` calcula y guarda `HashSHA256`** (`Scripting.CalcularHashSHA256`,
+  SHA-256 + UTF-8 + hex minúsculas) cada vez que se guarda un script desde la Consola.
+- **`ctx.BrosVerificarIntegridad(appKey, codigo)`** — al ejecutar un botón desde el
+  ribbon, compara el hash guardado contra el del código actual. Si no coincide, avisa
+  (primera versión: no bloquea). Scripts guardados antes de esta versión (`HashSHA256`
+  vacío) no disparan falsos positivos.
+- **Modo "ExigirAprobacion"** (`zzBrosPref`, por usuario): bloquea botones sin aprobar
+  (`AprobadoEl IS NULL`) al ejecutarse desde el ribbon.
+- **Botón "Aprobar"** en la Consola (`Aprobar()`, `Consola.cs`) — registra
+  `AprobadoPor`/`AprobadoEl` con un clic.
+- `MANUAL.md` §12 documenta el flujo completo.
+
+### Pendiente (no bloqueante)
+- El aviso de hash no coincidente todavía no escribe en `zzBrosAuditoria` (llega con
+  T2.1, la tarea siguiente) — por ahora solo el `MessageBox` al usuario.
+- No probado dentro de CONTPAQi real todavía (solo verificado: compila con 0 errores,
+  la migración SQL corre en vivo, y el algoritmo de hash coincide con una verificación
+  cruzada independiente en PowerShell).
+
 ## [2.34.0] — 2026-07-29 — `ctx.dashboard()`: reportes HTML sin assets por script
 
 > Detonado por un bug real en producción: `ReporteXVehiculo.py` (EmpresaA) fijaba el nombre de

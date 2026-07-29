@@ -575,6 +575,7 @@ namespace BrosLMV
             AddTB(Glyph.Save,    "Guardar",             "Guardar en la empresa activa",            (s, e) => Guardar(false),  BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.SaveAs,  "Guardar como",        "Guardar con otro nombre (AppKey)",        (s, e) => Guardar(true),   BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Copy,    "Duplicar",            "Duplicar el script actual",               (s, e) => Duplicar(),      BtnKind.Toolbar, Color.Empty);
+            AddTB(Glyph.Check,   "Aprobar",             "Marca este botón como aprobado (requerido si el usuario tiene \"ExigirAprobacion\" activo)", (s, e) => Aprobar(), BtnKind.Toolbar, Color.Empty);
             AddSep();
             AddTB(Glyph.History, "Historial",            "Ver historial / auditoría de ejecuciones", (s, e) => VerHistorial(),  BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Info,    "Acerca de",            "Versión y notas de cambios",               (s, e) => AcercaDe(),      BtnKind.Toolbar, Color.Empty);
@@ -1589,6 +1590,26 @@ namespace BrosLMV
                     }
                     catch (Exception ex) { ctxError("No se pudo abrir: " + ex.Message); }
                 }
+        }
+
+        // Integridad de scripts (T2.3): marca el botón actual como aprobado (AprobadoPor/
+        // AprobadoEl). Necesario para que corra desde el ribbon si el usuario que lo ejecuta
+        // tiene la preferencia "ExigirAprobacion" activa (zzBrosPref).
+        private void Aprobar()
+        {
+            if (string.IsNullOrEmpty(_appKey))
+            {
+                ctxError("Guarda el script primero (Aprobar aplica a botones ya guardados en la empresa).");
+                return;
+            }
+            if (MessageBox.Show("¿Aprobar \"" + _appKey + "\" tal como está guardado ahora mismo?",
+                    "BrosLMV — Aprobar", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            try
+            {
+                _ctx.BrosAprobar(_appKey);
+                _status.Text = "Aprobado: " + _appKey;
+            }
+            catch (Exception ex) { ctxError("No se pudo aprobar: " + ex.Message); }
         }
 
         private void Guardar(bool comoNuevo)

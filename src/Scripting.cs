@@ -734,10 +734,80 @@ namespace BrosLMV
             BrosExec(
                 "IF OBJECT_ID('dbo.zzBrosScript') IS NULL CREATE TABLE dbo.zzBrosScript(" +
                 "AppKey NVARCHAR(80) NOT NULL PRIMARY KEY, Nombre NVARCHAR(200) NULL, Codigo NVARCHAR(MAX) NULL, " +
-                "Modulo INT NULL, Activo BIT NOT NULL DEFAULT 1, Modificado DATETIME NULL, ModificadoPor INT NULL); " +
+                "Modulo INT NULL, Activo BIT NOT NULL DEFAULT 1, Modificado DATETIME NULL, ModificadoPor INT NULL, " +
+                "HashSHA256 CHAR(64) NULL, AprobadoPor INT NULL, AprobadoEl DATETIME NULL); " +
+                "IF OBJECT_ID('dbo.zzBrosScript') IS NOT NULL AND COL_LENGTH('dbo.zzBrosScript','HashSHA256') IS NULL " +
+                "ALTER TABLE dbo.zzBrosScript ADD HashSHA256 CHAR(64) NULL; " +
+                "IF OBJECT_ID('dbo.zzBrosScript') IS NOT NULL AND COL_LENGTH('dbo.zzBrosScript','AprobadoPor') IS NULL " +
+                "ALTER TABLE dbo.zzBrosScript ADD AprobadoPor INT NULL; " +
+                "IF OBJECT_ID('dbo.zzBrosScript') IS NOT NULL AND COL_LENGTH('dbo.zzBrosScript','AprobadoEl') IS NULL " +
+                "ALTER TABLE dbo.zzBrosScript ADD AprobadoEl DATETIME NULL; " +
                 "IF OBJECT_ID('dbo.zzBrosScriptHist') IS NULL CREATE TABLE dbo.zzBrosScriptHist(" +
                 "id INT IDENTITY(1,1) PRIMARY KEY, AppKey NVARCHAR(80) NULL, Codigo NVARCHAR(MAX) NULL, " +
                 "Fecha DATETIME NULL, Usuario INT NULL);");
+        }
+
+        // ===== Integridad de scripts (T2.3) =====
+        // HashSHA256 solo lo recalcula BrosGuardar -- un UPDATE crudo de Codigo por fuera
+        // de la consola (SSMS, otro script) deja el hash viejo sin tocar, lo que hace el
+        // desajuste detectable. Primera version: solo avisa, no bloquea (salvo que el
+        // usuario active "ExigirAprobacion" via zzBrosPref).
+        public static string CalcularHashSHA256(string texto)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                byte[] bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(texto ?? ""));
+                var sb = new StringBuilder(64);
+                foreach (byte b in bytes) sb.Append(b.ToString("x2"));
+                return sb.ToString();
+            }
+        }
+
+        public class IntegridadScript
+        {
+            public bool TieneHash;       // false = guardado antes de v2.35.0, sin linea base
+            public bool Coincide;        // solo significativo si TieneHash=true
+            public bool ExigeAprobacion; // zzBrosPref Usuario/Tipo='ExigirAprobacion'/Valor='1'
+            public bool EstaAprobado;    // AprobadoEl IS NOT NULL
+        }
+
+        // Compara el hash guardado contra el del codigo que se va a ejecutar. Nunca lanza:
+        // si algo falla (empresa vieja sin columnas, sin permiso), regresa null -- la
+        // ejecucion jamas debe bloquearse por un fallo de esta verificacion misma.
+        public IntegridadScript BrosVerificarIntegridad(string appKey, string codigoActual)
+        {
+            try
+            {
+                var r = Query("SELECT HashSHA256, AprobadoEl FROM zzBrosScript WHERE AppKey=" + SqlStr(appKey));
+                if (r.Count == 0) return null;
+
+                string hashGuardado = Convert.ToString(r[0]["HashSHA256"] ?? "");
+                bool aprobado = r[0]["AprobadoEl"] != null && !(r[0]["AprobadoEl"] is DBNull);
+
+                bool exige = false;
+                try
+                {
+                    var pref = Query("SELECT Valor FROM zzBrosPref WHERE Usuario=" + UserID + " AND Tipo=" + SqlStr("ExigirAprobacion"));
+                    exige = pref.Count > 0 && Convert.ToString(pref[0]["Valor"]) == "1";
+                }
+                catch { /* zzBrosPref puede no existir en empresas viejas -- no exigir nada */ }
+
+                bool tieneHash = !string.IsNullOrEmpty(hashGuardado);
+                return new IntegridadScript
+                {
+                    TieneHash = tieneHash,
+                    Coincide = !tieneHash || hashGuardado.Equals(CalcularHashSHA256(codigoActual), StringComparison.OrdinalIgnoreCase),
+                    ExigeAprobacion = exige,
+                    EstaAprobado = aprobado,
+                };
+            }
+            catch { return null; }
+        }
+
+        // La aprueba la consola (o quien tenga acceso) con un clic -- registra quien y cuando.
+        public void BrosAprobar(string appKey)
+        {
+            BrosExec("UPDATE zzBrosScript SET AprobadoPor=" + UserID + ", AprobadoEl=GETDATE() WHERE AppKey=" + SqlStr(appKey));
         }
 
         // Lista los scripts (AppKey, Nombre) de la empresa activa.
@@ -790,6 +860,11 @@ namespace BrosLMV
         // la conexión viva: guardar NUNCA debe fallar solo por no poder usar la vía directa.
         public void BrosGuardar(string appKey, string nombre, string codigo, int modulo)
         {
+            // Se guarda en el MISMO momento que el codigo -- es la unica via que mantiene
+            // HashSHA256 al dia. Un UPDATE crudo por fuera de aqui deja el hash desactualizado
+            // a proposito (ver BrosVerificarIntegridad).
+            string hash = CalcularHashSHA256(codigo);
+
             try
             {
                 using (var c = OpenConn())
@@ -807,14 +882,15 @@ namespace BrosLMV
                         cmd.CommandText =
                             "IF EXISTS(SELECT 1 FROM zzBrosScript WHERE AppKey=@ak) " +
                             "UPDATE zzBrosScript SET Nombre=@nombre, Codigo=@codigo, Modulo=@modulo, Activo=1, " +
-                            "Modificado=GETDATE(), ModificadoPor=@uid WHERE AppKey=@ak " +
-                            "ELSE INSERT zzBrosScript(AppKey,Nombre,Codigo,Modulo,Activo,Modificado,ModificadoPor) " +
-                            "VALUES(@ak,@nombre,@codigo,@modulo,1,GETDATE(),@uid)";
+                            "Modificado=GETDATE(), ModificadoPor=@uid, HashSHA256=@hash WHERE AppKey=@ak " +
+                            "ELSE INSERT zzBrosScript(AppKey,Nombre,Codigo,Modulo,Activo,Modificado,ModificadoPor,HashSHA256) " +
+                            "VALUES(@ak,@nombre,@codigo,@modulo,1,GETDATE(),@uid,@hash)";
                         cmd.Parameters.Add("@ak", System.Data.SqlDbType.NVarChar, 80).Value = appKey ?? "";
                         cmd.Parameters.Add("@nombre", System.Data.SqlDbType.NVarChar, 200).Value = (object)nombre ?? DBNull.Value;
                         cmd.Parameters.Add("@codigo", System.Data.SqlDbType.NVarChar, -1).Value = (object)codigo ?? DBNull.Value;
                         cmd.Parameters.Add("@modulo", System.Data.SqlDbType.Int).Value = modulo;
                         cmd.Parameters.Add("@uid", System.Data.SqlDbType.Int).Value = UserID;
+                        cmd.Parameters.Add("@hash", System.Data.SqlDbType.Char, 64).Value = hash;
                         cmd.ExecuteNonQuery();
                     }
                 }
@@ -827,9 +903,10 @@ namespace BrosLMV
             BrosExec("IF EXISTS(SELECT 1 FROM zzBrosScript WHERE AppKey=" + SqlStr(appKey) + ") " +
                      "UPDATE zzBrosScript SET Nombre=" + SqlStr(nombre) + ", Codigo=" + SqlStr(codigo) +
                        ", Modulo=" + modulo + ", Activo=1, Modificado=GETDATE(), ModificadoPor=" + UserID +
+                       ", HashSHA256=" + SqlStr(hash) +
                        " WHERE AppKey=" + SqlStr(appKey) + "; " +
-                     "ELSE INSERT zzBrosScript(AppKey,Nombre,Codigo,Modulo,Activo,Modificado,ModificadoPor) " +
-                       "VALUES(" + SqlStr(appKey) + "," + SqlStr(nombre) + "," + SqlStr(codigo) + "," + modulo + ",1,GETDATE()," + UserID + ")");
+                     "ELSE INSERT zzBrosScript(AppKey,Nombre,Codigo,Modulo,Activo,Modificado,ModificadoPor,HashSHA256) " +
+                       "VALUES(" + SqlStr(appKey) + "," + SqlStr(nombre) + "," + SqlStr(codigo) + "," + modulo + ",1,GETDATE()," + UserID + "," + SqlStr(hash) + ")");
         }
 
         public void BrosBorrar(string appKey) { BrosExec("DELETE FROM zzBrosScript WHERE AppKey=" + SqlStr(appKey)); }

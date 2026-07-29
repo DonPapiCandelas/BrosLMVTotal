@@ -22,7 +22,20 @@ CREATE TABLE dbo.zzBrosScript(
     Modulo        INT           NULL,
     Activo        BIT           NOT NULL DEFAULT 1,
     Modificado    DATETIME      NULL,
-    ModificadoPor INT           NULL);
+    ModificadoPor INT           NULL,
+    HashSHA256    CHAR(64)      NULL,
+    AprobadoPor   INT           NULL,
+    AprobadoEl    DATETIME      NULL);
+
+-- Migracion idempotente para empresas ya provisionadas ANTES de v2.35.0 (integridad
+-- de scripts, T2.3): la tabla ya existe con el esquema viejo, hay que agregar las
+-- columnas nuevas si faltan. Mismo patron que el fix de IconFile de abajo.
+IF COL_LENGTH('dbo.zzBrosScript','HashSHA256') IS NULL
+    ALTER TABLE dbo.zzBrosScript ADD HashSHA256 CHAR(64) NULL;
+IF COL_LENGTH('dbo.zzBrosScript','AprobadoPor') IS NULL
+    ALTER TABLE dbo.zzBrosScript ADD AprobadoPor INT NULL;
+IF COL_LENGTH('dbo.zzBrosScript','AprobadoEl') IS NULL
+    ALTER TABLE dbo.zzBrosScript ADD AprobadoEl DATETIME NULL;
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='zzBrosScriptHist')
 CREATE TABLE dbo.zzBrosScriptHist(
