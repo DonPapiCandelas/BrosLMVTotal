@@ -136,6 +136,67 @@ namespace BrosLMV
     }
 
     // =========================================================
+    //   PAQUETES .bros (T1.3): manifiesto plano, sin depender de un parser JSON completo.
+    //   Portable a proposito -- lo usa Consola.cs (UI) y cualquier herramienta de linea de
+    //   comandos futura (import/export por lotes) sin arrastrar WinForms/ScintillaNET.
+    // =========================================================
+    internal static class Paquetes
+    {
+        public static string JsonStr(string s)
+        {
+            var sb = new StringBuilder("\"");
+            foreach (char c in s ?? "")
+            {
+                switch (c)
+                {
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 0x20) sb.Append("\\u").Append(((int)c).ToString("x4"));
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            sb.Append('"');
+            return sb.ToString();
+        }
+
+        // Extractor deliberadamente simple: el manifiesto siempre lo escribe esta misma clase
+        // (mismo formato exacto, ver ExportarPaquete en Consola.cs), así que no hace falta un
+        // parser JSON completo -- solo leer los campos planos que nosotros mismos generamos.
+        public static string ManifiestoTexto(string json, string campo)
+        {
+            var m = Regex.Match(json ?? "", "\"" + Regex.Escape(campo) + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+            if (!m.Success) return "";
+            return m.Groups[1].Value
+                .Replace("\\\"", "\"").Replace("\\\\", "\\")
+                .Replace("\\n", "\n").Replace("\\r", "\r").Replace("\\t", "\t");
+        }
+
+        public static int ManifiestoNumero(string json, string campo)
+        {
+            var m = Regex.Match(json ?? "", "\"" + Regex.Escape(campo) + "\"\\s*:\\s*(-?\\d+)");
+            return m.Success ? int.Parse(m.Groups[1].Value) : 0;
+        }
+
+        // Compara "2.36.0"-estilo (N.N.N, con o sin 4o numero). >0 si a > b, <0 si a < b.
+        public static int CompararVersiones(string a, string b)
+        {
+            var pa = (a ?? "").Split('.'); var pb = (b ?? "").Split('.');
+            for (int i = 0; i < Math.Max(pa.Length, pb.Length); i++)
+            {
+                int va = i < pa.Length && int.TryParse(pa[i], out int xa) ? xa : 0;
+                int vb = i < pb.Length && int.TryParse(pb[i], out int xb) ? xb : 0;
+                if (va != vb) return va - vb;
+            }
+            return 0;
+        }
+    }
+
+    // =========================================================
     //   CONEXION: reutiliza la conexion viva de CONTPAQi
     // =========================================================
     // No usamos archivo ni credenciales: tomamos la conexion ADO que CONTPAQi ya
@@ -735,16 +796,92 @@ namespace BrosLMV
                 "IF OBJECT_ID('dbo.zzBrosScript') IS NULL CREATE TABLE dbo.zzBrosScript(" +
                 "AppKey NVARCHAR(80) NOT NULL PRIMARY KEY, Nombre NVARCHAR(200) NULL, Codigo NVARCHAR(MAX) NULL, " +
                 "Modulo INT NULL, Activo BIT NOT NULL DEFAULT 1, Modificado DATETIME NULL, ModificadoPor INT NULL, " +
-                "HashSHA256 CHAR(64) NULL, AprobadoPor INT NULL, AprobadoEl DATETIME NULL); " +
+                "HashSHA256 CHAR(64) NULL, AprobadoPor INT NULL, AprobadoEl DATETIME NULL, Categoria NVARCHAR(100) NULL); " +
                 "IF OBJECT_ID('dbo.zzBrosScript') IS NOT NULL AND COL_LENGTH('dbo.zzBrosScript','HashSHA256') IS NULL " +
                 "ALTER TABLE dbo.zzBrosScript ADD HashSHA256 CHAR(64) NULL; " +
                 "IF OBJECT_ID('dbo.zzBrosScript') IS NOT NULL AND COL_LENGTH('dbo.zzBrosScript','AprobadoPor') IS NULL " +
                 "ALTER TABLE dbo.zzBrosScript ADD AprobadoPor INT NULL; " +
                 "IF OBJECT_ID('dbo.zzBrosScript') IS NOT NULL AND COL_LENGTH('dbo.zzBrosScript','AprobadoEl') IS NULL " +
                 "ALTER TABLE dbo.zzBrosScript ADD AprobadoEl DATETIME NULL; " +
+                "IF OBJECT_ID('dbo.zzBrosScript') IS NOT NULL AND COL_LENGTH('dbo.zzBrosScript','Categoria') IS NULL " +
+                "ALTER TABLE dbo.zzBrosScript ADD Categoria NVARCHAR(100) NULL; " +
                 "IF OBJECT_ID('dbo.zzBrosScriptHist') IS NULL CREATE TABLE dbo.zzBrosScriptHist(" +
                 "id INT IDENTITY(1,1) PRIMARY KEY, AppKey NVARCHAR(80) NULL, Codigo NVARCHAR(MAX) NULL, " +
-                "Fecha DATETIME NULL, Usuario INT NULL);");
+                "Fecha DATETIME NULL, Usuario INT NULL, Etiqueta NVARCHAR(200) NULL); " +
+                "IF OBJECT_ID('dbo.zzBrosScriptHist') IS NOT NULL AND COL_LENGTH('dbo.zzBrosScriptHist','Etiqueta') IS NULL " +
+                "ALTER TABLE dbo.zzBrosScriptHist ADD Etiqueta NVARCHAR(200) NULL;");
+        }
+
+        // Categoria (T "clasificar", v2.39.0): texto libre que el usuario asigna, para agrupar
+        // el arbol de la Consola sin depender del modulo de Comercial (se probo y se rechazo --
+        // no refleja como el usuario organiza sus botones en la practica). Es metadato puro:
+        // no toca Codigo/HashSHA256, asi que no dispara la logica de integridad (T2.3).
+        public void BrosCategorizar(string appKey, string categoria)
+        {
+            BrosExec("UPDATE zzBrosScript SET Categoria=" + SqlStr(categoria) + " WHERE AppKey=" + SqlStr(appKey));
+        }
+
+        // ===== Historial de versiones (T1.4) =====
+        // zzBrosScriptHist ya se llenaba solo desde v2.13.x (cada BrosGuardar respalda la
+        // version anterior antes de sobreescribir) -- lo que faltaba era la UI para leerlo.
+        // Nunca se toca aqui la fila "actual" (zzBrosScript); todo lo de abajo es de solo
+        // lectura sobre el historial, salvo Etiquetar/Purgar que son metadatos del historial
+        // mismo, no del script vivo.
+
+        // Lista las versiones anteriores de un AppKey (mas reciente primero). LEN(Codigo) en
+        // vez del codigo completo -- la lista no necesita cargar todo el texto de cada version.
+        public List<Dictionary<string, object>> BrosHistListar(string appKey)
+        {
+            try
+            {
+                return Query("SELECT id, Fecha, Usuario, Etiqueta, LEN(Codigo) AS Tamano " +
+                              "FROM zzBrosScriptHist WHERE AppKey=" + SqlStr(appKey) + " ORDER BY Fecha DESC, id DESC");
+            }
+            catch { return new List<Dictionary<string, object>>(); }
+        }
+
+        // Codigo completo de una version historica. Se pide tambien el AppKey (aunque 'id' ya
+        // es unico) para blindar contra usar por error el id de OTRO script.
+        public string BrosHistLeer(int id, string appKey)
+        {
+            var r = Query("SELECT Codigo FROM zzBrosScriptHist WHERE id=" + id + " AND AppKey=" + SqlStr(appKey));
+            return r.Count > 0 ? Convert.ToString(r[0]["Codigo"]) : null;
+        }
+
+        // Nota libre sobre una version del historial (p. ej. "Antes del refactor de precios").
+        // Vacio = quitar la etiqueta. Las versiones etiquetadas quedan protegidas de BrosHistPurgar.
+        public void BrosHistEtiquetar(int id, string etiqueta)
+        {
+            BrosExec("UPDATE zzBrosScriptHist SET Etiqueta=" + SqlStr(etiqueta) + " WHERE id=" + id);
+        }
+
+        // Borra versiones de MAS de 'diasAntiguedad' dias, de UN AppKey, EXCEPTO las
+        // etiquetadas (una nota es la forma de decir "esta no se toca"). Nunca corre sola --
+        // solo bajo pedido explicito del usuario, desde la Consola. Regresa cuantas borro.
+        public int BrosHistPurgar(string appKey, int diasAntiguedad)
+        {
+            var antes = Query("SELECT COUNT(*) AS n FROM zzBrosScriptHist WHERE AppKey=" + SqlStr(appKey) +
+                               " AND Fecha < DATEADD(day,-" + diasAntiguedad + ",GETDATE()) AND (Etiqueta IS NULL OR Etiqueta='')");
+            int n = antes.Count > 0 ? ToIntSeguro(antes[0]["n"]) : 0;
+            if (n > 0)
+                BrosExec("DELETE FROM zzBrosScriptHist WHERE AppKey=" + SqlStr(appKey) +
+                          " AND Fecha < DATEADD(day,-" + diasAntiguedad + ",GETDATE()) AND (Etiqueta IS NULL OR Etiqueta='')");
+            return n;
+        }
+
+        private static int ToIntSeguro(object v) { try { return Convert.ToInt32(v); } catch { return 0; } }
+
+        // Nombre amigable de un usuario (engUser.UserName), o "" si no existe (usuario borrado,
+        // empresa vieja) o si la consulta falla. Nunca lanza -- es solo para mostrar en la UI.
+        public string NombreUsuario(int userId)
+        {
+            if (userId <= 0) return "";
+            try
+            {
+                var r = Query("SELECT UserName FROM engUser WHERE UserID=" + userId);
+                return r.Count > 0 ? Convert.ToString(r[0]["UserName"] ?? "") : "";
+            }
+            catch { return ""; }
         }
 
         // ===== Integridad de scripts (T2.3) =====
@@ -810,10 +947,54 @@ namespace BrosLMV
             BrosExec("UPDATE zzBrosScript SET AprobadoPor=" + UserID + ", AprobadoEl=GETDATE() WHERE AppKey=" + SqlStr(appKey));
         }
 
-        // Lista los scripts (AppKey, Nombre) de la empresa activa.
+        // ===== Paquetes .bros (T1.3): mover un boton (script + assets) entre empresas/maquinas =====
+        public class PaqueteInfo
+        {
+            public string AppKey;
+            public string Nombre;
+            public string Codigo;
+            public int Modulo;
+            public string Categoria;
+        }
+
+        // Junta lo necesario para exportar un boton a .bros: Nombre/Modulo/Categoria de
+        // zzBrosScript + Codigo por la via de siempre (BrosCargar, ya resuelve el
+        // angostamiento a ANSI).
+        public PaqueteInfo BrosObtenerParaExportar(string appKey)
+        {
+            string codigo = BrosCargar(appKey);
+            if (codigo == null) return null;
+            string nombre = appKey; int modulo = 0; string categoria = "";
+            try
+            {
+                var r = Query("SELECT Nombre, Modulo, Categoria FROM zzBrosScript WHERE AppKey=" + SqlStr(appKey));
+                if (r.Count > 0)
+                {
+                    if (r[0]["Nombre"] != null && !(r[0]["Nombre"] is DBNull)) nombre = Convert.ToString(r[0]["Nombre"]);
+                    modulo = Com.ToInt(r[0]["Modulo"]);
+                    if (r[0]["Categoria"] != null && !(r[0]["Categoria"] is DBNull)) categoria = Convert.ToString(r[0]["Categoria"]);
+                }
+            }
+            catch { /* si falla, exporta con Nombre=AppKey y Modulo=0 -- mejor que no exportar nada */ }
+            return new PaqueteInfo { AppKey = appKey, Nombre = nombre, Codigo = codigo, Modulo = modulo, Categoria = categoria };
+        }
+
+        // zzBrosInfo.ProvisionVersion de la empresa activa, o "" si no existe (empresa vieja/sin
+        // provisionar) o si la tabla no esta disponible. Nunca lanza.
+        public string VersionProvisionada()
+        {
+            try
+            {
+                var r = Query("SELECT Valor FROM zzBrosInfo WHERE Clave=" + SqlStr("ProvisionVersion"));
+                return r.Count > 0 ? Convert.ToString(r[0]["Valor"]) : "";
+            }
+            catch { return ""; }
+        }
+
+        // Lista los scripts (AppKey, Nombre, Categoria) de la empresa activa.
         public List<Dictionary<string, object>> BrosListar()
         {
-            try { return Query("SELECT AppKey, Nombre FROM zzBrosScript WHERE Activo=1 ORDER BY AppKey"); }
+            try { return Query("SELECT AppKey, Nombre, Categoria FROM zzBrosScript WHERE Activo=1 ORDER BY AppKey"); }
             catch { return new List<Dictionary<string, object>>(); }
         }
 

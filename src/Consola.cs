@@ -1,4 +1,4 @@
-// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+﻿// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
 // Copyright (C) 2026 Cristofer Candelas Garcia
 //
 // This program is free software: you can redistribute it and/or modify
@@ -23,8 +23,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using ScintillaNET;
@@ -577,6 +579,8 @@ namespace BrosLMV
             AddTB(Glyph.Copy,    "Duplicar",            "Duplicar el script actual",               (s, e) => Duplicar(),      BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Check,   "Aprobar",             "Marca este botón como aprobado (requerido si el usuario tiene \"ExigirAprobacion\" activo)", (s, e) => Aprobar(), BtnKind.Toolbar, Color.Empty);
             AddSep();
+            AddTB(Glyph.Folder,  "Importar paquete…",   "Importar un botón (.bros) exportado de otra empresa/equipo", (s, e) => ImportarPaquete(), BtnKind.Toolbar, Color.Empty);
+            AddSep();
             AddTB(Glyph.History, "Historial",            "Ver historial / auditoría de ejecuciones", (s, e) => VerHistorial(),  BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Info,    "Acerca de",            "Versión y notas de cambios",               (s, e) => AcercaDe(),      BtnKind.Toolbar, Color.Empty);
             AddSep();
@@ -669,8 +673,6 @@ namespace BrosLMV
                 }
                 catch { }
                 try { _splitEditor.SplitterDistance = (int)(_splitEditor.Height * 0.64); } catch { }
-                // El árbol no conserva la expansión hecha antes de existir el handle: re-expandir.
-                try { _tree.ExpandAll(); if (_tree.Nodes.Count > 0) _tree.Nodes[0].EnsureVisible(); } catch { }
             };
         }
 
@@ -1308,17 +1310,55 @@ namespace BrosLMV
         // =====================================================
         //   Biblioteca de scripts (en SQL: zzBrosScript, por empresa)
         // =====================================================
+        // Nodo por script: marca con "★ " los favoritos (Datos.EsFavorito, por terminal —
+        // no es una columna de zzBrosScript, es preferencia local de quien usa la Consola).
+        private TreeNode NodoScript(string appKey)
+        {
+            bool fav = Datos.EsFavorito(appKey);
+            return new TreeNode((fav ? "★ " : "") + appKey)
+            { Tag = "sql:" + appKey, ImageKey = "script", SelectedImageKey = "script" };
+        }
+
         private void CargarArbol()
         {
             _tree.BeginUpdate();
             _tree.Nodes.Clear();
             string filtro = (_txtBuscar.Text ?? "").Trim().ToLower();
+            bool filtrando = filtro != "";
 
             string emp = "";
             try { emp = _ctx.Empresa(); } catch { }
             bool disponible = false;
             try { disponible = _ctx.BrosScriptsDisponible(); } catch { }
 
+            var todos = new List<Dictionary<string, object>>();
+            if (disponible) { try { todos = _ctx.BrosListar(); } catch { } }
+            var appKeys = todos.Select(r => Convert.ToString(r["AppKey"])).ToList();
+
+            // ---- ★ Favoritos (por terminal; solo los que sigan existiendo en esta empresa) ----
+            var favoritos = Datos.Favoritos().Where(f => appKeys.Contains(f))
+                .Where(f => !filtrando || f.ToLower().Contains(filtro)).ToList();
+            if (favoritos.Count > 0)
+            {
+                var nFav = new TreeNode("★ Favoritos") { ImageKey = "folder", SelectedImageKey = "folder" };
+                foreach (var ak in favoritos) nFav.Nodes.Add(NodoScript(ak));
+                _tree.Nodes.Add(nFav);
+            }
+
+            // ---- 🕐 Recientes (últimos 8 abiertos/ejecutados en ESTE equipo) ----
+            if (!filtrando)
+            {
+                var recientes = Datos.Recientes(8).Where(r => appKeys.Contains(r)).ToList();
+                if (recientes.Count > 0)
+                {
+                    var nRec = new TreeNode("🕐 Recientes") { ImageKey = "folder", SelectedImageKey = "folder" };
+                    foreach (var ak in recientes) nRec.Nodes.Add(NodoScript(ak));
+                    _tree.Nodes.Add(nRec);
+                }
+            }
+
+            // ---- Scripts, agrupados por Categoria (texto libre, el usuario la asigna a mano
+            //      con "Categorizar…" -- se probó por módulo de Comercial y no sirvió) ----
             var nScripts = new TreeNode("Scripts — " + (string.IsNullOrEmpty(emp) ? "(sin empresa)" : emp)) { ImageKey = "folder", SelectedImageKey = "folder" };
             if (!disponible)
             {
@@ -1326,26 +1366,36 @@ namespace BrosLMV
             }
             else
             {
-                try
+                var grupos = new SortedDictionary<string, TreeNode>(StringComparer.OrdinalIgnoreCase);
+                foreach (var r in todos)
                 {
-                    foreach (var r in _ctx.BrosListar())
+                    string ak = Convert.ToString(r["AppKey"]);
+                    if (filtrando && !ak.ToLower().Contains(filtro)) continue;
+
+                    string cat = Convert.ToString(r.ContainsKey("Categoria") ? r["Categoria"] : "") ?? "";
+                    string grupoNombre = string.IsNullOrWhiteSpace(cat) ? "Sin categoría" : cat.Trim();
+
+                    if (!grupos.TryGetValue(grupoNombre, out TreeNode nGrupo))
                     {
-                        string ak = Convert.ToString(r["AppKey"]);
-                        if (filtro != "" && !ak.ToLower().Contains(filtro)) continue;
-                        nScripts.Nodes.Add(new TreeNode(ak) { Tag = "sql:" + ak, ImageKey = "script", SelectedImageKey = "script" });
+                        nGrupo = new TreeNode(grupoNombre) { ImageKey = "folder", SelectedImageKey = "folder" };
+                        grupos[grupoNombre] = nGrupo;
+                        nScripts.Nodes.Add(nGrupo);
                     }
+                    nGrupo.Nodes.Add(NodoScript(ak));
                 }
-                catch { }
             }
             _tree.Nodes.Add(nScripts);
 
+            // ---- Plantillas ----
             var nPlant = new TreeNode("Plantillas") { ImageKey = "folder", SelectedImageKey = "folder" };
             foreach (var p in PLANTILLAS)
-                if (filtro == "" || p.Key.ToLower().Contains(filtro))
+                if (!filtrando || p.Key.ToLower().Contains(filtro))
                     nPlant.Nodes.Add(new TreeNode(p.Key) { Tag = p, ImageKey = "template", SelectedImageKey = "template" });
             _tree.Nodes.Add(nPlant);
 
-            _tree.ExpandAll();
+            // Buscando: expandir todo (si no, resultados quedan escondidos en grupos colapsados).
+            // Sin buscar: TODO contraído por default, sin excepción -- el usuario decide qué abrir.
+            if (filtrando) _tree.ExpandAll();
             _tree.EndUpdate();
         }
 
@@ -1356,6 +1406,11 @@ namespace BrosLMV
             string ak = tag.Substring(4);
             var menu = new ContextMenuStrip();
             menu.Items.Add("Abrir", null, (s, e) => AbrirScript(ak));
+            menu.Items.Add(Datos.EsFavorito(ak) ? "★ Quitar de favoritos" : "☆ Marcar como favorito", null,
+                (s, e) => { Datos.ToggleFavorito(ak); CargarArbol(); });
+            menu.Items.Add("Categorizar…", null, (s, e) => Categorizar(ak));
+            menu.Items.Add("Historial de versiones…", null, (s, e) => VerHistorialVersiones(ak));
+            menu.Items.Add("Exportar paquete (.bros)…", null, (s, e) => ExportarPaquete(ak));
             menu.Items.Add("Eliminar…", null, (s, e) =>
             {
                 if (MessageBox.Show("¿Eliminar el script \"" + ak + "\" de esta empresa?", "BrosLMV",
@@ -1366,6 +1421,229 @@ namespace BrosLMV
                 }
             });
             menu.Show(_tree, _tree.PointToClient(Cursor.Position));
+        }
+
+        // =====================================================
+        //   Historial de VERSIONES (T1.4) — no confundir con VerHistorial() de abajo, que es
+        //   el historial de EJECUCIONES (quién corrió qué botón). Este es el código de
+        //   versiones anteriores de UN script (zzBrosScriptHist), con diff y restaurar.
+        // =====================================================
+
+        // Diff de líneas por LCS (subsecuencia común más larga) clásico, O(n·m). Sin
+        // librerías externas -- los scripts de BrosLMV rara vez pasan de unos cientos de
+        // líneas. Guardia contra scripts gigantes (evita un dp[n,m] descontrolado).
+        private static List<(char Tipo, string Linea)> DiffLineas(string viejo, string nuevo)
+        {
+            var a = (viejo ?? "").Replace("\r\n", "\n").Split('\n');
+            var b = (nuevo ?? "").Replace("\r\n", "\n").Split('\n');
+            int n = a.Length, m = b.Length;
+            var resultado = new List<(char, string)>();
+
+            if ((long)n * m > 16_000_000)
+            {
+                resultado.Add(('!', "(script muy grande para diff línea por línea: " + n + " vs " + m + " líneas — restaurar sigue funcionando igual)"));
+                return resultado;
+            }
+
+            var dp = new int[n + 1, m + 1];
+            for (int i = n - 1; i >= 0; i--)
+                for (int j = m - 1; j >= 0; j--)
+                    dp[i, j] = a[i] == b[j] ? dp[i + 1, j + 1] + 1 : Math.Max(dp[i + 1, j], dp[i, j + 1]);
+
+            int x = 0, y = 0;
+            while (x < n && y < m)
+            {
+                if (a[x] == b[y]) { resultado.Add((' ', a[x])); x++; y++; }
+                else if (dp[x + 1, y] >= dp[x, y + 1]) { resultado.Add(('-', a[x])); x++; }
+                else { resultado.Add(('+', b[y])); y++; }
+            }
+            while (x < n) { resultado.Add(('-', a[x])); x++; }
+            while (y < m) { resultado.Add(('+', b[y])); y++; }
+            return resultado;
+        }
+
+        private static void RenderDiff(RichTextBox rtb, List<(char Tipo, string Linea)> diff)
+        {
+            rtb.Clear();
+            foreach (var d in diff)
+            {
+                int start = rtb.TextLength;
+                string prefijo = d.Tipo == '+' ? "+ " : d.Tipo == '-' ? "- " : d.Tipo == '!' ? "! " : "  ";
+                rtb.AppendText(prefijo + d.Linea + "\n");
+                rtb.Select(start, rtb.TextLength - start);
+                rtb.SelectionColor = d.Tipo == '+' ? Color.FromArgb(0, 120, 0)
+                    : d.Tipo == '-' ? Color.FromArgb(170, 0, 0)
+                    : d.Tipo == '!' ? AppTheme.TextMuted : AppTheme.TextMain;
+                rtb.SelectionBackColor = d.Tipo == '+' ? Color.FromArgb(224, 255, 224)
+                    : d.Tipo == '-' ? Color.FromArgb(255, 224, 224) : Color.White;
+            }
+            rtb.Select(0, 0);
+        }
+
+        // "Restaurar" reusa BrosGuardar -- la versión que estaba activa ANTES de restaurar
+        // queda respaldada automáticamente (es lo mismo que hace cualquier Guardar), así que
+        // restaurar nunca pierde nada: siempre se puede deshacer restaurando otra vez.
+        private void VerHistorialVersiones(string appKey)
+        {
+            List<Dictionary<string, object>> versiones;
+            try { versiones = _ctx.BrosHistListar(appKey); }
+            catch (Exception ex) { ctxError("No se pudo leer el historial de versiones: " + ex.Message); return; }
+
+            string codigoActual;
+            try { codigoActual = _ctx.BrosCargar(appKey) ?? ""; }
+            catch (Exception ex) { ctxError("No se pudo cargar el código actual: " + ex.Message); return; }
+
+            var nombresUsuario = new Dictionary<int, string>(); // cache -- 1 consulta por usuario distinto
+
+            var frm = new Form
+            {
+                Text = "Historial de versiones — " + appKey,
+                Size = new Size(1100, 650),
+                MinimumSize = new Size(760, 420),
+                StartPosition = FormStartPosition.CenterParent,
+                Font = new Font("Segoe UI", 9f)
+            };
+
+            var split = new SplitContainer { Dock = DockStyle.Fill, SplitterDistance = 340 };
+
+            var lv = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, GridLines = true, MultiSelect = false };
+            lv.Columns.Add("Fecha", 125);
+            lv.Columns.Add("Usuario", 110);
+            lv.Columns.Add("Etiqueta", 140);
+            lv.Columns.Add("Tamaño", 70);
+
+            if (versiones.Count == 0)
+            {
+                var vacio = new Label { Text = "Sin versiones anteriores todavía — se genera una cada vez que guardas un cambio.",
+                    Dock = DockStyle.Top, Height = 50, Padding = new Padding(8), ForeColor = AppTheme.TextMuted };
+                split.Panel1.Controls.Add(vacio);
+            }
+            foreach (var v in versiones)
+            {
+                int uid = Com.ToInt(v["Usuario"]);
+                if (!nombresUsuario.TryGetValue(uid, out string nombreU))
+                {
+                    nombreU = uid > 0 ? _ctx.NombreUsuario(uid) : "";
+                    nombresUsuario[uid] = nombreU;
+                }
+                var it = new ListViewItem(Convert.ToString(v["Fecha"]));
+                it.SubItems.Add(string.IsNullOrEmpty(nombreU) ? (uid > 0 ? uid.ToString() : "?") : nombreU);
+                it.SubItems.Add(Convert.ToString(v["Etiqueta"] ?? ""));
+                it.SubItems.Add(Convert.ToString(v["Tamano"]) + " car.");
+                it.Tag = Convert.ToInt32(v["id"]);
+                lv.Items.Add(it);
+            }
+            split.Panel1.Controls.Add(lv);
+
+            var pnlDerecha = new Panel { Dock = DockStyle.Fill };
+            var rtb = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Consolas", 9f), WordWrap = false, BorderStyle = BorderStyle.FixedSingle };
+            // DiffLineas(viejo, nuevo): '-' = línea SOLO en la versión vieja (roja) = volvería si
+            // restauras; '+' = línea SOLO en la versión de HOY (verde) = se perdería si restauras.
+            var lblAyuda = new Label { Dock = DockStyle.Top, Height = 26, Padding = new Padding(6, 4, 6, 0), ForeColor = AppTheme.TextMuted,
+                Text = "Diff contra el código de HOY — rojo = de la versión vieja (volvería si restauras), verde = de hoy (se perdería si restauras)." };
+            var pnlBotones = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(6) };
+            var btnRestaurar = new IconButton { Text = "Restaurar esta versión", Kind = BtnKind.Primary, Accent = AppTheme.Primary, AutoSize = true, Height = 34, Padding = new Padding(10, 0, 10, 0) };
+            var btnExportar = new IconButton { Text = "Exportar (.bros)…", Kind = BtnKind.Outline, Accent = AppTheme.TextMuted, AutoSize = true, Height = 34, Padding = new Padding(10, 0, 10, 0) };
+            var btnEtiquetar = new IconButton { Text = "Etiquetar…", Kind = BtnKind.Outline, Accent = AppTheme.TextMuted, AutoSize = true, Height = 34, Padding = new Padding(10, 0, 10, 0) };
+            var btnPurgar = new IconButton { Text = "Purgar versiones viejas…", Kind = BtnKind.Outline, Accent = AppTheme.TextMuted, AutoSize = true, Height = 34, Padding = new Padding(10, 0, 10, 0) };
+            pnlBotones.Controls.AddRange(new Control[] { btnRestaurar, btnExportar, btnEtiquetar, btnPurgar });
+            pnlDerecha.Controls.Add(rtb);
+            pnlDerecha.Controls.Add(lblAyuda);
+            pnlDerecha.Controls.Add(pnlBotones);
+            split.Panel2.Controls.Add(pnlDerecha);
+            frm.Controls.Add(split);
+
+            Dictionary<string, object> Seleccionada()
+            {
+                if (lv.SelectedItems.Count == 0) return null;
+                int id = (int)lv.SelectedItems[0].Tag;
+                return versiones.FirstOrDefault(v => Convert.ToInt32(v["id"]) == id);
+            }
+
+            lv.SelectedIndexChanged += (s, e) =>
+            {
+                var sel = Seleccionada();
+                if (sel == null) { rtb.Clear(); return; }
+                int id = Convert.ToInt32(sel["id"]);
+                string codigoViejo;
+                try { codigoViejo = _ctx.BrosHistLeer(id, appKey) ?? ""; }
+                catch (Exception ex) { rtb.Clear(); rtb.Text = "No se pudo leer esta versión: " + ex.Message; return; }
+                RenderDiff(rtb, DiffLineas(codigoViejo, codigoActual));
+            };
+
+            btnRestaurar.Click += (s, e) =>
+            {
+                var sel = Seleccionada();
+                if (sel == null) { MessageBox.Show(frm, "Selecciona una versión primero.", "BrosLMV"); return; }
+                if (MessageBox.Show(frm,
+                    "¿Restaurar esta versión de \"" + appKey + "\"?\n\nLa versión que tienes ahora mismo queda respaldada " +
+                    "automáticamente en el historial -- no se pierde nada, y se puede deshacer restaurando de nuevo.",
+                    "BrosLMV — Restaurar", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                try
+                {
+                    int id = Convert.ToInt32(sel["id"]);
+                    string codigoViejo = _ctx.BrosHistLeer(id, appKey);
+                    if (codigoViejo == null) { ctxError("Esa versión ya no está disponible."); return; }
+                    string nombreActual = appKey; int moduloActual = 0;
+                    try { var info = _ctx.BrosObtenerParaExportar(appKey); if (info != null) { nombreActual = info.Nombre; moduloActual = info.Modulo; } } catch { }
+                    _ctx.BrosAsegurarTablas();
+                    _ctx.BrosGuardar(appKey, nombreActual, codigoViejo, moduloActual);
+                    MessageBox.Show(frm, "Restaurado.", "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    frm.Close();
+                    if (_appKey == appKey) AbrirScript(appKey);
+                    CargarArbol();
+                }
+                catch (Exception ex) { MessageBox.Show(frm, "No se pudo restaurar: " + ex.Message, "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            };
+
+            btnExportar.Click += (s, e) =>
+            {
+                var sel = Seleccionada();
+                if (sel == null) { MessageBox.Show(frm, "Selecciona una versión primero.", "BrosLMV"); return; }
+                int id = Convert.ToInt32(sel["id"]);
+                string codigoViejo;
+                try { codigoViejo = _ctx.BrosHistLeer(id, appKey); } catch (Exception ex) { ctxError(ex.Message); return; }
+                if (codigoViejo == null) { ctxError("Esa versión ya no está disponible."); return; }
+                string nombreActual = appKey; int moduloActual = 0; string categoriaActual = "";
+                try { var info = _ctx.BrosObtenerParaExportar(appKey); if (info != null) { nombreActual = info.Nombre; moduloActual = info.Modulo; categoriaActual = info.Categoria; } } catch { }
+                ExportarPaqueteConCodigo(appKey, codigoViejo, nombreActual, moduloActual, categoriaActual);
+            };
+
+            btnEtiquetar.Click += (s, e) =>
+            {
+                var sel = Seleccionada();
+                if (sel == null) { MessageBox.Show(frm, "Selecciona una versión primero.", "BrosLMV"); return; }
+                int id = Convert.ToInt32(sel["id"]);
+                string actual = Convert.ToString(sel["Etiqueta"] ?? "");
+                string etiqueta = PedirTexto("Etiqueta para esta versión (vacío = quitar):", actual);
+                if (etiqueta == null) return;
+                try { _ctx.BrosHistEtiquetar(id, etiqueta.Trim()); }
+                catch (Exception ex) { ctxError("No se pudo etiquetar: " + ex.Message); return; }
+                frm.Close();
+                VerHistorialVersiones(appKey);
+            };
+
+            btnPurgar.Click += (s, e) =>
+            {
+                string diasTxt = PedirTexto(
+                    "Borrar versiones de \"" + appKey + "\" con más de cuántos días de antigüedad?\n" +
+                    "(Las versiones ETIQUETADAS nunca se borran, sin importar la antigüedad.)", "90");
+                if (diasTxt == null) return;
+                if (!int.TryParse(diasTxt.Trim(), out int dias) || dias < 1)
+                { MessageBox.Show(frm, "Escribe un número de días válido (entero, mayor a 0).", "BrosLMV"); return; }
+                try
+                {
+                    int n = _ctx.BrosHistPurgar(appKey, dias);
+                    MessageBox.Show(frm, n + " versión(es) sin etiquetar, de más de " + dias + " día(s), borradas.",
+                        "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    frm.Close();
+                    VerHistorialVersiones(appKey);
+                }
+                catch (Exception ex) { ctxError("No se pudo purgar: " + ex.Message); }
+            };
+
+            if (versiones.Count > 0) lv.Items[0].Selected = true;
+            frm.ShowDialog(this);
         }
 
         private void VerHistorial()
@@ -1570,6 +1848,7 @@ namespace BrosLMV
                 _appKey = appKey;
                 Text = "BrosLMV — " + appKey;
                 _status.Text = "Abierto: " + appKey;
+                Datos.AgregarReciente(appKey);
             }
             catch (Exception ex) { ctxError("No se pudo abrir: " + ex.Message); }
         }
@@ -1611,6 +1890,224 @@ namespace BrosLMV
             }
             catch (Exception ex) { ctxError("No se pudo aprobar: " + ex.Message); }
         }
+
+        // Categoría (texto libre que el usuario escribe): se probó agrupar por módulo de
+        // Comercial y no sirvió -- el usuario prefiere clasificar a mano. No toca Codigo ni
+        // HashSHA256 (T2.3), solo metadato.
+        private void Categorizar(string appKey)
+        {
+            string actual = "";
+            try { actual = Convert.ToString(_ctx.Query("SELECT Categoria FROM zzBrosScript WHERE AppKey=" + "N'" + appKey.Replace("'", "''") + "'")
+                .FirstOrDefault()?["Categoria"] ?? ""); } catch { }
+            string nueva = PedirTexto("Categoría para \"" + appKey + "\" (vacío = sin categoría):", actual);
+            if (nueva == null) return; // canceló
+            try
+            {
+                _ctx.BrosAsegurarTablas();
+                _ctx.BrosCategorizar(appKey, nueva.Trim());
+                _status.Text = "Categoría de " + appKey + ": " + (string.IsNullOrEmpty(nueva.Trim()) ? "(ninguna)" : nueva.Trim());
+                CargarArbol();
+            }
+            catch (Exception ex) { ctxError("No se pudo categorizar: " + ex.Message); }
+        }
+
+        // =====================================================
+        //   Paquetes .bros (T1.3): mover un botón entre empresas/equipos
+        // =====================================================
+        // Formato: ZIP con codigo.txt (el script) + paquete.json (metadatos) + assets\ (si el
+        // AppKey tiene carpeta <AppKey>_assets\ en la empresa activa). Se mueve el AppKey tal
+        // cual -- si en la empresa destino ya existe uno con el mismo nombre, se pide confirmar
+        // antes de sobrescribir (queda respaldado en zzBrosScriptHist como cualquier Guardar).
+        private void ExportarPaquete(string appKey)
+        {
+            var info = _ctx.BrosObtenerParaExportar(appKey);
+            if (info == null) { ctxError("No se encontró el script: " + appKey); return; }
+            ExportarPaqueteConCodigo(appKey, info.Codigo, info.Nombre, info.Modulo, info.Categoria);
+        }
+
+        // Compartida entre "Exportar paquete (.bros)…" (código ACTUAL) y "Exportar esta
+        // versión (.bros)…" del historial de versiones (código de una fila vieja de
+        // zzBrosScriptHist) -- el paquete no distingue de dónde salió el código.
+        private void ExportarPaqueteConCodigo(string appKey, string codigo, string nombre, int modulo, string categoria)
+        {
+            try
+            {
+                using (var dlg = new SaveFileDialog { FileName = appKey + ".bros", Filter = "Paquete BrosLMV (*.bros)|*.bros" })
+                {
+                    if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+                    string tmp = Path.Combine(Path.GetTempPath(), "broslmv_pkg_" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(tmp);
+                    try
+                    {
+                        File.WriteAllText(Path.Combine(tmp, "codigo.txt"), codigo, Encoding.UTF8);
+
+                        string empresa = SafeEmpresa();
+                        string carpetaAssets = Path.Combine(Rutas.ScriptsDe(empresa), appKey + "_assets");
+                        int nArchivos = 0;
+                        if (Directory.Exists(carpetaAssets))
+                        {
+                            string destAssets = Path.Combine(tmp, "assets");
+                            foreach (var f in Directory.GetFiles(carpetaAssets, "*", SearchOption.AllDirectories))
+                            {
+                                string rel = f.Substring(carpetaAssets.Length).TrimStart('\\', '/');
+                                string destFile = Path.Combine(destAssets, rel);
+                                Directory.CreateDirectory(Path.GetDirectoryName(destFile));
+                                File.Copy(f, destFile, true);
+                                nArchivos++;
+                            }
+                        }
+
+                        string manifest = "{\r\n" +
+                            "  \"appKey\": " + Paquetes.JsonStr(appKey) + ",\r\n" +
+                            "  \"nombre\": " + Paquetes.JsonStr(nombre) + ",\r\n" +
+                            "  \"modulo\": " + modulo + ",\r\n" +
+                            "  \"categoria\": " + Paquetes.JsonStr(categoria) + ",\r\n" +
+                            "  \"versionMinima\": " + Paquetes.JsonStr(Com.Version) + ",\r\n" +
+                            "  \"exportadoDe\": " + Paquetes.JsonStr(empresa) + ",\r\n" +
+                            "  \"exportadoEl\": " + Paquetes.JsonStr(DateTime.Now.ToString("yyyy-MM-dd HH:mm")) + "\r\n" +
+                            "}\r\n";
+                        File.WriteAllText(Path.Combine(tmp, "paquete.json"), manifest, Encoding.UTF8);
+
+                        if (File.Exists(dlg.FileName)) File.Delete(dlg.FileName);
+                        ZipFile.CreateFromDirectory(tmp, dlg.FileName, CompressionLevel.Optimal, false);
+
+                        _status.Text = "Exportado: " + Path.GetFileName(dlg.FileName) + " (" + nArchivos + " archivo(s) de assets)";
+                    }
+                    finally { try { Directory.Delete(tmp, true); } catch { } }
+                }
+            }
+            catch (Exception ex) { ctxError("No se pudo exportar el paquete: " + ex.Message); }
+        }
+
+        // Importa un .bros a la empresa ACTIVA (la que tenga abierta Comercial en este momento
+        // -- igual que Guardar). Sobrescribir pide confirmación; el historial (zzBrosScriptHist)
+        // conserva lo que había antes, así que es reversible.
+        private void ImportarPaquete()
+        {
+            using (var dlg = new OpenFileDialog { Filter = "Paquete BrosLMV (*.bros)|*.bros|Todos|*.*" })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+                string tmp = Path.Combine(Path.GetTempPath(), "broslmv_pkg_" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    ZipFile.ExtractToDirectory(dlg.FileName, tmp);
+
+                    string manifestPath = Path.Combine(tmp, "paquete.json");
+                    string codigoPath = Path.Combine(tmp, "codigo.txt");
+                    if (!File.Exists(manifestPath) || !File.Exists(codigoPath))
+                    {
+                        ctxError("El archivo no parece un paquete BrosLMV válido (falta paquete.json o codigo.txt).");
+                        return;
+                    }
+                    string manifest = File.ReadAllText(manifestPath, Encoding.UTF8);
+                    string appKey = Paquetes.ManifiestoTexto(manifest, "appKey");
+                    string nombre = Paquetes.ManifiestoTexto(manifest, "nombre");
+                    int modulo = Paquetes.ManifiestoNumero(manifest, "modulo");
+                    string categoria = Paquetes.ManifiestoTexto(manifest, "categoria");
+                    string versionMinima = Paquetes.ManifiestoTexto(manifest, "versionMinima");
+
+                    if (string.IsNullOrEmpty(appKey)) { ctxError("El paquete no trae AppKey en su manifiesto (paquete.json)."); return; }
+
+                    string versionActual = _ctx.VersionProvisionada();
+                    if (!string.IsNullOrEmpty(versionMinima) && !string.IsNullOrEmpty(versionActual)
+                        && Paquetes.CompararVersiones(versionActual, versionMinima) < 0
+                        && MessageBox.Show(
+                            "Este paquete se exportó con BrosLMV " + versionMinima + "; esta empresa está " +
+                            "provisionada en " + versionActual + " (más vieja). Puede que falten columnas o " +
+                            "funciones que el script necesita.\n\n¿Importar de todas formas?",
+                            "BrosLMV — Versión distinta", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                        return;
+
+                    bool yaExiste = _ctx.BrosCargar(appKey) != null;
+                    if (yaExiste && MessageBox.Show(
+                        "Ya existe un script \"" + appKey + "\" en esta empresa. ¿Sobrescribirlo? " +
+                        "(la versión actual queda respaldada en el historial, zzBrosScriptHist)",
+                        "BrosLMV — Ya existe", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                        return;
+
+                    string codigo = File.ReadAllText(codigoPath, Encoding.UTF8);
+                    _ctx.BrosAsegurarTablas();
+                    _ctx.BrosGuardar(appKey, string.IsNullOrEmpty(nombre) ? appKey : nombre, codigo, modulo);
+                    if (!string.IsNullOrEmpty(categoria)) _ctx.BrosCategorizar(appKey, categoria);
+
+                    string empresa = SafeEmpresa();
+                    string assetsOrigen = Path.Combine(tmp, "assets");
+                    int nArchivos = 0;
+                    if (Directory.Exists(assetsOrigen))
+                    {
+                        string assetsDestino = Path.Combine(Rutas.ScriptsDe(empresa), appKey + "_assets");
+                        foreach (var f in Directory.GetFiles(assetsOrigen, "*", SearchOption.AllDirectories))
+                        {
+                            string rel = f.Substring(assetsOrigen.Length).TrimStart('\\', '/');
+                            string destFile = Path.Combine(assetsDestino, rel);
+                            Directory.CreateDirectory(Path.GetDirectoryName(destFile));
+                            File.Copy(f, destFile, true);
+                            nArchivos++;
+                        }
+                    }
+
+                    _appKey = appKey;
+                    _editor.Text = codigo;
+                    Text = "BrosLMV — " + appKey;
+                    _status.Text = "Importado: " + appKey + " (" + nArchivos + " archivo(s) de assets)";
+                    CargarArbol();
+
+                    if (MessageBox.Show(
+                        "\"" + appKey + "\" se guardó en la empresa activa (\"" + empresa + "\"), pero " +
+                        "todavía NO tiene botón en el ribbon.\n\n¿Copiar al portapapeles el SQL para crear el botón?",
+                        "BrosLMV — Crear botón", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                    {
+                        Clipboard.SetText(SqlCrearBoton(appKey, string.IsNullOrEmpty(nombre) ? appKey : nombre));
+                        MessageBox.Show(
+                            "SQL copiado al portapapeles. Ajusta @Caption/@Orden si hace falta y córrelo " +
+                            "contra la base de datos de esta empresa (p. ej. desde SSMS o sqlcmd).",
+                            "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+                catch (Exception ex) { ctxError("No se pudo importar el paquete: " + ex.Message); }
+                finally { try { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); } catch { } }
+            }
+        }
+
+        // Mismo patrón que instalador\sql\plantilla_crear_boton.sql, con @Caption/@Execute ya
+        // rellenados -- se copia al portapapeles en vez de ejecutarse solo (crear botones en el
+        // ribbon toca engRibbonControl/engRibbonMenu, tablas nativas de Comercial: mejor que el
+        // usuario lo revise/corra a propósito que hacerlo automático desde la Consola).
+        private static string SqlCrearBoton(string appKey, string caption)
+        {
+            return
+                "-- Generado por BrosLMV Consola (Importar paquete) -- revisa @Caption/@Orden antes de correr.\r\n" +
+                "SET NOCOUNT ON;\r\n" +
+                "DECLARE @Caption nvarchar(200) = " + SqlLit(caption) + ";\r\n" +
+                "DECLARE @Execute nvarchar(200) = " + SqlLit("BrosLMV." + appKey) + ";\r\n" +
+                "DECLARE @RibbonGroupID int = NULL;\r\n" +
+                "DECLARE @Orden int = 100;\r\n" +
+                "IF @RibbonGroupID IS NULL BEGIN\r\n" +
+                "    SELECT TOP 1 @RibbonGroupID = m.RibbonGroupID FROM engRibbonMenu m\r\n" +
+                "    INNER JOIN engRibbonControl c ON c.ControlID = m.ControlID\r\n" +
+                "    WHERE c.ControlExecute LIKE 'BrosLMV.%' ORDER BY m.RibbonGroupID;\r\n" +
+                "    IF @RibbonGroupID IS NULL\r\n" +
+                "        SELECT TOP 1 @RibbonGroupID = RibbonGroupID FROM engRibbonMenu GROUP BY RibbonGroupID ORDER BY COUNT(*) DESC;\r\n" +
+                "END\r\n" +
+                "IF EXISTS (SELECT 1 FROM engRibbonControl WHERE ControlExecute = @Execute) BEGIN\r\n" +
+                "    PRINT 'El boton ' + @Execute + ' ya existe.'; RETURN;\r\n" +
+                "END\r\n" +
+                "INSERT INTO engRibbonControl\r\n" +
+                "    (ControlIDBase, ProductID, ModuleID, ControlCaption, ControlDescription, ControlExecute,\r\n" +
+                "     IconFile, SystemButton, SystemButtonOrder, SystemButtonBeginGroup, SystemButtonParentID,\r\n" +
+                "     QuickAccessShow, QuickAccessSection, QuickAccessCaption, QuickAccessOrder, Shortcut,\r\n" +
+                "     ResID, ResIDDescription, Comments, AFP)\r\n" +
+                "VALUES (0, 1, 0, @Caption, @Caption, @Execute, NULL, 0, 0, 0, 0, 0, NULL, NULL, 0, NULL, 0, 0, NULL, NULL);\r\n" +
+                "DECLARE @newCtrl int = SCOPE_IDENTITY();\r\n" +
+                "INSERT INTO engRibbonMenu\r\n" +
+                "    (RibbonMenuIDBase, RibbonGroupID, ControlID, ControlOrder, ControlType, ExtraMenuModuleID, IfFieldsExist, IfUserIDIs)\r\n" +
+                "VALUES (0, @RibbonGroupID, @newCtrl, @Orden, 1, 0, NULL, 0);\r\n" +
+                "SELECT @newCtrl AS NuevoControlID, @RibbonGroupID AS GrupoUsado;\r\n";
+        }
+
+        private static string SqlLit(string s) { return "N'" + (s ?? "").Replace("'", "''") + "'"; }
 
         private void Guardar(bool comoNuevo)
         {

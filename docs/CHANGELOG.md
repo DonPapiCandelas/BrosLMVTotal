@@ -8,6 +8,235 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.40.0] — 2026-07-29 — Historial de versiones (T1.4): diff, restaurar, etiquetar, purgar
+
+> El usuario preguntó cómo respaldar un botón antes de modificarlo "por si me equivoco o no
+> me gustara". La respuesta corta era "ya se respalda solo en `zzBrosScriptHist` en cada
+> Guardar, pero no había forma de VERLO ni restaurarlo desde la Consola" — eso es T1.4,
+> que ya estaba planeado pero sin construir. El usuario pidió "algo épico y súper funcional"
+> y que evaluara qué más hacía falta; se presentó un plan con 4 extras opcionales y el
+> usuario los quiso todos.
+
+### Agregado
+- **Ventana "Historial de versiones"** (clic derecho en un script → "Historial de
+  versiones…"): lista de versiones anteriores (fecha, usuario, etiqueta, tamaño) a la
+  izquierda; diff línea por línea contra el código de HOY a la derecha (verde = se
+  perdería al restaurar, rojo = volvería al restaurar).
+- **Diff por LCS** (subsecuencia común más larga, algoritmo de libro de texto, sin
+  librerías externas) — `src/Consola.cs`: `DiffLineas`/`RenderDiff`. Con guardia contra
+  scripts gigantes (más de 16M celdas en la tabla dp, cae a un aviso en vez de trabarse).
+- **Restaurar**: pasa por el mismo `BrosGuardar` de siempre — la versión que tenías ANTES
+  de restaurar queda respaldada automáticamente, así que restaurar nunca pierde nada y se
+  puede deshacer restaurando otra vez.
+- **Nombre real de usuario** en el historial (`ScriptContext.NombreUsuario(userId)`, contra
+  `engUser.UserName`, mismo patrón cacheado/nunca-lanza que ya se usó antes para módulos)
+  en vez de solo el ID numérico.
+- **Exportar una versión vieja como `.bros`** directamente desde el historial (no solo la
+  actual) — se refactorizó `ExportarPaquete` en un núcleo compartido
+  (`ExportarPaqueteConCodigo`) que recibe el código de donde sea (actual o histórico).
+- **Etiquetar una versión** (`zzBrosScriptHist.Etiqueta NVARCHAR(200) NULL`, migración
+  idempotente en `BrosAsegurarTablas` + `provision_empresa.sql`, ambas copias) — nota libre
+  para encontrar una versión después sin adivinar por fecha.
+- **Purga manual de historial viejo** (`BrosHistPurgar(appKey, diasAntiguedad)`) — borra
+  versiones sin etiqueta más viejas que N días, de un solo script. **Las versiones
+  etiquetadas NUNCA se borran**, sin importar la antigüedad — es la forma de decir "esta
+  no se toca". Nunca corre sola, solo bajo pedido explícito desde el botón "Purgar
+  versiones viejas…".
+- **Probado con arnés de pruebas real** contra `EmpresaB`: 15 verificaciones (migración de
+  `Etiqueta`, listar/leer con blindaje de AppKey cruzado, etiquetar con `Ñ`, restaurar de
+  verdad confirmando que la versión reemplazada queda respaldada, `NombreUsuario(1)` =
+  "Admin" real, y la garantía crítica: purgar SÍ borra lo viejo sin etiqueta pero NUNCA lo
+  etiquetado). El algoritmo de diff se probó aislado (6/7 — reconstrucción exacta de
+  "viejo" y "nuevo" desde el diff confirmada byte por byte; el único caso que no pasó fue
+  una aserción de prueba mal escrita sobre un script vacío, no un bug real).
+
+### Pendiente
+- Confirmar visualmente dentro de CONTPAQi real (el arnés prueba la capa de datos y el
+  algoritmo de diff aislado, no el `Form`/`RichTextBox` de Windows Forms en sí).
+
+---
+
+## [2.39.1] — 2026-07-29 — Fix real: "Plantillas" no quedaba contraído (leftover de código viejo)
+
+> El usuario lo vio de inmediato en un screenshot real de la Consola: "Plantillas" seguía
+> desplegado completo, contradiciendo v2.39.0 ("todo contraído por default"). Causa real:
+> un `_tree.ExpandAll()` que quedó de ANTES de este cambio, dentro del handler `Shown`
+> (corre una sola vez al mostrar la ventana, con el comentario "el árbol no conserva la
+> expansión hecha antes de existir el handle: re-expandir") — pisaba silenciosamente lo que
+> `CargarArbol()` ya dejaba bien armado. `CargarArbol()` nunca tuvo el bug; el problema
+> estaba en un segundo lugar que nadie recordaba que existía.
+
+### Corregido
+- Quitado el `_tree.ExpandAll()` residual en el handler `Shown` de `Consola.cs`. Ahora
+  Favoritos/Recientes/Scripts/Plantillas quedan contraídos de verdad al abrir la Consola.
+
+---
+
+## [2.39.0] — 2026-07-29 — Categoría manual para clasificar scripts, todo contraído
+
+> Seguimiento directo de v2.38.1: "ahora sí, necesito que dejes clasificar y que siempre
+> esté contraído". Se preguntó explícitamente antes de tocar código esta vez (categoría
+> manual vs. prefijo de nombre; todo contraído vs. solo Plantillas) — el usuario eligió
+> categoría manual + todo contraído sin excepción.
+
+### Agregado
+- **`zzBrosScript.Categoria`** (`NVARCHAR(100) NULL`) — texto libre que el usuario escribe.
+  Migración idempotente en `BrosAsegurarTablas()` (corre en caliente, cada vez que se abre
+  Guardar/Categorizar — no hace falta re-provisionar nada a mano) y en
+  `provision_empresa.sql` para empresas nuevas. Sincronizada también la copia que usa el
+  instalador de Empresas (`instaladores\Empresas\assets\provision_empresa.sql` — se
+  encontró desincronizada de la fuente real, corregido).
+- **"Categorizar…"** en el menú contextual (clic derecho) de cada script — pide la
+  categoría con un cuadro de texto (vacío = sin categoría, la limpia). No toca `Codigo` ni
+  `HashSHA256`: es metadato puro, no dispara la lógica de integridad (T2.3).
+- **Árbol de Scripts agrupado por Categoría** en vez de módulo de Comercial ni lista plana.
+  Sin categoría cae en "Sin categoría".
+- **Todo contraído por default, sin excepción** — Favoritos, Recientes, Scripts y
+  Plantillas empiezan cerrados; el usuario decide qué abrir. Al buscar, todo se expande de
+  nuevo (si no, resultados quedarían escondidos).
+- **`.bros` (T1.3) ahora lleva la categoría** de ida y vuelta — `PaqueteInfo.Categoria`,
+  el manifiesto (`paquete.json`) trae `"categoria"`, y al importar se aplica con
+  `BrosCategorizar` después del `BrosGuardar`.
+- **Probado con arnés de pruebas real** contra `EmpresaB`: la columna se migra en caliente
+  (confirmado con `COL_LENGTH` después de correr), `BrosCategorizar`/`BrosListar`
+  redondean bien (incluyendo `Ñ`), el manifiesto `.bros` lleva la categoría intacta, un
+  import simulado la aplica igual en el destino, y limpiar con texto vacío sí borra la
+  categoría (no la deja como estaba). Sin dejar nada de prueba en la BD real.
+
+### Pendiente
+- Confirmar dentro de CONTPAQi real (el arnés prueba la capa de datos, no el diálogo de
+  Windows Forms de "Categorizar…" en sí).
+
+---
+
+## [2.38.1] — 2026-07-29 — Árbol de scripts: favoritos, recientes, Plantillas contraído
+
+> Motivado por una necesidad real: "me voy a llenar de scripts ahí" — con `.bros` (v2.37.0)
+> facilitando importar botones de otras empresas, la lista plana de scripts en la Consola
+> deja de alcanzar rápido. Además, "Plantillas" se desplegaba entera cada vez que se abría
+> la Consola, ahogando la pantalla.
+>
+> **v2.38.0 agrupó los scripts por módulo de Comercial (Compras/Ventas/etc.) — el usuario lo
+> rechazó de inmediato al probarlo** ("va a ser muy difícil de clasificar así"): el módulo de
+> Comercial no refleja cómo él organiza sus botones. Revertido en la misma sesión, antes de
+> que nadie más lo usara. **v2.38.1 es la versión que de verdad queda: sin agrupar por
+> módulo.** Se deja esta nota porque v2.38.0 sí llegó a desplegarse brevemente en
+> `C:\BrosLMV\bin` — si alguna copia vieja de ese runtime anda por ahí, actualízala.
+
+### Agregado
+- **★ Favoritos** y **🕐 Recientes**: se revivió código que ya existía en `Datos.cs`
+  (`Favoritos`/`Recientes`/`EsFavorito`/`ToggleFavorito`/`AgregarReciente` — construido en
+  algún momento pero nunca conectado a la UI) y se conectó al árbol. Clic derecho sobre un
+  script → "☆ Marcar como favorito"/"★ Quitar de favoritos". Recientes se llena solo al
+  abrir un script desde la Consola (últimos 8). Ambos son **preferencia local del equipo**
+  (SQLite, `C:\BrosLMV\data\broslmv.db`), no compartidos entre terminales ni entre empresas
+  — si cambias de empresa, solo se muestran los favoritos/recientes que sigan existiendo ahí.
+- **"Plantillas" queda contraído por default** (antes se abría todo con `ExpandAll()` sin
+  distinción). Al buscar (cuadro de texto de arriba) todo se expande de nuevo para no
+  esconder resultados dentro de un grupo colapsado.
+- **Scripts sigue siendo lista plana alfabética** (a propósito, tras el rechazo del agrupado
+  por módulo) — solo con los favoritos marcados con "★ " al inicio del nombre.
+
+### Quitado (de v2.38.0, nunca llegó a quedarse)
+- Agrupado de scripts por módulo de Comercial y `ScriptContext.NombreModulo(moduleId)`.
+
+### Pendiente
+- Definir un criterio de organización que sí sirva (candidatos que se discutieron: prefijo
+  de nombre, categoría manual escrita por el usuario) — sin decidir todavía, no implementar
+  sin confirmar antes con el usuario.
+- Confirmar visualmente dentro de CONTPAQi real (favoritos/recientes/plantillas-contraído se
+  probaron por capa de datos, no el `TreeView` de Windows Forms en sí).
+
+---
+
+## [2.37.0] — 2026-07-29 — Paquetes `.bros` (T1.3): mover un botón entre empresas/equipos
+
+> Motivado por una necesidad real: mover un botón de una base de datos de cliente a otra
+> (el caso original, `ReporteXVehiculo` de `EmpresaA`, solo funcionaba en el equipo donde se
+> creó porque sus assets vivían en disco por máquina — el mismo problema de fondo que
+> `ctx.dashboard()` (v2.34.0) resolvió para los assets compartidos del runtime, pero faltaba
+> resolverlo para MOVER el script+assets de una empresa/equipo a otro).
+
+### Agregado
+- **Exportar paquete (.bros)…** — nuevo ítem en el menú contextual (clic derecho) de cada
+  script en el árbol de la Consola. Genera un `.zip` (extensión `.bros`) con `codigo.txt`
+  (el script, leído por `BrosCargar` — mismo camino sin angostamiento a ANSI que ya usa
+  Guardar/Abrir), `paquete.json` (manifiesto: `appKey`, `nombre`, `modulo`, `versionMinima`
+  = versión actual del addon, `exportadoDe`, `exportadoEl`) y `assets\` con una copia de
+  `<AppKey>_assets\` si existe en la empresa activa.
+- **Importar paquete…** — nuevo botón en la barra de herramientas de la Consola. Extrae el
+  `.bros`, valida el manifiesto, avisa (sin bloquear) si `versionMinima` es más nueva que
+  `zzBrosInfo.ProvisionVersion` de la empresa destino, pide confirmar si el `AppKey` ya
+  existe (queda respaldado en `zzBrosScriptHist`, como cualquier `Guardar`), hace
+  `BrosGuardar` (recalcula `HashSHA256`, T2.3) y extrae los assets a
+  `C:\BrosLMV\scripts\<EMPRESA>\<AppKey>_assets\`. Al terminar ofrece copiar al portapapeles
+  el SQL para dar de alta el botón en el ribbon (mismo patrón que
+  `instalador\sql\plantilla_crear_boton.sql`) — no lo ejecuta solo, porque toca tablas
+  nativas de Comercial (`engRibbonControl`/`engRibbonMenu`).
+- `src/Scripting.cs`: `ScriptContext.BrosObtenerParaExportar(appKey)` (Nombre+Modulo+Código
+  listos para exportar), `ScriptContext.VersionProvisionada()` (lee `zzBrosInfo`), y la
+  clase nueva `Paquetes` (manifiesto plano, sin parser JSON completo — el mismo código lo
+  escribe y lo lee, así que solo necesita extraer los campos que él mismo generó).
+- **Probado con un arnés de pruebas real** (fuera del repo, no shipped) contra
+  `EmpresaB` (BD real): 15 verificaciones, incluyendo el caso más riesgoso (nombre con
+  comillas, `ñ`, acentos, backslash sobreviviendo el manifiesto JSON de ida y vuelta),
+  asset anidado en subcarpeta sobreviviendo el ZIP, y sobrescritura respaldando en
+  `zzBrosScriptHist`. **Todas pasaron.** No probado todavía haciendo clic de verdad dentro
+  de la Consola en CONTPAQi (los diálogos `SaveFileDialog`/`OpenFileDialog` no se pueden
+  automatizar sin una sesión interactiva) — la lógica de fondo sí está validada end-to-end.
+
+### Pendiente
+- Confirmar en CONTPAQi real: exportar un botón de una empresa e importarlo en otra desde
+  la Consola de verdad (clics, no arnés de prueba).
+- El botón del ribbon no se crea automático (a propósito) — falta decidir si vale la pena
+  automatizarlo más adelante (arriesga tocar tablas nativas de Comercial sin supervisión).
+
+---
+
+## `BrosLMV.Runner` — prototipo T3.3 (2026-07-29), NO shipped en el instalador
+
+> Proyecto nuevo `runner\BrosLMV.Runner.csproj` (ejecutable de consola aparte, versión propia
+> 0.1.0 independiente de `BrosLMVClsMain.dll`) — programador headless: corre un botón sin abrir
+> Comercial, vía Tarea Programada. Ver detalle y pendientes en `PLAN_IMPLEMENTACION.md` §T3.3.
+> **Probado en vivo** contra `EmpresaB` (BD real): funciona de punta a punta.
+
+### Agregado
+- Enlaza (no copia) `Scripting.cs`/`Rutas.cs`/`Datos.cs` de `src\` — reusa el mismo
+  `ScriptContext`/`ScriptRunner`/auditoría que corre dentro de Comercial.
+- Bootstrap de `XengineLib.clsMain` **standalone** (fuera de `ComercialSP.exe`), usando la
+  cadena de conexión de respaldo cifrada ya existente (`Rutas.ConnStr()`) combinada con
+  `--bd <empresa>` explícito (headless no hay sesión viva de la que inferir la base).
+- Marcador obligatorio `# job: safe-offline` — sin él, el Runner se niega a ejecutar el script.
+- Soporta scripts `sql` y `csharp`; Python queda pendiente (usa `UiPump`, que no existe headless).
+- `<PlatformTarget>x86</PlatformTarget>` obligatorio: `XEngineLib.dll` solo está registrado
+  como COM de 32 bits (`WOW6432Node`) — en `AnyCPU` el proceso corre en 64 bits y no encuentra
+  el CLSID (`REGDB_E_CLASSNOTREG`). Encontrado y corregido en la primera prueba real.
+
+### Validado en vivo (2026-07-29, `EmpresaB`)
+- Botón de prueba (`# lang: sql`, `# job: safe-offline`) ejecutado sin Comercial abierto:
+  XEngine standalone conectó, `ctx.Empresa()` detectó la empresa correcta, el SELECT devolvió
+  resultado bien formateado, y quedó registrado tanto en el SQLite local como en
+  `zzBrosAuditoria` central (`Origen='runner-sql'`). Script y fila de auditoría de prueba
+  se borraron después de confirmar — no queda nada de la prueba en la base real.
+
+### Integridad (T2.3) enchufada, validada con 3 escenarios en vivo
+- Sin hash guardado: corre normal.
+- Hash no coincide (script modificado por fuera de la Consola): **bloquea** (exit 7) y registra
+  `Origen='runner-integridad'`, `Estado='ERROR'` en la auditoría. A diferencia de `ClsMain.cs`
+  (donde el usuario ve el aviso y decide si sigue), headless no hay nadie mirando -- el mismatch
+  DETIENE la ejecución en vez de solo avisar.
+- `ExigirAprobacion` activa sin aprobar: **bloquea** (exit 6), sin ejecutar ni auditar (mismo
+  comportamiento que `ClsMain.cs`).
+- Los 3 escenarios se probaron con datos insertados y borrados en la misma sesión contra
+  `EmpresaB` -- no quedó nada de prueba en la BD real.
+
+### Pendiente antes de considerarlo listo
+- Decidir si `ctx.erp`/grid se habilitan headless (el bootstrap standalone lo haría posible,
+  pero un job desatendido con permiso de escritura es más riesgoso que un botón supervisado).
+- Acciones de salida (Excel/PDF, SMTP) y receta de Task Scheduler.
+
+---
+
 ## [2.36.0] — 2026-07-29 — Auditoría central en `zzBrosAuditoria` (T2.1, H3)
 
 > `zzBrosAuditoria` existía desde la provisión con el esquema completo y nadie escribía
@@ -24,7 +253,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 - **Best-effort estricto:** try/catch silencioso — empresa sin provisionar, tabla
   ausente, sin permiso, o modo solo-lectura activo → la ejecución del script **nunca**
   falla por esto. Verificado el `INSERT` real contra `zzBrosAuditoria` en
-  `GGV_DE_MEXICO` (fila de prueba insertada, confirmada, y borrada).
+  `EmpresaA` (fila de prueba insertada, confirmada, y borrada).
 - La advertencia de integridad de scripts (T2.3, v2.35.0) ahora también queda registrada
   aquí (`Origen='integridad'`, `Estado='ADVERTENCIA'`) — cierra el pendiente que había
   quedado abierto en esa entrega.
@@ -45,7 +274,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 ### Agregado
 - **`zzBrosScript.HashSHA256`/`AprobadoPor`/`AprobadoEl`** — migración idempotente en
   `provision_empresa.sql` (`ALTER TABLE ... IF COL_LENGTH(...) IS NULL`), corrida en vivo
-  contra `GGV_DE_MEXICO` y `Distribuciones_Candelas` sin incidentes, verificada idempotente
+  contra `EmpresaA` y `EmpresaB` sin incidentes, verificada idempotente
   (corrida dos veces).
 - **`BrosGuardar` calcula y guarda `HashSHA256`** (`Scripting.CalcularHashSHA256`,
   SHA-256 + UTF-8 + hex minúsculas) cada vez que se guarda un script desde la Consola.

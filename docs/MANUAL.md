@@ -109,6 +109,31 @@ El ciclo de trabajo es ágil:
 > una función que llamó a otra. No hace falta adivinar ni agregar `print()` de más para
 > ubicar el problema — el error ya trae el "mapa" completo.
 
+### 3.1 El árbol de scripts (desde v2.39.0)
+- **★ Favoritos** (si tienes alguno marcado): clic derecho sobre un script → "☆ Marcar
+  como favorito". Es preferencia **de este equipo** — no se comparte entre terminales ni
+  entre empresas.
+- **🕐 Recientes**: los últimos 8 scripts que abriste desde esta Consola, en este equipo.
+- **Scripts — &lt;empresa&gt;**, agrupados por **Categoría** — un texto libre que tú le
+  pones a cada script con "Categorizar…" (clic derecho). Ponle el nombre que quieras
+  ("Reportes", "Compras", lo que te haga sentido) — sin categoría cae en "Sin categoría".
+  Los favoritos, además de aparecer arriba en su propio grupo, se marcan con "★ " en su
+  nombre aquí también.
+- **Plantillas**, al final.
+
+**Todo el árbol empieza contraído** cada vez que abres la Consola — Favoritos, Recientes,
+Scripts y Plantillas. Tú decides qué desplegar. El cuadro de búsqueda de arriba filtra
+dentro de todos los grupos a la vez y los expande automáticamente mientras hay texto (si
+no, los resultados quedarían escondidos dentro de un grupo cerrado).
+
+> Se probó agrupar por módulo de Comercial (v2.38.0) primero y no sirvió — el módulo no
+> refleja cómo se organizan los botones en la práctica. La categoría manual reemplazó esa
+> idea.
+
+Un paquete `.bros` (§ "Paquetes .bros" más abajo) lleva la categoría consigo al
+exportarlo — si ya clasificaste el script en la empresa de origen, no hay que volver a
+categorizarlo en la empresa destino.
+
 ---
 
 ## 4. Cómo crear un botón nuevo
@@ -1158,6 +1183,63 @@ Con eso activo, cualquier botón sin aprobar (`AprobadoEl IS NULL`) se bloquea a
 ejecutarse desde el ribbon con un mensaje claro. Se aprueba con un clic desde la Consola
 (botón **"Aprobar"** en la barra de herramientas) — registra quién y cuándo
 (`AprobadoPor`/`AprobadoEl`).
+
+> **`BrosLMV.Runner` (prototipo interno, T3.3, aún no distribuido):** el runner headless
+> aplica esta misma verificación pero **más estricta** — como no hay un usuario mirando
+> la pantalla para decidir si sigue, un hash que no coincide o una aprobación pendiente
+> **detienen la ejecución** en vez de solo avisar.
+
+### 📦 Paquetes `.bros`: mover un botón entre empresas o equipos (desde v2.37.0)
+Un botón vive en dos partes: el **script** (guardado en `zzBrosScript`, en la base de datos
+de la empresa) y sus **assets** (imágenes, plantillas HTML, etc. — si el botón usa
+`ctx.show_html`/`ctx.dashboard` con archivos propios, viven en disco: `C:\BrosLMV\scripts\
+<EMPRESA>\<AppKey>_assets\`). El script se comparte automáticamente entre todas las
+terminales de una empresa (vive en SQL), pero los **assets no** — solo existen en el equipo
+donde se guardaron. Un paquete `.bros` empaca ambas partes para moverlas juntas.
+
+**Exportar:** en el árbol de scripts de la Consola, clic derecho sobre el botón →
+**"Exportar paquete (.bros)…"**. Genera un archivo `.bros` (es un `.zip`) con el código, sus
+assets (si tiene) y un manifiesto con metadatos (nombre, módulo, versión de BrosLMV con la
+que se exportó).
+
+**Importar:** botón **"Importar paquete…"** en la barra de herramientas de la Consola.
+Selecciona el `.bros` — se guarda en la **empresa activa** (la que tenga abierta Comercial
+en ese momento), con su historial (`zzBrosScriptHist`) intacto si ya existía un script con
+ese `AppKey`. Si la empresa destino está en una versión de BrosLMV más vieja que la que
+exportó el paquete, avisa (no bloquea) por si faltan columnas o funciones nuevas.
+
+**El botón del ribbon NO se crea solo.** Después de importar, la Consola ofrece copiar al
+portapapeles el SQL para darlo de alta (mismo patrón que
+`instalador\sql\plantilla_crear_boton.sql`) — se corre a propósito, no automático, porque
+toca tablas nativas de Comercial (`engRibbonControl`/`engRibbonMenu`).
+
+### 🕓 Historial de versiones: diff y restaurar (desde v2.40.0)
+Cada vez que guardas un script desde la Consola, BrosLMV respalda la versión ANTERIOR en
+`zzBrosScriptHist` **automáticamente** (esto ya pasaba desde hace mucho) — lo nuevo es la
+pantalla para verlo y usarlo.
+
+**Clic derecho sobre un botón → "Historial de versiones…"**: lista de versiones anteriores
+(fecha, quién la guardó, etiqueta si tiene, tamaño) a la izquierda; a la derecha, un
+**diff línea por línea** contra el código de HOY — verde = línea que solo está en la
+versión de hoy (se perdería si restauras), rojo = línea que solo está en la versión vieja
+(volvería si restauras).
+
+Desde ahí puedes:
+- **Restaurar esta versión** — la versión que tenías justo antes de restaurar queda
+  respaldada a su vez (es el mismo mecanismo de siempre), así que restaurar **nunca pierde
+  nada** y se puede deshacer restaurando de nuevo.
+- **Exportar (.bros)…** — empaca esa versión vieja específica como paquete `.bros` (no la
+  actual), por si la quieres guardar aparte o mandarla a otra empresa.
+- **Etiquetar…** — ponle una nota como "Antes del refactor de precios" para encontrarla
+  después sin adivinar por fecha.
+- **Purgar versiones viejas…** — borra las versiones sin etiqueta de más de N días para que
+  el historial no crezca sin límite. **Las versiones etiquetadas nunca se borran**, sin
+  importar qué tan viejas estén — etiquetar una versión es la forma de decirle a BrosLMV
+  "esta no la toques".
+
+> Antes de modificar un botón que te importa, la forma más rápida de tener una red de
+> seguridad es simplemente **guardar** — el respaldo ya queda solo. Si además quieres
+> encontrarlo fácil después o protegerlo de una purga futura, etiquétalo.
 
 ### 📋 Auditoría central (`zzBrosAuditoria`, desde v2.36.0)
 Cada ejecución (botón o consola) queda registrada en **dos lugares**: el archivo local

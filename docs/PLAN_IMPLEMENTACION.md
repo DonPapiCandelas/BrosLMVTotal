@@ -73,7 +73,22 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 ### FASE 0 — Saneamiento inmediato (hacer YA, 1 día total)
 
+> **Nota (2026-07-29): esta fase se escribió el 2026-07-22 contra la versión 2.33.x — el
+> código ya va en 2.36.0 + prototipo `BrosLMV.Runner`. Los números de versión de abajo están
+> desactualizados a propósito (son la foto del momento), pero el ESTADO real de cada tarea
+> SÍ se mantiene al día en su propio banner. Resumen rápido: T0.1 ✅ hecho (aunque con otro
+> número de versión), T0.2 ✅ hecho en docs públicas, T0.3 sin objeto (superado por entradas
+> más nuevas), T0.4 y T0.5 siguen sin tocarse.**
+
 #### T0.1 — Sincronizar versión desplegada (2.33.5 → 2.33.7)
+
+> **Estado (2026-07-29): ✅ HECHO** (con otro número de versión — el problema de fondo, no la
+> cifra puntual). La "trampa del instalador" se volvió a dar y se volvió a cerrar el mismo día:
+> se instaló el SDK de .NET 8, se regeneró el instalador (`generar_instalador.ps1` +
+> `generar_exes.ps1`, 0 errores) y se re-provisionaron `EmpresaA`/`EmpresaB`. Verificado:
+> `BrosLMVClsMain.dll` = 2.34.0.0 y `zzBrosInfo.ProvisionVersion` = 2.34.0 en ambas. Ver
+> `ESTADO.md` "Estás aquí (2026-07-29, v2.34.0)". Desde entonces cada versión (2.35.0, 2.36.0)
+> siguió la misma disciplina de regenerar instalador — no ha vuelto a pasar.
 
 - **Qué:** regenerar instalador y re-provisionar las empresas para que runtime, `dist\` y `zzBrosInfo` queden en 2.33.7.
 - **Por qué (H1):** la trampa documentada en `ESTADO.md` ("el commit NO instala solo") está ocurriendo ahora mismo. Las empresas provisionadas hoy quedaron sin el fix de activación de ventanas WebView2 (2.33.7) y el retry de `Query`/`Scalar` (2.33.6) — el segundo afecta directamente a reportes tipo GESTOR_RIBBON.
@@ -88,6 +103,14 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T0.2 — Actualizar referencias de conexión en la documentación
 
+> **Estado (2026-07-29): ✅ HECHO en la documentación pública** — `ESTADO.md` §"Recordatorios
+> de entorno" ya dice `localhost\compac` con nota de que `.\COMPAC2022` quedó obsoleta el
+> 2026-07-22. **Pendiente, prioridad baja:** los archivos dentro de `Entrenamiento/` (privado,
+> gitignored, no forma parte de la "regla de oro" de docs públicas) todavía mencionan
+> `COMPAC2022`/la IP vieja — no se tocaron porque no bloquean a nadie que retome el proyecto
+> desde los `.md` públicos. La decisión sobre restaurar `Comercial_IA_Auditoria` (punto 3)
+> sigue sin tomarse.
+
 - **Qué:** apuntar todo al nuevo `localhost\compac` y decidir el destino del laboratorio.
 - **Por qué (H2, D1):** la regla de oro del proyecto exige que los `.md` basten para retomar; hoy mandan a un servidor que no existe.
 - **Cómo:**
@@ -99,12 +122,24 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T0.3 — Entrada de estado v2.33.x en ESTADO.md
 
+> **Estado (2026-07-29): sin objeto (superado).** Nunca se escribió la entrada específica
+> "v2.33.7" pedida aquí, pero `ESTADO.md` desde entonces sumó entradas nuevas y más completas
+> (v2.34.0 y la de "2026-07-29, tarde" con T2.1/T2.3/T3.3) que ya cubren y superan lo que esta
+> tarea buscaba (mantener el punto de reentrada al día). No vale la pena escribir la entrada
+> vieja en retrospectiva — el hueco de fondo (H6: la regla de oro exige mantener `ESTADO.md`
+> al día) está resuelto por la disciplina que se siguió después, no por esta tarea puntual.
+
 - **Qué:** agregar la sección "Estás aquí (2026-07-16, v2.33.7)".
 - **Por qué (H6, D2):** la regla de oro lo exige; las versiones 2.33.5-2.33.7 trajeron la pestaña "Soluciones LMV", nombres con versión en dist, retry de Query y fix de foco WebView2 — y nadie lo anotó en el punto de reentrada.
 - **Cómo:** redactar entrada siguiendo el formato de las anteriores (ver líneas 42-86 de `ESTADO.md`), citando `CHANGELOG.md` [2.33.6]/[2.33.7] y las dos entradas sin versión del 2026-07-15.
 - **Esfuerzo: XS. Riesgo: nulo.**
 
 #### T0.4 — Higiene de credenciales
+
+> **Estado (2026-07-29): ⏳ PENDIENTE, real.** No se tocó. SA se sigue usando directamente
+> (incluso en las pruebas en vivo de `BrosLMV.Runner` de esta misma sesión, vía `sqlcmd -U SA`)
+> — sigue siendo la cuenta que usa el instalador y cualquier inspección manual. Genuinamente
+> sigue pendiente, no es un malentendido de la otra IA.
 
 - **Qué:** sacar la cuenta SA del circuito diario.
 - **Por qué (H8):** SA en texto plano + `zzBrosScript` ejecutando código arbitrario = riesgo total. Además el GUI de provisión pide credenciales en cada instalación.
@@ -116,6 +151,9 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 - **Criterio:** provisión exitosa con `broslmv_admin` sin sysadmin; SA solo para emergencias.
 
 #### T0.5 — Archivar scripts de empresas ausentes
+
+> **Estado (2026-07-29): ⏳ PENDIENTE.** No se tocó esta sesión. Sigue sin confirmar con el
+> usuario si `EmpresaD` es un cliente activo en otro servidor antes de archivar nada.
 
 - **Qué:** mover `C:\BrosLMV\scripts\EmpresaD\` y `EmpresaC\` a `C:\BrosLMV\scripts\_archivo\` y registrar el inventario (D7) en `ESTADO.md`.
 - **Por qué (H4):** esas BDs no existen en este servidor; los scripts huérfanos confunden ("¿esto está vivo?") y el `.legacy` de EmpresaA igual. **No se borra nada** — solo se archiva y se documenta.
@@ -164,6 +202,17 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T1.3 — Paquetes `.bros` (exportar/importar soluciones)
 
+> **Estado (2026-07-29): ✅ HECHO (v2.37.0), validado con arnés de pruebas real contra
+> `EmpresaB` — 15/15 checks, incluyendo el caso de escape más riesgoso (comillas + ñ/acentos
+> en el manifiesto) y asset anidado sobreviviendo el ZIP. Motivado por una necesidad real e
+> inmediata: mover un botón entre bases de datos de cliente.** El manifiesto quedó más simple
+> que lo planeado abajo (sin el array `archivos` ni `lenguaje` — innecesarios: el propio
+> contenido de `assets\` en el ZIP ya dice qué archivos hay, y el lenguaje se detecta del
+> código igual que siempre). **Pendiente:** confirmar haciendo clic de verdad en la Consola
+> dentro de CONTPAQi (el arnés prueba la lógica, no los diálogos de Windows Forms); crear el
+> botón del ribbon sigue siendo manual a propósito (copia el SQL al portapapeles, no lo corre
+> solo). Detalle completo: `CHANGELOG.md` [2.37.0], `MANUAL.md` "📦 Paquetes .bros".
+
 - **Qué:** formato ZIP único (script + assets + manifiesto) para mover soluciones entre empresas y máquinas.
 - **Por qué:** los scripts viven en BD pero **los assets viven en disco por máquina** — en multi-terminal, el reporte de EmpresaA solo funciona en el equipo donde se creó. Además es el habilitador del marketplace futuro (Fase 5).
 - **Cómo:**
@@ -175,6 +224,15 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 - **Criterio:** exportar `REPORTE_EJECUTIVO` de EmpresaB e importarlo en EmpresaA funcionando con assets.
 
 #### T1.4 — Versionado visible de scripts (historial + diff + restaurar)
+
+> **Estado (2026-07-29): ✅ HECHO (v2.40.0), probado en vivo con 15 verificaciones contra
+> `EmpresaB` (datos) + 6/7 contra el algoritmo de diff aislado (el "fallo" fue de la
+> aserción de prueba, no del código — ver `CHANGELOG.md`). Motivado directamente por el
+> usuario preguntando cómo respaldar un botón antes de modificarlo, y pidiendo explícitamente
+> "algo épico y súper funcional" con margen para proponer extras — se preguntó qué extras
+> incluir (multi-select) antes de tocar código, y se implementaron los 4 que eligió: nombre
+> real de usuario, exportar una versión vieja como `.bros`, etiquetar versiones, y purga
+> manual protegiendo las etiquetadas.**
 
 - **Qué:** UI en la consola para ver `zzBrosScriptHist`, comparar versiones y restaurar.
 - **Por qué (H9):** el historial ya se guarda automáticamente en cada `BrosGuardar` — es valor pagado y no expuesto. Restaurar con un clic salva demos y errores en producción (el caso "dañé el script del cliente" se resuelve en 10 segundos).
@@ -192,7 +250,7 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 #### T2.1 — Auditoría central en `zzBrosAuditoria` ⭐
 
 > **Estado (2026-07-29): escritura HECHA (v2.36.0), lectura/UI pendiente.** Compilado con
-> 0 errores. Probado el `INSERT` real contra `zzBrosAuditoria` en `GGV_DE_MEXICO` (fila de
+> 0 errores. Probado el `INSERT` real contra `zzBrosAuditoria` en `EmpresaA` (fila de
 > prueba insertada, verificada, y borrada). **Falta el paso 3** (pestaña "Auditoría
 > (empresa)" en el Historial de la Consola) — hoy los datos ya se escriben pero no hay
 > forma de verlos desde la UI, solo por SQL directo. No probado el flujo completo dentro
@@ -223,13 +281,16 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 #### T2.3 — Integridad de scripts (hash + aprobación ligera)
 
 > **Estado (2026-07-29): HECHO y desplegado en vivo (v2.35.0).** Compilado con 0 errores,
-> migración corrida contra `GGV_DE_MEXICO` y `Distribuciones_Candelas` (idempotencia
+> migración corrida contra `EmpresaA` y `EmpresaB` (idempotencia
 > verificada corriéndola dos veces). Hash verificado por comparación cruzada contra
-> `SHA256` de PowerShell — mismo algoritmo, mismo resultado. **Pendiente real:** el
-> aviso de "script modificado" todavía no escribe en `zzBrosAuditoria` (eso llega con
-> T2.1, siguiente en la cola) — por ahora solo el `MessageBox` al usuario. Tampoco se
-> probó el flujo completo dentro de CONTPAQi real (clic en un botón manipulado a
-> propósito) — solo se verificó la lógica SQL y que compila.
+> `SHA256` de PowerShell — mismo algoritmo, mismo resultado.
+> **Actualizado (v2.36.0, T2.1):** el aviso de "script modificado" YA escribe en
+> `zzBrosAuditoria` (`Origen='integridad'`, `Estado='ADVERTENCIA'`) — este pendiente quedó
+> cerrado ahí, ya no aplica (ver T2.1 abajo). **Pendiente real que sigue abierto:** no se
+> probó el flujo completo **dentro de CONTPAQi real** (clic en un botón manipulado a
+> propósito, dentro del ribbon) — solo se verificó la lógica SQL, que compila, y (en
+> `BrosLMV.Runner`, un camino distinto y ya probado en vivo — ver T3.3) el bloqueo headless.
+> El camino específico del `MessageBox` en `ClsMain.cs`/ribbon sigue sin confirmación en vivo.
 
 - **Qué:** detectar (y opcionalmente bloquear) scripts modificados por fuera de la consola.
 - **Por qué (H8):** es el vector #1 de accidente/abuso. No necesita criptografía fuerte: necesita trazabilidad y un freno opcional.
@@ -270,12 +331,26 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 - **Qué:** ejecutar scripts marcados como job-safe por tarea programada de Windows, sin abrir Comercial.
 - **Por qué:** los reportes ejecutivos son candidatos naturales a envío automático (7:00 am, correo). Hoy TODO requiere clic dentro de Comercial.
-- **Cómo:**
-  1. Definir el subconjunto **job-safe**: scripts que solo usan `ctx.query/scalar/read_excel/write_excel/correo` — NUNCA `ctx.erp` ni el grid (fuera de Comercial no hay XEngine ni conexión viva; se usa `OpenConn` con el archivo de conexión de respaldo que ya lee `Rutas.cs`).
-  2. Marcador `# job: safe-offline` en la primera línea; el runner lo valida estáticamente antes de ejecutar.
-  3. `BrosLMV.Runner.exe` (consola, net48): `--empresa EmpresaA --appkey REPORTE_EJECUTIVO --salida C:\reportes`. Acciones de salida: guardar Excel/PDF, SMTP.
-  4. Documentar con receta de Task Scheduler.
-- **Esfuerzo: XL. Riesgo: medio.**
+- **Estado: ✅ probado en vivo (2026-07-29).** Bootstrap de XEngine standalone confirmado real: se ejecutó un botón `# job: safe-offline` contra `EmpresaB` (BD real, `localhost\COMPAC`) SIN Comercial abierto -- `ctx.Empresa()` detectó la empresa correcta, el resultado del SELECT salió bien formateado, y quedó registrado tanto en el SQLite local como en `zzBrosAuditoria` central (`Origen='runner-sql'`). El script de prueba y su fila de auditoría se borraron después de confirmar.
+- **Hallazgo que cambió el diseño original:** se descubrió (revisando una herramienta de terceros ajena a Comercial, solo para entender el mecanismo — nunca se copió código) que **SÍ es posible crear un `XengineLib.clsMain` vivo y conectado fuera del proceso de `ComercialSP.exe`**: `Type.GetTypeFromProgID("XengineLib.clsMain")` + `Activator.CreateInstance` + setear `OwnedBusinessEntityID`/`InternetConnection`/`LICENCE_CONTPAQ=false` + `DataLayer.CreateConnectionMSSQL(servidor, bd, usuario, contrasena)` + `SetDataLayers()`. Esto **contradice el supuesto original** de que "fuera de Comercial no hay XEngine ni conexión viva" — con XEngine standalone, `ctx.erp` podría funcionar headless también (sin probar aún; no se activó por prudencia, ver más abajo).
+- **Cómo (implementado):**
+  1. `runner/BrosLMV.Runner.csproj` (consola, net48) enlaza los MISMOS `Scripting.cs`/`Rutas.cs`/`Datos.cs` de `src\` (no los reescribe) — así el motor de scripts (`ScriptContext`, `ScriptRunner`, auditoría) nunca diverge del que corre dentro de Comercial.
+  2. `Program.cs`: lee la cadena de conexión de respaldo ya cifrada (`Rutas.ConnStr()`, la misma que configura el instalador) o `--conn` explícito; crea el XEngine standalone (arriba); construye `new ScriptContext(userId, xe)` — el mismo constructor que usa `ClsMain.cs`.
+  3. Busca el AppKey en `zzBrosScript` (igual que en Comercial) o como archivo `.sql/.ctx/.csx`.
+  4. **Marcador `# job: safe-offline` obligatorio** en las primeras 10 líneas — sin él, el Runner se niega a ejecutar. Sigue siendo el candado principal, independiente de qué API queden disponibles.
+  5. Uso: `BrosLMV.Runner.exe --appkey REPORTE_EJECUTIVO --bd EmpresaX [--userid N] [--conn "..."]`.
+  6. **`--bd <empresa>` es obligatorio** (salvo con `--conn` completo): dentro de Comercial la base se completa combinando `Rutas.ConnStr()` (servidor+usuario+password) con el `DataLayer` de la sesión viva de la empresa activa; headless no hay sesión de la que inferirla, hay que decirla explícita.
+  7. **Corregido en la primera prueba real:** el proyecto compilaba en `AnyCPU`, pero `XEngineLib.dll` solo está registrado como COM de **32 bits** (`WOW6432Node`) — un proceso `AnyCPU` corre en 64 bits en Windows moderno y no encuentra el CLSID (`REGDB_E_CLASSNOTREG`). `BrosLMV.Runner.csproj` ahora fija `<PlatformTarget>x86</PlatformTarget>`.
+- **Integridad (T2.3) enchufada en el Runner (2026-07-29), probada en vivo con 3 escenarios contra `EmpresaB`:**
+  - Sin `HashSHA256` guardado (script viejo/de archivo): corre normal.
+  - `HashSHA256` no coincide (modificado por fuera de la Consola): **BLOQUEA** (exit 7) y registra `Origen='runner-integridad'`, `Estado='ERROR'` en la auditoría — a diferencia de `ClsMain.cs` (donde el usuario ve el MensajeBox y decide seguir), headless no hay nadie mirando, así que aquí el mismatch DETIENE la ejecución en vez de solo avisar.
+  - `ExigirAprobacion` activa y sin aprobar: **BLOQUEA** (exit 6), sin ejecutar ni auditar (igual que `ClsMain.cs`).
+  - Los 3 escenarios se probaron con datos de prueba insertados y borrados en la misma sesión — no quedó nada en la BD real.
+- **Pendiente (no implementado aún):**
+  - Python headless: el camino actual de `ctx` Python usa `UiPump` para regresar al hilo de Comercial, que no existe en modo headless — requiere su propio diseño, no incluido en este prototipo.
+  - Decidir si `ctx.erp`/grid se habilitan headless dado el hallazgo de arriba, o si se deja bloqueado por diseño (ver riesgo abajo) hasta probarlo a fondo con un script real que escriba.
+  - Acciones de salida (guardar Excel/PDF a `--salida`, SMTP) y receta de Task Scheduler — el prototipo hoy solo ejecuta y devuelve texto/exit code.
+- **Esfuerzo restante: M. Riesgo: medio** — bajó de XL porque el bloqueador principal (obtener XEngine sin Comercial) ya está resuelto **y probado en vivo** contra una BD real; el riesgo que queda es de alcance (decidir `ctx.erp` headless con cuidado — un job desatendido con permisos de escritura es más peligroso que un botón que un humano ve antes de confirmar) y de features de salida (Excel/PDF/SMTP, Task Scheduler).
 - **Criterio:** REPORTE_EJECUTIVO generado y enviado por correo sin sesión de Comercial abierta.
 
 ---

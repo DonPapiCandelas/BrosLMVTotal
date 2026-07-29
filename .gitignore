@@ -1,6 +1,8 @@
 # === Temporales de compilación (NO ignorar instalador/bin: ese es el entregable) ===
 /src/obj/
 /src/bin/
+/runner/obj/
+/runner/bin/
 /build/out/
 *.user
 *.suo

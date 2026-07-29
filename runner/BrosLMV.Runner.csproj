@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    T3.3: Programador headless. Ejecuta scripts SQL/C# (job-safe) sin abrir Comercial,
+    vía tarea programada de Windows. Reusa el mismo ScriptContext/ScriptRunner que usa
+    BrosLMVClsMain.dll dentro de Comercial (por eso enlaza los mismos .cs en vez de
+    reescribir el motor); lo único distinto es cómo se obtiene XEngineLib: aquí se crea un
+    XEngine standalone (ver Program.cs) en vez de recibirlo ya vivo de Comercial.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BrosLMV.Runner</AssemblyName>
+    <RootNamespace>BrosLMV.Runner</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <!-- XEngineLib.dll solo está registrado como COM de 32 bits (WOW6432Node): un
+         proceso AnyCPU corre en 64 bits en este equipo y no puede crear el CLSID. -->
+    <PlatformTarget>x86</PlatformTarget>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Mismo motor que el addon (ScriptContext, Com, Conexion, ScriptRunner) y
+         auditoria/rutas, enlazados desde src\ (NO copiados) para que nunca diverjan. -->
+    <Compile Include="..\src\Rutas.cs" Link="Rutas.cs" />
+    <Compile Include="..\src\Scripting.cs" Link="Scripting.cs" />
+    <Compile Include="..\src\Datos.cs" Link="Datos.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+
+</Project>

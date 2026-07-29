@@ -39,6 +39,99 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-29, tarde — v2.36.0 + prototipo `BrosLMV.Runner`)
+
+> Sesión larga, mismo día que la entrada de abajo (v2.34.0). Resumen para quien retome esto
+> desde cero (humano o IA) sin haber visto la conversación: **qué hicimos, qué estamos
+> haciendo, qué sigue.**
+
+### Qué hicimos (completo, verificado)
+
+1. **Reconectado `.git`** — ver bullet de abajo, ya NO está desconectado (corrige lo que decía
+   esta misma sección antes). `origin` = `https://github.com/DonPapiCandelas/BrosLMVTotal.git`,
+   rama `main`, sincronizada.
+2. **Barrido completo de documentación obsoleta** (el usuario lo pidió explícito: *"cada que
+   actualices o modifiques algo debes documentar... hay que buscar entre toda la documentación
+   para eliminar información obsoleta"*):
+   - Mensaje "SDK sin costo" corregido en `README.md` y todo `docs/` — el SDK oficial de
+     CONTPAQi (`SDKPro`) **nunca fue de pago**; lo pago era una herramienta de terceros
+     (`Acceso Fácil`, cuyo nombre **nunca debe aparecer en el repo público** — el usuario fue
+     explícito: *"no quiero que piensen que les copiamos algo"*). El gancho real de BrosLMV es
+     la conexión nativa a XEngine + ser gratis/open source.
+   - Conteos de DLLs, números de versión y estados "en curso" desactualizados corregidos en
+     `INSTALACION.md`, `DESARROLLO.md`, `ESPECIFICACION.md`, `CAPACIDADES.md`,
+     `ARQUITECTURA_V3.md`, `REFERENCIAS_Y_VERIFICACION.md`.
+   - **Nombres de empresas reales sanitizados** (regla del usuario, confirmada dos veces: nunca
+     nombres de cliente/prueba reales en el repo público). El mapeo real↔`EmpresaA/B/C/D` NO se
+     documenta aquí a propósito (documentarlo sería reintroducir los nombres reales en un archivo
+     público) — vive solo en el historial local de la conversación con el usuario, fuera del
+     repo. **Si ves un nombre de empresa que no sea `EmpresaA`/`EmpresaB`/`EmpresaC`/`EmpresaD`
+     en cualquier `.md` de `docs/` o en el `README.md`, es una regresión — repórtalo, no lo
+     publiques ni lo repitas.** (Se encontraron y corrigieron 2 regresiones así en esta misma
+     sesión, en `CHANGELOG.md`/`PLAN_IMPLEMENTACION.md`, introducidas por las pruebas en vivo
+     del Runner de más abajo.)
+3. **T2.3 — Integridad de scripts (v2.35.0), HECHO y probado.** Hash SHA-256 al guardar desde
+   la Consola; se compara al ejecutar. Mismatch → avisa (no bloquea, primera versión). Modo
+   estricto opcional por usuario (`zzBrosPref.ExigirAprobacion`) bloquea hasta aprobar. Botón
+   **"Aprobar"** nuevo en la Consola.
+4. **T2.1 — Auditoría central en `zzBrosAuditoria` (v2.36.0), HECHO y probado en vivo.**
+   `Datos.RegistrarEjecucion` ahora también escribe (best-effort, nunca bloquea) en la tabla
+   central de la empresa, no solo en SQLite local por terminal — visible desde cualquier
+   equipo. `INSERT` real confirmado en `EmpresaA`, migración de esquema corrida contra
+   `EmpresaA` y `EmpresaB`.
+5. **`ctx.dashboard()` (Python)** — ver detalle en la entrada de abajo (v2.34.0). Sigue
+   **pendiente de probarse dentro de CONTPAQi real** (el usuario dijo que lo probaría; no ha
+   reportado el resultado todavía).
+6. **Revisión de una herramienta de terceros dejada en `Entrenamiento/`** (privado,
+   gitignored, nunca referenciada por nombre en docs públicas) — mismo protocolo que el
+   análisis previo de `Entrenamiento/Antioco/`: decompilar SOLO para entender el mecanismo,
+   nunca copiar código, nunca nombrar la herramienta en público. Encontró un hallazgo real:
+   ver punto 7.
+7. **T3.3 — `BrosLMV.Runner` (programador headless), prototipo funcional Y PROBADO EN VIVO.**
+   Este es el trabajo más nuevo y el que más cambia el plan original:
+   - **Hallazgo que desbloqueó todo:** el diseño original de T3.3 asumía que "fuera de
+     Comercial no hay XEngine ni conexión viva" — la herramienta de terceros del punto 6
+     demostró que SÍ se puede crear un `XengineLib.clsMain` vivo **standalone**, fuera del
+     proceso de `ComercialSP.exe`: `Type.GetTypeFromProgID` + `Activator.CreateInstance` +
+     `OwnedBusinessEntityID`/`InternetConnection`/`LICENCE_CONTPAQ=false` +
+     `DataLayer.CreateConnectionMSSQL(servidor, bd, usuario, contrasena)` + `SetDataLayers()`.
+     Reimplementado desde cero en C# (nunca se copió código de la herramienta de terceros).
+   - Proyecto nuevo `runner\BrosLMV.Runner.csproj` (consola, net48, `PlatformTarget=x86`
+     — necesario porque `XEngineLib.dll` solo está registrado como COM de 32 bits) agregado a
+     `BrosLMV.sln`. Enlaza (no copia) `Scripting.cs`/`Rutas.cs`/`Datos.cs` de `src\`, así que
+     reusa el mismo motor de scripts que corre dentro de Comercial — no hay dos
+     implementaciones que puedan divergir.
+   - **Probado en vivo, 2 rondas, contra `EmpresaB` (BD real, `localhost\COMPAC`), con datos
+     de prueba insertados y borrados en la misma sesión** (no quedó nada de prueba en la BD):
+     - Ronda 1: un botón SQL `# job: safe-offline` corrió sin Comercial abierto, detectó la
+       empresa correcta, y quedó auditado (local + central).
+     - Ronda 2 (integridad, T2.3 enchufada en el Runner): 3 escenarios — sin hash (corre),
+       hash no coincide (**bloquea**, exit 7, distinto de `ClsMain.cs` que solo avisa porque
+       aquí no hay nadie mirando), requiere aprobación sin aprobar (**bloquea**, exit 6).
+   - Detalle completo, comandos, y lo que falta: `PLAN_IMPLEMENTACION.md` §T3.3 y
+     `CHANGELOG.md` (entrada `BrosLMV.Runner`, arriba del todo — no lleva número de versión
+     de `BrosLMVClsMain.dll` porque es un ejecutable aparte, versión propia 0.1.0, **NO
+     shipped en el instalador todavía**).
+
+### Qué estamos haciendo / qué sigue (en orden, según lo acordado con el usuario)
+
+- **Siguiente decisión abierta:** ¿seguir profundizando `BrosLMV.Runner` (Python headless,
+  decidir si `ctx.erp`/grid se habilitan sin supervisión, acciones de salida Excel/PDF/SMTP,
+  receta de Task Scheduler) o pausarlo aquí y volver a **`.bros` packages** (export/import de
+  scripts con manifiesto de dependencias, huella por hash, nunca modifica objetos nativos de
+  terceros, solo crea objetos `zzBros*`)? El usuario ya había fijado el orden "paso 1, 2, 3 y
+  luego los paquetes" — T2.3 y T2.1 (pasos 1 y 3) están hechos; "paso 2" (probar
+  `ctx.dashboard()` en CONTPAQi real) seguía sin confirmarse cuando surgió el desvío hacia
+  T3.3 (petición explícita del usuario de revisar la herramienta de terceros primero).
+- **No implementar el motor no-code / recetas** sin que el usuario lo pida de nuevo — lo
+  desactivó explícitamente: *"no code no podemos hacerlo así, tiene que estar más planeado
+  así que lo dejaremos"*.
+- **Pendiente sin dueño claro todavía:** migrar los otros 3 reportes
+  (`CUENTAS_POR_COBRAR`/`CUENTAS_POR_PAGAR`/`SEGUIMIENTO_OC`) al patrón `ctx.dashboard()`;
+  UI en la Consola para leer `zzBrosAuditoria` (hoy solo hay escritura, la lectura es
+  `SELECT` directo); "el otro servidor" con trabajo 2.33.7 sin reconciliar que el usuario
+  mencionó una vez y no se volvió a tocar.
+
 ## Estás aquí (2026-07-29, v2.34.0)
 
 - **✅ Trampa del instalador (H1) cerrada.** Se instaló el SDK de .NET 8 (vía `winget`,
@@ -48,12 +141,10 @@ fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de
   usuario corrió el instalador y confirmó: `C:\BrosLMV\bin\BrosLMVClsMain.dll` = 2.34.0.0,
   `zzBrosInfo.ProvisionVersion` = 2.34.0 en `EmpresaA` y `EmpresaB`.
   Las 4 fuentes (código, runtime, BD, GitHub) coinciden en 2.34.0.
-- **⚠️ `.git` desconectado localmente.** Esta carpeta (`C:\MLVTotal`) ya no tiene carpeta
-  `.git` — el repo remoto `github.com/DonPapiCandelas/BrosLMVTotal` sigue vivo y público,
-  pero desactualizado (último push: 2026-07-15, README todavía dice "sin pagar SDK" y
-  versión 2.33.5). **Reconectar es una decisión pendiente del usuario** — no se hizo
-  `git init`/push automático para no arriesgar el historial real que ya existe en GitHub
-  (incluye un merge de dos líneas divergentes, ver nota de la entrada v2.32.0 abajo).
+- **✅ `.git` reconectado (corregido más tarde el mismo día).** Esta sección decía que la
+  carpeta no tenía `.git` — ya no es cierto: se copió `.git` de un clon fresco del remoto real
+  (`github.com/DonPapiCandelas/BrosLMVTotal`, sin `force-push`, sin perder historial) y desde
+  entonces los commits de esta sesión sí llegan a GitHub. Ver entrada de arriba.
 - **Propuesta de valor corregida.** El SDK oficial de CONTPAQi (`SDKPro`/`SDKProPremium`)
   **jamás fue de pago** — viene incluido con Comercial Pro (confirmado en
   `Entrenamiento/SDKPro/pruebas/RESULTADOS_PRUEBAS.md`). `README.md` (líneas 18 y 138)
@@ -300,6 +391,16 @@ DocumentID 11556–11560 (órdenes de compra). Scripts en `/.temp_tests`: `f1_or
 
 ## Frentes abiertos (elegir el de menos tokens)
 
+- 🟡 **`BrosLMV.Runner` (T3.3, programador headless) — prototipo probado, sigue abierto.**
+  Ver detalle completo en la entrada "Estás aquí" de arriba y en `PLAN_IMPLEMENTACION.md`
+  §T3.3. Falta: Python headless, decidir `ctx.erp`/grid sin supervisión, salida
+  Excel/PDF/SMTP, receta de Task Scheduler.
+- **`.bros` packages** (export/import de scripts con manifiesto + huella por hash) — próximo
+  en la cola según el orden que fijó el usuario, todavía sin empezar.
+- ✅ **T2.3 integridad de scripts** (v2.35.0, HECHO) y **T2.1 auditoría central** (v2.36.0,
+  HECHO) — ver CHANGELOG. Falta UI en la Consola para leer `zzBrosAuditoria` (hoy solo
+  escritura + `SELECT` directo).
+- ⏳ **`ctx.dashboard()` (v2.34.0)** sin confirmar en CONTPAQi real por el usuario todavía.
 - ✅ **4 anclas + campos universales + partida nativa** (v2.18.0, HECHO). `NuevoDocumento` y
   `AgregarArticulo` producen documentos campo-por-campo equivalentes al nativo.
 - **Transacciones en builders** (P2-a): envolver `NuevoDocumento` + 4 anclas en `SqlTransaction`.
@@ -317,13 +418,15 @@ DocumentID 11556–11560 (órdenes de compra). Scripts en `/.temp_tests`: `f1_or
 
 ## Recordatorios de entorno
 
-- **PROYECTO** en `C:\MLVTotal`. **Debería** estar en git + GitHub
-  `DonPapiCandelas/BrosLMVTotal`, pero al 2026-07-29 esta carpeta **no tiene `.git`** — el
-  remoto sigue vivo pero desconectado localmente (ver "Estás aquí" arriba). Reconectar
-  antes de seguir asumiendo que los commits locales llegan a GitHub. `C:\BrosLMV` es
-  **solo runtime** (ahí se despliega). No confundir.
+- **PROYECTO** en `C:\MLVTotal`, en git + GitHub `DonPapiCandelas/BrosLMVTotal` (`origin`,
+  rama `main`) — reconectado el 2026-07-29 (ver "Estás aquí" arriba; si algo de lo viejo dice
+  "sin `.git`", ya no es cierto). `C:\BrosLMV` es **solo runtime** (ahí se despliega). No
+  confundir. `dist\` (instaladores compilados) tampoco se versiona.
 - **Compilar addon:** `dotnet build src\BrosLMV.csproj -c Debug`. **Host:**
-  `dotnet build host\BrosLMV.Host\BrosLMV.Host.csproj -c Debug`.
+  `dotnet build host\BrosLMV.Host\BrosLMV.Host.csproj -c Debug`. **Runner (T3.3, prototipo):**
+  `dotnet build runner\BrosLMV.Runner.csproj -c Debug` (o `dotnet build BrosLMV.sln` para los 3).
+  `dotnet` puede no estar en el PATH de la sesión — buscar en
+  `C:\Program Files\dotnet\dotnet.exe` si el comando plano falla.
 - **Desplegar:** addon → `C:\BrosLMV\bin` (BrosLMVClsMain.dll/.pdb). Host → `C:\BrosLMV\host\BrosLMV.Host.dll`.
   Python → `ctx.py`/runner a las **3** copias de `broslmv` (¡el host usa `C:\BrosLMV\host\workers\python\`!).
 - **DLL bloqueada:** si Comercial está abierto, el addon DLL no se puede sobrescribir; cerrar

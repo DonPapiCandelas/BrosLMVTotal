@@ -25,7 +25,8 @@ CREATE TABLE dbo.zzBrosScript(
     ModificadoPor INT           NULL,
     HashSHA256    CHAR(64)      NULL,
     AprobadoPor   INT           NULL,
-    AprobadoEl    DATETIME      NULL);
+    AprobadoEl    DATETIME      NULL,
+    Categoria     NVARCHAR(100) NULL);
 
 -- Migracion idempotente para empresas ya provisionadas ANTES de v2.35.0 (integridad
 -- de scripts, T2.3): la tabla ya existe con el esquema viejo, hay que agregar las
@@ -36,14 +37,24 @@ IF COL_LENGTH('dbo.zzBrosScript','AprobadoPor') IS NULL
     ALTER TABLE dbo.zzBrosScript ADD AprobadoPor INT NULL;
 IF COL_LENGTH('dbo.zzBrosScript','AprobadoEl') IS NULL
     ALTER TABLE dbo.zzBrosScript ADD AprobadoEl DATETIME NULL;
+-- v2.39.0: Categoria (texto libre, clasificacion manual -- se probo por modulo de Comercial
+-- y se descarto, no reflejaba como el usuario organiza sus botones en la practica).
+IF COL_LENGTH('dbo.zzBrosScript','Categoria') IS NULL
+    ALTER TABLE dbo.zzBrosScript ADD Categoria NVARCHAR(100) NULL;
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='zzBrosScriptHist')
 CREATE TABLE dbo.zzBrosScriptHist(
-    id      INT IDENTITY(1,1) PRIMARY KEY,
-    AppKey  NVARCHAR(80)  NULL,
-    Codigo  NVARCHAR(MAX) NULL,
-    Fecha   DATETIME      NULL,
-    Usuario INT           NULL);
+    id       INT IDENTITY(1,1) PRIMARY KEY,
+    AppKey   NVARCHAR(80)  NULL,
+    Codigo   NVARCHAR(MAX) NULL,
+    Fecha    DATETIME      NULL,
+    Usuario  INT           NULL,
+    Etiqueta NVARCHAR(200) NULL);
+
+-- v2.40.0: Etiqueta (T1.4, historial de versiones) -- nota libre por version, protege esa
+-- version de la purga manual sin importar la antiguedad.
+IF COL_LENGTH('dbo.zzBrosScriptHist','Etiqueta') IS NULL
+    ALTER TABLE dbo.zzBrosScriptHist ADD Etiqueta NVARCHAR(200) NULL;
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='zzBrosAuditoria')
 CREATE TABLE dbo.zzBrosAuditoria(
