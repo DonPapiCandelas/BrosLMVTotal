@@ -6,8 +6,9 @@ Comercial PRO) usando los ejecutables autocontenidos.
 > Resultado: en CONTPAQi, pestaña **Soluciones LMV**, grupo **BrosLMV**, aparece el botón
 > **"Consola BrosLMV"**.
 
-> Los `.exe` de `dist/` llevan la versión en el nombre (p.ej. `BrosLMV-Instalador-2.33.5.exe`)
-> para no confundir cuál mandar. En esta guía se abrevia como `BrosLMV-Instalador.exe`.
+> Los `.exe` de `dist/` llevan la versión en el nombre (p.ej. `BrosLMV-Instalador-X.Y.Z.exe`,
+> con la versión real del build) para no confundir cuál mandar. En esta guía se abrevia
+> como `BrosLMV-Instalador.exe`.
 
 ---
 
@@ -58,7 +59,7 @@ Ambos son **autocontenidos**: no hay que copiar carpetas ni DLLs sueltas.
 2. Acepta **UAC** (se necesita admin para registrar el componente).
 3. En la **pantalla de bienvenida**, presiona **Instalar**. Esto:
    - Crea `C:\BrosLMV\{bin, bin\x86, host, workers, runtimes, scripts, logs, data}`.
-   - Copia las 15 DLLs del addon + el nativo `x86\SQLite.Interop.dll`.
+   - Copia las 20 DLLs del addon + el nativo `x86\SQLite.Interop.dll`.
    - Copia `BrosLMV.Host` y CPython embeddable a `C:\BrosLMV\runtimes\python`.
    - Copia el icono `BrosLMV.ico` a `…\ComercialSP\Icons\`.
    - Registra el COM `BrosLMV.clsMain` (RegAsm 32 bits + mapeo en `WOW6432Node`).

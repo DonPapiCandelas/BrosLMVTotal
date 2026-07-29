@@ -309,26 +309,32 @@ Constructor: `ScriptContext(int userId, object xEngineLib)`. Miembros:
 
 ## 11. Las DLLs y la trampa de versiones (clave)
 
-`dotnet build` produce y copia **15 DLLs administradas** (que deben viajar
-**juntas** en `C:\BrosLMV\bin`) más **1 DLL nativa** de SQLite:
+`dotnet build` produce y copia **20 DLLs administradas** (que deben viajar
+**juntas** en `C:\BrosLMV\bin`) más **1 DLL nativa** de SQLite. Versiones reales
+verificadas en `instalador\bin` (2026-07-29, addon v2.34.0):
 
 | DLL | Versión / nota |
 |-----|----------------|
-| `BrosLMVClsMain.dll` | 1.2.0.0 (nuestra) |
-| `Microsoft.CodeAnalysis.dll` | 4.8.0.0 (Roslyn) |
-| `Microsoft.CodeAnalysis.CSharp.dll` | 4.8.0.0 |
-| `Microsoft.CodeAnalysis.Scripting.dll` | 4.8.0.0 |
-| `Microsoft.CodeAnalysis.CSharp.Scripting.dll` | 4.8.0.0 |
-| `System.Collections.Immutable.dll` | 7.0.0.0 |
-| `System.Reflection.Metadata.dll` | 7.0.0.0 |
-| `System.Memory.dll` | 4.0.1.2 |
-| `System.Buffers.dll` | 4.0.3.0 |
-| `System.Numerics.Vectors.dll` | 4.1.4.0 |
-| `System.Runtime.CompilerServices.Unsafe.dll` | 6.0.0.0 |
-| `System.Text.Encoding.CodePages.dll` | 7.0.0.0 |
-| `System.Threading.Tasks.Extensions.dll` | 4.2.0.1 |
-| `ScintillaNET.dll` | 3.6.3 — editor de código. Embebe `SciLexer.dll` (x86/x64) y lo autoextrae; **no** se distribuye aparte. |
-| `System.Data.SQLite.dll` | 1.0.118 — acceso a SQLite |
+| `BrosLMVClsMain.dll` | 2.34.0.0 (nuestra) |
+| `Microsoft.CodeAnalysis.dll` | 4.800.23.55801 (Roslyn) |
+| `Microsoft.CodeAnalysis.CSharp.dll` | 4.800.23.55801 |
+| `Microsoft.CodeAnalysis.Scripting.dll` | 4.800.23.55801 |
+| `Microsoft.CodeAnalysis.CSharp.Scripting.dll` | 4.800.23.55801 |
+| `System.Collections.Immutable.dll` | 7.0.22.51805 |
+| `System.Reflection.Metadata.dll` | 7.0.22.51805 |
+| `System.Memory.dll` | 4.6.31308.01 |
+| `System.Buffers.dll` | 4.6.28619.01 |
+| `System.Numerics.Vectors.dll` | 4.6.26515.06 |
+| `System.Runtime.CompilerServices.Unsafe.dll` | 6.0.21.52210 |
+| `System.Text.Encoding.CodePages.dll` | 7.0.22.51805 |
+| `System.Threading.Tasks.Extensions.dll` | 4.6.28619.01 |
+| `ScintillaNET.dll` | 3.6.3.0 — editor de código. Embebe `SciLexer.dll` (x86/x64) y lo autoextrae; **no** se distribuye aparte. |
+| `System.Data.SQLite.dll` | 1.0.118.0 — acceso a SQLite |
+| `Google.Protobuf.dll` | 3.28.3.0 — protocolo del host (`ctx.dashboard`/`show_html`/pipe con `BrosLMV.Host`) |
+| `Microsoft.Web.WebView2.Core.dll` | 1.0.2792.45 — desde v2.24.0 (`ctx.show_html`) |
+| `Microsoft.Web.WebView2.WinForms.dll` | 1.0.2792.45 |
+| `Microsoft.Web.WebView2.Wpf.dll` | 1.0.2792.45 |
+| `WebView2Loader.dll` | 1.0.2792.45 — nativo, junto a `BrosLMVClsMain.dll` (no en `bin\x86\`, ver §6 sobre por qué difiere de `SQLite.Interop.dll`) |
 | `bin\x86\SQLite.Interop.dll` | **nativo x86** de SQLite. Se carga aparte (no por `AssemblyResolve`); System.Data.SQLite lo busca según `PreLoadSQLite_BaseDirectory` = `C:\BrosLMV\bin` (lo fija `Datos.Inicializar`), por eso va en `bin\x86\`. |
 
 > ⚠️ **Trampa (la lección más importante):** estas `System.*` tienen referencias
@@ -351,7 +357,7 @@ Constructor: `ScriptContext(int userId, object xEngineLib)`. Miembros:
 
 ```
 C:\BrosLMV\
-├── bin\          <- las 15 DLLs administradas + broslmv_conn.txt (respaldo)
+├── bin\          <- las 20 DLLs administradas + broslmv_conn.txt (respaldo)
 │   └── x86\      <- SQLite.Interop.dll (nativo)
 ├── scripts\      <- los .ctx (cada botón es un archivo); _historial\ (versiones)
 ├── data\         <- broslmv.db (SQLite: auditoría, recientes, favoritos)

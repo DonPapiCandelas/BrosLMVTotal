@@ -156,11 +156,13 @@ ejecución segura (modo solo lectura, confirmación de escrituras), historial.
 
 ---
 
-## 5. Las DLLs que produce el build (15 + 1 nativa)
+## 5. Las DLLs que produce el build (20 + 1 nativa)
 
 `BrosLMVClsMain.dll` (nuestra) + 4 `Microsoft.CodeAnalysis*` (Roslyn) + 8 `System.*`
 (dependencias de Roslyn) + `ScintillaNET.dll` (editor; embebe `SciLexer.dll`) +
-`System.Data.SQLite.dll`, y aparte el nativo **`bin\x86\SQLite.Interop.dll`**.
+`System.Data.SQLite.dll` + `Google.Protobuf.dll` (protocolo del host) + 3
+`Microsoft.Web.WebView2.*` + `WebView2Loader.dll` (`ctx.show_html`/`ctx.dashboard`,
+agregadas desde v2.24.0), y aparte el nativo **`bin\x86\SQLite.Interop.dll`**.
 `dotnet build` las resuelve y copia todas. Detalle y la trampa de versiones en
 [`ESPECIFICACION.md`](ESPECIFICACION.md).
 
