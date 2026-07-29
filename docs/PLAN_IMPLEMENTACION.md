@@ -29,13 +29,13 @@
 | H1 | **La "trampa del instalador" está viva otra vez**: el código va en 2.33.7 pero runtime y `dist\` van en 2.33.5. Las empresas se provisionaron hoy con una versión 2 atrás. | §1.1 | 🔴 Alta |
 | H2 | **La documentación apunta a un servidor que ya no existe**: `ESTADO.md` dice `sqlcmd -S ".\COMPAC2022" -E`; todo `Entrenamiento/` apunta a `.\COMPAC2022` / IP `192.168.122.17:49876`. La BD de laboratorio `Comercial_IA_Auditoria` **no existe** en `localhost\compac`. | `ESTADO.md` línea 290; `Entrenamiento/empresa_base_cp/CLAUDE.md` línea 12-13; `Entrenamiento/comercial_ia_auditoria/AGENTS.md` §2 | 🔴 Alta |
 | H3 | **`zzBrosAuditoria` se crea en la provisión pero NADIE escribe en ella**: existe en ambas empresas, con el esquema completo (Fecha, Usuario, Equipo, Modulo, AppKey, Origen, DuracionMs, Filas, Estado, Error) y está **vacía**. Toda la auditoría va a SQLite local (`Datos.RegistrarEjecucion` → `C:\BrosLMV\data\broslmv.db`). | `instalador/sql/provision_empresa.sql` línea 35-36; grep de `zzBrosAuditoria` en `src/` = 0 escrituras; verificado en ambas BDs | 🔴 Alta |
-| H4 | **Scripts de empresas que ya no están en este servidor**: `C:\BrosLMV\scripts\GRUPOMETALMECANICA\` (4 soluciones con assets) y `Coctel_de_Ideas\` existen en disco, pero esas BDs no existen en `localhost\compac`. | Listado de `C:\BrosLMV\scripts` vs `sys.databases` | 🟡 Media |
+| H4 | **Scripts de empresas que ya no están en este servidor**: `C:\BrosLMV\scripts\EmpresaD\` (4 soluciones con assets) y `EmpresaC\` existen en disco, pero esas BDs no existen en `localhost\compac`. | Listado de `C:\BrosLMV\scripts` vs `sys.databases` | 🟡 Media |
 | H5 | **Patrón dashboard duplicado 4 veces**: el mismo `xlsx.bundle.js` de **425,020 bytes** copiado en `ReporteXVehiculo_assets`, `CUENTAS_POR_COBRAR_assets`, `CUENTAS_POR_PAGAR_assets` y `SEGUIMIENTO_OC_assets`, más `index_template.html`/`app.js`/`style.css` por reporte. | Tamaños idénticos en listado de scripts | 🟡 Media |
 | H6 | **`ESTADO.md` desactualizado contra su propia regla de oro**: última entrada "Estás aquí" = 2026-07-14 v2.32.0, pero el CHANGELOG ya va en **2.33.7** (2026-07-16). | `ESTADO.md` línea 42 vs `CHANGELOG.md` líneas 11-52 | 🟡 Media |
 | H7 | **Advertencia pendiente ya anotada como deuda**: `Entrenamiento/Antioco/ANALISIS_TECNICO.md` (líneas 87-90) dice que el gotcha `IVABase = 0.000001` en partidas con 100% de descuento debe anotarse en `MANUAL.md` como advertencia de `ctx.erp.Timbrar` — no está en el MANUAL. | `ANALISIS_TECNICO.md` §4 | 🟡 Media |
 | H8 | **Vector de seguridad abierto**: cualquier login con escritura en la BD puede insertar código arbitrario en `zzBrosScript` que corre dentro del ERP con la conexión viva. No hay hash, firma ni aprobación. Credenciales SA han circulado en texto plano. | Esquema `zzBrosScript` (sin columnas de integridad); análisis de amenazas | 🟡 Media |
 | H9 | **Historial de versiones sin UI**: `zzBrosScriptHist` respalda cada versión anterior automáticamente (`Scripting.cs` líneas 799-800) pero no hay forma de verlo ni restaurarlo desde la consola. | `Scripting.cs` §"Almacen de scripts en SQL" | 🟢 Baja |
-| H10 | **Gestor de ribbon existe pero solo para un cliente**: `GESTOR_RIBBON.py` (15.5 KB, validado contra la base real) vive solo en la carpeta de GRUPOMETALMECANICA; crear botones sigue siendo SQL a mano para todos los demás. | `C:\BrosLMV\scripts\GRUPOMETALMECANICA\GESTOR_RIBBON.py` | 🟢 Baja |
+| H10 | **Gestor de ribbon existe pero solo para un cliente**: `GESTOR_RIBBON.py` (15.5 KB, validado contra la base real) vive solo en la carpeta de EmpresaD; crear botones sigue siendo SQL a mano para todos los demás. | `C:\BrosLMV\scripts\EmpresaD\GESTOR_RIBBON.py` | 🟢 Baja |
 | H11 | **Cero pruebas automatizadas** en la solución; la verificación es manual/en vivo. La solución `BrosLMV.sln` no tiene proyecto de tests. | Estructura de la solución | 🟡 Media |
 | H12 | **Las 3 copias de `ctx.py`** se sincronizan a mano (gotcha documentado en `ESTADO.md` línea 83-84 y 284). | `ESTADO.md` | 🟢 Baja |
 
@@ -43,9 +43,9 @@
 
 | Empresa | Scripts en BD (`zzBrosScript`) | Scripts en disco | Uso real |
 |---|---|---|---|
-| `GGV_DE_MEXICO` | `ReporteXVehiculo` (Python, módulo 1262) | `ALTA_VEHICULO.ctx`, `ReporteXVehiculo.py` + assets WebView2 | Dashboard de flota, alta de vehículos |
-| `Distribuciones_Candelas` | `RecepcionOc` (47.7 KB), `REPORTE_EJECUTIVO` (57 KB Python), `FixStatusDelivery1882`, `PRUEBA_QR`, `TITULO_DOCUMENTO` | 8 scripts + assets | Recepciones desde OC, reporte ejecutivo |
-| `GRUPOMETALMECANICA` | (BD no presente en este servidor) | `CUENTAS_POR_COBRAR`, `CUENTAS_POR_PAGAR`, `SEGUIMIENTO_OC`, `GESTOR_RIBBON` + assets | CXC/CXP, seguimiento, gestor ribbon |
+| `EmpresaA` | `ReporteXVehiculo` (Python, módulo 1262) | `ALTA_VEHICULO.ctx`, `ReporteXVehiculo.py` + assets WebView2 | Dashboard de flota, alta de vehículos |
+| `EmpresaB` | `RecepcionOc` (47.7 KB), `REPORTE_EJECUTIVO` (57 KB Python), `FixStatusDelivery1882`, `PRUEBA_QR`, `TITULO_DOCUMENTO` | 8 scripts + assets | Recepciones desde OC, reporte ejecutivo |
+| `EmpresaD` | (BD no presente en este servidor) | `CUENTAS_POR_COBRAR`, `CUENTAS_POR_PAGAR`, `SEGUIMIENTO_OC`, `GESTOR_RIBBON` + assets | CXC/CXP, seguimiento, gestor ribbon |
 | `ComercialSP`, `Predeterminada` | Sin provisionar | — | Candidatas a sandbox |
 
 ---
@@ -81,7 +81,7 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
   1. Avisar: CONTPAQi está corriendo (procesos ComercialSP activos); `generar_instalador.ps1` lo **mata a la fuerza**. Hacerlo fuera de horario o con el usuario avisado.
   2. `.\build\generar_instalador.ps1` → compila addon Release → `instalador\bin`, host y workers.
   3. `.\build\generar_exes.ps1` → genera `dist\BrosLMV-Instalador-2.33.7.exe` (y borra los .exe viejos).
-  4. Ejecutar el instalador en el servidor → GUI de provisión → marcar `GGV_DE_MEXICO` y `Distribuciones_Candelas` → "Instalar seleccionadas" (el instalador ya detecta "Actualizar disponible" desde v2.32.0).
+  4. Ejecutar el instalador en el servidor → GUI de provisión → marcar `EmpresaA` y `EmpresaB` → "Instalar seleccionadas" (el instalador ya detecta "Actualizar disponible" desde v2.32.0).
   5. Verificar: `FileVersion` de `C:\BrosLMV\bin\BrosLMVClsMain.dll` = 2.33.7.0 y `SELECT Valor FROM zzBrosInfo WHERE Clave='ProvisionVersion'` = 2.33.7 en ambas empresas.
 - **Archivos:** ninguno de código. **Esfuerzo: S. Riesgo: bajo** (mata Comercial).
 - **Criterio de aceptación:** las 3 fuentes (DLL, dist, zzBrosInfo) dicen 2.33.7.
@@ -117,10 +117,10 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T0.5 — Archivar scripts de empresas ausentes
 
-- **Qué:** mover `C:\BrosLMV\scripts\GRUPOMETALMECANICA\` y `Coctel_de_Ideas\` a `C:\BrosLMV\scripts\_archivo\` y registrar el inventario (D7) en `ESTADO.md`.
-- **Por qué (H4):** esas BDs no existen en este servidor; los scripts huérfanos confunden ("¿esto está vivo?") y el `.legacy` de GGV igual. **No se borra nada** — solo se archiva y se documenta.
+- **Qué:** mover `C:\BrosLMV\scripts\EmpresaD\` y `EmpresaC\` a `C:\BrosLMV\scripts\_archivo\` y registrar el inventario (D7) en `ESTADO.md`.
+- **Por qué (H4):** esas BDs no existen en este servidor; los scripts huérfanos confunden ("¿esto está vivo?") y el `.legacy` de EmpresaA igual. **No se borra nada** — solo se archiva y se documenta.
 - **Esfuerzo: XS. Riesgo: nulo** (si la BD vuelve, se des-archiva).
-- **Nota:** confirmar con el usuario antes — GRUPOMETALMECANICA puede ser un cliente activo en OTRO servidor.
+- **Nota:** confirmar con el usuario antes — EmpresaD puede ser un cliente activo en OTRO servidor.
 
 ---
 
@@ -144,7 +144,7 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
   2. ✅ `src/HostClient.cs` (`RenderUiHtml`): `SetVirtualHostNameToFolderMapping("broslmv.local", Rutas.Lib, Allow)`.
   3. ✅ `workers/python/broslmv/ctx.py`: `ctx.dashboard(title, data, columns=None, width=1000, height=700, modal=True)` — gzip+base64 automático (nunca choca con el límite de 2MB).
   4. ✅ **Sincronizadas las 3 copias de ctx.py** (repo + `C:\BrosLMV\workers\python\` + `C:\BrosLMV\host\workers\python\`).
-  5. ⏳ Migrar `ReporteXVehiculo` (GGV) como piloto; si queda igual, migrar los otros 3. **Pendiente** — requiere probar en CONTPAQi real.
+  5. ⏳ Migrar `ReporteXVehiculo` (EmpresaA) como piloto; si queda igual, migrar los otros 3. **Pendiente** — requiere probar en CONTPAQi real.
   6. ✅ Documentado: `docs/DASHBOARDS_HTML.md` (guía completa nueva) + `MANUAL.md` §9.4 + referencia cruzada.
 - **Archivos:** `src/HostClient.cs`, `src/Rutas.cs`, `workers/python/broslmv/ctx.py`, `instalador\assets\dashboard\*`, `build\generar_instalador.ps1`, docs.
 - **Esfuerzo: L. Riesgo: medio** (tocar el pipeline de show_html — probar con reporte real).
@@ -155,7 +155,7 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 - **Qué:** promover `GESTOR_RIBBON.py` a scripts compartidos (raíz `C:\BrosLMV\scripts\`) para que esté disponible en TODAS las empresas, con botón propio en la pestaña "Soluciones LMV".
 - **Por qué (H10):** crear un botón hoy exige SQL a mano contra `engRibbonControl` (`plantilla_crear_boton.sql`). El gestor ya está validado en producción y tiene la restricción de seguridad correcta (solo toca `ControlExecute LIKE 'BrosLMV.%'`). Es valor ya construido, solo hay que distribuirlo.
 - **Cómo:**
-  1. Quitar del encabezado la marca "GRUPOMETALMECANICA" y parametrizar lo que sea específico.
+  1. Quitar del encabezado la marca "EmpresaD" y parametrizar lo que sea específico.
   2. Copiar a `instalador\scripts\GESTOR_RIBBON.py` (compartido) para que el instalador lo distribuya.
   3. Agregar el botón en `provision_empresa.sql` junto al de la Consola (sección §2b, pestaña "Soluciones LMV").
   4. Documentar en `MANUAL.md` §4 ("Cómo crear un botón nuevo" → ahora con UI).
@@ -165,14 +165,14 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 #### T1.3 — Paquetes `.bros` (exportar/importar soluciones)
 
 - **Qué:** formato ZIP único (script + assets + manifiesto) para mover soluciones entre empresas y máquinas.
-- **Por qué:** los scripts viven en BD pero **los assets viven en disco por máquina** — en multi-terminal, el reporte de GGV solo funciona en el equipo donde se creó. Además es el habilitador del marketplace futuro (Fase 5).
+- **Por qué:** los scripts viven en BD pero **los assets viven en disco por máquina** — en multi-terminal, el reporte de EmpresaA solo funciona en el equipo donde se creó. Además es el habilitador del marketplace futuro (Fase 5).
 - **Cómo:**
   1. Manifiesto `paquete.json`: `{ appKey, nombre, lenguaje, modulo, versionMinima, archivos: [...] }`.
   2. Consola → menú Scripts → "Exportar paquete…": lee `zzBrosScript` + carpeta `<AppKey>_assets\` si existe → ZIP.
   3. "Importar paquete…": valida `versionMinima` contra `zzBrosInfo.ProvisionVersion`, upsert vía `BrosGuardar` (queda en hist), extrae assets a `scripts\<EMPRESA>\<AppKey>_assets\`, y ofrece crear el botón del ribbon (T1.2).
   4. Todo en `src/Consola.cs` (UI) + `src/Scripting.cs` (lógica); `System.IO.Compression` ya está en .NET 4.8.
 - **Esfuerzo: M-L. Riesgo: bajo-medio.**
-- **Criterio:** exportar `REPORTE_EJECUTIVO` de Distribuciones_Candelas e importarlo en GGV_DE_MEXICO funcionando con assets.
+- **Criterio:** exportar `REPORTE_EJECUTIVO` de EmpresaB e importarlo en EmpresaA funcionando con assets.
 
 #### T1.4 — Versionado visible de scripts (historial + diff + restaurar)
 
@@ -199,7 +199,7 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
   3. Consola → ventana Historial: pestaña nueva "Auditoría (empresa)" que lee la tabla central con filtros (fecha, usuario, AppKey, estado).
 - **Archivos:** `src/Datos.cs`, `src/Consola.cs`, `MANUAL.md` (D5), `CHANGELOG.md`.
 - **Esfuerzo: M. Riesgo: bajo** (100% aditivo).
-- **Criterio:** ejecutar un botón en GGV desde la consola y desde el ribbon, y ver ambas filas en `zzBrosAuditoria` con `Equipo` y `Origen` correctos.
+- **Criterio:** ejecutar un botón en EmpresaA desde la consola y desde el ribbon, y ver ambas filas en `zzBrosAuditoria` con `Equipo` y `Origen` correctos.
 
 #### T2.2 — Modo solo-lectura por usuario
 
@@ -255,7 +255,7 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 - **Cómo:**
   1. Definir el subconjunto **job-safe**: scripts que solo usan `ctx.query/scalar/read_excel/write_excel/correo` — NUNCA `ctx.erp` ni el grid (fuera de Comercial no hay XEngine ni conexión viva; se usa `OpenConn` con el archivo de conexión de respaldo que ya lee `Rutas.cs`).
   2. Marcador `# job: safe-offline` en la primera línea; el runner lo valida estáticamente antes de ejecutar.
-  3. `BrosLMV.Runner.exe` (consola, net48): `--empresa GGV_DE_MEXICO --appkey REPORTE_EJECUTIVO --salida C:\reportes`. Acciones de salida: guardar Excel/PDF, SMTP.
+  3. `BrosLMV.Runner.exe` (consola, net48): `--empresa EmpresaA --appkey REPORTE_EJECUTIVO --salida C:\reportes`. Acciones de salida: guardar Excel/PDF, SMTP.
   4. Documentar con receta de Task Scheduler.
 - **Esfuerzo: XL. Riesgo: medio.**
 - **Criterio:** REPORTE_EJECUTIVO generado y enviado por correo sin sesión de Comercial abierta.

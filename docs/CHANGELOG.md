@@ -10,9 +10,9 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ## [2.34.0] — 2026-07-29 — `ctx.dashboard()`: reportes HTML sin assets por script
 
-> Detonado por un bug real en producción: `ReporteXVehiculo.py` (GGV) fijaba el nombre de
+> Detonado por un bug real en producción: `ReporteXVehiculo.py` (EmpresaA) fijaba el nombre de
 > la empresa a mano en la ruta de sus assets (`ASSETS_PATH = r"C:\BrosLMV\scripts\
-> GGV_DE_MEXICO\..."`). Al pasar el script a la base del cliente (`GGV_DE_MEXICO_2025`), el
+> EmpresaA\..."`). Al pasar el script a la base del cliente (`EmpresaA_2025`), el
 > reporte cargaba a medias sin importar dónde se copiara la carpeta — la ruta nunca miraba
 > la empresa activa real. Esto expuso el problema de fondo: los dashboards HTML dependían
 > de una carpeta de assets por script, en disco, que había que copiar a mano a cada
@@ -44,7 +44,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   de assets incrustados para casos a la medida, checklist).
 
 ### Corregido
-- **`ReporteXVehiculo.py`** (GGV): `ASSETS_PATH` ya no fija el nombre de la empresa a
+- **`ReporteXVehiculo.py`** (EmpresaA): `ASSETS_PATH` ya no fija el nombre de la empresa a
   mano — usa `ctx.empresa` (`os.path.join(r"C:\BrosLMV\scripts", ctx.empresa,
   "ReporteXVehiculo_assets")`). Corrige el bug real que impedía usar el reporte en la base
   de datos de un cliente distinta a la de desarrollo. **Pendiente (no bloqueante):**
@@ -432,7 +432,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ## [2.24.0] — 2026-07-11 — `ctx.show_html()`: ventana HTML/WebView2 embebida (Python)
 
-> Primer caso real, verificado en producción contra GGV_DE_MEXICO (`ReporteXVehiculo.py`,
+> Primer caso real, verificado en producción contra EmpresaA (`ReporteXVehiculo.py`,
 > dashboard de flota): un botón Python arma un dashboard HTML/CSS/JS completo con datos reales
 > (3383 movimientos, 4693 días-vehículo, 220 compras) y lo muestra embebido dentro de
 > CONTPAQi, sin escribir ningún archivo ni depender del navegador externo.
@@ -467,7 +467,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 - `ctx.show_html` usa `NavigateToString` de WebView2 internamente, que tiene un **límite
   documentado de 2MB** de contenido total (HTML+CSS+JS+datos, todo junto). Con un dataset de
   24 meses de histórico el JSON de datos solo ya pesaba ~1.83MB — sumado a los assets estáticos
-  se pasaba del límite. **Solución aplicada en `ReporteXVehiculo.py` (GGV_DE_MEXICO):** los
+  se pasaba del límite. **Solución aplicada en `ReporteXVehiculo.py` (EmpresaA):** los
   datos viajan comprimidos `gzip` nivel 9 + `base64` desde Python, y se descomprimen en el
   navegador embebido con la API nativa `DecompressionStream` (Chromium la trae desde 2020 —
   **no hace falta vendorizar pako ni ninguna librería**). Medido con datos reales: JSON crudo
@@ -496,7 +496,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 - `PLANTILLA_BASE_CSHARP_WEBVIEW2.ctx` (en `scripts\`, compartida) — patrón de
   inicialización asíncrona segura para WebView2 (por evento, nunca bloqueante) para que
   cualquier script futuro lo copie en vez de reinventarlo.
-- 4 scripts de prueba en `scripts\Distribuciones_Candelas\`: `PRUEBA_JSON.ctx`,
+- 4 scripts de prueba en `scripts\EmpresaB\`: `PRUEBA_JSON.ctx`,
   `PRUEBA_QR.ctx`, `PRUEBA_EXCEL.ctx`, `PRUEBA_WEBVIEW2.ctx`.
 - `build\descargar_librerias_externas.ps1` (mismo patrón que `descargar_python.ps1`):
   compila un proyecto NuGet desechable y deja los `.dll` en `instalador\lib\` — no se
@@ -814,7 +814,7 @@ usado por el menú Plantillas) o al usar "Abrir" para importar un `.ctx`/`.csx`.
 
 > Segundo par de plantillas completas (además de la Requisición): **Orden de Compra**
 > (módulo 183), verificada previamente esta sesión creando documentos reales en
-> `Coctel_de_Ideas` (F1-F3, DocumentID 11556-11560). Reutiliza el mismo patrón modeless +
+> `EmpresaC` (F1-F3, DocumentID 11556-11560). Reutiliza el mismo patrón modeless +
 > protecciones de la Requisición, con las diferencias reales de una OC.
 
 ### Agregado
@@ -1176,7 +1176,7 @@ usado por el menú Plantillas) o al usar "Abrir" para importar un `.ctx`/`.csx`.
   reactivará cuando se cablee en proto + host + runner. Honestidad de las referencias.
 
 ### Verificado en CONTPAQi (consola Python)
-- `ctx.module_id` (152), `ctx.empresa` (Coctel_de_Ideas), `ctx.app_key`, `ctx.fila` (dict
+- `ctx.module_id` (152), `ctx.empresa` (EmpresaC), `ctx.app_key`, `ctx.fila` (dict
   completo del documento), `ctx.context()`, `ctx.get_selected_ids()` ([11555]),
   `ctx.scalar(...)` (956) y `ctx.query(sql, {"id": ...})` con `@param` → **OK**.
 

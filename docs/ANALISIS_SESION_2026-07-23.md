@@ -21,10 +21,10 @@
 
 | Hallazgo | Verificación en vivo (2026-07-23) | Estado |
 |---|---|---|
-| **H1** versión desfasada | `zzBrosInfo.ProvisionVersion = 2.33.5` en `GGV_DE_MEXICO` y `Distribuciones_Candelas`, instalada `2026-07-22 22:17`. Código en 2.33.7. | ✅ Confirmado |
+| **H1** versión desfasada | `zzBrosInfo.ProvisionVersion = 2.33.5` en `EmpresaA` y `EmpresaB`, instalada `2026-07-22 22:17`. Código en 2.33.7. | ✅ Confirmado |
 | **H3** auditoría fantasma | `zzBrosAuditoria` con esquema completo pero **0 filas** en ambas empresas. | ✅ Confirmado |
-| Bases presentes | `GGV_DE_MEXICO`, `Distribuciones_Candelas` (+ `ComercialSP`, `Predeterminada` sin provisionar). **No existen** `GRUPOMETALMECANICA` ni `Comercial_IA_Auditoria`. | ✅ Confirmado |
-| Inventario scripts | GGV: `ReporteXVehiculo` (11 KB). Distribuciones: `RecepcionOc` (47 KB), `REPORTE_EJECUTIVO` (57 KB), `FixStatusDelivery1882`, `PRUEBA_QR`, `TITULO_DOCUMENTO`. | ✅ Confirmado |
+| Bases presentes | `EmpresaA`, `EmpresaB` (+ `ComercialSP`, `Predeterminada` sin provisionar). **No existen** `EmpresaD` ni `Comercial_IA_Auditoria`. | ✅ Confirmado |
+| Inventario scripts | EmpresaA: `ReporteXVehiculo` (11 KB). EmpresaB: `RecepcionOc` (47 KB), `REPORTE_EJECUTIVO` (57 KB), `FixStatusDelivery1882`, `PRUEBA_QR`, `TITULO_DOCUMENTO`. | ✅ Confirmado |
 
 **Corrección al plan:** el esquema real de `zzBrosScript` **no** tiene columna
 `Lenguaje`. Es: `AppKey, Nombre, Codigo, Modulo, Activo, Modificado, ModificadoPor`.
@@ -32,13 +32,13 @@ El lenguaje se infiere del contenido del script.
 
 ## 3. Decisión de sandbox
 
-- **Elegido por el usuario:** usar `Distribuciones_Candelas` como empresa de pruebas.
-- **Advertencia registrada:** `Distribuciones_Candelas` es **producción viva** (5 scripts
+- **Elegido por el usuario:** usar `EmpresaB` como empresa de pruebas.
+- **Advertencia registrada:** `EmpresaB` es **producción viva** (5 scripts
   reales, datos contables/fiscales). Un harness (T4.1) hace escrituras.
 - **Recomendación híbrida (pendiente de confirmar):**
-  - Pruebas de **lectura** (Query, show_html, dashboards, read_excel) → `Distribuciones_Candelas` (más realista, tiene datos reales).
+  - Pruebas de **lectura** (Query, show_html, dashboards, read_excel) → `EmpresaB` (más realista, tiene datos reales).
   - Pruebas de **escritura/timbrado** (crear docs, altas, timbrar) → `ComercialSP` (vacía, desechable).
-  - Si todo va en `Distribuciones_Candelas`: **transacción + rollback obligatorio** y nunca timbrar de verdad.
+  - Si todo va en `EmpresaB`: **transacción + rollback obligatorio** y nunca timbrar de verdad.
 
 ## 4. Ideas nuevas propuestas (complementan el plan)
 
@@ -79,7 +79,7 @@ Aprovechan activos ya construidos (sobre todo el corpus de ingeniería inversa d
 
 ## 6. Próximos pasos para retomar
 
-1. Confirmar el sandbox híbrido de §3 (o ratificar todo en Distribuciones_Candelas con
+1. Confirmar el sandbox híbrido de §3 (o ratificar todo en EmpresaB con
    rollback obligatorio).
 2. Decidir arranque: **Fase 0** (recomendado, 1 día, riesgo bajo) vs seguridad vs T1.1.
 3. Al ejecutar la primera tarea de código, respetar la regla de oro (CHANGELOG +

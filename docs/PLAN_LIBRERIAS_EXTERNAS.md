@@ -2,7 +2,7 @@
 
 > **Estado: EJECUTADO (2026-07-07).** Las 4 librerías ya están en `C:\BrosLMV\lib\`,
 > validadas por compilación real contra un proyecto de prueba, con scripts de prueba en
-> `C:\BrosLMV\scripts\Distribuciones_Candelas\` (`PRUEBA_JSON.ctx`, `PRUEBA_QR.ctx`,
+> `C:\BrosLMV\scripts\EmpresaB\` (`PRUEBA_JSON.ctx`, `PRUEBA_QR.ctx`,
 > `PRUEBA_EXCEL.ctx`, `PRUEBA_WEBVIEW2.ctx`) y la plantilla reutilizable en
 > `C:\BrosLMV\scripts\PLANTILLA_BASE_CSHARP_WEBVIEW2.ctx`. Runtime de WebView2 ya estaba
 > instalado en el servidor (v149.0.4022.98) — no hizo falta empacar el instalador. Ver
@@ -381,17 +381,17 @@ de que el usuario lo corra ahí.
 
 | Archivo | Ubicación | Qué prueba |
 |---|---|---|
-| `PRUEBA_JSON.ctx` | `scripts\Distribuciones_Candelas\` | Newtonsoft.Json: crear/leer un objeto JSON |
-| `PRUEBA_QR.ctx` | `scripts\Distribuciones_Candelas\` | QRCoder: generar un PNG de código QR y abrirlo |
-| `PRUEBA_EXCEL.ctx` | `scripts\Distribuciones_Candelas\` | ClosedXML: exportar 20 facturas de venta a un `.xlsx` con formato, y abrirlo |
-| `PRUEBA_WEBVIEW2.ctx` | `scripts\Distribuciones_Candelas\` | WebView2: ventana con HTML/CSS moderno + botón que manda un mensaje de JavaScript a C# |
+| `PRUEBA_JSON.ctx` | `scripts\EmpresaB\` | Newtonsoft.Json: crear/leer un objeto JSON |
+| `PRUEBA_QR.ctx` | `scripts\EmpresaB\` | QRCoder: generar un PNG de código QR y abrirlo |
+| `PRUEBA_EXCEL.ctx` | `scripts\EmpresaB\` | ClosedXML: exportar 20 facturas de venta a un `.xlsx` con formato, y abrirlo |
+| `PRUEBA_WEBVIEW2.ctx` | `scripts\EmpresaB\` | WebView2: ventana con HTML/CSS moderno + botón que manda un mensaje de JavaScript a C# |
 | `PLANTILLA_BASE_CSHARP_WEBVIEW2.ctx` | `scripts\` (compartida, todas las empresas) | Mismo patrón que `PRUEBA_WEBVIEW2.ctx`, como plantilla para copiar en scripts futuros |
 
 ---
 
 ## 8. Lo que NO cambia
 
-Todo lo que ya construimos para Distribuciones_Candelas (el dashboard, el detalle de
+Todo lo que ya construimos para EmpresaB (el dashboard, el detalle de
 proyecto, la exportación a Excel del reporte) sigue funcionando exactamente igual — está
 en Python, que ya tiene su propio acceso a WebView2 a través de `pywebview` desde antes.
 Este plan es para dar la misma capacidad a los scripts de **C#**, no para reemplazar

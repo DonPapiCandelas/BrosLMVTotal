@@ -46,7 +46,7 @@ fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de
   `build\generar_exes.ps1` — 0 errores. `dist\BrosLMV-Instalador-2.34.0.exe` (65.2 MB) +
   `BrosLMV-Desinstalador-2.34.0.exe` generados y verificados (recursos embebidos OK). El
   usuario corrió el instalador y confirmó: `C:\BrosLMV\bin\BrosLMVClsMain.dll` = 2.34.0.0,
-  `zzBrosInfo.ProvisionVersion` = 2.34.0 en `GGV_DE_MEXICO` y `Distribuciones_Candelas`.
+  `zzBrosInfo.ProvisionVersion` = 2.34.0 en `EmpresaA` y `EmpresaB`.
   Las 4 fuentes (código, runtime, BD, GitHub) coinciden en 2.34.0.
 - **⚠️ `.git` desconectado localmente.** Esta carpeta (`C:\MLVTotal`) ya no tiene carpeta
   `.git` — el repo remoto `github.com/DonPapiCandelas/BrosLMVTotal` sigue vivo y público,
@@ -64,7 +64,7 @@ fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de
   paginación, exportar a Excel) sin escribir HTML/CSS/JS ni carpeta de assets por script.
   Runtime compartido nuevo: `C:\BrosLMV\lib\` (lo puebla el instalador). Ver
   [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) (doc nueva) y `MANUAL.md` §9.4.
-  Detonado por un bug real: `ReporteXVehiculo.py` (GGV) fijaba el nombre de empresa a mano
+  Detonado por un bug real: `ReporteXVehiculo.py` (EmpresaA) fijaba el nombre de empresa a mano
   en `ASSETS_PATH`, rompía al pasar el script a la BD de un cliente distinto. Corregido
   (usa `ctx.empresa`). **Pendiente:** migrar `ReporteXVehiculo` y los otros 3 reportes
   (`CUENTAS_POR_COBRAR`, `CUENTAS_POR_PAGAR`, `SEGUIMIENTO_OC`) al patrón nuevo — y
@@ -108,7 +108,7 @@ fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de
 ## Estás aquí (2026-07-11, v2.24.0)
 
 - **`ctx.show_html()` — ventana HTML/WebView2 embebida (Python), primer caso real verificado.**
-  Se probó contra una empresa real (GGV_DE_MEXICO, botón `ReporteXVehiculo.py`): un dashboard
+  Se probó contra una empresa real (EmpresaA, botón `ReporteXVehiculo.py`): un dashboard
   de flota completo (HTML+CSS+JS+datos) armado en Python y mostrado embebido dentro de
   CONTPAQi vía WebView2, sin escribir ningún archivo compartido ni depender del navegador
   externo. Ver [`CHANGELOG.md`](CHANGELOG.md) [2.24.0] para el detalle completo del protocolo
@@ -253,7 +253,7 @@ Los tres lenguajes (C# / Python / SQL) conviven y están alineados con el API re
   actualiza `AssemblyVersion` + `CHANGELOG.md` + `notas_version.html`.
 - **Crear documentos C#/Python** (v2.15.0): `ctx.erp.NuevoDocumento` + `AgregarArticulo` +
   `RecalcCompleto`, y el active-record genérico `ctx.nuevo("tabla")` (Python). **Verificado** en
-  `Coctel_de_Ideas` (órdenes de compra, F1=C#, F2=Python relay, F3=ctx.nuevo). Además: los scripts
+  `EmpresaC` (órdenes de compra, F1=C#, F2=Python relay, F3=ctx.nuevo). Además: los scripts
   C# ya muestran su `return` en el panel. Ver [`PYTHON.md`](PYTHON.md) §2.2. Memoria:
   [[broslmv-erp-documentos-plan]].
 - **Editar registros existentes** (v2.16.0): `ctx.registro("tabla", pk)` carga un registro por PK,
@@ -289,11 +289,11 @@ Los tres lenguajes (C# / Python / SQL) conviven y están alineados con el API re
 
 ## ✅ Despliegue v2.16.0 — COMPLETADO (2026-06-28)
 
-> DLL+PDB+ctx.py desplegados, instalador+EXEs regenerados. **Verificado** en Coctel_de_Ideas:
+> DLL+PDB+ctx.py desplegados, instalador+EXEs regenerados. **Verificado** en EmpresaC:
 > `ctx.registro("docDocument", 11560)` cargó 104 campos, modificó Comments, `.actualizar()` envió
 > solo ese campo (1 fila), verificado en BD, restaurado original. Script: `f4_registro_editar.py`.
 
-## Pruebas de creación de documentos (sesión 2026-06-27) — todas OK en Coctel_de_Ideas
+## Pruebas de creación de documentos (sesión 2026-06-27) — todas OK en EmpresaC
 DocumentID 11556–11560 (órdenes de compra). Scripts en `/.temp_tests`: `f1_orden_compra.ctx` (C#),
 `f2_orden_compra.py` (Python relay), `f3_nuevo_generico.py` (ctx.nuevo), `ejemplo_sql_mas_erp.py`
 (SQL crudo + ctx.erp en cadena), `ejemplo_sql_puro.sql` (reporte SQL).
@@ -333,6 +333,6 @@ DocumentID 11556–11560 (órdenes de compra). Scripts en `/.temp_tests`: `f1_or
   ajena — solo se aprende de su comportamiento y se reimplementa desde cero.
 - **SQL offline** para inspección: `sqlcmd -S "localhost\compac" -U SA -P "<pwd>" -C` — la
   instancia migró el 2026-07-22; `.\COMPAC2022` quedó **obsoleta** (no confundir si algo
-  viejo todavía la menciona). Empresas provisionadas activas: `GGV_DE_MEXICO`,
-  `Distribuciones_Candelas`. `ComercialSP`/`Predeterminada` sin provisionar (candidatas a
+  viejo todavía la menciona). Empresas provisionadas activas: `EmpresaA`,
+  `EmpresaB`. `ComercialSP`/`Predeterminada` sin provisionar (candidatas a
   sandbox).

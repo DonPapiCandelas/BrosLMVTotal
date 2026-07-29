@@ -146,9 +146,9 @@ también sea portable:
 
 ## 5. Caso real que originó esta guía
 
-`ReporteXVehiculo.py` (GGV) fijaba la ruta de sus assets con el nombre de la empresa
-escrito a mano: `r"C:\BrosLMV\scripts\GGV_DE_MEXICO\ReporteXVehiculo_assets"`. Al pasar el
-script a la base de datos del cliente (`GGV_DE_MEXICO_2025`), el reporte cargaba a medias
+`ReporteXVehiculo.py` (EmpresaA) fijaba la ruta de sus assets con el nombre de la empresa
+escrito a mano: `r"C:\BrosLMV\scripts\EmpresaA\ReporteXVehiculo_assets"`. Al pasar el
+script a la base de datos del cliente (`EmpresaA_2025`), el reporte cargaba a medias
 sin importar dónde se copiara la carpeta de assets — la ruta nunca miraba la empresa activa
 real. **Corregido (2026-07-29):** ahora usa `os.path.join(r"C:\BrosLMV\scripts", ctx.empresa,
 "ReporteXVehiculo_assets")`. Este es exactamente el error que la regla 3 de la §4 evita.

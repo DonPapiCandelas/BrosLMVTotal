@@ -368,7 +368,7 @@ Después de `NuevoDocumento` + `AgregarArticulo` × N, se llama en este orden:
 > ⚠️ **`RefreshGrid()` NO "pega" visualmente si se llama mientras tu propia ventana (`frm`)
 > sigue al frente** — Comercial no está en foco en ese instante, aunque la llamada no truene
 > y el dato en la base ya haya quedado correcto (confirmado en vivo dos veces: `RecepcionOc`
-> en Distribuciones_Candelas y `GenOrdenCompra` en Coctel_de_Ideas, ambos con ventana propia
+> en EmpresaB y `GenOrdenCompra` en EmpresaC, ambos con ventana propia
 > tipo WinForms). **Patrón correcto**: no llamar `RefreshGrid()` inline después de `Save`;
 > engancharlo a `frm.FormClosed` en vez de eso, así corre siempre justo cuando el control
 > regresa a Comercial, sin importar por cuál salida se cierre la ventana:

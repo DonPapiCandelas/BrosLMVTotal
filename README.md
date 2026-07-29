@@ -73,7 +73,8 @@ Guía detallada (servidor, terminales, multi-empresa, problemas comunes):
 [`docs/INSTALACION.md`](docs/INSTALACION.md).
 
 Se entregan dos ejecutables autocontenidos en `dist/`, con la **versión en el nombre**
-(p.ej. `BrosLMV-Instalador-2.33.5.exe`) para no confundir cuál mandar:
+(p.ej. `BrosLMV-Instalador-X.Y.Z.exe`, con la versión real del build) para no confundir
+cuál mandar:
 
 1. `BrosLMV-Instalador-X.Y.Z.exe` — doble clic, aceptar UAC, **Instalar** (despliega el runtime a
    `C:\BrosLMV`, copia el icono y registra el componente COM), luego abre el GUI de provisión.

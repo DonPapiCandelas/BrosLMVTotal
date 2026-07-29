@@ -76,7 +76,7 @@ result = f"stock={ex} precio={pv} | {letra}"
 
 ## 2.2 Crear documentos desde Python
 
-Hay **dos formas**, ambas verificadas (orden de compra en `Coctel_de_Ideas`):
+Hay **dos formas**, ambas verificadas (orden de compra en `EmpresaC`):
 
 **A) Helpers de alto nivel (recomendado)** — encapsulan los defaults del módulo:
 
