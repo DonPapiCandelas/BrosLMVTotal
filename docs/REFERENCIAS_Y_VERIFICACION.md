@@ -127,8 +127,8 @@ con `docDocument JOIN docDocumentItem` y prueba en SOLO LECTURA):
 | Lenguaje | Catálogo (`src/Consola.cs`) | Fuente de verdad | Estado |
 |----------|-----------------------------|------------------|--------|
 | C#       | `METODOS` | `src/Scripting.cs` (`ScriptContext`/`ErpContext`) + dump COM | Alineado **y verificado** en CONTPAQi (v2.11.0) |
-| Python   | `METODOS_PYTHON` | `workers/python/broslmv/ctx.py` | Alineado (v2.11.1) — **falta verificar** con script |
-| SQL      | `METODOS_SQL` | `ScriptContext.EjecutarSql` + `ResolverTokensCore` | Alineado (v2.11.1) — **falta verificar** con script |
+| Python   | `METODOS_PYTHON` | `workers/python/broslmv/ctx.py` | Alineado y **verificado en producción** (v2.24.0 `ctx.show_html`, v2.34.0 `ctx.dashboard()`, ver `CHANGELOG.md`) |
+| SQL      | `METODOS_SQL` | `ScriptContext.EjecutarSql` + `ResolverTokensCore` | Alineado (v2.11.1), tokens usados en producción desde entonces |
 
 ### Correcciones hechas en v2.11.1 (y actualizadas en v2.12.0+)
 - **Python:** `ctx.erp.*` **SÍ existe en Python** (desde v2.12.0, relay al addon vía pipe). Los 84

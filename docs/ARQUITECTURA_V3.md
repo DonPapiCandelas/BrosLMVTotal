@@ -5,10 +5,13 @@
 > el mismo `ctx` y la conexión viva. Insumo de referencia: el catálogo XEngine
 > ([`XENGINE_FUNCIONES.md`](XENGINE_FUNCIONES.md)).
 >
-> **Estado:** la base ya está **en producción** — C# (en proceso), Python (host x64 por
-> Named Pipes + Protobuf) y SQL directo conviven en el mismo botón/consola (ver
-> [`CHANGELOG.md`](CHANGELOG.md), versiones 2.5–2.10). La interfaz para Python (UI nativa
-> `ctx.form` + HTML `ctx.show_html`) es trabajo en curso.
+> **Estado (actualizado 2026-07-29):** la base y la interfaz de Python ya están **en
+> producción** — C# (en proceso), Python (host x64 por Named Pipes + Protobuf) y SQL
+> directo conviven en el mismo botón/consola (ver [`CHANGELOG.md`](CHANGELOG.md),
+> versiones 2.5–2.10). La UI nativa `ctx.form` (v2.32.0) y HTML `ctx.show_html`
+> (v2.24.0) ya no son trabajo en curso — están hechas y en uso; `ctx.dashboard()`
+> (v2.34.0, ver [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md)) se construyó encima de
+> `ctx.show_html`.
 
 ---
 
@@ -192,11 +195,13 @@ usan análisis pesado.
   en scripts C# (WebView2 crudo, control total) o `ctx.show_html(...)` desde Python
   (v2.24.0, ya implementado — WebView2 embebido, sin manejar el hilo STA a mano).
 - **`broslmv.proto`** definitivo (empezar por aquí en la implementación → punto C2).
-- Forma exacta de **`ctx.form`** (DSL de formularios que el addon renderiza en WinForms).
-- Metadatos de script: cabecera declarativa (`@nombre/@lenguaje/@runtime/@permisos/
-  @timeout`) y/o columnas en `zzBrosScript`.
-- Eventos/hooks (`Al Guardar`, etc.) y sistema de **tokens** (`{pID}`, `{DATOS:Campo}`):
-  diseño de almacenamiento y motor de sustitución.
+- ✅ Forma de **`ctx.form`** — hecha (v2.32.0), incluye grid editable.
+- ✅ Sistema de **tokens** (`{pID}`, `{DATOS:Campo}`) — hecho (`ctx.ResolverTokens`,
+  `Scripting.cs`), ver [`RECETAS_NOCODE.md`](RECETAS_NOCODE.md) §2.1.
+- Metadatos de script: cabecera declarativa completa (`@nombre/@lenguaje/@runtime/
+  @permisos/@timeout`) y/o columnas en `zzBrosScript` — sigue pendiente como
+  esquema formal, aunque ya existen marcadores puntuales (`# lang: python`).
+- Eventos/hooks (`Al Guardar`, etc.) — sigue pendiente.
 
 ---
 

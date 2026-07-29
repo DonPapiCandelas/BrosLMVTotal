@@ -1,5 +1,12 @@
 # Continuacion: UI real en Python (pythonnet -> pywebview) + fix de timeout
 
+> ⚠️ **SUPERADO (nota agregada 2026-07-29).** El camino `pywebview` que explora este
+> documento **no es lo que se construyó**. La UI HTML de Python en producción es
+> `ctx.show_html()`/`ctx.dashboard()` sobre **WebView2** (v2.24.0 en adelante, ver
+> [`PYTHON.md`](PYTHON.md) y [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md)) — la decisión
+> "doble render" (D9) en [`ARQUITECTURA_V3.md`](ARQUITECTURA_V3.md). Se deja este archivo
+> como registro histórico de la exploración, no como guía vigente.
+
 > Sesion: 2026-06-30. Rama base: `main` @ `fd19aa2` (antes de esta sesion). Este documento
 > es autocontenido a proposito: en paralelo habia trabajo en curso sobre
 > `Scripting.cs`, `ClsMain.cs`, `Consola.cs`, `docs/*.md`, `notas_version.html`

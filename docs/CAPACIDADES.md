@@ -30,8 +30,8 @@ automatización e integraciones. Es la guía para imaginar y diseñar botones.
 
 ## 1. La idea de poder
 
-Cada botón de BrosLMV es **un programa completo en C#** que se ejecuta **dentro**
-de CONTPAQi, con acceso directo a:
+Cada botón de BrosLMV es **un programa completo** (en C#, Python o SQL) que se
+ejecuta **dentro** de CONTPAQi, con acceso directo a:
 
 - los **documentos seleccionados** y la **base de datos viva** de la empresa,
 - **todo el ecosistema .NET** (la misma plataforma sobre la que corre CONTPAQi),
@@ -56,6 +56,10 @@ Cuando escribes un script tienes acceso, de menor a mayor alcance, a:
   (conexión automática, sin configurar nada).
 - `ctx.Msg / Confirm / Log` — interacción y bitácora.
 - `ctx.UserID`, `ctx.XEngineLib` — usuario y motor de CONTPAQi.
+
+> Ejemplos de esta capa en C# (PascalCase, como arriba). En **Python** es la misma
+> capa con nombres snake_case (`ctx.get_selected_ids()`, `ctx.query(...)`,
+> `ctx.msg(...)`) — ver [`PYTHON.md`](PYTHON.md).
 
 ### Capa 2 — Toda la plataforma .NET Framework 4.8
 Sin instalar nada, tienes la biblioteca estándar completa: archivos (`System.IO`),
@@ -139,6 +143,13 @@ frm.ShowDialog();
 Con `WebView2` puedes incrustar **Chart.js** o **D3** en el HTML y tener barras,
 pastel, líneas, tableros interactivos. También puedes **guardar el HTML a archivo**
 y abrirlo en el navegador, o **exportarlo a PDF**.
+
+> **En Python, no hace falta escribir el HTML/CSS/JS a mano.** `ctx.show_html(html)`
+> muestra HTML/CSS/JS real embebido con WebView2 sin salir de CONTPAQi, y
+> `ctx.dashboard(title, data)` da tabla ordenable + buscador + exportar a Excel a
+> partir de una lista de datos, en unas cuantas líneas — ver
+> [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) para la guía completa (incluye cómo
+> mantenerlo rápido y portable entre terminales).
 
 ---
 
@@ -277,10 +288,10 @@ using Newtonsoft.Json;
 > **auto-referencie**, para que cualquier DLL puesto ahí esté disponible en todos
 > los scripts **sin** escribir `#r`. Es un cambio pequeño en el núcleo.
 
-> **Plan concreto en curso (2026-07-06):** ver
-> [`PLAN_LIBRERIAS_EXTERNAS.md`](PLAN_LIBRERIAS_EXTERNAS.md) — 4 librerías elegidas
-> (WebView2, ClosedXML, Newtonsoft.Json, QRCoder), con ejemplos de código y el patrón
-> seguro de inicialización de WebView2 (riesgo de congelar Comercial si se hace mal).
+> **Ya ejecutado (2026-07-07):** ver [`PLAN_LIBRERIAS_EXTERNAS.md`](PLAN_LIBRERIAS_EXTERNAS.md)
+> — 4 librerías ya en `instalador\lib\` (WebView2, ClosedXML, Newtonsoft.Json, QRCoder),
+> con ejemplos de código y el patrón seguro de inicialización de WebView2 (riesgo de
+> congelar Comercial si se hace mal).
 
 ---
 
@@ -316,30 +327,27 @@ Ninguno de estos límites impide los casos del §3; solo conviene tenerlos prese
 
 ---
 
-## 13. Extender con Python real (opcional)
+## 13. Python: el stack científico, ya integrado
 
-Si algún análisis específico justifica el **stack científico de Python**
-(`pandas`, `numpy`, `matplotlib`), se puede integrar **sin perder nada** de lo
-anterior. C# se encarga de la integración con CONTPAQi (selección, conexión, UI) y
-delega el cálculo pesado a Python.
+Python **no es una extensión que un botón C# llame por fuera** — es un lenguaje de
+botón de primera clase, igual que C# y SQL. Marcas el script con `# lang: python`
+(o simplemente `from broslmv import ctx`) y corre con el mismo `ctx`, la misma
+conexión a la empresa activa y el mismo dispatcher del ribbon.
 
-| Enfoque | Qué es | Poder | Complejidad |
-|---------|--------|-------|-------------|
-| **Llamar a `python.exe`** (recomendado) | El botón lanza un script Python, le pasa datos (JSON/archivo/BD) y recibe el resultado (HTML/PNG/PDF) | Stack completo de Python | Media |
-| **Incrustar CPython en proceso** | Hospedar Python 3 dentro del mismo proceso | Stack completo, más acoplado | Media-alta |
+Por dentro corre **fuera de proceso** (host x64 dedicado, Named Pipes + Protobuf) —
+así el ERP de 32 bits nunca se arriesga por un fallo nativo de una librería
+científica. Ver [`ARQUITECTURA_V3.md`](ARQUITECTURA_V3.md) para el diseño completo.
 
-Arquitectura recomendada (desacoplada):
+Cuándo usar Python en vez de C#:
 
-```
-Botón C# (BrosLMV)
-   ├── lee selección + datos de CONTPAQi
-   ├── invoca  python.exe analisis.py  ──►  pandas / numpy / matplotlib
-   │                                          └── devuelve HTML / PNG / PDF
-   └── muestra el resultado (WebView2 / imagen / PDF)
-```
+| Necesitas | Usa |
+|---|---|
+| `ctx.erp`, documentos, SQL directo, UI nativa | Cualquiera de los dos — mismo poder |
+| `pandas`, `numpy`, análisis/estadística pesada | Python — viene empacado, sin instalar nada aparte |
+| Dashboard HTML con tabla/buscador/Excel | Python — `ctx.dashboard()`, ver [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) |
+| Transacciones SQL explícitas (`ctx.OpenConn`) | C# — Python todavía no las tiene |
 
-Esto se documenta y se implementa solo si un caso lo amerita; **no es necesario**
-para reportes, análisis con LINQ/dataframes, Excel, PDF ni integraciones.
+Ver [`PYTHON.md`](PYTHON.md) para la API completa y la paridad exacta con C#.
 
 ---
 
@@ -347,16 +355,15 @@ para reportes, análisis con LINQ/dataframes, Excel, PDF ni integraciones.
 
 | Dimensión | Alcance |
 |-----------|---------|
-| Lenguaje | C# moderno, compilado |
+| Lenguaje | C# (Roslyn, en proceso), Python (host x64, stack científico) o SQL directo |
 | Datos | Base de la empresa (lectura/escritura) + selección del grid, sin configurar conexión |
-| Plataforma | Toda la biblioteca de .NET Framework 4.8 |
-| Librerías | Cualquiera compatible con .NET Framework (Excel, PDF, JSON, gráficas, dataframes…) |
-| Reportes | HTML (con gráficas interactivas), Excel, PDF |
+| Plataforma | Toda la biblioteca de .NET Framework 4.8 (C#) o el stack científico de Python |
+| Librerías | Cualquiera compatible con .NET Framework en C# (Excel, PDF, JSON, gráficas…); `pandas`/`numpy`/`matplotlib` ya empacados en Python |
+| Reportes | HTML (con gráficas interactivas, `ctx.dashboard()` en Python), Excel, PDF |
 | UI | Ventanas a la medida (nivel aplicación de escritorio) |
 | Integraciones | APIs, archivos, correo, servicios web |
-| Ampliable a | Python científico (opcional) |
 | Edición | Texto, sin recompilar, ciclo de segundos |
-| Autonomía | En proceso, bajo tu control, sin servicios externos |
+| Autonomía | En proceso (C#) o host dedicado (Python), bajo tu control, sin servicios externos |
 
 En una frase: **un botón puede hacer prácticamente cualquier cosa que haría una
 aplicación de escritorio en Windows**, con acceso directo a los datos de CONTPAQi y
