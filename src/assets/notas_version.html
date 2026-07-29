@@ -47,6 +47,30 @@
   </header>
 
   <div class="ver">
+    <h2>2.34.0</h2>
+    <div class="date">2026-07-29 — ctx.dashboard(): reportes HTML sin assets por script</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>ctx.dashboard(title, data, columns=None)</b> (Python): dashboard HTML
+            completo (tabla ordenable, buscador, paginación, exportar a Excel) a partir de
+            una lista de datos — sin escribir HTML/CSS/JS y sin crear ninguna carpeta de
+            assets por script. Los datos viajan comprimidos automáticamente.</li>
+        <li>Nueva carpeta de runtime compartido <code>C:\BrosLMV\lib\</code>, instalada una
+            sola vez — cualquier reporte puede usar librerías compartidas (como la de
+            exportar a Excel) sin copiarlas por script ni por terminal.</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>El reporte de flota (GGV) ya no dependía del nombre exacto de la base de
+            datos donde se creó — ahora funciona igual en cualquier empresa/cliente.</li>
+        <li>El diálogo "Abrir" de la Consola ya muestra scripts <code>.py</code> y
+            <code>.sql</code> por default (antes había que elegir "Todos" a mano).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
     <h2>2.24.0</h2>
     <div class="date">2026-07-11 — ctx.show_html(): ventana HTML/WebView2 embebida (Python)</div>
     <div class="grp add"><div class="h">Agregado</div>

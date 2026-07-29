@@ -39,6 +39,46 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-29, v2.34.0)
+
+- **⚠️ Trampa del instalador otra vez (H1, ver `PLAN_IMPLEMENTACION.md`):** el código va en
+  2.34.0 pero `C:\BrosLMV` (runtime local) seguía en 2.33.5 al momento de escribir esto.
+  **Pendiente: correr `build\generar_instalador.ps1` + `build\generar_exes.ps1`** — no se
+  hizo en esta sesión porque este entorno no tiene el SDK de .NET instalado (no se puede
+  compilar C# aquí). ComercialSP **no estaba corriendo** al revisar, así que es buen
+  momento para hacerlo sin interrumpir una demo.
+- **⚠️ `.git` desconectado localmente.** Esta carpeta (`C:\MLVTotal`) ya no tiene carpeta
+  `.git` — el repo remoto `github.com/DonPapiCandelas/BrosLMVTotal` sigue vivo y público,
+  pero desactualizado (último push: 2026-07-15, README todavía dice "sin pagar SDK" y
+  versión 2.33.5). **Reconectar es una decisión pendiente del usuario** — no se hizo
+  `git init`/push automático para no arriesgar el historial real que ya existe en GitHub
+  (incluye un merge de dos líneas divergentes, ver nota de la entrada v2.32.0 abajo).
+- **Propuesta de valor corregida.** El SDK oficial de CONTPAQi (`SDKPro`/`SDKProPremium`)
+  **jamás fue de pago** — viene incluido con Comercial Pro (confirmado en
+  `Entrenamiento/SDKPro/pruebas/RESULTADOS_PRUEBAS.md`). `README.md` (líneas 18 y 138)
+  corregido — ya no compara BrosLMV contra el costo del SDK. El gancho real: conexión
+  nativa a XEngine + BrosLMV
+  gratis/open source, dirigido a distribuidores/implementadores.
+- **`ctx.dashboard()` (Python)** — dashboard HTML completo (tabla ordenable, buscador,
+  paginación, exportar a Excel) sin escribir HTML/CSS/JS ni carpeta de assets por script.
+  Runtime compartido nuevo: `C:\BrosLMV\lib\` (lo puebla el instalador). Ver
+  [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) (doc nueva) y `MANUAL.md` §9.4.
+  Detonado por un bug real: `ReporteXVehiculo.py` (GGV) fijaba el nombre de empresa a mano
+  en `ASSETS_PATH`, rompía al pasar el script a la BD de un cliente distinto. Corregido
+  (usa `ctx.empresa`). **Pendiente:** migrar `ReporteXVehiculo` y los otros 3 reportes
+  (`CUENTAS_POR_COBRAR`, `CUENTAS_POR_PAGAR`, `SEGUIMIENTO_OC`) al patrón nuevo — y
+  **probar todo esto en CONTPAQi real** (solo se verificó en navegador aislado, no dentro
+  de WebView2/Comercial en vivo, y el C# no se pudo compilar en esta sesión).
+- **Diálogo "Abrir" de la Consola corregido:** no mostraba `.py`/`.sql` por default (solo
+  `.ctx;.csx`) — corregido.
+- **Documentación desactualizada, corrección en curso (2026-07-29):** el usuario notó que
+  la doc no se mantenía al día con cada cambio. Regla reforzada: **todo cambio de código
+  lleva su actualización de doc en el mismo momento**, sin excepción — ver REGLA DE ORO
+  arriba. Auditoría de contenido obsoleto en curso, empezando por este archivo.
+- **Sitio web público (proyecto separado):** `C:\ProyectosLMV\PaginaWebBrosLMV` — landing +
+  docs + catálogo de scripts con buscador. Solo local, no expuesto todavía. Ver su propio
+  `ESTADO.md` en esa carpeta.
+
 ## Estás aquí (2026-07-14, v2.32.0)
 
 - **Historial de git unificado.** El repo tuvo dos líneas de trabajo divergentes (dos raíces
@@ -276,7 +316,10 @@ DocumentID 11556–11560 (órdenes de compra). Scripts en `/.temp_tests`: `f1_or
 
 ## Recordatorios de entorno
 
-- **PROYECTO** en `C:\MLVTotal` (git + GitHub `DonPapiCandelas/BrosLMVTotal`). `C:\BrosLMV` es
+- **PROYECTO** en `C:\MLVTotal`. **Debería** estar en git + GitHub
+  `DonPapiCandelas/BrosLMVTotal`, pero al 2026-07-29 esta carpeta **no tiene `.git`** — el
+  remoto sigue vivo pero desconectado localmente (ver "Estás aquí" arriba). Reconectar
+  antes de seguir asumiendo que los commits locales llegan a GitHub. `C:\BrosLMV` es
   **solo runtime** (ahí se despliega). No confundir.
 - **Compilar addon:** `dotnet build src\BrosLMV.csproj -c Debug`. **Host:**
   `dotnet build host\BrosLMV.Host\BrosLMV.Host.csproj -c Debug`.
@@ -287,5 +330,8 @@ DocumentID 11556–11560 (órdenes de compra). Scripts en `/.temp_tests`: `f1_or
 - **Software libre GPL-3.0.** Cualquier material de referencia de terceros usado durante el
   desarrollo se mantiene fuera del repositorio; nunca se copia código o propiedad intelectual
   ajena — solo se aprende de su comportamiento y se reimplementa desde cero.
-- **SQL offline** para inspección: `sqlcmd -S ".\COMPAC2022" -E` (empresas: ComercialSP,
-  Coctel_de_Ideas, Alma2020, ...).
+- **SQL offline** para inspección: `sqlcmd -S "localhost\compac" -U SA -P "<pwd>" -C` — la
+  instancia migró el 2026-07-22; `.\COMPAC2022` quedó **obsoleta** (no confundir si algo
+  viejo todavía la menciona). Empresas provisionadas activas: `GGV_DE_MEXICO`,
+  `Distribuciones_Candelas`. `ComercialSP`/`Predeterminada` sin provisionar (candidatas a
+  sandbox).

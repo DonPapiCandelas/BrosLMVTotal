@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{{TITLE}}</title>
+<link rel="stylesheet" href="https://broslmv.local/dashboard/dashboard.css">
+</head>
+<body>
+  <div class="bl-toolbar">
+    <h1>{{TITLE}}</h1>
+    <span class="bl-count" id="bl-count"></span>
+    <input class="bl-search" id="bl-search" type="search" placeholder="Buscar...">
+    <button class="bl-btn bl-btn-primary" id="bl-export">Exportar a Excel</button>
+  </div>
+
+  <div class="bl-content">
+    <div class="bl-table-wrap">
+      <table class="bl-table" id="bl-table">
+        <thead><tr id="bl-thead"></tr></thead>
+        <tbody id="bl-tbody"></tbody>
+      </table>
+      <div class="bl-empty" id="bl-empty" style="display:none">Sin resultados.</div>
+    </div>
+    <div class="bl-pager" id="bl-pager"></div>
+  </div>
+
+  <div class="bl-footer">Generado por BrosLMV — {{FECHA}}</div>
+
+  <script src="https://broslmv.local/dashboard/xlsx.bundle.js"></script>
+  <script>
+    // Columnas: [{key, label}] — si viene vacío, se infiere de las llaves de la primera fila.
+    const COLUMNS = {{COLUMNS_JSON}};
+    // Los datos SIEMPRE viajan comprimidos (gzip+base64), igual que ReporteXVehiculo en
+    // producción — así ctx.dashboard() nunca choca con el límite real de ~2MB de
+    // NavigateToString, sin importar cuántas filas traiga el reporte. Se descomprimen con
+    // la API nativa DecompressionStream (Chromium la trae desde 2020, sin librerías).
+    const DATA_B64 = {{DATA_B64_JSON}};
+    const TITLE = {{TITLE_JSON}};
+    const PAGE_SIZE = 50;
+
+    async function descomprimir(b64) {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+      const buf = await new Response(stream).arrayBuffer();
+      return JSON.parse(new TextDecoder().decode(buf));
+    }
+
+    let DATA = [];
+    let cols = [];
+    let filtered = [];
+    let sortKey = null;
+    let sortDir = 1;
+    let page = 1;
+
+    const $thead = document.getElementById('bl-thead');
+    const $tbody = document.getElementById('bl-tbody');
+    const $empty = document.getElementById('bl-empty');
+    const $table = document.getElementById('bl-table');
+    const $count = document.getElementById('bl-count');
+    const $pager = document.getElementById('bl-pager');
+    const $search = document.getElementById('bl-search');
+
+    function renderHead() {
+      $thead.innerHTML = '';
+      cols.forEach((c) => {
+        const th = document.createElement('th');
+        th.textContent = c.label || c.key;
+        th.addEventListener('click', () => {
+          sortDir = sortKey === c.key ? -sortDir : 1;
+          sortKey = c.key;
+          applySort();
+          page = 1;
+          renderBody();
+        });
+        $thead.appendChild(th);
+      });
+    }
+
+    function applySort() {
+      if (!sortKey) return;
+      filtered.sort((a, b) => {
+        const va = a[sortKey], vb = b[sortKey];
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sortDir;
+        return String(va).localeCompare(String(vb)) * sortDir;
+      });
+    }
+
+    function renderBody() {
+      const total = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      page = Math.min(page, totalPages);
+      const start = (page - 1) * PAGE_SIZE;
+      const pageRows = filtered.slice(start, start + PAGE_SIZE);
+
+      const frag = document.createDocumentFragment();
+      pageRows.forEach((row) => {
+        const tr = document.createElement('tr');
+        cols.forEach((c) => {
+          const td = document.createElement('td');
+          const v = row[c.key];
+          td.textContent = v == null ? '' : String(v);
+          tr.appendChild(td);
+        });
+        frag.appendChild(tr);
+      });
+      $tbody.innerHTML = '';
+      $tbody.appendChild(frag);
+
+      $table.style.display = total ? '' : 'none';
+      $empty.style.display = total ? 'none' : 'block';
+      $count.textContent = total + (total === 1 ? ' fila' : ' filas');
+
+      $pager.innerHTML = '';
+      if (totalPages > 1) {
+        const prev = document.createElement('button');
+        prev.className = 'bl-btn';
+        prev.textContent = '< Anterior';
+        prev.disabled = page <= 1;
+        prev.addEventListener('click', () => { page--; renderBody(); });
+
+        const info = document.createElement('span');
+        info.textContent = 'Página ' + page + ' de ' + totalPages;
+
+        const next = document.createElement('button');
+        next.className = 'bl-btn';
+        next.textContent = 'Siguiente >';
+        next.disabled = page >= totalPages;
+        next.addEventListener('click', () => { page++; renderBody(); });
+
+        $pager.appendChild(prev);
+        $pager.appendChild(info);
+        $pager.appendChild(next);
+      }
+    }
+
+    $search.addEventListener('input', () => {
+      const q = $search.value.trim().toLowerCase();
+      filtered = !q ? DATA.slice() : DATA.filter((row) =>
+        cols.some((c) => String(row[c.key] ?? '').toLowerCase().includes(q))
+      );
+      applySort();
+      page = 1;
+      renderBody();
+    });
+
+    document.getElementById('bl-export').addEventListener('click', () => {
+      const ws = XLSX.utils.json_to_sheet(filtered, { header: cols.map((c) => c.key) });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+      XLSX.writeFile(wb, (TITLE || 'reporte').replace(/[^\w\-]+/g, '_') + '.xlsx');
+    });
+
+    (async () => {
+      DATA = await descomprimir(DATA_B64);
+      cols = (COLUMNS && COLUMNS.length)
+        ? COLUMNS
+        : (DATA[0] ? Object.keys(DATA[0]).map((k) => ({ key: k, label: k })) : []);
+      filtered = DATA.slice();
+
+      renderHead();
+      applySort();
+      renderBody();
+    })();
+  </script>
+</body>
+</html>

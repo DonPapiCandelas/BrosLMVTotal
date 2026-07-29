@@ -52,3 +52,6 @@ __pycache__/
 # DLL suelta del addon en la RAIZ (artefacto de build mal ubicado; el entregable
 # real es instalador/bin/BrosLMVClsMain.dll, no este).
 /BrosLMVClsMain.dll
+
+# === Config local del panel de vista previa (no compartir) ===
+.claude/

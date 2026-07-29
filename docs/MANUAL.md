@@ -877,10 +877,17 @@ else:
 
 ### 9.3 Limitaciones conocidas (beta)
 
-- **`ctx.msg` desde Python no muestra MessageBox** — escribe a log. Usar `print()` para debug.
-- **`ctx.Confirm` / `ctx.form` / `ctx.show_html`** no disponibles en Python.
 - **Sin transacciones** en Python (`ctx.OpenConn` no existe).
 - **Encoding:** asegurar UTF-8 en datos con acentos/Ñ.
+
+### 9.4 `ctx.show_html` y `ctx.dashboard` (solo Python)
+
+- `ctx.show_html(html, title="BrosLMV", width=800, height=600, modal=True)` — ventana con
+  HTML/CSS/JS real (WebView2), embebida en CONTPAQi. Desde v2.24.0.
+- `ctx.dashboard(title, data, columns=None, width=1000, height=700, modal=True)` — dashboard
+  completo (tabla ordenable, buscador, paginación, exportar a Excel) a partir de una lista
+  de dict, sin escribir HTML/CSS/JS ni crear carpeta de assets por script. Desde v2.34.0.
+  Guía completa: [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md).
 
 > ⚠️ **`ctx.nuevo("docDocument")` NO crea un documento válido.** No genera folio, anclas ni defaults.
 > Para documentos usar siempre `ctx.erp.NuevoDocumento(...)`. `ctx.nuevo` solo para tablas simples.
@@ -1258,3 +1265,5 @@ Datos fijos del componente:
 > [`PYTHON.md`](PYTHON.md) — guía completa de Python.
 > [`RECETAS_NOCODE.md`](RECETAS_NOCODE.md) — recetas adicionales.
 > [`XENGINE_FUNCIONES.md`](XENGINE_FUNCIONES.md) — catálogo completo de funciones XEngine.
+> [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) — cómo construir un dashboard rápido y
+> portable (`ctx.dashboard()`, agregación en SQL, patrón de assets incrustados).

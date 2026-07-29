@@ -31,6 +31,11 @@ namespace BrosLMV
         public const string Scripts  = Base + @"\scripts";
         public const string Logs     = Base + @"\logs";
         public const string Data     = Base + @"\data";
+        // Runtime compartido (no es de una empresa/script en particular). Lo puebla el
+        // instalador (instalador\lib\ -> C:\BrosLMV\lib\), no cada script individual.
+        // ctx.dashboard() y cualquier script que use SetVirtualHostNameToFolderMapping
+        // referencian archivos de aqui via https://broslmv.local/... (ver HostClient.cs).
+        public const string Lib      = Base + @"\lib";
         public const string ConnFile = Bin  + @"\broslmv_conn.txt";  // texto plano (heredado/compat)
         public const string CredFile = Bin  + @"\broslmv_cred.dat";  // cifrado DPAPI (preferente)
 
@@ -39,6 +44,7 @@ namespace BrosLMV
             try { if (!Directory.Exists(Scripts)) Directory.CreateDirectory(Scripts); } catch { }
             try { if (!Directory.Exists(Logs))    Directory.CreateDirectory(Logs); }    catch { }
             try { if (!Directory.Exists(Data))    Directory.CreateDirectory(Data); }    catch { }
+            try { if (!Directory.Exists(Lib))     Directory.CreateDirectory(Lib); }     catch { }
         }
 
         // =========================================================

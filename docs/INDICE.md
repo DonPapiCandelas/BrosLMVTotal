@@ -7,6 +7,7 @@ Orden de lectura sugerido según lo que necesites.
 | Documento | Qué encontrarás |
 |-----------|-----------------|
 | [`ESTADO.md`](ESTADO.md) | **Dónde vamos, pendientes y qué sigue.** Punto de entrada al retomar el proyecto + REGLA DE ORO de documentación |
+| [`PLAN_IMPLEMENTACION.md`](PLAN_IMPLEMENTACION.md) | **Plan de implementación post-análisis (2026-07-22):** hallazgos verificados, brechas de documentación y tareas priorizadas con instrucciones paso a paso |
 
 ## Empezar y usar
 
@@ -16,6 +17,7 @@ Orden de lectura sugerido según lo que necesites.
 | 2 | [`INSTALACION.md`](INSTALACION.md) | Cómo instalar en una empresa/equipo | Quien instala |
 | 3 | [`MANUAL.md`](MANUAL.md) | Cómo crear y editar botones; API de `ctx`; ejemplos | Quien crea botones |
 | 4 | [`CAPACIDADES.md`](CAPACIDADES.md) | Qué se puede construir: reportes HTML, análisis, librerías | Quien diseña soluciones |
+| 4b | [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) | Cómo construir un dashboard rápido y portable: `ctx.dashboard()`, agregación en SQL, cero assets por script/terminal | Quien hace reportes HTML |
 
 ## Escribir scripts (C#, Python, SQL)
 

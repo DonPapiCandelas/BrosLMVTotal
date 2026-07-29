@@ -705,6 +705,21 @@ namespace BrosLMV
                             var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment
                                 .CreateAsync(userDataFolder: perfil);
                             await webView.EnsureCoreWebView2Async(env);
+
+                            // Mapea C:\BrosLMV\lib\ (runtime compartido, lo puebla el instalador,
+                            // no cada script) a https://broslmv.local/ -- para que un reporte
+                            // pueda referenciar una libreria compartida (p.ej. xlsx.bundle.js via
+                            // ctx.dashboard()) SIN incluirla en el HTML de NavigateToString, que
+                            // tiene un limite real de ~2MB (ver CHANGELOG.md). Si la carpeta no
+                            // existe todavia (instalacion vieja sin actualizar), no truena --
+                            // simplemente ese script no podra referenciar la libreria compartida.
+                            if (Directory.Exists(Rutas.Lib))
+                            {
+                                webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                                    "broslmv.local", Rutas.Lib,
+                                    Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
+                            }
+
                             webView.CoreWebView2.NavigateToString(spec.Html ?? "");
                         }
                         catch (Exception ex)
@@ -716,6 +731,24 @@ namespace BrosLMV
                         {
                             listo.Set();
                         }
+                    };
+
+                    // El script Python que abrio esta ventana termina de ejecutarse justo
+                    // despues de que la pagina carga (listo.Set() arriba), y Comercial
+                    // recupera el foco de inmediato para su propia ventana (p.ej. al
+                    // refrescar la Consola de scripts). Esta ventana WebView2 vive en su
+                    // propio hilo/bucle de mensajes (necesario para no bloquear a Python),
+                    // por lo que queda en segundo plano SIN foco de teclado/mouse. En
+                    // Windows, el primer clic sobre una ventana sin foco solo la activa
+                    // -- no llega como clic real al contenido -- lo que hace parecer que
+                    // un doble clic (o el boton "Ver") "no hace nada" hasta el tercer
+                    // clic. Forzamos la activacion en cuanto termina de cargar para que
+                    // ya este al frente y con foco cuando el usuario empieza a interactuar.
+                    frm.Shown += (s, e) =>
+                    {
+                        frm.Activate();
+                        frm.BringToFront();
+                        webView.Focus();
                     };
 
                     if (spec.Modal)

@@ -33,6 +33,12 @@ public sealed class PythonProcess
     private readonly IPythonContextGateway _gateway;
     private readonly IHostCallbackSink _callbacks;
     private string _executionId = "";
+    // Ultimo ctx.<metodo>() que el script pidio al host, para poder decir ALGO util
+    // si el timeout revienta ("PYTHON_TIMEOUT: El script Python excedio 120000 ms."
+    // a secas no ayudaba nada -- no decia si se trababa esperando un ctx.form()
+    // (lo mas probable en asistentes interactivos de varios pasos como GESTOR_RIBBON)
+    // o si de verdad se colgo en un query/loop).
+    private string _ultimoMetodoCtx = "";
 
     public PythonProcess(string? pythonExe = null, string? runnerPath = null,
         IPythonContextGateway? gateway = null, IHostCallbackSink? callbacks = null)
@@ -105,7 +111,24 @@ public sealed class PythonProcess
         {
             TryKill(process);
             sw.Stop();
-            return PythonExecutionResult.Fail("PYTHON_TIMEOUT", $"El script Python excedio {timeoutMs} ms.", "", sw.ElapsedMilliseconds);
+            // Mensaje util en vez de "excedio 120000 ms" a secas: dice cual fue la
+            // ultima interaccion pedida (si fue "form"/"confirm"/"msg"/"select_file"/
+            // "select_folder", casi seguro estaba esperando que el usuario respondiera
+            // un dialogo -- no es que el script este "colgado" de verdad) y sugiere la
+            // cabecera "# timeout: N" (segundos) para scripts interactivos de varios
+            // pasos, que necesitan mas que el limite por default.
+            bool esperandoUi = _ultimoMetodoCtx is "form" or "confirm" or "msg" or "select_file" or "select_folder" or "show_html";
+            string detalle = _ultimoMetodoCtx == ""
+                ? "No llego a pedir ninguna interaccion al host antes del timeout (pudo trabarse compilando, en un import, o en un loop sin llamadas a ctx)."
+                : esperandoUi
+                    ? $"Ultima interaccion pedida: ctx.{_ultimoMetodoCtx}(...) -- lo mas probable es que el script seguia esperando que el usuario respondiera ese dialogo, no que este \"colgado\"."
+                    : $"Ultima interaccion pedida: ctx.{_ultimoMetodoCtx}(...) -- si fue una consulta SQL (query/scalar/execute) puede que si se haya trabado de verdad ahi.";
+            string sugerencia = "Si es un script interactivo con varios pasos (formularios, confirmaciones), agrega " +
+                "\"# timeout: 1800\" (segundos) en las primeras lineas del script para ampliar este limite -- el " +
+                "default de 120000 ms es corto para un asistente donde el usuario lee y responde varias pantallas.";
+            return PythonExecutionResult.Fail("PYTHON_TIMEOUT",
+                $"El script Python excedio el limite de {timeoutMs} ms (corrio {sw.ElapsedMilliseconds} ms reales). {detalle} {sugerencia}",
+                "", sw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
@@ -151,6 +174,7 @@ public sealed class PythonProcess
 
             if (string.Equals(msg.Type, "context_call", StringComparison.OrdinalIgnoreCase))
             {
+                _ultimoMetodoCtx = msg.Method ?? "";
                 var response = HandleContextCall(request, msg);
                 string json = JsonSerializer.Serialize(response, JsonOptions());
                 await process.StandardInput.WriteLineAsync(json.AsMemory(), ct).ConfigureAwait(false);

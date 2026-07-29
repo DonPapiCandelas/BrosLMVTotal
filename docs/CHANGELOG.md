@@ -8,6 +8,97 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.34.0] — 2026-07-29 — `ctx.dashboard()`: reportes HTML sin assets por script
+
+> Detonado por un bug real en producción: `ReporteXVehiculo.py` (GGV) fijaba el nombre de
+> la empresa a mano en la ruta de sus assets (`ASSETS_PATH = r"C:\BrosLMV\scripts\
+> GGV_DE_MEXICO\..."`). Al pasar el script a la base del cliente (`GGV_DE_MEXICO_2025`), el
+> reporte cargaba a medias sin importar dónde se copiara la carpeta — la ruta nunca miraba
+> la empresa activa real. Esto expuso el problema de fondo: los dashboards HTML dependían
+> de una carpeta de assets por script, en disco, que había que copiar a mano a cada
+> terminal y a cada cliente. Ver `DASHBOARDS_HTML.md` (guía completa nueva) para el diseño.
+
+### Agregado
+- **`ctx.dashboard(title, data, columns=None, width=1000, height=700, modal=True)`**
+  (Python): dashboard HTML completo (tabla ordenable, buscador, paginación de 50 filas,
+  exportar a Excel) a partir de una lista de dict — sin escribir HTML/CSS/JS. Usa la
+  plantilla y librerías **compartidas** del runtime (`C:\BrosLMV\lib\dashboard\`), no crea
+  ninguna carpeta de assets por script. Los datos siempre viajan comprimidos
+  (gzip nivel 9 + base64, descomprimidos en el navegador con `DecompressionStream`), igual
+  que el patrón ya probado en `ReporteXVehiculo` — nunca choca con el límite real de ~2MB
+  de `NavigateToString`. Verificado en pruebas reales con hasta 3,000 filas.
+- **`C:\BrosLMV\lib\`** (`Rutas.Lib`): carpeta de runtime compartido, la puebla el
+  instalador (no cada script). Primer contenido: `lib\dashboard\` con
+  `dashboard_base.html`, `dashboard.css` y `xlsx.bundle.js` (la librería de exportar a
+  Excel, antes duplicada 425 KB por cada uno de los 4 reportes existentes). **Fuente
+  versionada en `instalador\assets\dashboard\`** (no en `instalador\lib\`, que está en
+  `.gitignore` como "binarios regenerables" — un archivo puesto ahí directo se pierde al
+  hacer commit; gotcha real encontrado al preparar esta misma entrega).
+  `build\generar_instalador.ps1` (paso 5b nuevo) copia de `assets\` a `lib\` en cada build.
+- `HostClient.cs` (`RenderUiHtml`): registra `SetVirtualHostNameToFolderMapping` mapeando
+  `C:\BrosLMV\lib\` a `https://broslmv.local/` — cualquier reporte puede referenciar una
+  librería compartida (`https://broslmv.local/dashboard/xlsx.bundle.js`) sin incluirla en
+  el HTML del payload.
+- `docs/DASHBOARDS_HTML.md`: guía de referencia para construir dashboards rápidos y
+  portables (agregar en SQL no en el cliente, pre-cálculo para históricos pesados, patrón
+  de assets incrustados para casos a la medida, checklist).
+
+### Corregido
+- **`ReporteXVehiculo.py`** (GGV): `ASSETS_PATH` ya no fija el nombre de la empresa a
+  mano — usa `ctx.empresa` (`os.path.join(r"C:\BrosLMV\scripts", ctx.empresa,
+  "ReporteXVehiculo_assets")`). Corrige el bug real que impedía usar el reporte en la base
+  de datos de un cliente distinta a la de desarrollo. **Pendiente (no bloqueante):**
+  migrar este reporte y los otros 3 (`CUENTAS_POR_COBRAR`, `CUENTAS_POR_PAGAR`,
+  `SEGUIMIENTO_OC`) al patrón de `ctx.dashboard()`/assets incrustados.
+- La Consola: el diálogo **Abrir** (importar script desde archivo) no mostraba archivos
+  `.py`/`.sql` por default — el filtro solo incluía `*.ctx;*.csx`, había que cambiar
+  manualmente a "Todos" para verlos. Ahora el filtro por default incluye los 4 tipos.
+
+---
+
+## [2.33.7] — 2026-07-16 — `ctx.show_html` (Python) activa la ventana al terminar de cargar
+
+> Confirmado en vivo: en el reporte CUENTAS_POR_COBRAR, ni el doble clic en una fila
+> ni el botón "Ver" abrían el detalle del documento — cero reacción visual, con
+> cualquier tipo de fila. Se reprodujo el reporte con datos reales en un navegador
+> normal y el mismo HTML/JS sí abría el modal correctamente con ambos gestos, lo
+> que descarta un bug en el reporte. La causa real está en `RenderUiHtml`
+> (`HostClient.cs`): la ventana WebView2 de `ctx.show_html()` corre en su propio
+> hilo/bucle de mensajes (necesario para no bloquear al script Python mientras
+> carga), y el script Python termina de ejecutarse justo después de que la página
+> carga — momento en el que Comercial recupera el foco para su propia ventana
+> (p.ej. al refrescar la Consola de scripts). La ventana del reporte queda al
+> frente visualmente pero SIN foco de teclado/mouse. En Windows, el primer clic
+> sobre una ventana sin foco solo la activa — no llega como clic real al
+> contenido — por lo que un doble clic (dos clics) nunca se registra como tal.
+>
+> **Corregido:** se agregó `frm.Shown += (s,e) => { frm.Activate(); frm.BringToFront(); webView.Focus(); }`
+> para forzar la activación de la ventana en cuanto termina de cargar, antes de
+> que el usuario pueda interactuar.
+
+## [2.33.6] — 2026-07-16 — `Query`/`Scalar` sí reintentan cuando el SQL es de solo lectura
+
+> Confirmado en vivo: GESTOR_RIBBON (Python) tronaba con `SQL_ERROR: Scalar: el SQL
+> se ejecutó por COM pero la conexión murió leyendo el resultado; no se reintenta
+> para no duplicar efectos...` — el mismo patrón de v2.33.3 (Execute por COM
+> exitoso, la lectura muere despues), pero esta vez sobre un `SELECT` simple de
+> solo lectura via `ctx.scalar()`. La cautela de "no reintentar para no duplicar
+> efectos" tiene sentido para los batches con `INSERT` de `NuevoDocumento`/
+> `AgregarArticulo`, pero es innecesariamente estricta para una lectura pura:
+> reintentar un `SELECT` por `OpenConn()` nunca duplica nada.
+
+### Corregido
+- `Query`/`Scalar` ganan un parametro `soloLectura` (default `true`): si el
+  Execute() por COM tuvo exito pero la lectura murio, ahora caen a `OpenConn()`
+  igual que cuando el Execute() mismo falla -- ya no lanzan `SqlYaEjecutadoException`.
+  `ctx.Query`/`ctx.Scalar` (Python y C#, incluye el relay `CtxSqlRunner` que usan
+  los scripts Python) usan este default seguro automaticamente.
+- `NuevoDocumento`/`AgregarArticulo` llaman `_owner.Query(batch, soloLectura: false)`
+  explicito para conservar la cautela original (esos SI son batches con `INSERT`,
+  reintentarlos duplicaria la fila) -- sin cambio de comportamiento para ellos.
+
+---
+
 ## [sin cambio de versión del addon] — 2026-07-15 — `.exe` de `dist\` llevan la versión en el nombre
 
 > Con nombre fijo (`BrosLMV-Instalador.exe`) era fácil mandarle a un cliente un instalador

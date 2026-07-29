@@ -72,6 +72,20 @@ if ($nLib -eq 0) {
     Write-Host "   $nLib archivo(s) en instalador\lib listos para copiarse."
 }
 
+Write-Host "5b) Copiando runtime compartido de dashboards (ctx.dashboard)..." -ForegroundColor Cyan
+# La FUENTE versionada vive en instalador\assets\dashboard\ (NO en instalador\lib\, que
+# esta en .gitignore como "binarios regenerables" -- ver DASHBOARDS_HTML.md). Aqui se
+# copia al destino que si empaqueta el instalador.
+$dashboardSrc = Join-Path $root "instalador\assets\dashboard"
+$dashboardDst = Join-Path $lib "dashboard"
+if (Test-Path $dashboardSrc) {
+    New-Item -ItemType Directory -Force $dashboardDst | Out-Null
+    Copy-Item (Join-Path $dashboardSrc "*") $dashboardDst -Recurse -Force
+    Write-Host "   instalador\lib\dashboard actualizado."
+} else {
+    Write-Host "   AVISO: no se encontro instalador\assets\dashboard -- ctx.dashboard() no funcionara." -ForegroundColor Yellow
+}
+
 Write-Host "6) Limpiando temporales..." -ForegroundColor Cyan
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $src "obj") -Recurse -Force -ErrorAction SilentlyContinue

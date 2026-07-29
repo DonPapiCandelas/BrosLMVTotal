@@ -15,8 +15,8 @@ la empresa activa y a los documentos que el usuario tiene seleccionados en panta
 
 Tres lenguajes conviven en el mismo botón o consola: C# (Roslyn, en proceso), Python (host x64
 fuera de proceso) y SQL (T-SQL directo por la conexión viva). El objetivo es simple: que
-cualquier negocio con Comercial PRO pueda automatizar lo que necesite sin pagar un SDK aparte
-ni depender de un tercero para cada cambio.
+cualquier negocio con Comercial PRO pueda automatizar lo que necesite con una conexión nativa
+al motor de CONTPAQi, sin depender de un tercero para cada cambio.
 
 Este repositorio es el proyecto completo: código fuente, documentación suficiente para
 reconstruir la herramienta desde cero, y el paquete de instalación listo para distribuir.
@@ -135,8 +135,8 @@ Todo vive en `docs/` (orden de lectura sugerido en [`docs/INDICE.md`](docs/INDIC
 ## Apoya el proyecto
 
 BrosLMV es y seguirá siendo gratuito, siempre. Lo construí con gusto porque quiero que
-cualquiera que use CONTPAQi Comercial PRO pueda exprimirlo al máximo sin pagar licencias de SDK
-ni depender de nadie más. Dicho esto, mantenerlo ha costado tiempo y dinero real: un servidor
+cualquiera que use CONTPAQi Comercial PRO pueda exprimirlo al máximo con una conexión nativa
+al motor, sin depender de nadie más para cada cambio. Dicho esto, mantenerlo ha costado tiempo y dinero real: un servidor
 de pruebas propio, la licencia de Comercial PRO necesaria para desarrollar y validar contra una
 instalación real, y muchas horas — solo el historial de commits del repositorio ya documenta
 más de 60 horas de trabajo activo, sin contar la investigación previa.

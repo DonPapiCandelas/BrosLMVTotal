@@ -1577,7 +1577,7 @@ namespace BrosLMV
         // queda registrado en la empresa. Sirve para migrar scripts viejos a SQL.
         private void Abrir()
         {
-            using (var dlg = new OpenFileDialog { InitialDirectory = Rutas.Scripts, Filter = "Scripts BrosLMV (*.ctx;*.csx)|*.ctx;*.csx|Todos|*.*" })
+            using (var dlg = new OpenFileDialog { InitialDirectory = Rutas.Scripts, Filter = "Scripts BrosLMV (*.ctx;*.csx;*.py;*.sql)|*.ctx;*.csx;*.py;*.sql|Todos|*.*" })
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 {
                     try

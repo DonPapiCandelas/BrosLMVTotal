@@ -234,6 +234,55 @@ class Context:
         """
         _bridge.call("show_html", html or "", title, width, height, modal)
 
+    def dashboard(self, title: str, data: list[dict[str, Any]],
+                   columns: list[dict[str, str]] | None = None,
+                   width: int = 1000, height: int = 700, modal: bool = True) -> None:
+        """Muestra un dashboard HTML completo (tabla ordenable, buscador, paginación y
+        exportar a Excel) a partir de una lista de dict -- sin escribir HTML/CSS/JS.
+
+        Usa la plantilla y las librerías compartidas del runtime (C:\\BrosLMV\\lib\\dashboard\\,
+        las trae el instalador) -- NO copia nada a la carpeta del script, así que funciona
+        igual en cualquier terminal donde esté instalado BrosLMV, sin distribuir nada por
+        script ni por cliente. Ver MANUAL.md / DASHBOARDS_HTML.md.
+
+        columns: opcional, [{"key": "Proveedor", "label": "Proveedor"}, ...]. Si se omite,
+        las columnas se infieren de las llaves del primer registro de `data`.
+
+        Los datos siempre viajan comprimidos (gzip+base64) -- por eso nunca choca con el
+        límite real de ~2MB de WebView2 (NavigateToString), sin importar cuántas filas
+        traiga el reporte.
+
+        Ejemplo:
+            filas = ctx.query("SELECT Proveedor, Total FROM ...")
+            ctx.dashboard("Compras por proveedor", filas)
+        """
+        import base64
+        import datetime
+        import gzip
+        import json
+        import os
+
+        plantilla_path = os.path.join(r"C:\BrosLMV\lib\dashboard", "dashboard_base.html")
+        try:
+            with open(plantilla_path, "r", encoding="utf-8") as f:
+                html = f.read()
+        except FileNotFoundError:
+            raise RuntimeError(
+                "No se encontró " + plantilla_path + " -- reinstala/actualiza BrosLMV "
+                "(la trae el instalador, no viaja con el script)."
+            )
+
+        crudo = json.dumps(data or [], default=str).encode("utf-8")
+        datos_b64 = base64.b64encode(gzip.compress(crudo, compresslevel=9)).decode("ascii")
+
+        html = html.replace("{{TITLE_JSON}}", json.dumps(title or "BrosLMV"))
+        html = html.replace("{{TITLE}}", title or "BrosLMV")
+        html = html.replace("{{FECHA}}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        html = html.replace("{{COLUMNS_JSON}}", json.dumps(columns or []))
+        html = html.replace("{{DATA_B64_JSON}}", json.dumps(datos_b64))
+
+        self.show_html(html, title=title, width=width, height=height, modal=modal)
+
     def read_excel(self, path: str, sheet: str | None = None) -> list[dict[str, Any]]:
         """Lee un archivo .xlsx y regresa una lista de dict (una por fila, claves = encabezados
         de la primera fila). No requiere Excel instalado (usa openpyxl, no automatiza Excel.exe).

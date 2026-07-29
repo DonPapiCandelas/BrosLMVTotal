@@ -534,7 +534,17 @@ namespace BrosLMV
 
         // --- SQL (usa la conexion viva de CONTPAQi; si esta atorada o no hay, cae a la
         // conexion propia independiente vía OpenConn()) ---
-        public object Scalar(string sql)
+        // soloLectura=true (default): si el Execute() por COM SI corrio pero la lectura
+        // murio, es SEGURO reintentar via OpenConn() -- nada se duplica, es una lectura.
+        // Este es el default para ctx.Query/ctx.Scalar expuestos a scripts (Python/C#),
+        // que en la enorme mayoria de los casos son consultas de solo lectura (confirmado
+        // en vivo: GESTOR_RIBBON, Python, ctx.scalar() de un SELECT simple, tronaba aqui
+        // con "no se reintenta para no duplicar efectos" -- cautela que tiene sentido para
+        // escrituras pero no para un SELECT). soloLectura=false lo usan INTERNAMENTE
+        // NuevoDocumento/AgregarArticulo (batches con INSERT) para conservar la cautela
+        // original: ahi SI reintentar duplicaria el INSERT, asi que se prefiere la
+        // recuperacion de solo lectura que ya tienen (buscar por folio/DocID+ProdID).
+        public object Scalar(string sql, bool soloLectura = true)
         {
             object cn = Ado();
             string errCom = null;
@@ -550,13 +560,17 @@ namespace BrosLMV
                         if (rows.Count > 0) foreach (var v in rows[0].Values) return v;
                         return null;
                     }
-                    // Execute() por COM SI corrio (pudo tener efectos si el SQL escribe) -- NO se
-                    // reintenta por OpenConn(), porque re-ejecutar el MISMO sql duplicaria esos
-                    // efectos (p.ej. un INSERT). Se reporta como fallo distinto e irrecuperable.
-                    Com.DiagLog("Scalar: Execute() por COM SI corrio pero el recordset se cerro leyendo el resultado -- NO se reintenta (evitar duplicar efectos). SQL=" + Recorte(sql));
-                    throw new SqlYaEjecutadoException("Scalar: el SQL se ejecutó por COM pero la conexión murió leyendo el resultado; no se reintenta para no duplicar efectos si el SQL escribe. Revisa Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt.");
+                    if (!soloLectura)
+                    {
+                        // Execute() por COM SI corrio (pudo tener efectos si el SQL escribe) -- NO se
+                        // reintenta por OpenConn(), porque re-ejecutar el MISMO sql duplicaria esos
+                        // efectos (p.ej. un INSERT). Se reporta como fallo distinto e irrecuperable.
+                        Com.DiagLog("Scalar: Execute() por COM SI corrio pero el recordset se cerro leyendo el resultado -- NO se reintenta (evitar duplicar efectos, soloLectura=false). SQL=" + Recorte(sql));
+                        throw new SqlYaEjecutadoException("Scalar: el SQL se ejecutó por COM pero la conexión murió leyendo el resultado; no se reintenta para no duplicar efectos si el SQL escribe. Revisa Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt.");
+                    }
+                    Com.DiagLog("Scalar: Execute() por COM SI corrio pero la lectura murio -- cae a OpenConn() (soloLectura=true, seguro reintentar). SQL=" + Recorte(sql));
                 }
-                errCom = Com.LastError;
+                else errCom = Com.LastError;
             }
             Com.DiagLog("Scalar: cayendo a OpenConn() (motivo COM: " + (errCom ?? "Ado() devolvio null") + ") | SQL=" + Recorte(sql));
             try
@@ -570,7 +584,8 @@ namespace BrosLMV
             }
         }
 
-        public List<Dictionary<string, object>> Query(string sql)
+        // Ver comentario largo en Scalar() -- mismo criterio soloLectura=true por default.
+        public List<Dictionary<string, object>> Query(string sql, bool soloLectura = true)
         {
             object cn = Ado();
             string errCom = null;
@@ -582,12 +597,16 @@ namespace BrosLMV
                     bool leidoOk;
                     var rowsCom = Conexion.Leer(rs, out leidoOk);
                     if (leidoOk) return rowsCom;
-                    // Execute() por COM SI corrio -- NO se reintenta por OpenConn() (duplicaria
-                    // efectos si el batch escribe, como los INSERT de NuevoDocumento/AgregarArticulo).
-                    Com.DiagLog("Query: Execute() por COM SI corrio pero el recordset se cerro leyendo el resultado -- NO se reintenta (evitar duplicar efectos). SQL=" + Recorte(sql));
-                    throw new SqlYaEjecutadoException("Query: el SQL se ejecutó por COM pero la conexión murió leyendo el resultado; no se reintenta para no duplicar efectos si el SQL escribe. Revisa Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt.");
+                    if (!soloLectura)
+                    {
+                        // Execute() por COM SI corrio -- NO se reintenta por OpenConn() (duplicaria
+                        // efectos si el batch escribe, como los INSERT de NuevoDocumento/AgregarArticulo).
+                        Com.DiagLog("Query: Execute() por COM SI corrio pero el recordset se cerro leyendo el resultado -- NO se reintenta (evitar duplicar efectos, soloLectura=false). SQL=" + Recorte(sql));
+                        throw new SqlYaEjecutadoException("Query: el SQL se ejecutó por COM pero la conexión murió leyendo el resultado; no se reintenta para no duplicar efectos si el SQL escribe. Revisa Conexion_" + DateTime.Now.ToString("yyyyMMdd") + ".txt.");
+                    }
+                    Com.DiagLog("Query: Execute() por COM SI corrio pero la lectura murio -- cae a OpenConn() (soloLectura=true, seguro reintentar). SQL=" + Recorte(sql));
                 }
-                errCom = Com.LastError;
+                else errCom = Com.LastError;
             }
 
             Com.DiagLog("Query: cayendo a OpenConn() (motivo COM: " + (errCom ?? "Ado() devolvio null") + ") | SQL=" + Recorte(sql));
@@ -1386,7 +1405,7 @@ namespace BrosLMV
             List<Dictionary<string, object>> rows;
             try
             {
-                rows = _owner.Query(batch);
+                rows = _owner.Query(batch, soloLectura: false);
             }
             catch (SqlYaEjecutadoException)
             {
@@ -1519,7 +1538,7 @@ namespace BrosLMV
             List<Dictionary<string, object>> rows;
             try
             {
-                rows = _owner.Query(batch);
+                rows = _owner.Query(batch, soloLectura: false);
             }
             catch (SqlYaEjecutadoException)
             {

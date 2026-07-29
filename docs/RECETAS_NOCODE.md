@@ -40,8 +40,8 @@ Resuelve, antes de ejecutar, las variables tomadas del contexto vivo:
 > Ver API completa en [`SCRIPTING_CONTRATOS.md`](SCRIPTING_CONTRATOS.md) §4.
 
 Es la base de **todo** (recetas y scripts de cualquier lenguaje). El addon ya resuelve la
-selección y puede leer la fila activa del grid, así que genera el panel de tokens
-(estilo "Referencias" de Acceso Fácil) y hace la sustitución.
+selección y puede leer la fila activa del grid, así que genera un panel de tokens
+arrastrables y hace la sustitución.
 
 ### 2.2 Registro de acciones (recetas)
 Catálogo de capacidades **parametrizadas**. Cada receta declara dos cosas:
