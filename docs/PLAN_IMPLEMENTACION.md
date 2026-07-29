@@ -191,15 +191,23 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T2.1 — Auditoría central en `zzBrosAuditoria` ⭐
 
+> **Estado (2026-07-29): escritura HECHA (v2.36.0), lectura/UI pendiente.** Compilado con
+> 0 errores. Probado el `INSERT` real contra `zzBrosAuditoria` en `GGV_DE_MEXICO` (fila de
+> prueba insertada, verificada, y borrada). **Falta el paso 3** (pestaña "Auditoría
+> (empresa)" en el Historial de la Consola) — hoy los datos ya se escriben pero no hay
+> forma de verlos desde la UI, solo por SQL directo. No probado el flujo completo dentro
+> de CONTPAQi real (solo la escritura SQL simulada).
+
 - **Qué:** escribir cada ejecución (botón y consola) también en la tabla central de la empresa.
 - **Por qué (H3):** la tabla existe desde la provisión con el esquema exacto y nadie la llena. La auditoría local SQLite se fragmenta por terminal y se pierde al reinstalar. Para un cliente con control interno (o una auditoría fiscal), "quién ejecutó qué y cuándo" debe responderse a nivel empresa.
 - **Cómo:**
-  1. En `src/Datos.cs` → `RegistrarEjecucion(...)`: tras el INSERT en SQLite (comportamiento actual, se conserva), hacer INSERT best-effort en `zzBrosAuditoria` por la conexión viva: `Equipo = Environment.MachineName`, `Error` truncado a 4000 chars.
-  2. **Best-effort estricto:** try/catch silencioso — si la empresa no está provisionada, la tabla no existe o no hay permiso, la ejecución NUNCA falla por auditoría.
-  3. Consola → ventana Historial: pestaña nueva "Auditoría (empresa)" que lee la tabla central con filtros (fecha, usuario, AppKey, estado).
-- **Archivos:** `src/Datos.cs`, `src/Consola.cs`, `MANUAL.md` (D5), `CHANGELOG.md`.
+  1. ✅ `src/Datos.cs` → `RegistrarEjecucion(...)` ahora acepta un `ScriptContext ctx` opcional; tras el INSERT en SQLite (se conserva igual), hace INSERT best-effort en `zzBrosAuditoria` por la conexión viva: `Equipo = Environment.MachineName`, `Error` truncado a 4000 chars. Los 4 puntos de llamada (`ClsMain.cs` ×3: botón C#/Python/SQL, `Consola.cs` ×1) ya pasan el `ctx`.
+  2. ✅ **Best-effort estricto:** try/catch silencioso — si la empresa no está provisionada, la tabla no existe, no hay permiso, o el script está en modo solo-lectura, la ejecución NUNCA falla por auditoría.
+  3. ⏳ Consola → ventana Historial: pestaña nueva "Auditoría (empresa)" que lee la tabla central con filtros (fecha, usuario, AppKey, estado). **No construida todavía.**
+  4. ✅ Bono: la advertencia de integridad (T2.3) también escribe aquí ahora (`Origen='integridad'`, `Estado='ADVERTENCIA'`) — cierra el pendiente que había quedado en T2.3.
+- **Archivos:** `src/Datos.cs`, `src/ClsMain.cs`, `src/Consola.cs`. Falta: UI en `src/Consola.cs`, `MANUAL.md` (D5 — documentar el propósito de la tabla para el usuario final).
 - **Esfuerzo: M. Riesgo: bajo** (100% aditivo).
-- **Criterio:** ejecutar un botón en EmpresaA desde la consola y desde el ribbon, y ver ambas filas en `zzBrosAuditoria` con `Equipo` y `Origen` correctos.
+- **Criterio real, pendiente de probar:** ejecutar un botón en una empresa desde la consola y desde el ribbon **dentro de CONTPAQi real**, y ver ambas filas en `zzBrosAuditoria` con `Equipo` y `Origen` correctos.
 
 #### T2.2 — Modo solo-lectura por usuario
 

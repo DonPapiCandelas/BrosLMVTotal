@@ -8,6 +8,33 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.36.0] — 2026-07-29 — Auditoría central en `zzBrosAuditoria` (T2.1, H3)
+
+> `zzBrosAuditoria` existía desde la provisión con el esquema completo y nadie escribía
+> ahí — toda la auditoría vivía en SQLite local, fragmentada por terminal, perdida al
+> reinstalar. Ahora se escribe también en la tabla central de la empresa, además del
+> registro local (no en su lugar).
+
+### Agregado
+- **`Datos.RegistrarEjecucion(...)` acepta un `ScriptContext ctx` opcional** — si se pasa,
+  además del INSERT local en SQLite (igual que siempre), intenta un INSERT best-effort en
+  `zzBrosAuditoria` de la empresa activa (`Equipo=Environment.MachineName`, `Error`
+  truncado a 4000 caracteres). Los 4 puntos de llamada (botón C#/Python/SQL en
+  `ClsMain.cs`, ejecución desde la Consola) ya pasan el contexto.
+- **Best-effort estricto:** try/catch silencioso — empresa sin provisionar, tabla
+  ausente, sin permiso, o modo solo-lectura activo → la ejecución del script **nunca**
+  falla por esto. Verificado el `INSERT` real contra `zzBrosAuditoria` en
+  `GGV_DE_MEXICO` (fila de prueba insertada, confirmada, y borrada).
+- La advertencia de integridad de scripts (T2.3, v2.35.0) ahora también queda registrada
+  aquí (`Origen='integridad'`, `Estado='ADVERTENCIA'`) — cierra el pendiente que había
+  quedado abierto en esa entrega.
+
+### Pendiente (no bloqueante)
+- Falta la UI para **leer** la auditoría central desde la Consola (pestaña "Auditoría
+  (empresa)" en Historial) — hoy los datos ya se escriben pero solo se pueden consultar
+  por SQL directo.
+- No probado el flujo completo dentro de CONTPAQi real.
+
 ## [2.35.0] — 2026-07-29 — Integridad de scripts: hash y aprobación (T2.3, H8)
 
 > Vector de seguridad #1 del proyecto (H8): cualquier login con escritura en SQL podía

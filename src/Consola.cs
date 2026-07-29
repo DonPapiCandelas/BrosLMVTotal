@@ -1815,7 +1815,7 @@ namespace BrosLMV
             {
                 Datos.RegistrarEjecucion(_ctx.Empresa(), _ctx.ModuloActivo(), _ctx.UserID, nombre,
                     tipoAudit, sw.ElapsedMilliseconds, _ctx.FilasAfectadas - filasAntes,
-                    res == "" ? "OK" : "ERROR", res);
+                    res == "" ? "OK" : "ERROR", res, _ctx);
                 if (!string.IsNullOrEmpty(_appKey)) { Datos.AgregarReciente(nombre); }
             }
             catch { }

@@ -73,35 +73,71 @@ namespace BrosLMV
         }
 
         // ---- Auditoria ----
+        // ctx (opcional): si se pasa, ADEMAS del registro local en SQLite (de siempre,
+        // por equipo) se intenta un INSERT best-effort en zzBrosAuditoria de la empresa
+        // activa (T2.1) -- centralizada, visible desde cualquier terminal. Ver
+        // RegistrarEnAuditoriaCentral: nunca lanza, nunca bloquea la ejecucion del script
+        // por un fallo de auditoria (empresa no provisionada, tabla no existe, sin permiso).
         public static void RegistrarEjecucion(string empresa, int modulo, int usuario,
-            string script, string origen, long duracionMs, int filas, string estado, string error)
+            string script, string origen, long duracionMs, int filas, string estado, string error,
+            ScriptContext ctx = null)
         {
-            if (!Inicializar()) return;
-            try
+            if (Inicializar())
             {
-                using (var c = new SQLiteConnection(CnnStr()))
+                try
                 {
-                    c.Open();
-                    using (var cmd = c.CreateCommand())
+                    using (var c = new SQLiteConnection(CnnStr()))
                     {
-                        cmd.CommandText = @"INSERT INTO ejecuciones
-                            (fecha,empresa,modulo,usuario,script,origen,duracion_ms,filas,estado,error)
-                            VALUES (@f,@e,@m,@u,@s,@o,@d,@fi,@es,@er);";
-                        cmd.Parameters.AddWithValue("@f", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                        cmd.Parameters.AddWithValue("@e", empresa ?? "");
-                        cmd.Parameters.AddWithValue("@m", modulo);
-                        cmd.Parameters.AddWithValue("@u", usuario);
-                        cmd.Parameters.AddWithValue("@s", script ?? "");
-                        cmd.Parameters.AddWithValue("@o", origen ?? "");
-                        cmd.Parameters.AddWithValue("@d", duracionMs);
-                        cmd.Parameters.AddWithValue("@fi", filas);
-                        cmd.Parameters.AddWithValue("@es", estado ?? "");
-                        cmd.Parameters.AddWithValue("@er", error ?? "");
-                        cmd.ExecuteNonQuery();
+                        c.Open();
+                        using (var cmd = c.CreateCommand())
+                        {
+                            cmd.CommandText = @"INSERT INTO ejecuciones
+                                (fecha,empresa,modulo,usuario,script,origen,duracion_ms,filas,estado,error)
+                                VALUES (@f,@e,@m,@u,@s,@o,@d,@fi,@es,@er);";
+                            cmd.Parameters.AddWithValue("@f", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                            cmd.Parameters.AddWithValue("@e", empresa ?? "");
+                            cmd.Parameters.AddWithValue("@m", modulo);
+                            cmd.Parameters.AddWithValue("@u", usuario);
+                            cmd.Parameters.AddWithValue("@s", script ?? "");
+                            cmd.Parameters.AddWithValue("@o", origen ?? "");
+                            cmd.Parameters.AddWithValue("@d", duracionMs);
+                            cmd.Parameters.AddWithValue("@fi", filas);
+                            cmd.Parameters.AddWithValue("@es", estado ?? "");
+                            cmd.Parameters.AddWithValue("@er", error ?? "");
+                            cmd.ExecuteNonQuery();
+                        }
                     }
                 }
+                catch { }
             }
-            catch { }
+
+            RegistrarEnAuditoriaCentral(ctx, modulo, script, origen, duracionMs, filas, estado, error);
+        }
+
+        // Mismo escape simple que usa Scripting.cs (SqlStr) -- no es accesible desde aqui
+        // (es privado de ScriptContext), asi que se repite la version minima local.
+        private static string EscSql(string s) { return "N'" + (s ?? "").Replace("'", "''") + "'"; }
+
+        // INSERT best-effort en zzBrosAuditoria (T2.1) por la conexion viva de la empresa
+        // activa. Deliberadamente silencioso: si la empresa no esta provisionada, la tabla
+        // no existe, el usuario SQL no tiene permiso de escritura ahi, o el script esta en
+        // modo solo-lectura (NonQuery lanza en ese caso), la ejecucion del script NUNCA
+        // debe fallar por esto -- es 100% aditivo sobre el registro local en SQLite.
+        private static void RegistrarEnAuditoriaCentral(ScriptContext ctx, int modulo,
+            string script, string origen, long duracionMs, int filas, string estado, string error)
+        {
+            if (ctx == null) return;
+            try
+            {
+                string errorTrunc = error ?? "";
+                if (errorTrunc.Length > 4000) errorTrunc = errorTrunc.Substring(0, 4000);
+                ctx.NonQuery(
+                    "INSERT INTO zzBrosAuditoria (Fecha,Usuario,Equipo,Modulo,AppKey,Origen,DuracionMs,Filas,Estado,Error) " +
+                    "VALUES (GETDATE()," + ctx.UserID + "," + EscSql(Environment.MachineName) + "," + modulo + "," +
+                    EscSql(script) + "," + EscSql(origen) + "," + duracionMs + "," + filas + "," +
+                    EscSql(estado) + "," + EscSql(errorTrunc) + ")");
+            }
+            catch { /* best-effort: empresa sin provisionar, tabla ausente, sin permiso, modo solo-lectura, etc. */ }
         }
 
         public static List<Dictionary<string, object>> UltimasEjecuciones(int n)

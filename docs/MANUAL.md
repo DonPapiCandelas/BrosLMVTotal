@@ -1159,6 +1159,20 @@ ejecutarse desde el ribbon con un mensaje claro. Se aprueba con un clic desde la
 (botón **"Aprobar"** en la barra de herramientas) — registra quién y cuándo
 (`AprobadoPor`/`AprobadoEl`).
 
+### 📋 Auditoría central (`zzBrosAuditoria`, desde v2.36.0)
+Cada ejecución (botón o consola) queda registrada en **dos lugares**: el archivo local
+`C:\BrosLMV\data\broslmv.db` (por equipo, como siempre) **y** la tabla `zzBrosAuditoria`
+de la empresa activa — quién (`Usuario`), desde qué equipo (`Equipo`), qué botón
+(`AppKey`), desde dónde (`Origen`: `boton`/`boton-python`/`boton-sql`/`consola`/
+`integridad`), cuánto tardó y si terminó bien. A diferencia del archivo local, esto es
+**visible desde cualquier terminal** de la empresa — útil para control interno o una
+auditoría fiscal. Es *best-effort*: si la empresa no está provisionada o no hay permiso
+de escritura, la ejecución del script **nunca** falla por esto, simplemente no queda
+ese registro central. Consulta directa mientras no exista una pantalla en la Consola:
+```sql
+SELECT TOP 50 * FROM zzBrosAuditoria ORDER BY id DESC;
+```
+
 ### ⚠️ `Delete` vs `CancelDocument`
 - **`ctx.erp.Delete(doc)`** = soft-delete. Marca `DeletedOn` pero **NO revierte kardex ni costos**.
   El inventario queda inflado. Solo seguro para documentos sin afectación (solicitudes).

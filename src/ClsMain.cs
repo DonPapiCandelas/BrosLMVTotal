@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.35.0.0")]
+[assembly: AssemblyVersion("2.36.0.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -174,7 +174,16 @@ namespace BrosLMV
                     if (integridad.TieneHash && !integridad.Coincide)
                     {
                         // Primera version: solo avisa, no bloquea -- el script sigue corriendo
-                        // despues de que el usuario confirma que lo sabe.
+                        // despues de que el usuario confirma que lo sabe. Best-effort, nunca
+                        // debe tronar ni bloquear la ejecucion por fallar este registro.
+                        try
+                        {
+                            Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
+                                "integridad", 0, 0, "ADVERTENCIA",
+                                "Hash de Codigo no coincide con HashSHA256 guardado -- modificado por fuera de la Consola.",
+                                ctx);
+                        }
+                        catch { }
                         MessageBox.Show(
                             "El botón \"" + appKey + "\" fue modificado por fuera de la Consola BrosLMV " +
                             "(el código no coincide con la última vez que se guardó desde ahí).\n\n" +
@@ -233,7 +242,7 @@ namespace BrosLMV
             {
                 Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
                     "boton", sw.ElapsedMilliseconds, ctx.FilasAfectadas,
-                    res == "" ? "OK" : "ERROR", res);
+                    res == "" ? "OK" : "ERROR", res, ctx);
             }
             catch { }
             if (res != "")
@@ -300,7 +309,7 @@ namespace BrosLMV
                         Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
                             "boton-python", sw.ElapsedMilliseconds, r.FilasAfectadas,
                             r.Exito ? "OK" : "ERROR",
-                            r.Exito ? r.Valor : HostClient.FormatearError(r));
+                            r.Exito ? r.Valor : HostClient.FormatearError(r), ctx);
                     }
                     catch { }
 
@@ -329,7 +338,7 @@ namespace BrosLMV
             {
                 Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
                     "boton-sql", sw.ElapsedMilliseconds, ctx.FilasAfectadas,
-                    error ? "ERROR" : "OK", res);
+                    error ? "ERROR" : "OK", res, ctx);
             }
             catch { }
 
