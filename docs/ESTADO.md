@@ -41,12 +41,13 @@ fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de
 
 ## Estás aquí (2026-07-29, v2.34.0)
 
-- **⚠️ Trampa del instalador otra vez (H1, ver `PLAN_IMPLEMENTACION.md`):** el código va en
-  2.34.0 pero `C:\BrosLMV` (runtime local) seguía en 2.33.5 al momento de escribir esto.
-  **Pendiente: correr `build\generar_instalador.ps1` + `build\generar_exes.ps1`** — no se
-  hizo en esta sesión porque este entorno no tiene el SDK de .NET instalado (no se puede
-  compilar C# aquí). ComercialSP **no estaba corriendo** al revisar, así que es buen
-  momento para hacerlo sin interrumpir una demo.
+- **✅ Trampa del instalador (H1) cerrada.** Se instaló el SDK de .NET 8 (vía `winget`,
+  no estaba en este entorno) y se corrieron `build\generar_instalador.ps1` +
+  `build\generar_exes.ps1` — 0 errores. `dist\BrosLMV-Instalador-2.34.0.exe` (65.2 MB) +
+  `BrosLMV-Desinstalador-2.34.0.exe` generados y verificados (recursos embebidos OK). El
+  usuario corrió el instalador y confirmó: `C:\BrosLMV\bin\BrosLMVClsMain.dll` = 2.34.0.0,
+  `zzBrosInfo.ProvisionVersion` = 2.34.0 en `GGV_DE_MEXICO` y `Distribuciones_Candelas`.
+  Las 4 fuentes (código, runtime, BD, GitHub) coinciden en 2.34.0.
 - **⚠️ `.git` desconectado localmente.** Esta carpeta (`C:\MLVTotal`) ya no tiene carpeta
   `.git` — el repo remoto `github.com/DonPapiCandelas/BrosLMVTotal` sigue vivo y público,
   pero desactualizado (último push: 2026-07-15, README todavía dice "sin pagar SDK" y
