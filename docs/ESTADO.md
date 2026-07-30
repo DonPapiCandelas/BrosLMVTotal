@@ -39,6 +39,19 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — T4.1, timbrado excluido del harness por ahora)
+
+> Continuación directa de la entrada de abajo, mismo día.
+
+**Timbrado en modo pruebas queda excluido del arnés de humo T4.1 por ahora — decisión del
+usuario, con motivo real, no indecisión.** La licencia de CONTPAQi en este servidor
+(`localhost\compac`) es de prueba: cualquier intento de timbrar devuelve error del PAC sin
+importar qué tan bien esté hecho el script. No tiene caso construir ese caso de humo hasta
+que exista una licencia (de pruebas del SAT con RFC de pruebas, o de producción) que sí
+permita timbrar. Queda **registrado como pendiente real** en `PLAN_IMPLEMENTACION.md` y
+`CHANGELOG.md` — cuando haya licencia adecuada, se agrega siguiendo el mismo patrón que los
+casos 1-3 (`ctx.erp` de `MANUAL.md` §6.14 CFDI/Timbrado).
+
 ## Estás aquí (2026-07-30, aún más tarde — T4.1, caso 3: `ctx.erp` de escritura SÍ funciona headless)
 
 > Continuación directa de la entrada de abajo, mismo día.

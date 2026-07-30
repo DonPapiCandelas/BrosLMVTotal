@@ -74,9 +74,19 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   `ProductInventory` en §8.2 (caso 2). El nombre real va en `CommercialName`.
 
 ### Aún pendiente
-- Casos de humo 4-6 (`ctx.form()`, `show_html`, `read_excel`, timbrado en modo pruebas).
-  `ctx.form()`/`show_html` son diálogos pensados para un humano — su "humo" automatizado
-  sería más débil (solo confirmar que no truenan al invocarse, no que un humano los usó).
+- Casos de humo restantes: `ctx.form()`, `show_html`, `read_excel`. `ctx.form()`/`show_html`
+  son diálogos pensados para un humano — su "humo" automatizado sería más débil (solo
+  confirmar que no truenan al invocarse, no que un humano los usó).
+
+### Excluido por ahora (bloqueador real, no decisión técnica)
+- **Timbrado en modo pruebas — descartado del harness por ahora.** La licencia de CONTPAQi
+  en este servidor (`localhost\compac`) es de prueba: cualquier intento de timbrar
+  devolverá error del PAC sin importar qué tan bien esté hecho el script. No es un caso que
+  el harness pueda dejar en verde con la licencia actual — no tiene sentido construirlo
+  hasta que exista una licencia (de pruebas del SAT, con RFC de pruebas, o de producción)
+  que sí permita timbrar. **Queda registrado como pendiente real, no olvidado**: cuando haya
+  una licencia adecuada, se agrega como caso de humo siguiendo el mismo patrón (`ctx.erp`
+  en `MANUAL.md` §6.14 CFDI/Timbrado).
 - **La decisión de producto de T3.3 sigue sin tomarse formalmente** ("¿habilitar
   escrituras de `ctx.erp` sin supervisión en jobs programados contra empresas reales?") —
   este caso demuestra que el MECANISMO funciona (headless, sin Comercial), pero eso es

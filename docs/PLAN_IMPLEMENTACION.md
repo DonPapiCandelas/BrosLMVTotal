@@ -421,14 +421,17 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 > escritura `ctx.erp` funciona headless (creó un `docDocument` real con IVA calculado por
 > `RecalcCompleto`), pero eso es evidencia, no la decisión de producto pendiente de T3.3
 > sobre habilitarlo en jobs programados contra empresas reales. **Pendientes:** crear OC en
-> Python, `ctx.form()`, `show_html`, `read_excel`, timbrado en modo pruebas. Detalle completo
-> en `CHANGELOG.md`.
+> Python, `ctx.form()`, `show_html`, `read_excel`. **Timbrado en modo pruebas EXCLUIDO por
+> ahora** (bloqueador real, no indecisión técnica): la licencia de CONTPAQi en este servidor
+> es de prueba — cualquier timbrado devuelve error del PAC sin importar qué tan bien esté
+> hecho el script. No tiene caso construir ese caso hasta tener una licencia que sí permita
+> timbrar. Detalle completo en `CHANGELOG.md`.
 
 - **Qué:** batería automatizada de humo + equivalencia, reusando las herramientas del laboratorio de `Entrenamiento/`.
 - **Por qué (H11):** hoy cada release se valida a mano en vivo; el laboratorio ya resolvió la parte difícil (snapshot before/after, `Compare-Documento.ps1`, matriz de equivalencia campo por campo).
 - **Cómo:**
   1. Designar sandbox en `localhost\compac`: `ComercialSP` (sin provisionar, sin scripts) o restaurar `Comercial_IA_Auditoria` (ver T0.2).
-  2. Batería mínima: crear OC (C# y Python), alta de producto, `ctx.form()` smoke, `show_html` smoke, `read_excel` smoke, timbrado en modo pruebas. Cada caso con verificación SQL automática contra "documento dorado" (`Compare-Documento.ps1`).
+  2. Batería mínima: crear OC (C# y Python), alta de producto, `ctx.form()` smoke, `show_html` smoke, `read_excel` smoke. ~~Timbrado en modo pruebas~~ **excluido por ahora** — la licencia de CONTPAQi en este servidor es de prueba y no permite timbrar (error de PAC garantizado, no un problema del script). Cada caso con verificación SQL automática contra "documento dorado" (`Compare-Documento.ps1`).
   3. `build\probar_humo.ps1` → corre todo y da verde/rojo. Regla: **no se corre `generar_exes.ps1` sin humo en verde**.
 - **Esfuerzo: XL inicial, luego incremental. Riesgo: bajo.**
 - **Criterio:** checklist de release automatizado al 80%.
