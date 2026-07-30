@@ -79,8 +79,9 @@ documentado version por version en [`CHANGELOG.md`](CHANGELOG.md):**
 - **T2.1**: falta la UI en la Consola para LEER `zzBrosAuditoria` (hoy solo hay escritura +
   `SELECT` directo).
 - **T2.2**: modo solo-lectura por usuario (`zzBrosPref`) — no empezado.
-- **T0.4/T0.5**: higiene de credenciales (sigue usando SA) y archivar scripts huérfanos — no
-  se han tocado en toda la sesión.
+- **T0.4 descartado** (2026-07-30, decisión explícita del usuario: "siempre va a ser esa"
+  cuenta) — ya no es un pendiente, no se va a tocar. **T0.5** (archivar scripts huérfanos)
+  sigue sin tocarse, de prioridad baja.
 - **T3.3 (`BrosLMV.Runner`)**: sigue como prototipo, no shipped en el instalador. Falta
   Python headless, decidir `ctx.erp`/grid sin supervisión, salida Excel/PDF/SMTP, receta de
   Task Scheduler.

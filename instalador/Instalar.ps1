@@ -59,7 +59,10 @@ if (Test-Path "$pkg\lib") {
 }
 
 # 4) Copiar scripts de ejemplo (sin sobrescribir los que ya existan)
-Get-ChildItem "$pkg\scripts\*.ctx","$pkg\scripts\*.csx" -ErrorAction SilentlyContinue | ForEach-Object {
+# BUG real encontrado 2026-07-30: solo copiaba .ctx/.csx -- las plantillas Python (.py) y
+# SQL (.sql) que ya vivian en instalador\scripts\ (varias PLANTILLA_*_PYTHON.py, GESTOR_RIBBON.py
+# desde T1.2, PLANTILLA_EJEMPLO_SQL.sql) nunca llegaban a una instalacion nueva por este camino.
+Get-ChildItem "$pkg\scripts\*.ctx","$pkg\scripts\*.csx","$pkg\scripts\*.py","$pkg\scripts\*.sql" -ErrorAction SilentlyContinue | ForEach-Object {
     $dst = Join-Path "$base\scripts" $_.Name
     if (-not (Test-Path $dst)) { Copy-Item $_.FullName $dst }
 }

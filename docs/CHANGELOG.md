@@ -8,6 +8,54 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## [2.41.0] — 2026-07-30 — Auditoría (empresa) en la Consola (T2.1) + Gestor de Ribbon al núcleo (T1.2)
+
+> Barrido de pendientes explícito a pedido del usuario ("revisa qué falta... dale a todo lo
+> demás", tras descartar T0.4 por decisión suya). Dos entregas independientes, mismo
+> release: cerrar T2.1 (la escritura ya existía desde v2.36.0, faltaba la UI de lectura) y
+> T1.2 (promover una herramienta que vivía solo en una empresa a feature del núcleo).
+
+### Agregado — T2.1, lectura de `zzBrosAuditoria`
+- **Pestaña "Auditoría (empresa)"** en la ventana Historial de la Consola (junto a "Este
+  equipo", que ya existía) — filtros por fecha (desde/hasta), AppKey (contiene) y Estado
+  (OK/ERROR/ADVERTENCIA), con nombre real de usuario (reusa `NombreUsuario`, v2.40.0).
+- `src/Scripting.cs`: `ScriptContext.BrosAuditoriaListar(desde, hasta, usuario, appKey,
+  estado, top=500)` — solo lectura, nunca lanza (empresa sin `zzBrosAuditoria` o sin
+  permiso → lista vacía, no error).
+- **Probado con arnés de pruebas real** contra `EmpresaB`: 6 verificaciones (filtro por
+  estado, por rango de fecha, por AppKey con LIKE, sin filtros, respeta el TOP).
+
+### Agregado — T1.2, Gestor de Ribbon al núcleo
+- **Botón "Gestor de Ribbon"** (junto a "Consola BrosLMV" en la pestaña "Soluciones LMV")
+  — crear pestañas/secciones del ribbon, editar o mover un botón (nombre/ícono/módulo),
+  todo sin escribir SQL a mano. Restringido a botones propios (`ControlExecute LIKE
+  'BrosLMV.%'`) para no arriesgar botones nativos de Comercial.
+- El script (`GESTOR_RIBBON.py`) vivía solo en la carpeta de una empresa — se genericizó
+  (se quitó el nombre de esa empresa del encabezado; se corrigieron 2 comentarios que
+  referenciaban documentación de un proyecto distinto que no existe aquí) y se promovió a
+  `instalador\scripts\GESTOR_RIBBON.py` (compartido, disponible para todas las empresas).
+- `instalador\sql\provision_empresa.sql` §4b: alta del botón, mismo patrón idempotente y
+  adaptable-por-columnas que ya usaba el botón de la Consola.
+- **Probado en vivo, corrido 2 veces contra `EmpresaB`** (con `@provisionVersion` inyectado
+  igual que lo hace el instalador real): primera corrida crea el botón correctamente
+  agrupado y ordenado; segunda corrida confirma idempotencia (0 duplicados). La consulta
+  principal del script (`ver_estructura`) se validó contra el esquema real.
+
+### Corregido — bug real encontrado en el camino
+- **`instalador\Instalar.ps1`** (la vía de instalación manual/scriptada, documentada en
+  `INSTALACION.md`) solo copiaba `.ctx`/`.csx` a `C:\BrosLMV\scripts\` — nunca `.py` ni
+  `.sql`. Todas las plantillas Python que ya vivían en `instalador\scripts\` (varias
+  `PLANTILLA_*_PYTHON.py`, y ahora `GESTOR_RIBBON.py`) nunca llegaban a una instalación
+  nueva por esa vía. El instalador GUI real (`RuntimeInstaller.cs`, `BrosLMV-Instalador.exe`
+  — lo que usa la mayoría) **no tenía este bug** (copia todo sin filtrar por extensión).
+
+### Pendiente
+- Confirmar dentro de CONTPAQi real: hacer clic en "Auditoría (empresa)" y en "Gestor de
+  Ribbon" de verdad (lo probado es la capa de datos/SQL, no los diálogos de Windows
+  Forms/`ctx.form` en sí).
+
+---
+
 ## [2.40.0] — 2026-07-29 — Historial de versiones (T1.4): diff, restaurar, etiquetar, purgar
 
 > El usuario preguntó cómo respaldar un botón antes de modificarlo "por si me equivoco o no

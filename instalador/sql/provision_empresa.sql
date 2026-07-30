@@ -199,6 +199,64 @@ BEGIN
 END
 
 -- ============================================================
+-- 4b) Botón "Gestor de Ribbon" (BrosLMV.GESTOR_RIBBON), T1.2: promovido al núcleo
+--     desde un script que vivía solo en una empresa. Mismo patrón adaptable que el
+--     botón de la Consola (3-4). El script en sí (instalador\scripts\GESTOR_RIBBON.py)
+--     se distribuye como script COMPARTIDO (C:\BrosLMV\scripts\, no por empresa) --
+--     no hace falta copiarlo a zzBrosScript aquí.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM engRibbonControl WHERE ControlExecute='BrosLMV.GESTOR_RIBBON')
+BEGIN
+    DECLARE @cc2 NVARCHAR(MAX), @vc2 NVARCHAR(MAX);
+    ;WITH m(col,val,ord) AS (
+        SELECT col,val,ord FROM (VALUES
+            ('ControlIDBase','0',1),
+            ('ProductID','1',2),
+            ('ModuleID','0',3),
+            ('ControlCaption','''Gestor de Ribbon''',4),
+            ('ControlDescription','''Crear pestañas/secciones y editar o mover botones de BrosLMV, sin SQL a mano''',5),
+            ('ControlExecute','''BrosLMV.GESTOR_RIBBON''',6),
+            ('IconFile','''BrosLMV.ico''',7),
+            ('SystemButton','0',8),
+            ('SystemButtonOrder','0',9),
+            ('SystemButtonBeginGroup','0',10),
+            ('SystemButtonParentID','0',11),
+            ('QuickAccessShow','0',12),
+            ('QuickAccessOrder','0',13),
+            ('ResID','0',14),
+            ('ResIDDescription','0',15)
+        ) v(col,val,ord)
+        WHERE col IN (SELECT name FROM sys.columns WHERE object_id=OBJECT_ID('dbo.engRibbonControl'))
+    )
+    SELECT @cc2 = STUFF((SELECT ','+QUOTENAME(col) FROM m ORDER BY ord FOR XML PATH('')),1,1,''),
+           @vc2 = STUFF((SELECT ','+val            FROM m ORDER BY ord FOR XML PATH('')),1,1,'');
+    EXEC('INSERT dbo.engRibbonControl ('+@cc2+') VALUES ('+@vc2+')');
+END
+DECLARE @ctrl2 INT = (SELECT TOP 1 ControlID FROM engRibbonControl WHERE ControlExecute='BrosLMV.GESTOR_RIBBON');
+
+IF EXISTS (SELECT 1 FROM engRibbonMenu WHERE ControlID=@ctrl2)
+    UPDATE engRibbonMenu SET RibbonGroupID=@grp, ControlOrder=2 WHERE ControlID=@ctrl2;
+ELSE
+BEGIN
+    DECLARE @cm2 NVARCHAR(MAX), @vm2 NVARCHAR(MAX);
+    ;WITH m(col,val,ord) AS (
+        SELECT col,val,ord FROM (VALUES
+            ('RibbonMenuIDBase','0',1),
+            ('RibbonGroupID',CAST(@grp AS NVARCHAR(20)),2),
+            ('ControlID',CAST(@ctrl2 AS NVARCHAR(20)),3),
+            ('ControlOrder','2',4),
+            ('ControlType','1',5),
+            ('ExtraMenuModuleID','0',6),
+            ('IfUserIDIs','0',7)
+        ) v(col,val,ord)
+        WHERE col IN (SELECT name FROM sys.columns WHERE object_id=OBJECT_ID('dbo.engRibbonMenu'))
+    )
+    SELECT @cm2 = STUFF((SELECT ','+QUOTENAME(col) FROM m ORDER BY ord FOR XML PATH('')),1,1,''),
+           @vm2 = STUFF((SELECT ','+val            FROM m ORDER BY ord FOR XML PATH('')),1,1,'');
+    EXEC('INSERT dbo.engRibbonMenu ('+@cm2+') VALUES ('+@vm2+')');
+END
+
+-- ============================================================
 -- 5) Versión de aprovisionamiento aplicada. NO es la versión del addon (esa vive por
 --    ESTACION, en C:\BrosLMV\bin, y es la misma para todas las empresas) -- esto registra
 --    qué versión de ESTE SCRIPT se corrió en esta empresa, para que el instalador pueda

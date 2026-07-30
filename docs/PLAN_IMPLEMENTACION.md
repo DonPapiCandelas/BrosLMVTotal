@@ -78,7 +78,7 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 > desactualizados a propósito (son la foto del momento), pero el ESTADO real de cada tarea
 > SÍ se mantiene al día en su propio banner. Resumen rápido: T0.1 ✅ hecho (aunque con otro
 > número de versión), T0.2 ✅ hecho en docs públicas, T0.3 sin objeto (superado por entradas
-> más nuevas), T0.4 y T0.5 siguen sin tocarse.**
+> más nuevas), T0.4 descartado por decisión del usuario (SA se queda), T0.5 sigue sin tocarse.**
 
 #### T0.1 — Sincronizar versión desplegada (2.33.5 → 2.33.7)
 
@@ -136,19 +136,17 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T0.4 — Higiene de credenciales
 
-> **Estado (2026-07-29): ⏳ PENDIENTE, real.** No se tocó. SA se sigue usando directamente
-> (incluso en las pruebas en vivo de `BrosLMV.Runner` de esta misma sesión, vía `sqlcmd -U SA`)
-> — sigue siendo la cuenta que usa el instalador y cualquier inspección manual. Genuinamente
-> sigue pendiente, no es un malentendido de la otra IA.
+> **Estado (2026-07-30): ❌ DESCARTADO por decisión explícita del usuario** ("quita el de la
+> cuenta SA, siempre va a ser esa"). No se va a crear un login dedicado ni a rotar SA — es
+> una decisión operativa del usuario, no una tarea pendiente. Se deja el análisis original
+> abajo como referencia histórica de por qué se había propuesto, pero **no se va a hacer**.
 
-- **Qué:** sacar la cuenta SA del circuito diario.
-- **Por qué (H8):** SA en texto plano + `zzBrosScript` ejecutando código arbitrario = riesgo total. Además el GUI de provisión pide credenciales en cada instalación.
-- **Cómo:**
+- **Qué (descartado):** sacar la cuenta SA del circuito diario.
+- **Por qué se había propuesto (H8):** SA en texto plano + `zzBrosScript` ejecutando código arbitrario = riesgo total. Además el GUI de provisión pide credenciales en cada instalación.
+- **Cómo (ya no aplica):**
   1. Rotar el password de SA.
   2. Crear login dedicado `broslmv_admin` con `db_datareader`+`db_datawriter` solo en las empresas a provisionar (sin sysadmin) y documentarlo en `INSTALACION.md` (D6).
   3. Verificar que la provisión funciona con ese login (el script de provisión hace CREATE TABLE en la empresa — requiere `db_ddladmin` también; documentar los 3 roles exactos).
-- **Esfuerzo: S. Riesgo: bajo** (probar en una empresa primero).
-- **Criterio:** provisión exitosa con `broslmv_admin` sin sysadmin; SA solo para emergencias.
 
 #### T0.5 — Archivar scripts de empresas ausentes
 
@@ -189,6 +187,20 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 - **Criterio de aceptación:** ReporteXVehiculo migrado funciona idéntico, sin `xlsx.bundle.js` en su carpeta de assets.
 
 #### T1.2 — Gestor de ribbon como feature del núcleo
+
+> **Estado (2026-07-30): ✅ HECHO (v2.41.0).** `GESTOR_RIBBON.py` se encontró viviendo solo
+> en la carpeta de una empresa (`GRUPOMETALMECANICA` — nombre real, sanitizado en docs
+> públicas); se genericizó (quitado el nombre de esa empresa del encabezado, corregidas 2
+> referencias a documentación que no existía en este proyecto) y se copió a
+> `instalador\scripts\GESTOR_RIBBON.py` (compartido, no por empresa). Botón "Gestor de
+> Ribbon" agregado en `provision_empresa.sql` junto al de la Consola, mismo patrón
+> idempotente/adaptable. **Bug real encontrado y corregido en el camino:** `Instalar.ps1`
+> (la vía de instalación manual/scriptada, documentada en `INSTALACION.md`) solo copiaba
+> `.ctx`/`.csx` a `C:\BrosLMV\scripts\` — nunca copiaba `.py` ni `.sql`, así que todas las
+> plantillas Python que ya vivían en `instalador\scripts\` nunca llegaban por esa vía a una
+> instalación nueva. El instalador GUI real (`RuntimeInstaller.cs`, lo que la mayoría de la
+> gente usa) NO tenía este bug (copia todo sin filtrar por extensión) — el problema era solo
+> en la vía documentada como alternativa.
 
 - **Qué:** promover `GESTOR_RIBBON.py` a scripts compartidos (raíz `C:\BrosLMV\scripts\`) para que esté disponible en TODAS las empresas, con botón propio en la pestaña "Soluciones LMV".
 - **Por qué (H10):** crear un botón hoy exige SQL a mano contra `engRibbonControl` (`plantilla_crear_boton.sql`). El gestor ya está validado en producción y tiene la restricción de seguridad correcta (solo toca `ControlExecute LIKE 'BrosLMV.%'`). Es valor ya construido, solo hay que distribuirlo.
@@ -398,20 +410,25 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 ## 4. Matriz de priorización (impacto vs esfuerzo)
 
+> **Foto del 2026-07-22, ya no refleja el orden real de ejecución** (T2.3/T2.1/T3.3/T1.3/T1.4
+> se hicieron fuera de este orden; T0.4 se descartó). Se deja como referencia histórica de la
+> lógica de priorización original, no como plan vigente — ver el banner de estado de cada
+> tarea arriba para lo que de verdad aplica hoy.
+
 ```
                 Esfuerzo bajo          Esfuerzo alto
 Impacto alto | T0.1 T0.2 T0.3 T1.2   | T1.1 ⭐ T2.1 ⭐ T3.1 ⭐ T4.1
-             | T2.2 T0.4             | T3.2 T3.3
+             | T2.2                  | T3.2 T3.3
 Impacto med. | T0.5 T1.4 T4.2        | T2.3
 Impacto bajo | T4.3 (continuo)       | Fase 5 (backlog)
 ```
 
-**Orden de ejecución recomendado (semanas):**
+**Orden de ejecución original (semanas) — histórico, no vigente:**
 
 | Semana | Trabajo |
 |---|---|
 | 0 (ahora) | T0.1 → T0.2 → T0.3 → T0.5 (+ decisión laboratorio) |
-| 1 | T0.4, T1.2 (gestor ribbon), inicio T1.1 (dashboard) |
+| 1 | T1.2 (gestor ribbon), inicio T1.1 (dashboard) |
 | 2 | T1.1 completo + piloto ReporteXVehiculo, T2.1 (auditoría central), T4.2 (CI) |
 | 3 | T1.3 (paquetes .bros), T1.4 (versionado UI), T2.2 (solo-lectura) |
 | 4 | T2.3 (integridad), inicio T4.1 (harness: sandbox + 2 humos) |

@@ -164,6 +164,23 @@ Botón ControlExecute:  BrosLMV.SUMA      ← SIN extensión, SIN puntos ni espa
 
 > No uses los nombres reservados: `CONSOLA`, `PRUEBA`.
 
+### Opción visual — Gestor de Ribbon (desde v2.41.0, sin SQL a mano)
+
+El paso 5 de arriba (`plantilla_crear_boton.sql`) sigue funcionando, pero para no tener que
+tocar SQL cada vez hay un botón propio: **Gestor de Ribbon** (junto a "Consola BrosLMV" en
+la pestaña "Soluciones LMV"). Con eso puedes, sin escribir una línea de SQL:
+
+- **Ver estructura del ribbon** — todas las pestañas/secciones/botones, resaltando en azul
+  los que son de BrosLMV (los únicos que "Editar" y "Mover" pueden tocar — nunca toca
+  botones nativos de CONTPAQi).
+- **Crear una pestaña o sección nueva** para organizar tus botones.
+- **Editar un botón** ya creado: nombre, ícono, en qué módulo aparece.
+- **Mover un botón** a otra sección.
+
+Después de cualquier cambio hay que **reiniciar CONTPAQi** para verlo reflejado en el
+ribbon (los cambios ya quedaron guardados en la base — solo falta que Comercial vuelva a
+leer la estructura).
+
 ---
 
 ## 5. API de `ctx`

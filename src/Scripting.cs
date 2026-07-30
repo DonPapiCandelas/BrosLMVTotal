@@ -884,6 +884,28 @@ namespace BrosLMV
             catch { return ""; }
         }
 
+        // ===== Auditoría central (T2.1): lectura de zzBrosAuditoria =====
+        // La escritura ya existe desde v2.36.0 (Datos.RegistrarEjecucion -> INSERT best-effort
+        // por la conexion viva). Esto es SOLO lectura, con filtros opcionales, para la pestaña
+        // "Auditoría (empresa)" de la Consola. Nunca lanza -- si la tabla no existe (empresa
+        // vieja/sin provisionar) o no hay permiso, regresa lista vacia sin tronar la UI.
+        public List<Dictionary<string, object>> BrosAuditoriaListar(DateTime? desde, DateTime? hasta, int usuario, string appKey, string estado, int top = 500)
+        {
+            try
+            {
+                var where = new List<string>();
+                if (desde.HasValue) where.Add("Fecha >= '" + desde.Value.ToString("yyyyMMdd") + "'");
+                if (hasta.HasValue) where.Add("Fecha < '" + hasta.Value.AddDays(1).ToString("yyyyMMdd") + "'");
+                if (usuario > 0) where.Add("Usuario=" + usuario);
+                if (!string.IsNullOrWhiteSpace(appKey)) where.Add("AppKey LIKE " + SqlStr("%" + appKey.Trim() + "%"));
+                if (!string.IsNullOrWhiteSpace(estado)) where.Add("Estado=" + SqlStr(estado.Trim()));
+                string sql = "SELECT TOP " + top + " id, Fecha, Usuario, Equipo, Modulo, AppKey, Origen, DuracionMs, Filas, Estado, Error " +
+                             "FROM zzBrosAuditoria" + (where.Count > 0 ? " WHERE " + string.Join(" AND ", where) : "") + " ORDER BY id DESC";
+                return Query(sql);
+            }
+            catch { return new List<Dictionary<string, object>>(); }
+        }
+
         // ===== Integridad de scripts (T2.3) =====
         // HashSHA256 solo lo recalcula BrosGuardar -- un UPDATE crudo de Codigo por fuera
         // de la consola (SSMS, otro script) deja el hash viejo sin tocar, lo que hace el

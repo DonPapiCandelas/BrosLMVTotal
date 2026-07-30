@@ -1648,20 +1648,23 @@ namespace BrosLMV
 
         private void VerHistorial()
         {
-            var datos = Datos.UltimasEjecuciones(200);
-            var frm = new Form { Text = "Historial / Auditoría de ejecuciones", Size = new Size(900, 500), StartPosition = FormStartPosition.CenterParent, Font = new Font("Segoe UI", 9f) };
-            var lv = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, GridLines = true };
-            lv.Columns.Add("Fecha", 130);
-            lv.Columns.Add("Empresa", 150);
-            lv.Columns.Add("Mód.", 45);
-            lv.Columns.Add("Usr", 40);
-            lv.Columns.Add("Script", 150);
-            lv.Columns.Add("Origen", 60);
-            lv.Columns.Add("ms", 55);
-            lv.Columns.Add("Filas", 50);
-            lv.Columns.Add("Estado", 60);
-            lv.Columns.Add("Error", 150);
-            foreach (var r in datos)
+            var frm = new Form { Text = "Historial / Auditoría de ejecuciones", Size = new Size(980, 560), MinimumSize = new Size(700, 400), StartPosition = FormStartPosition.CenterParent, Font = new Font("Segoe UI", 9f) };
+            var tabs = new TabControl { Dock = DockStyle.Fill };
+
+            // ---- Pestaña 1: este equipo (SQLite local, siempre disponible) ----
+            var tabLocal = new TabPage("Este equipo");
+            var lvLocal = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, GridLines = true };
+            lvLocal.Columns.Add("Fecha", 130);
+            lvLocal.Columns.Add("Empresa", 150);
+            lvLocal.Columns.Add("Mód.", 45);
+            lvLocal.Columns.Add("Usr", 40);
+            lvLocal.Columns.Add("Script", 150);
+            lvLocal.Columns.Add("Origen", 60);
+            lvLocal.Columns.Add("ms", 55);
+            lvLocal.Columns.Add("Filas", 50);
+            lvLocal.Columns.Add("Estado", 60);
+            lvLocal.Columns.Add("Error", 150);
+            foreach (var r in Datos.UltimasEjecuciones(200))
             {
                 var it = new ListViewItem(Convert.ToString(r["fecha"]));
                 it.SubItems.Add(Convert.ToString(r["empresa"]));
@@ -1674,9 +1677,88 @@ namespace BrosLMV
                 it.SubItems.Add(Convert.ToString(r["estado"]));
                 it.SubItems.Add(Convert.ToString(r["error"]));
                 if (Convert.ToString(r["estado"]) == "ERROR") it.ForeColor = Color.Firebrick;
-                lv.Items.Add(it);
+                lvLocal.Items.Add(it);
             }
-            frm.Controls.Add(lv);
+            tabLocal.Controls.Add(lvLocal);
+            tabs.TabPages.Add(tabLocal);
+
+            // ---- Pestaña 2: Auditoría (empresa) — zzBrosAuditoria, T2.1 ----
+            var tabCentral = new TabPage("Auditoría (empresa)");
+            var pnlFiltros = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(6, 6, 6, 0) };
+            var dtDesde = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 100, Value = DateTime.Today.AddDays(-7) };
+            var dtHasta = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 100, Value = DateTime.Today };
+            var txtAppKey = new TextBox { Width = 140 };
+            var cbEstado = new ComboBox { Width = 110, DropDownStyle = ComboBoxStyle.DropDownList };
+            cbEstado.Items.AddRange(new object[] { "(todos)", "OK", "ERROR", "ADVERTENCIA" });
+            cbEstado.SelectedIndex = 0;
+            var btnFiltrar = new IconButton { Text = "Filtrar", Kind = BtnKind.Primary, Accent = AppTheme.Primary, AutoSize = true, Height = 28, Padding = new Padding(10, 0, 10, 0) };
+            pnlFiltros.Controls.AddRange(new Control[] {
+                new Label { Text = "Desde:", AutoSize = true, Margin = new Padding(0,6,2,0) }, dtDesde,
+                new Label { Text = "Hasta:", AutoSize = true, Margin = new Padding(6,6,2,0) }, dtHasta,
+                new Label { Text = "AppKey:", AutoSize = true, Margin = new Padding(6,6,2,0) }, txtAppKey,
+                new Label { Text = "Estado:", AutoSize = true, Margin = new Padding(6,6,2,0) }, cbEstado,
+                btnFiltrar });
+
+            var lvCentral = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, GridLines = true };
+            lvCentral.Columns.Add("Fecha", 130);
+            lvCentral.Columns.Add("Usuario", 100);
+            lvCentral.Columns.Add("Equipo", 110);
+            lvCentral.Columns.Add("Mód.", 45);
+            lvCentral.Columns.Add("AppKey", 130);
+            lvCentral.Columns.Add("Origen", 80);
+            lvCentral.Columns.Add("ms", 55);
+            lvCentral.Columns.Add("Filas", 50);
+            lvCentral.Columns.Add("Estado", 70);
+            lvCentral.Columns.Add("Error", 220);
+
+            var lblSinDatos = new Label { Dock = DockStyle.Top, Height = 40, Padding = new Padding(8), ForeColor = AppTheme.TextMuted, Visible = false,
+                Text = "Sin filas -- puede ser que la empresa no tenga zzBrosAuditoria (provisionada antes de v2.36.0), " +
+                       "no haya permiso de lectura, o simplemente no haya ejecuciones en el rango filtrado." };
+
+            void Recargar()
+            {
+                lvCentral.Items.Clear();
+                int usuarioFiltro = 0; // sin filtro de usuario por ahora -- AppKey/Estado/fecha cubren el caso comun
+                string estadoFiltro = cbEstado.SelectedIndex <= 0 ? "" : cbEstado.Text;
+                List<Dictionary<string, object>> filas;
+                try { filas = _ctx.BrosAuditoriaListar(dtDesde.Value.Date, dtHasta.Value.Date, usuarioFiltro, txtAppKey.Text, estadoFiltro); }
+                catch (Exception ex) { ctxError("No se pudo leer la auditoría: " + ex.Message); return; }
+
+                var nombresUsuario = new Dictionary<int, string>();
+                foreach (var r in filas)
+                {
+                    int uid = Com.ToInt(r["Usuario"]);
+                    if (!nombresUsuario.TryGetValue(uid, out string nombreU))
+                    {
+                        nombreU = uid > 0 ? _ctx.NombreUsuario(uid) : "";
+                        nombresUsuario[uid] = nombreU;
+                    }
+                    var it = new ListViewItem(Convert.ToString(r["Fecha"]));
+                    it.SubItems.Add(string.IsNullOrEmpty(nombreU) ? (uid > 0 ? uid.ToString() : "?") : nombreU);
+                    it.SubItems.Add(Convert.ToString(r["Equipo"] ?? ""));
+                    it.SubItems.Add(Convert.ToString(r["Modulo"] ?? ""));
+                    it.SubItems.Add(Convert.ToString(r["AppKey"] ?? ""));
+                    it.SubItems.Add(Convert.ToString(r["Origen"] ?? ""));
+                    it.SubItems.Add(Convert.ToString(r["DuracionMs"] ?? ""));
+                    it.SubItems.Add(Convert.ToString(r["Filas"] ?? ""));
+                    it.SubItems.Add(Convert.ToString(r["Estado"] ?? ""));
+                    it.SubItems.Add(Convert.ToString(r["Error"] ?? ""));
+                    if (Convert.ToString(r["Estado"]) == "ERROR") it.ForeColor = Color.Firebrick;
+                    else if (Convert.ToString(r["Estado"]) == "ADVERTENCIA") it.ForeColor = Color.DarkOrange;
+                    lvCentral.Items.Add(it);
+                }
+                lblSinDatos.Visible = filas.Count == 0;
+            }
+
+            btnFiltrar.Click += (s, e) => Recargar();
+            tabCentral.Controls.Add(pnlFiltros);
+            tabCentral.Controls.Add(lblSinDatos);
+            tabCentral.Controls.Add(lvCentral);
+            tabs.TabPages.Add(tabCentral);
+
+            frm.Controls.Add(tabs);
+            tabs.SelectedIndexChanged += (s, e) => { if (tabs.SelectedTab == tabCentral && lvCentral.Items.Count == 0 && !lblSinDatos.Visible) Recargar(); };
+            Recargar(); // primera carga con el rango default (últimos 7 días)
             frm.ShowDialog(this);
         }
 
