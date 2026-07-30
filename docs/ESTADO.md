@@ -39,6 +39,17 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — T4.1, caso 4: la OC también funciona por Python)
+
+> Continuación directa de la entrada de abajo, mismo día.
+
+**Caso 4: la misma OC del caso 3, pero por el canal Python completo
+(`BrosLMV.Host.exe` + `UiPump`).** Funcionó a la primera corrida — confirma que `ctx.erp`
+de escritura headless funciona igual por los dos canales, no solo en el proceso del Runner
+directamente. **4 de 6 casos del plan original ya en verde**; quedan `ctx.form()`,
+`show_html`, `read_excel` (automatización débil, solo "no truena") y timbrado (excluido con
+motivo, ver entrada de abajo).
+
 ## Estás aquí (2026-07-30, aún más tarde — T4.1, timbrado excluido del harness por ahora)
 
 > Continuación directa de la entrada de abajo, mismo día.

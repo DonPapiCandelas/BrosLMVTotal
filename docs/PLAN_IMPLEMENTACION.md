@@ -412,20 +412,22 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T4.1 — Harness de pruebas contra empresa sandbox
 
-> **Estado (2026-07-30): 🟡 EN PROGRESO — 3 de 6 casos en verde.** Sandbox designado:
+> **Estado (2026-07-30): 🟡 EN PROGRESO — 4 de 6 casos en verde (los 2 restantes son de
+> automatización débil; el 7mo, timbrado, excluido con motivo).** Sandbox designado:
 > `ComercialSP` en `localhost\compac` (provisionado, `ProvisionVersion=2.41.0`). Arnés
 > (`build\probar_humo.ps1` + `build\humo\casos\*.ps1`) probado con caso real en verde Y con
 > un caso forzado a fallar (confirma que sí reporta rojo). **Caso 1 (SQL headless)**,
-> **caso 2 (alta de producto, Python headless, sin `ctx.erp`)** y **caso 3 (crear OC, C#,
-> `ctx.erp` de ESCRITURA headless)** verdes — el caso 3 demuestra que el mecanismo de
-> escritura `ctx.erp` funciona headless (creó un `docDocument` real con IVA calculado por
-> `RecalcCompleto`), pero eso es evidencia, no la decisión de producto pendiente de T3.3
-> sobre habilitarlo en jobs programados contra empresas reales. **Pendientes:** crear OC en
-> Python, `ctx.form()`, `show_html`, `read_excel`. **Timbrado en modo pruebas EXCLUIDO por
-> ahora** (bloqueador real, no indecisión técnica): la licencia de CONTPAQi en este servidor
-> es de prueba — cualquier timbrado devuelve error del PAC sin importar qué tan bien esté
-> hecho el script. No tiene caso construir ese caso hasta tener una licencia que sí permita
-> timbrar. Detalle completo en `CHANGELOG.md`.
+> **caso 2 (alta de producto, Python headless, sin `ctx.erp`)**, **caso 3 (crear OC, C#,
+> `ctx.erp` de ESCRITURA headless)** y **caso 4 (la misma OC, canal Python)** verdes — los
+> casos 3-4 demuestran que la escritura `ctx.erp` funciona headless por los dos canales
+> (creó un `docDocument` real con IVA calculado por `RecalcCompleto`), pero eso es
+> evidencia, no la decisión de producto pendiente de T3.3 sobre habilitarlo en jobs
+> programados contra empresas reales. **Pendientes:** `ctx.form()`, `show_html`,
+> `read_excel`. **Timbrado en modo pruebas EXCLUIDO por ahora** (bloqueador real, no
+> indecisión técnica): la licencia de CONTPAQi en este servidor es de prueba — cualquier
+> timbrado devuelve error del PAC sin importar qué tan bien esté hecho el script. No tiene
+> caso construir ese caso hasta tener una licencia que sí permita timbrar. Detalle completo
+> en `CHANGELOG.md`.
 
 - **Qué:** batería automatizada de humo + equivalencia, reusando las herramientas del laboratorio de `Entrenamiento/`.
 - **Por qué (H11):** hoy cada release se valida a mano en vivo; el laboratorio ya resolvió la parte difícil (snapshot before/after, `Compare-Documento.ps1`, matriz de equivalencia campo por campo).

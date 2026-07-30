@@ -73,6 +73,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   existe en `orgBusinessEntity` en esta versión de Comercial — mismo patrón que el error de
   `ProductInventory` en §8.2 (caso 2). El nombre real va en `CommercialName`.
 
+### Agregado (caso 4, mismo día)
+- `build\humo\casos\04_crear_oc_python.ps1` + `04_crear_oc_python.codigo.py` — cuarto caso:
+  la misma OC del caso 3, pero por el canal Python (`ctx.erp` vía `BrosLMV.Host.exe` +
+  `UiPump`, no en el proceso del Runner directamente). **Funcionó a la primera corrida**,
+  confirmando que la escritura `ctx.erp` headless funciona igual de bien por los dos
+  canales (C# y Python). Mismo patrón de verificación que el caso 3 (conteo de OC
+  antes/después + auditoría `Origen='runner-python'`).
+
 ### Aún pendiente
 - Casos de humo restantes: `ctx.form()`, `show_html`, `read_excel`. `ctx.form()`/`show_html`
   son diálogos pensados para un humano — su "humo" automatizado sería más débil (solo
