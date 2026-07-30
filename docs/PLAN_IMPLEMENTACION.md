@@ -412,6 +412,15 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T4.1 — Harness de pruebas contra empresa sandbox
 
+> **Estado (2026-07-30): 🟡 EN PROGRESO — 2 de 6 casos en verde.** Sandbox designado:
+> `ComercialSP` en `localhost\compac` (provisionado, `ProvisionVersion=2.41.0`). Arnés
+> (`build\probar_humo.ps1` + `build\humo\casos\*.ps1`) probado con caso real en verde Y con
+> un caso forzado a fallar (confirma que sí reporta rojo). **Caso 1 (SQL headless)** y
+> **caso 2 (alta de producto, Python headless, sin `ctx.erp`)** verdes. **Pendientes:** crear
+> OC (C#/Python) — necesita decisión sobre `ctx.erp` de escritura headless, ver T3.3 —,
+> `ctx.form()`, `show_html`, `read_excel`, timbrado en modo pruebas. Detalle completo en
+> `CHANGELOG.md`.
+
 - **Qué:** batería automatizada de humo + equivalencia, reusando las herramientas del laboratorio de `Entrenamiento/`.
 - **Por qué (H11):** hoy cada release se valida a mano en vivo; el laboratorio ya resolvió la parte difícil (snapshot before/after, `Compare-Documento.ps1`, matriz de equivalencia campo por campo).
 - **Cómo:**

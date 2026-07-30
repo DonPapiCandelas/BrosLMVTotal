@@ -8,6 +8,62 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## Harness de humo T4.1 — primer incremento (2026-07-30), sin versión de addon
+
+> T4.1 lista 6 casos de humo muy distintos (SQL/`ctx.query`, alta de producto vía XEngine,
+> crear OC en C# y Python, `ctx.form()`, `show_html`, `read_excel`, timbrado). De esos, solo
+> el de SQL headless ya se sabe hacer de punta a punta con `BrosLMV.Runner` (T3.3); los demás
+> requieren investigar primero cómo se crean documentos/productos vía el SDK de XEngine (no
+> documentado aún en este repo) o no son automatizables sin humano (`ctx.form()`/`show_html`
+> son diálogos WebView2 pensados para interacción manual). Se empezó por el caso ya resuelto
+> para dejar el esqueleto del arnés probado en verde, en vez de intentar los 6 a la vez.
+
+### Agregado
+- **Sandbox designado:** `ComercialSP` en `localhost\compac` (existía sin provisionar, sin
+  scripts) — provisionado con `instalador\sql\provision_empresa.sql` (`ProvisionVersion=2.41.0`
+  en `zzBrosInfo`). Se descartó restaurar `Comercial_IA_Auditoria` (no existe en este servidor,
+  no hay backup a la mano) — decisión del usuario.
+- `build\probar_humo.ps1` — orquestador: corre cada caso en `build\humo\casos\*.ps1`
+  (cada uno se vale por sí mismo, exit 0 = paso), imprime resumen verde/rojo y sale con
+  exit code distinto de 0 si algo falló. Probado con un caso forzado a fallar (base de datos
+  inexistente) y con el caso real en verde.
+- `build\humo\casos\01_sql_headless.ps1` + `01_sql_headless.codigo.sql` — primer caso: registra
+  el botón `HUMO_SQL_SMOKE` en `zzBrosScript` (idempotente), lo corre con `BrosLMV.Runner.exe`
+  SIN Comercial abierto, y confirma que quedó auditado en `zzBrosAuditoria`
+  (`Origen='runner-sql'`, `Estado='OK'`) — no solo que el proceso salió en 0.
+- `build\humo\casos\02_alta_producto.ps1` + `02_alta_producto.codigo.py` — segundo caso:
+  alta de producto real (`orgProduct` + satélites `orgProductPicture`/
+  `orgProductUnitConversion`) vía **Python headless** (canal completo `BrosLMV.Host.exe` +
+  `UiPump`, no solo SQL), idempotente por `ProductKey`. Verifica el producto en la tabla real,
+  no solo el exit code. **No usa `ctx.erp`** — es SQL puro sobre catálogos, la misma
+  categoría ya probada en T3.3, distinta de crear documentos (que sí necesita `ctx.erp` de
+  escritura, todavía sin habilitar headless).
+- **Hallazgo real durante la construcción del caso 2:** la receta de `MANUAL.md` §8.2
+  (alta de producto) tenía una columna `ProductInventory` que no existe en `orgProduct` en
+  esta versión de Comercial (`Invalid column name`) — corregida en el manual.
+
+### Gotcha encontrado (ver `MANUAL.md`)
+- Con PowerShell 5.1, redirigir `2>&1` en un comando nativo (`sqlcmd`, el propio Runner) bajo
+  `$ErrorActionPreference = "Stop"` promueve cada línea de stderr a error terminante
+  (`NativeCommandError`) aunque el proceso haya salido en 0 — abortaba el script de caso
+  entero en vez de dejarlo reportarse como rojo. Los scripts de caso usan
+  `$ErrorActionPreference = "Continue"` y validan a mano con `$LASTEXITCODE`.
+- `Where-Object` con exactamente un resultado devuelve un objeto suelto, no un arreglo —
+  `.Count` sale `$null` y `$null -gt 0` es `$false`. `probar_humo.ps1` fuerza `@(...)` al
+  filtrar los casos fallidos; sin eso, un solo caso en rojo se reportaba como "todo verde".
+
+### Pendiente
+- Casos de humo 3-6 (crear OC en C# y Python, `ctx.form()`, `show_html`, `read_excel`,
+  timbrado en modo pruebas). El único que de verdad necesita una decisión de producto antes
+  de construirse es **crear OC**: usa `ctx.erp.NuevoDocumento`/`AgregarArticulo`/`Save`
+  (escritura vía XEngine, no SQL puro), justo la categoría que quedó pendiente de decisión
+  en T3.3 ("no habilitar escrituras de `ctx.erp` sin supervisión todavía"). `ctx.form()` y
+  `show_html` son diálogos pensados para un humano — su "humo" automatizado sería más débil
+  (solo confirmar que no truenan al invocarse, no que un humano los usó).
+- `Compare-Documento.ps1` generalizado (hoy solo existe la versión de `Entrenamiento/`,
+  apuntando a `.\COMPAC2022`/`Comercial_IA_Auditoria`) — no hace falta hasta el primer caso
+  que compare documentos contra un "documento dorado".
+
 ## `BrosLMV.Runner` v0.2.0 — Python headless (T3.3, 2026-07-30), sin versión de addon
 
 > El bloqueador que quedaba abierto en `BrosLMV.Runner`: los botones Python usan `UiPump`

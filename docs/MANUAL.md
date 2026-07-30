@@ -832,16 +832,23 @@ ctx.Msg("Cliente creado: BE=" + beId);
 
 ### 8.2 Producto
 
+> **Corregido (2026-07-30, harness T4.1):** la columna `ProductInventory` de abajo **no
+> existe** en `orgProduct` en la versión de Comercial instalada en `localhost\compac`
+> (confirmado con `sys.columns`; `ComercialSP` lo rechaza con `Invalid column name
+> 'ProductInventory'`). Se quitó del INSERT. Si tu versión de Comercial sí la trae, revisa
+> `sys.columns` antes de asumir que la receta de abajo aplica tal cual — el esquema de
+> `orgProduct` varía entre versiones.
+
 ```csharp
 int prodId = (int)(long)ctx.Scalar(@"
     INSERT INTO orgProduct (ProductKey, ProductName, ProductTypeID, TaxTypeID,
         Unit, ClaveUnidad, ObjetoImpuesto, ClaveProdServ,
-        ProductBuy, ProductSale, ProductInventory, UseLot, UseSerialNumber,
+        ProductBuy, ProductSale, UseLot, UseSerialNumber,
         CreatedBy, CreatedOn, UserID)
     OUTPUT INSERTED.ProductID
     VALUES ('PROD-001', 'Mi Producto', 1, 2,
         'PZA', 'H87', '02', '43231500',
-        1, 1, 1, 0, 0,
+        1, 1, 0, 0,
         " + ctx.UserID + @", GETDATE(), 0)");
 
 // Tablas satélite (dependen del ProductTypeID)

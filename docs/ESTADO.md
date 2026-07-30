@@ -39,6 +39,29 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — T4.1, arnés de humo, primer incremento)
+
+> Continuación directa de "dale a todo, ahora T4.1" el mismo día. No cambia la versión del
+> addon (sigue en **2.41.0**).
+
+**T4.1 — el sandbox ya existe y el arnés ya corre en verde, aunque solo con 2 de los 6 casos
+del plan original.** Sandbox: `ComercialSP` en `localhost\compac` (existía sin provisionar) —
+se provisionó con `instalador\sql\provision_empresa.sql` en vez de restaurar
+`Comercial_IA_Auditoria` (no existe en este servidor, sin backup a la mano — decisión del
+usuario). `build\probar_humo.ps1` corre cada caso de `build\humo\casos\*.ps1` y da un
+resumen verde/rojo; se probó tanto con el caso real (verde) como forzando un fallo (base de
+datos inexistente) para confirmar que sí reporta rojo quien corresponde.
+
+**Caso 1 (SQL headless)** y **caso 2 (alta de producto vía Python headless, `orgProduct` +
+satélites, sin `ctx.erp`)** ya están en verde. De paso se encontró y corrigió un error real
+en `MANUAL.md` §8.2 (columna `ProductInventory` que no existe en esta versión de Comercial).
+
+**Lo que falta de T4.1:** crear OC (C#/Python) — el único de los 6 casos que de verdad
+requiere una decisión de producto antes de construirse, porque usa `ctx.erp` de escritura
+(`NuevoDocumento`/`AgregarArticulo`/`Save`), la misma categoría que quedó pendiente de
+decidir en T3.3 (ver entrada de abajo). `ctx.form()`/`show_html`/`read_excel`/timbrado
+siguen sin diseñar.
+
 ## Estás aquí (2026-07-30, más tarde — `BrosLMV.Runner` v0.2.0, Python headless)
 
 > Continuación del "dale a todo" de abajo, mismo día. No cambia la versión del addon
