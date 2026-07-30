@@ -39,6 +39,27 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, más tarde — `BrosLMV.Runner` v0.2.0, Python headless)
+
+> Continuación del "dale a todo" de abajo, mismo día. No cambia la versión del addon
+> (sigue en **2.41.0** — este trabajo es 100% del prototipo `BrosLMV.Runner`).
+
+**T3.3 — el bloqueador grande que quedaba (Python headless) ya está resuelto y probado en
+vivo, no solo diseñado.** `UiPump` se extrajo de `ClsMain.cs` a `src\UiPump.cs` (sin
+cambiar su lógica) para poder reusarlo en el Runner: el hilo STA de `Main()` fabrica su
+propio "hilo de Comercial" con `Application.Run()` mientras un hilo aparte corre
+`HostClient.EjecutarPython(...)` (el mismo `HostClient.cs` que usa el addon, enlazado
+también en el Runner). Probado contra `EmpresaB` con el host real y scripts Python reales:
+`ctx.query`/`ctx.execute` funcionan de punta a punta; un script que truena falla limpio
+(exit 1, traceback, sin colgarse); **`ctx.erp` también responde headless** (pregunta
+abierta desde el hallazgo original de T3.3) — funciona, pero algunas propiedades de
+sesión salen vacías porque no hay un login real de Comercial detrás. **No se decidió
+habilitar escrituras de `ctx.erp` sin supervisión** — es una decisión de producto
+pendiente, ya no un bloqueo técnico.
+
+**Lo que queda de T3.3**: acciones de salida (Excel/PDF/SMTP) y receta de Task Scheduler —
+ninguno es un problema de arquitectura, son features nuevas sobre una base ya probada.
+
 ## Estás aquí (2026-07-30 — v2.41.0)
 
 > Barrido completo de "qué falta" a pedido del usuario ("dale a todo"). Las 4 fuentes

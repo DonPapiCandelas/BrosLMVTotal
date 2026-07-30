@@ -8,6 +8,51 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## `BrosLMV.Runner` v0.2.0 — Python headless (T3.3, 2026-07-30), sin versión de addon
+
+> El bloqueador que quedaba abierto en `BrosLMV.Runner`: los botones Python usan `UiPump`
+> para regresar al "hilo de Comercial" en cada `ctx.query`/`ctx.erp` -- fuera de Comercial
+> ese hilo no existe. Resuelto: `UiPump` se extrajo de `ClsMain.cs` a su propio archivo
+> (`src\UiPump.cs`, sin cambiar su lógica) para poder reusarlo también en el Runner, que
+> ahora fabrica su propio "hilo de Comercial" -- un hilo STA que corre `Application.Run()`
+> mientras un hilo aparte hace el trabajo real, exactamente el mismo patrón que
+> `ClsMain.cs` ya usaba (ahí el hilo que bombea es el de Comercial mismo; aquí es el propio
+> `Main()`).
+
+### Agregado
+- `src\UiPump.cs` (nuevo, extraído de `ClsMain.cs` sin cambios de lógica) — enlazado
+  también en `runner\BrosLMV.Runner.csproj`, junto con `HostClient.cs` (mismo cliente del
+  canal v3.0 que usa el addon para botones Python: mismo protocolo, mismo
+  `CtxSqlRunner`/`CtxErpRunner`, sin reescribir nada).
+- `EjecutarPythonHeadless()` en `runner\Program.cs`: crea la bomba `UiPump` en el hilo STA
+  de `Main()`, lanza `HostClient.EjecutarPython(...)` en un hilo aparte, y bombea mensajes
+  con `Application.Run()` hasta que ese hilo termina (`Application.ExitThread()`, mandado
+  de vuelta por la propia bomba). El resultado (`HostClient.Resultado`) se traduce al mismo
+  formato de salida que ya usan las ramas SQL/C#.
+- **Probado en vivo contra `EmpresaB`, con el host real (`BrosLMV.Host.exe`) y scripts
+  Python reales insertados en `zzBrosScript`:**
+  - `ctx.query`/`ctx.execute` funcionan headless de punta a punta (resultado real
+    regresado por el pipe, verificado byte por byte).
+  - Un script que lanza una excepción falla limpio (exit code 1, traceback completo,
+    sin colgarse — nada de mensajes bloqueantes esperando input que nunca llega).
+  - **`ctx.erp` TAMBIÉN responde headless** — pregunta abierta desde que se descubrió el
+    bootstrap standalone de XEngine (T3.3 original). Se confirma que el mecanismo
+    funciona (`ctx.erp.ComercialRFC()`/`ctx.erp.UserId()` no truenan), pero **algunas
+    propiedades de sesión quedan vacías** (`ComercialRFC=""`, `UserId=0` en las pruebas)
+    porque el bootstrap standalone no inicia una sesión de usuario real como lo haría
+    Comercial. **Recomendación, no implementada:** no habilitar escrituras de `ctx.erp`
+    (`NuevoDocumento`, `Save`, etc.) sin supervisión hasta decidir cómo poblar esas
+    propiedades o si vale la pena — un job desatendido con permiso de escritura sigue
+    siendo más riesgoso que un botón que un humano ve antes de confirmar.
+
+### Pendiente (lo que queda de T3.3)
+- Acciones de salida (guardar Excel/PDF, SMTP) — no implementado.
+- Receta/documentación de Task Scheduler — no implementado.
+- Decidir formalmente si/cómo habilitar `ctx.erp` de escritura headless (ver hallazgo de
+  arriba) — es una decisión de producto, no solo técnica.
+
+---
+
 ## T4.2 — CI ligero (2026-07-30), sin versión de addon
 
 > Infraestructura del repo, no del producto — no toca `src/` ni `AssemblyVersion`.

@@ -26,10 +26,17 @@
 
   <ItemGroup>
     <!-- Mismo motor que el addon (ScriptContext, Com, Conexion, ScriptRunner) y
-         auditoria/rutas, enlazados desde src\ (NO copiados) para que nunca diverjan. -->
+         auditoria/rutas, enlazados desde src\ (NO copiados) para que nunca diverjan.
+         HostClient.cs + UiPump.cs: mismo cliente del canal v3.0 que usa ClsMain.cs para
+         botones Python, necesario para Python headless (T3.3). HostClient.cs referencia
+         WebView2 (para ctx.show_html), pero esa ruta nunca se ejecuta en el Runner (scripts
+         job-safe no deberian llamarla); se enlaza igual porque es el mismo archivo fuente,
+         sin bifurcar el motor. -->
     <Compile Include="..\src\Rutas.cs" Link="Rutas.cs" />
+    <Compile Include="..\src\UiPump.cs" Link="UiPump.cs" />
     <Compile Include="..\src\Scripting.cs" Link="Scripting.cs" />
     <Compile Include="..\src\Datos.cs" Link="Datos.cs" />
+    <Compile Include="..\src\HostClient.cs" Link="HostClient.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 
@@ -37,6 +44,15 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
+    <!-- Requeridos por HostClient.cs (mismo archivo que usa el addon) -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+    <PackageReference Include="Google.Protobuf" Version="3.28.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.68.1" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Genera el C# del contrato en cada build (el codigo generado vive en obj, no se versiona). -->
+  <ItemGroup>
+    <Protobuf Include="..\protocol\broslmv.proto" ProtoRoot="..\protocol" GrpcServices="None" Access="Public" />
   </ItemGroup>
 
   <ItemGroup>

@@ -381,11 +381,29 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
   - `HashSHA256` no coincide (modificado por fuera de la Consola): **BLOQUEA** (exit 7) y registra `Origen='runner-integridad'`, `Estado='ERROR'` en la auditoría — a diferencia de `ClsMain.cs` (donde el usuario ve el MensajeBox y decide seguir), headless no hay nadie mirando, así que aquí el mismatch DETIENE la ejecución en vez de solo avisar.
   - `ExigirAprobacion` activa y sin aprobar: **BLOQUEA** (exit 6), sin ejecutar ni auditar (igual que `ClsMain.cs`).
   - Los 3 escenarios se probaron con datos de prueba insertados y borrados en la misma sesión — no quedó nada en la BD real.
+- **Python headless (2026-07-30): ✅ HECHO y probado en vivo con el host real.**
+  `UiPump` se extrajo de `ClsMain.cs` a `src\UiPump.cs` (sin cambiar su lógica) para
+  reusarlo en el Runner: el hilo STA de `Main()` crea la bomba y corre `Application.Run()`
+  mientras un hilo aparte llama a `HostClient.EjecutarPython(...)` (mismo `HostClient.cs`
+  que usa el addon, enlazado también aquí) — exactamente el mismo patrón que `ClsMain.cs`
+  ya usaba (ahí el hilo que bombea es el de Comercial; aquí es el propio `Main()`). Ver
+  `EjecutarPythonHeadless()` en `runner\Program.cs`.
+  - Probado contra `EmpresaB` con scripts Python reales insertados en `zzBrosScript`:
+    `ctx.query`/`ctx.execute` funcionan de punta a punta; un script que lanza una excepción
+    falla limpio (exit 1, traceback completo, sin colgarse).
+  - **`ctx.erp` TAMBIÉN responde headless** (pregunta que quedó abierta desde el hallazgo
+    original) — el mecanismo funciona, pero algunas propiedades de sesión salen vacías
+    (`ComercialRFC=""`, `UserId=0` en las pruebas) porque el bootstrap standalone no arranca
+    una sesión de usuario real. **Recomendación (no una decisión tomada):** no habilitar
+    escrituras de `ctx.erp` sin supervisión todavía — el mecanismo ya no es el obstáculo,
+    pero sigue siendo una decisión de producto, no solo técnica.
 - **Pendiente (no implementado aún):**
-  - Python headless: el camino actual de `ctx` Python usa `UiPump` para regresar al hilo de Comercial, que no existe en modo headless — requiere su propio diseño, no incluido en este prototipo.
-  - Decidir si `ctx.erp`/grid se habilitan headless dado el hallazgo de arriba, o si se deja bloqueado por diseño (ver riesgo abajo) hasta probarlo a fondo con un script real que escriba.
+  - Decidir formalmente si/cómo habilitar escrituras de `ctx.erp` headless (ver hallazgo de arriba).
   - Acciones de salida (guardar Excel/PDF a `--salida`, SMTP) y receta de Task Scheduler — el prototipo hoy solo ejecuta y devuelve texto/exit code.
-- **Esfuerzo restante: M. Riesgo: medio** — bajó de XL porque el bloqueador principal (obtener XEngine sin Comercial) ya está resuelto **y probado en vivo** contra una BD real; el riesgo que queda es de alcance (decidir `ctx.erp` headless con cuidado — un job desatendido con permisos de escritura es más peligroso que un botón que un humano ve antes de confirmar) y de features de salida (Excel/PDF/SMTP, Task Scheduler).
+- **Esfuerzo restante: S-M. Riesgo: medio** — los dos bloqueadores técnicos (XEngine sin
+  Comercial, Python headless) ya están resueltos y probados en vivo; lo que queda es
+  alcance de producto (`ctx.erp` de escritura) y features de salida (Excel/PDF/SMTP, Task
+  Scheduler), no arquitectura.
 - **Criterio:** REPORTE_EJECUTIVO generado y enviado por correo sin sesión de Comercial abierta.
 
 ---

@@ -29,24 +29,32 @@
 // (Rutas.ConnStr(), configurada por el instalador) -- así no hay que duplicar credenciales
 // para el modo headless.
 //
-// Alcance v0 (prototipo): solo scripts 'sql' y 'csharp'. Python (host fuera de proceso) queda
-// pendiente -- ese camino usa UiPump para regresar al hilo de Comercial, que aquí no existe.
+// v0.2.0: Python headless (T3.3) -- corre BrosLMV.Host.exe como en Comercial, pero la bomba
+// de marshaling (UiPump) vive en el propio hilo STA de Main() en vez del hilo de Comercial.
+// Ver EjecutarPythonHeadless() para el porqué (Application.Run()/ExitThread(), no solo Invoke).
+// Probado en vivo: ctx.query/ctx.execute funcionan; ctx.erp TAMBIÉN responde headless (el
+// bootstrap standalone crea un XEngine real), pero sin sesión de Comercial algunas propiedades
+// quedan vacías (ComercialRFC="", UserId=0 en las pruebas) -- ver CHANGELOG.md para el detalle
+// y la recomendación de NO habilitar escrituras de ctx.erp sin supervisión adicional todavía.
 
 using System;
 using System.Data.SqlClient;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Threading;
+using System.Windows.Forms;
 
 // Prototipo T3.3 -- aún no se distribuye con el instalador; versión propia, independiente
-// de BrosLMVClsMain.dll (que sí va en 2.36.0).
-[assembly: AssemblyVersion("0.1.0.0")]
+// de BrosLMVClsMain.dll.
+[assembly: AssemblyVersion("0.2.0.0")]
 [assembly: AssemblyTitle("BrosLMV.Runner - Programador headless (prototipo T3.3)")]
 
 namespace BrosLMV.Runner
 {
     internal static class Program
     {
+        [STAThread] // requerido por UiPump (crea un Form) y por HostClient.RenderUiHtml si algún dia se usa
         private static int Main(string[] args)
         {
             string appKey = null, connOverride = null, bd = null;
@@ -151,20 +159,25 @@ namespace BrosLMV.Runner
                 }
             }
 
-            bool esSql;
+            bool esSql = false, esPython = false;
             if (!string.IsNullOrEmpty(codigo))
             {
-                esSql = EsSql(codigo);
+                esPython = HostClient.EsPython(codigo);
+                if (!esPython) esSql = HostClient.EsSql(codigo);
             }
             else
             {
-                esSql = false;
                 foreach (var dir in new[] { Rutas.ScriptsDe(emp), Rutas.Scripts })
                 {
-                    foreach (var ext in new[] { ".sql", ".ctx", ".csx" })
+                    foreach (var ext in new[] { ".py", ".sql", ".ctx", ".csx" })
                     {
                         string p = Path.Combine(dir, appKey + ext);
-                        if (File.Exists(p)) { codigo = File.ReadAllText(p); esSql = ext == ".sql"; break; }
+                        if (File.Exists(p))
+                        {
+                            codigo = File.ReadAllText(p);
+                            esPython = ext == ".py"; esSql = ext == ".sql";
+                            break;
+                        }
                     }
                     if (!string.IsNullOrEmpty(codigo)) break;
                 }
@@ -174,11 +187,6 @@ namespace BrosLMV.Runner
             {
                 Console.Error.WriteLine("AppKey desconocido: " + appKey + " (no está en zzBrosScript de \"" + emp + "\" ni como archivo).");
                 return 3;
-            }
-            if (EsPython(codigo))
-            {
-                Console.Error.WriteLine("\"" + appKey + "\" es un script Python -- BrosLMV.Runner aún no lo soporta (solo SQL/C#).");
-                return 4;
             }
             if (!TieneMarcaJobSafe(codigo))
             {
@@ -195,6 +203,11 @@ namespace BrosLMV.Runner
                 try { res = ctx.EjecutarSql(codigo); }
                 catch (Exception ex) { res = "ERROR: " + ex.Message; }
             }
+            else if (esPython)
+            {
+                origen = "runner-python";
+                res = EjecutarPythonHeadless(codigo, ctx, appKey, emp, userId);
+            }
             else
             {
                 origen = "runner-csharp";
@@ -202,7 +215,7 @@ namespace BrosLMV.Runner
             }
             sw.Stop();
 
-            bool error = esSql ? res.StartsWith("ERROR", StringComparison.Ordinal) : res != "";
+            bool error = (esSql || esPython) ? res.StartsWith("ERROR", StringComparison.Ordinal) : res != "";
             try
             {
                 Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), userId, appKey,
@@ -255,41 +268,62 @@ namespace BrosLMV.Runner
             return xe;
         }
 
-        // Mismo criterio de detección que HostClient.EsPython/EsSql (no se enlaza HostClient.cs
-        // completo aquí para no arrastrar WebView2/Protobuf a un ejecutable de consola).
         private const int LineasCabeceraARevisar = 10;
 
-        private static bool EsPython(string codigo)
+        // Corre un script Python vía BrosLMV.Host.exe, igual que ClsMain.cs lo hace para un
+        // botón dentro de Comercial -- misma clase HostClient, mismo protocolo. La diferencia
+        // real: ClsMain.cs manda esto a Task.Run() y deja el hilo de Comercial LIBRE para
+        // seguir bombeando sus propios mensajes (así UiPump.Invoke, llamado desde el hilo de
+        // fondo, se marshala sin bloquear nada). Aquí no hay "hilo de Comercial" que ya esté
+        // bombeando solo -- hay que fabricarlo: el hilo STA de Main() crea la bomba (Form
+        // invisible) y corre Application.Run() para bombear sus mensajes, MIENTRAS un hilo
+        // aparte hace el trabajo real (EjecutarPython, que bloquea esperando al host). Cuando
+        // ese hilo termina, se manda Application.ExitThread() DE VUELTA por la bomba (para que
+        // se ejecute en el hilo correcto) y Application.Run() regresa.
+        private static string EjecutarPythonHeadless(string codigo, ScriptContext ctx, string appKey, string emp, int userId)
         {
-            int revisadas = 0;
-            foreach (var raw in codigo.Split('\n'))
+            var hctx = new HostClient.Contexto
             {
-                string line = raw.Trim();
-                if (line.Length == 0) continue;
-                string low = line.ToLowerInvariant();
-                if (low.Contains("broslmv:python") || low.StartsWith("#py")
-                    || low.StartsWith("# lang: python") || low.StartsWith("#lang:python"))
-                    return true;
-                if (++revisadas >= LineasCabeceraARevisar) break;
-            }
-            return codigo.Contains("from broslmv import ctx");
+                AppKey = appKey,
+                Empresa = emp,
+                Servidor = SafeServidor(ctx),
+                BaseDatos = emp,
+                UserId = userId,
+                ModuleId = SafeModulo(ctx),
+                Language = "python",
+                SelectedIds = new long[0], // headless: no hay grid ni selección de Comercial
+                SoloLectura = ctx.SoloLectura,
+            };
+            int timeoutMs = HostClient.TimeoutMsFromHeader(codigo);
+
+            UiPump.Asegurar(); // crea el Form invisible EN ESTE hilo (STA) -- antes de lanzar el hilo de trabajo
+
+            HostClient.Resultado resultado = null;
+            Exception excepcionHilo = null;
+            var hiloTrabajo = new Thread(() =>
+            {
+                try
+                {
+                    resultado = HostClient.EjecutarPython(codigo, hctx, timeoutMs: timeoutMs,
+                        sqlRunner: new CtxSqlRunner(ctx), erpRunner: new CtxErpRunner(ctx));
+                }
+                catch (Exception ex) { excepcionHilo = ex; }
+                finally { UiPump.Invoke(() => Application.ExitThread()); }
+            });
+            hiloTrabajo.IsBackground = true;
+            hiloTrabajo.Start();
+            Application.Run(); // bombea mensajes (incluyendo los Invoke de ctx.query/ctx.erp) hasta ExitThread()
+            hiloTrabajo.Join();
+
+            if (excepcionHilo != null) return "ERROR: " + excepcionHilo.Message;
+            if (resultado == null) return "ERROR: BrosLMV.Host no devolvió resultado.";
+            if (!resultado.Exito)
+                return "ERROR: " + resultado.MensajeError + (string.IsNullOrEmpty(resultado.Detalle) ? "" : "\n" + resultado.Detalle);
+            return resultado.Valor ?? "";
         }
 
-        private static bool EsSql(string codigo)
-        {
-            int revisadas = 0;
-            foreach (var raw in codigo.Split('\n'))
-            {
-                string line = raw.Trim();
-                if (line.Length == 0) continue;
-                string low = line.ToLowerInvariant();
-                if (low.Contains("broslmv:sql") || low.StartsWith("--sql")
-                    || low.StartsWith("-- lang: sql") || low.StartsWith("# lang: sql") || low.StartsWith("#sql"))
-                    return true;
-                if (++revisadas >= LineasCabeceraARevisar) break;
-            }
-            return false;
-        }
+        private static string SafeServidor(ScriptContext ctx) { try { return ctx.ServidorActivo(); } catch { return ""; } }
+        private static int SafeModulo(ScriptContext ctx) { try { return ctx.ModuloActivo(); } catch { return 0; } }
 
         // Marcador de seguridad de T3.3: un script solo corre headless si declara explícitamente
         // que es seguro correrlo sin supervisión (sin Comercial abierto, sin usuario viendo el
