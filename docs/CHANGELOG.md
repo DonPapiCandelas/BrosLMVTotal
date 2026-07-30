@@ -8,6 +8,38 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## T1.1 paso 5 — de-duplicar `xlsx.bundle.js` en los reportes reales (2026-07-30), sin versión de addon
+
+> No toca `src/` ni `BrosLMVClsMain.dll` — son cambios a scripts que viven en
+> `C:\BrosLMV\scripts\` (runtime, no en este repo), así que no aplica un `AssemblyVersion`
+> nuevo. Se documenta aquí por trazabilidad, siguiendo la regla de oro del proyecto.
+
+Al revisar los 4 reportes candidatos a `ctx.dashboard()` (T1.1 paso 5) se encontró que
+ninguno encaja ya en el widget genérico: `ReporteXVehiculo` se reconstruyó el 2026-07-29
+como reporte semanal a la medida (sin Excel); los otros 3 tienen semáforo, calendario y
+apertura de documento. Forzarlos al widget genérico habría sido una regresión. Se aplicó
+en su lugar la guía ya existente para dashboards a la medida (`DASHBOARDS_HTML.md` §4):
+solo las librerías compartidas pesadas deben vivir en `C:\BrosLMV\lib\dashboard\`.
+
+### Corregido
+- `CUENTAS_POR_COBRAR.py`/`CUENTAS_POR_PAGAR.py`/`SEGUIMIENTO_OC.py` (empresa
+  `GRUPOMETALMECANICA`): ya no inlinean su propia copia de `xlsx.bundle.js` (425 KB cada
+  una, ~1.2 MB duplicados en total, confirmado byte-idéntico contra la copia compartida
+  antes de borrarlas). Sus `index_template.html` ahora cargan
+  `<script src="https://broslmv.local/dashboard/xlsx.bundle.js">` — el mismo mecanismo que
+  ya usa `ctx.dashboard()` desde v2.34.0.
+- **Probado**: arnés en navegador confirmó que `XLSX` cargado así genera un `.xlsx` real
+  (16,255 bytes de prueba, sin errores de consola) — funcionalmente idéntico a inlinearlo.
+- `ReporteXVehiculo` (`GGV_DE_MEXICO_2025`) ya no tenía este problema — su reconstrucción
+  no usa Excel. La carpeta vieja `GGV_DE_MEXICO` (sin `_2025`) sigue con su copia local sin
+  tocar — parece huérfana (T0.5), no se tocó sin confirmar con el usuario primero.
+
+### Pendiente
+- Confirmar dentro de CONTPAQi real (probado en navegador aislado, no dentro de
+  WebView2/Comercial en vivo).
+
+---
+
 ## [2.41.0] — 2026-07-30 — Auditoría (empresa) en la Consola (T2.1) + Gestor de Ribbon al núcleo (T1.2)
 
 > Barrido de pendientes explícito a pedido del usuario ("revisa qué falta... dale a todo lo

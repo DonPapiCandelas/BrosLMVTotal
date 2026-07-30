@@ -164,14 +164,32 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T1.1 — `ctx.dashboard()`: helper de reportes WebView2 con assets compartidos ⭐ (mayor ROI)
 
-> **Estado (2026-07-29): pasos 1-4 y 6 implementados en v2.34.0**, detonado por un bug real
-> en producción de `ReporteXVehiculo` (ruta de assets con el nombre de empresa fijo a
-> mano — ver `CHANGELOG.md` [2.34.0] y `DASHBOARDS_HTML.md`). Falta el paso 5 (migrar
-> `ReporteXVehiculo` y los otros 3 reportes para que usen `ctx.dashboard()` en vez de su
-> propia carpeta `_assets\`) — el bug puntual ya está corregido (usa `ctx.empresa`), pero
-> sigue con su carpeta de assets propia hasta que se migre. **Sin probar en CONTPAQi real
-> todavía** — verificado con datos reales (hasta 3,000 filas) en navegador aislado, pero no
-> dentro de WebView2/Comercial en vivo.
+> **Estado (2026-07-30): pasos 1-4 y 6 en v2.34.0; paso 5 HECHO, pero NO como se planeó
+> originalmente — ver por qué abajo.** Al revisar los 4 reportes reales para migrarlos se
+> encontró que **ya no son candidatos para `ctx.dashboard()`** (el widget de tabla
+> genérica): `ReporteXVehiculo` se reconstruyó por completo el 2026-07-29 (antes de esta
+> revisión) en un reporte semanal a la medida (RENTAS/SERVICIOS/GASTOS/REFACCIONES por
+> día, replicando el Excel de control del cliente) sin export a Excel; los otros 3
+> (`CUENTAS_POR_COBRAR`, `CUENTAS_POR_PAGAR`, `SEGUIMIENTO_OC`) tienen semáforo de
+> vencimiento, calendario y botones "Ver documento" — funcionalidad que el widget genérico
+> de `ctx.dashboard()` no cubre. Forzarlos a la tabla genérica habría sido una
+> **regresión real** (perder funcionalidad ya construida y en uso), no una mejora.
+>
+> **Lo que sí aplicaba y sí se hizo** (el problema de fondo real de H5, no la solución
+> literal): `DASHBOARDS_HTML.md` §4 ya documentaba el camino correcto para reportes a la
+> medida — solo las **librerías compartidas pesadas** (`xlsx.bundle.js`, 425 KB) deben
+> vivir en `C:\BrosLMV\lib\dashboard\` y referenciarse vía
+> `https://broslmv.local/dashboard/xlsx.bundle.js`, nunca copiarse por reporte. Los 3
+> reportes de `CUENTAS_POR_*`/`SEGUIMIENTO_OC` sí tenían su propia copia local duplicada
+> (confirmado: bytes idénticos entre las 3 copias y la compartida) — se corrigió: se quitó
+> `xlsx.bundle.js` de sus 3 carpetas `_assets\` (~1.2 MB liberados) y su `index_template.html`
+> ahora apunta al `<script src>` compartido en vez de inlinearlo. `ReporteXVehiculo` (2025)
+> ya no tenía este problema — su reconstrucción no usa Excel, solo 3 archivos ligeros.
+> **Probado**: un arnés en navegador confirmó que `XLSX` cargado vía `<script src>` genera
+> un `.xlsx` real idéntico a como lo hacía inlineado (16,255 bytes, sin errores de consola).
+> **Sin probar dentro de CONTPAQi real todavía** — la carga vía `broslmv.local` ya está
+> probada en producción desde v2.34.0 (mismo mecanismo que usa `ctx.dashboard()`), pero el
+> cambio puntual en estos 3 reportes no se ha visto correr en Comercial en vivo.
 
 - **Qué:** abstraer el patrón "plantilla HTML + app.js + xlsx.bundle.js" en una sola librería del runtime y exponerlo como una llamada.
 - **Por qué (H5):** el patrón se repitió 4 veces con el mismo archivo de 425 KB copiado por reporte (~1.7 MB duplicados). El reporte #5 hoy nace copiando carpetas; con el helper nace con 50 líneas de Python. Es el caso de uso #1 del producto en producción (los 4 reportes vivos son dashboards).
@@ -180,11 +198,14 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
   2. ✅ `src/HostClient.cs` (`RenderUiHtml`): `SetVirtualHostNameToFolderMapping("broslmv.local", Rutas.Lib, Allow)`.
   3. ✅ `workers/python/broslmv/ctx.py`: `ctx.dashboard(title, data, columns=None, width=1000, height=700, modal=True)` — gzip+base64 automático (nunca choca con el límite de 2MB).
   4. ✅ **Sincronizadas las 3 copias de ctx.py** (repo + `C:\BrosLMV\workers\python\` + `C:\BrosLMV\host\workers\python\`).
-  5. ⏳ Migrar `ReporteXVehiculo` (EmpresaA) como piloto; si queda igual, migrar los otros 3. **Pendiente** — requiere probar en CONTPAQi real.
+  5. ✅ **Reinterpretado**: no se migró ningún reporte a `ctx.dashboard()` (ninguno de los 4
+     encaja ya en el widget genérico — ver banner de arriba). Se aplicó `DASHBOARDS_HTML.md`
+     §4 en su lugar: `CUENTAS_POR_COBRAR`/`CUENTAS_POR_PAGAR`/`SEGUIMIENTO_OC` ya no traen su
+     propia copia de `xlsx.bundle.js`, referencian la compartida.
   6. ✅ Documentado: `docs/DASHBOARDS_HTML.md` (guía completa nueva) + `MANUAL.md` §9.4 + referencia cruzada.
-- **Archivos:** `src/HostClient.cs`, `src/Rutas.cs`, `workers/python/broslmv/ctx.py`, `instalador\assets\dashboard\*`, `build\generar_instalador.ps1`, docs.
+- **Archivos:** `src/HostClient.cs`, `src/Rutas.cs`, `workers/python/broslmv/ctx.py`, `instalador\assets\dashboard\*`, `build\generar_instalador.ps1`, docs, y los scripts en `C:\BrosLMV\scripts\GRUPOMETALMECANICA\` (fuera del repo — runtime local).
 - **Esfuerzo: L. Riesgo: medio** (tocar el pipeline de show_html — probar con reporte real).
-- **Criterio de aceptación:** ReporteXVehiculo migrado funciona idéntico, sin `xlsx.bundle.js` en su carpeta de assets.
+- **Criterio de aceptación (reinterpretado):** ningún reporte de producción trae su propia copia de `xlsx.bundle.js` — logrado para los 3 que lo necesitaban; `ReporteXVehiculo` (2025) ya no usa Excel, no aplica.
 
 #### T1.2 — Gestor de ribbon como feature del núcleo
 
