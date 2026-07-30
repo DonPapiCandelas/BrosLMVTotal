@@ -1,0 +1,44 @@
+name: CI
+
+# T4.2 (docs/PLAN_IMPLEMENTACION.md): CI ligero, dos jobs.
+# 1) "regla-de-oro": la version actual (AssemblyVersion en src/ClsMain.cs) SIEMPRE debe
+#    tener su entrada en CHANGELOG.md y notas_version.html -- ver build/verificar_regla_de_oro.ps1.
+# 2) "build": compila addon + Runner (prototipo T3.3) + host v3.0, para que un error de
+#    compilacion nunca llegue a main sin que alguien lo note.
+# No compila los .csproj de instaladores/ (Empresas/Desinstalador) -- esos requieren el
+# addon YA empacado en instalador\bin (ver build/generar_exes.ps1); si hace falta cubrirlos
+# en CI mas adelante, hay que correr ese pipeline completo primero.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  regla-de-oro:
+    name: Guardian de la regla de oro
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar version vs CHANGELOG.md y notas_version.html
+        shell: pwsh
+        run: .\build\verificar_regla_de_oro.ps1
+
+  build:
+    name: Compilar addon + Runner + host
+    runs-on: windows-latest
+    needs: regla-de-oro
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+      - name: Compilar addon (BrosLMVClsMain.dll)
+        run: dotnet build src\BrosLMV.csproj -c Release
+      - name: Compilar Runner (prototipo T3.3, NO shipped en el instalador)
+        run: dotnet build runner\BrosLMV.Runner.csproj -c Release
+      - name: Compilar host v3.0
+        run: dotnet build host\BrosLMV.Host\BrosLMV.Host.csproj -c Release

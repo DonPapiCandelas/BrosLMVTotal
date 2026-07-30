@@ -405,10 +405,26 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T4.2 — CI ligero con guardián de la regla de oro
 
+> **Estado (2026-07-30): ✅ HECHO — versión reducida.** `.github\workflows\ci.yml`, dos
+> jobs: **regla-de-oro** (`build\verificar_regla_de_oro.ps1` — la versión actual en
+> `src\ClsMain.cs` SIEMPRE debe tener su entrada en `CHANGELOG.md` y `notas_version.html`;
+> probado local con un caso roto a propósito — falla correctamente) y **build** (compila
+> addon + `BrosLMV.Runner` + host v3.0 con los mismos comandos `dotnet build` que ya se
+> usaron a mano toda la sesión — probados localmente, 0 errores). **No incluye** compilar
+> los instaladores (`Empresas`/`Desinstalador` requieren el addon ya empacado en
+> `instalador\bin`, un pipeline de varios pasos — fuera de alcance de "CI ligero") ni
+> publicar `dist\` como artefacto. **Sin confirmar que corra de verdad en GitHub Actions**
+> (no hay forma de ver el resultado del workflow desde aquí — `gh` CLI no está disponible
+> en este entorno) — la evidencia es que los mismos comandos exactos ya se probaron en
+> local con éxito, en un entorno con las mismas piezas (.NET 8 SDK + paquete
+> `Microsoft.NETFramework.ReferenceAssemblies` para los proyectos net48, sin Visual Studio
+> completo instalado).
+
 - **Qué:** GitHub Actions: build de `src` + `host` + instaladores + verificación documental.
 - **Por qué:** la regla de oro se rompe por olvido humano (H6 lo demuestra). Un script de 30 líneas la hace cumplir sola.
 - **Cómo:** workflow que falla si cambia `AssemblyVersion` sin entrada correspondiente en `CHANGELOG.md` y `src/assets/notas_version.html`; compila todo; publica `dist\` como artefacto de release.
 - **Esfuerzo: M. Riesgo: nulo.**
+- **Pendiente:** confirmar en la pestaña Actions de GitHub que el workflow corre en verde; cubrir instaladores + publicar `dist\` si vale la pena el esfuerzo extra.
 
 #### T4.3 — Reducir bus factor
 

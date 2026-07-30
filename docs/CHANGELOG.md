@@ -8,6 +8,34 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ---
 
+## T4.2 — CI ligero (2026-07-30), sin versión de addon
+
+> Infraestructura del repo, no del producto — no toca `src/` ni `AssemblyVersion`.
+
+### Agregado
+- `.github\workflows\ci.yml`: dos jobs en cada push/PR a `main`.
+  - **regla-de-oro**: corre `build\verificar_regla_de_oro.ps1` — la versión actual del
+    addon (`src\ClsMain.cs`) siempre debe tener su entrada en `CHANGELOG.md` (`## [X.Y.Z]`)
+    y en `src\assets\notas_version.html` (`<h2>X.Y.Z</h2>`); si falta cualquiera, falla.
+  - **build**: compila `src\BrosLMV.csproj`, `runner\BrosLMV.Runner.csproj` y
+    `host\BrosLMV.Host\BrosLMV.Host.csproj` con `dotnet build -c Release`.
+- `build\verificar_regla_de_oro.ps1` — reusable también en local (`.\build\verificar_regla_de_oro.ps1`),
+  no depende de estar en GitHub Actions.
+- **Probado**: caso positivo (estado real del repo) pasa; caso negativo (versión cambiada
+  a mano a `9.9.9.0` sin tocar `CHANGELOG.md`/`notas_version.html`) falla con el mensaje
+  correcto — confirmado local antes de restaurar la versión real. Los 3 comandos `dotnet
+  build` del job "build" se corrieron en local con éxito (0 errores) antes de subir el
+  workflow.
+
+### Pendiente
+- **No se pudo confirmar que el workflow corra de verdad en GitHub Actions** — no hay `gh`
+  CLI disponible en este entorno para ver el resultado. Revisar la pestaña "Actions" del
+  repo después de este push.
+- No cubre compilar los instaladores (`Empresas`/`Desinstalador`, requieren el addon ya
+  empacado — pipeline de varios pasos) ni publicar `dist\` como artefacto de release.
+
+---
+
 ## T1.1 paso 5 — de-duplicar `xlsx.bundle.js` en los reportes reales (2026-07-30), sin versión de addon
 
 > No toca `src/` ni `BrosLMVClsMain.dll` — son cambios a scripts que viven en
