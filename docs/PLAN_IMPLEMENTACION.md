@@ -150,13 +150,15 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T0.5 — Archivar scripts de empresas ausentes
 
-> **Estado (2026-07-29): ⏳ PENDIENTE.** No se tocó esta sesión. Sigue sin confirmar con el
-> usuario si `EmpresaD` es un cliente activo en otro servidor antes de archivar nada.
-
-- **Qué:** mover `C:\BrosLMV\scripts\EmpresaD\` y `EmpresaC\` a `C:\BrosLMV\scripts\_archivo\` y registrar el inventario (D7) en `ESTADO.md`.
-- **Por qué (H4):** esas BDs no existen en este servidor; los scripts huérfanos confunden ("¿esto está vivo?") y el `.legacy` de EmpresaA igual. **No se borra nada** — solo se archiva y se documenta.
-- **Esfuerzo: XS. Riesgo: nulo** (si la BD vuelve, se des-archiva).
-- **Nota:** confirmar con el usuario antes — EmpresaD puede ser un cliente activo en OTRO servidor.
+> **Estado (2026-07-30): ✅ HECHO — pero BORRADO, no archivado, por decisión explícita del
+> usuario.** Se confirmó contra `sys.databases` cuáles carpetas de `C:\BrosLMV\scripts\` no
+> tienen base de datos en este servidor (4: dos nombres genéricos de prueba, y dos empresas
+> reales sanitizadas en docs públicas — una de ellas es la misma cuyo `GESTOR_RIBBON.py` se
+> promovió al núcleo en T1.2 de esta misma sesión). Se preguntó explícitamente si eran
+> clientes activos en otro servidor o carpetas viejas; el usuario respondió **"bórralas"**
+> (no "archívalas", que era la opción presentada) — se tomó la precaución extra de
+> respaldarlas primero en un `.zip` antes de borrar, por si acaso: <br>
+> `C:\BrosLMV\_respaldo_scripts_borrados_2026-07-30\scripts_huerfanos_2026-07-30.zip` (233 KB).
 
 ---
 

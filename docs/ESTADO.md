@@ -39,6 +39,37 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30 — v2.41.0)
+
+> Barrido completo de "qué falta" a pedido del usuario ("dale a todo"). Las 4 fuentes
+> (código, DLL empacado, DLL desplegado, GitHub) coinciden en **2.41.0** — verificado.
+
+- **T2.1 lectura ✅**: pestaña "Auditoría (empresa)" en el Historial de la Consola.
+- **T1.2 ✅**: `GESTOR_RIBBON.py` promovido al núcleo, con botón propio. **Ojo:** el botón
+  solo se dio de alta en la empresa de PRUEBA (`EmpresaB`) — la empresa real dueña del
+  script (sanitizada en docs) tiene su base en OTRO servidor, no en este; el botón se
+  creará ahí solo hasta que se actualice el addon en ESE servidor.
+- **T1.1 paso 5, reinterpretado ✅**: ningún reporte real encajaba ya en `ctx.dashboard()`
+  (se reconstruyeron con funcionalidad a la medida que el widget genérico no cubre). Se
+  aplicó la parte que sí seguía siendo válida: quitar `xlsx.bundle.js` duplicado (~1.2 MB)
+  de 3 reportes, apuntando a la copia compartida. Detalle completo en `CHANGELOG.md`.
+- **T0.4 descartado**: SA se queda, decisión explícita del usuario.
+- **T0.5 ✅ — pero BORRADO, no archivado**: se encontraron 4 carpetas de scripts sin base
+  de datos en este servidor (dos genéricas de prueba, dos empresas reales). Se preguntó
+  si eran clientes activos en otro servidor; el usuario respondió **"bórralas"**
+  explícitamente (no "archívalas"). Se respaldaron primero en
+  `C:\BrosLMV\_respaldo_scripts_borrados_2026-07-30\scripts_huerfanos_2026-07-30.zip`
+  (233 KB) antes de borrar, por si alguna resulta ser un cliente real que se necesite
+  recuperar después.
+
+**Lo que queda de la lista original:**
+- **T3.3 (`BrosLMV.Runner`)**: Python headless, decidir `ctx.erp`/grid sin supervisión,
+  salida Excel/PDF/SMTP, receta de Task Scheduler. Sigue sin tocar esta sesión.
+- **T4.1/T4.2**: sin pruebas automatizadas ni CI — sigue siendo un proyecto aparte, no
+  arrancado.
+- **T2.2**: modo solo-lectura por usuario — no empezado.
+- **T3.1/T3.2**: no-code — explícitamente descartado por el usuario por ahora.
+
 ## Estás aquí (2026-07-29, noche — v2.40.0)
 
 > Continuación de la entrada de abajo (v2.36.0 + `BrosLMV.Runner`), mismo día. Las 4 fuentes
