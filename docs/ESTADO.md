@@ -39,6 +39,62 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-29, noche — v2.40.0)
+
+> Continuación de la entrada de abajo (v2.36.0 + `BrosLMV.Runner`), mismo día. Las 4 fuentes
+> (código, DLL empacado, DLL desplegado en `C:\BrosLMV\bin`, GitHub) coinciden en **2.40.0**
+> al cierre de esta entrada — verificado, no solo asumido.
+
+**Entregado, verificado en vivo con arneses de prueba reales (no solo compilación), y
+documentado version por version en [`CHANGELOG.md`](CHANGELOG.md):**
+
+- **T1.3 — Paquetes `.bros` (v2.37.0).** Exportar/importar un botón (script + assets) entre
+  empresas o equipos. Clic derecho → "Exportar paquete (.bros)…"; toolbar → "Importar
+  paquete…". El botón del ribbon NO se crea solo (copia el SQL al portapapeles a propósito).
+- **Árbol de scripts (v2.38.0 → v2.39.1).** Se intentó agrupar por módulo de Comercial
+  primero — **el usuario lo rechazó al probarlo** ("va a ser muy difícil de clasificar"), se
+  revirtió en la misma sesión. Lo que quedó: **★ Favoritos** y **🕐 Recientes** (se revivió
+  código que ya existía en `Datos.cs` y nunca se había conectado a la UI), **Categoría**
+  manual (texto libre que el usuario escribe con "Categorizar…", agrupa los scripts en vez
+  del módulo), y **todo el árbol contraído por default** (Favoritos/Recientes/Scripts/
+  Plantillas). Un bug real en el camino: un `_tree.ExpandAll()` residual, escondido en el
+  handler `Shown`, pisaba el nuevo default — el usuario lo detectó en un screenshot, se
+  corrigió en v2.39.1. **Importante: la Categoría aplica a los scripts propios del usuario
+  (`zzBrosScript`), NO a la lista de "Plantillas" (los ejemplos hardcodeados del producto) —
+  esas siguen siendo una lista plana sin agrupar. Ver "qué falta" más abajo.**
+- **T1.4 — Historial de versiones (v2.40.0).** Clic derecho → "Historial de versiones…":
+  diff línea por línea (LCS, sin librerías) contra el código de hoy, restaurar (reversible —
+  usa el mismo `BrosGuardar` que ya respalda), etiquetar una versión, exportar una versión
+  vieja como `.bros`, y purgar versiones sin etiqueta más viejas que N días (las etiquetadas
+  nunca se borran). Bono: el historial ahora muestra el nombre real de usuario
+  (`engUser.UserName`), no solo el ID.
+- **Push a GitHub hecho** (commit `de68c31`) — todo lo de arriba ya está en
+  `github.com/DonPapiCandelas/BrosLMVTotal`, rama `main`.
+
+**Qué falta (repasado explícitamente a pedido del usuario, 2026-07-29 noche):**
+- **T1.1, paso 5**: migrar `ReporteXVehiculo` y los otros 3 reportes a `ctx.dashboard()`
+  (el bug puntual ya está corregido, pero siguen con su carpeta `_assets` propia) — y
+  **probar `ctx.dashboard()` dentro de CONTPAQi real**, todavía sin confirmar por el usuario.
+- **T1.2**: Gestor de ribbon al núcleo (crear un botón sin SQL a mano) — no empezado.
+- **T2.1**: falta la UI en la Consola para LEER `zzBrosAuditoria` (hoy solo hay escritura +
+  `SELECT` directo).
+- **T2.2**: modo solo-lectura por usuario (`zzBrosPref`) — no empezado.
+- **T0.4/T0.5**: higiene de credenciales (sigue usando SA) y archivar scripts huérfanos — no
+  se han tocado en toda la sesión.
+- **T3.3 (`BrosLMV.Runner`)**: sigue como prototipo, no shipped en el instalador. Falta
+  Python headless, decidir `ctx.erp`/grid sin supervisión, salida Excel/PDF/SMTP, receta de
+  Task Scheduler.
+- **Posible gap nuevo, sin decidir todavía**: ¿vale la pena agrupar/organizar también la
+  lista de "Plantillas" (hoy plana, ~15 items) igual que se hizo con los scripts del
+  usuario? No se ha preguntado ni implementado — el usuario mencionó "categorías en las
+  plantillas" en una revisión y puede que se refiera a esto.
+- **T4.1/T4.2**: sin pruebas automatizadas ni CI — todo lo de esta sesión se validó con
+  arneses de prueba manuales (`.temp_tests`-style, fuera del repo) corridos a mano contra
+  una BD real antes de cada entrega. Funciona, pero no queda como suite reutilizable.
+- **Regla de rama en GitHub**: "Changes must be made through a pull request" sigue
+  bypasseándose automáticamente en cada push por privilegio de admin — sigue sin resolverse
+  si eso es intencional o hay que ajustar la protección de rama.
+
 ## Estás aquí (2026-07-29, tarde — v2.36.0 + prototipo `BrosLMV.Runner`)
 
 > Sesión larga, mismo día que la entrada de abajo (v2.34.0). Resumen para quien retome esto
@@ -395,8 +451,10 @@ DocumentID 11556–11560 (órdenes de compra). Scripts en `/.temp_tests`: `f1_or
   Ver detalle completo en la entrada "Estás aquí" de arriba y en `PLAN_IMPLEMENTACION.md`
   §T3.3. Falta: Python headless, decidir `ctx.erp`/grid sin supervisión, salida
   Excel/PDF/SMTP, receta de Task Scheduler.
-- **`.bros` packages** (export/import de scripts con manifiesto + huella por hash) — próximo
-  en la cola según el orden que fijó el usuario, todavía sin empezar.
+- ✅ **`.bros` packages** (T1.3, v2.37.0, HECHO) y ✅ **Historial de versiones** (T1.4,
+  v2.40.0, HECHO) — ver CHANGELOG. Árbol de scripts rediseñado (favoritos/recientes/
+  categoría manual, todo contraído) en v2.38.0-v2.39.1.
+- **T1.2 — Gestor de ribbon al núcleo** (crear un botón sin SQL a mano) — sin empezar.
 - ✅ **T2.3 integridad de scripts** (v2.35.0, HECHO) y **T2.1 auditoría central** (v2.36.0,
   HECHO) — ver CHANGELOG. Falta UI en la Consola para leer `zzBrosAuditoria` (hoy solo
   escritura + `SELECT` directo).
