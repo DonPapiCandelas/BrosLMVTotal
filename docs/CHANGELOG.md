@@ -52,14 +52,36 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   `.Count` sale `$null` y `$null -gt 0` es `$false`. `probar_humo.ps1` fuerza `@(...)` al
   filtrar los casos fallidos; sin eso, un solo caso en rojo se reportaba como "todo verde".
 
-### Pendiente
-- Casos de humo 3-6 (crear OC en C# y Python, `ctx.form()`, `show_html`, `read_excel`,
-  timbrado en modo pruebas). El único que de verdad necesita una decisión de producto antes
-  de construirse es **crear OC**: usa `ctx.erp.NuevoDocumento`/`AgregarArticulo`/`Save`
-  (escritura vía XEngine, no SQL puro), justo la categoría que quedó pendiente de decisión
-  en T3.3 ("no habilitar escrituras de `ctx.erp` sin supervisión todavía"). `ctx.form()` y
-  `show_html` son diálogos pensados para un humano — su "humo" automatizado sería más débil
-  (solo confirmar que no truenan al invocarse, no que un humano los usó).
+### Agregado (caso 3, mismo día)
+- `build\humo\casos\03_crear_oc.ps1` + `03_crear_oc.codigo.cs` — tercer caso: **crear OC
+  vía `ctx.erp` de ESCRITURA headless** (`NuevoDocumento`/`AgregarArticulo`/`RecalcCompleto`/
+  `AffectStockNEW`/`Save`, receta de `MANUAL.md` §7.5), primera prueba real de esto desde
+  que se dejó pendiente en T3.3. **Funciona:** se creó un `docDocument` real
+  (`DocumentTypeID=40`, `ModuleID=183`, `Total` con IVA calculado correctamente por
+  `RecalcCompleto`) sin Comercial abierto. No es idempotente por diseño (cada corrida crea
+  una OC nueva); el caso valida contando documentos antes/después, no buscando uno fijo.
+  Solo se corrió contra `ComercialSP` (sandbox desechable), nunca contra una empresa de
+  cliente real.
+- **Import­ante — evitar `ctx.Msg()` en scripts headless:** `ctx.Msg()` llama
+  `MessageBox.Show(...)` — bloquea para siempre en el Runner porque no hay nadie para
+  cerrar el diálogo. Las recetas de `MANUAL.md` (pensadas para botones dentro de Comercial)
+  lo usan para mostrar resultados; los casos de humo devuelven el resultado con
+  `return "..."` (que el Runner ignora para C#, solo usa `res != ""` como señal de error) y
+  se verifican por SQL desde el `.ps1`, no por el texto que el script "muestra".
+- **Dos errores más de `MANUAL.md` encontrados construyendo este caso**, corregidos en el
+  manual: §8.1 (cliente/proveedor) usaba `BusinessEntityName` y `FiscalRegimeID`, ninguna
+  existe en `orgBusinessEntity` en esta versión de Comercial — mismo patrón que el error de
+  `ProductInventory` en §8.2 (caso 2). El nombre real va en `CommercialName`.
+
+### Aún pendiente
+- Casos de humo 4-6 (`ctx.form()`, `show_html`, `read_excel`, timbrado en modo pruebas).
+  `ctx.form()`/`show_html` son diálogos pensados para un humano — su "humo" automatizado
+  sería más débil (solo confirmar que no truenan al invocarse, no que un humano los usó).
+- **La decisión de producto de T3.3 sigue sin tomarse formalmente** ("¿habilitar
+  escrituras de `ctx.erp` sin supervisión en jobs programados contra empresas reales?") —
+  este caso demuestra que el MECANISMO funciona (headless, sin Comercial), pero eso es
+  evidencia para la decisión, no la decisión en sí. Sigue siendo alcance de producto:
+  ¿qué botones, con qué revisión, contra qué empresas?
 - `Compare-Documento.ps1` generalizado (hoy solo existe la versión de `Entrenamiento/`,
   apuntando a `.\COMPAC2022`/`Comercial_IA_Auditoria`) — no hace falta hasta el primer caso
   que compare documentos contra un "documento dorado".

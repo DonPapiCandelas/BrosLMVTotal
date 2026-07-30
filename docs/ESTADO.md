@@ -39,6 +39,25 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — T4.1, caso 3: `ctx.erp` de escritura SÍ funciona headless)
+
+> Continuación directa de la entrada de abajo, mismo día.
+
+**Se construyó y probó el caso 3 del arnés de humo: crear una OC completa
+(`ctx.erp.NuevoDocumento`/`AgregarArticulo`/`RecalcCompleto`/`AffectStockNEW`/`Save`) sin
+Comercial abierto, contra el sandbox `ComercialSP`.** Funcionó de punta a punta: se creó un
+`docDocument` real (`DocumentTypeID=40`, `ModuleID=183`, `Total` con IVA 16% calculado
+correctamente). Esto responde, con evidencia real y no solo teoría, la pregunta que quedó
+abierta en T3.3: el MECANISMO de escrituras `ctx.erp` headless funciona. **La decisión de
+producto sigue sin tomarse** — si/cómo habilitar esto en jobs programados contra empresas de
+clientes reales sigue pendiente; lo de hoy solo se corrió en el sandbox desechable.
+
+**Gotcha real encontrado:** `ctx.Msg()` bloquea para siempre en el Runner (llama
+`MessageBox.Show`, sin nadie headless para cerrarlo) — los scripts de humo usan
+`return "..."` en vez de `ctx.Msg()` y se verifican por SQL desde el `.ps1`, documentado en
+`CHANGELOG.md`. De paso se corrigieron 2 errores más en `MANUAL.md` (§8.1: columnas
+`BusinessEntityName`/`FiscalRegimeID` que no existen en esta versión de Comercial).
+
 ## Estás aquí (2026-07-30, aún más tarde — T4.1, arnés de humo, primer incremento)
 
 > Continuación directa de "dale a todo, ahora T4.1" el mismo día. No cambia la versión del

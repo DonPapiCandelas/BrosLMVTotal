@@ -802,13 +802,21 @@ nativo en `ctx.erp`** — se crean con INSERT directo vía `ctx.NonQuery`.
 
 ### 8.1 Cliente / Proveedor (modelo entidad/rol)
 
+> **Corregido (2026-07-30, harness T4.1):** `BusinessEntityName` y `FiscalRegimeID` **no
+> existen** en `orgBusinessEntity` en la versión de Comercial instalada en
+> `localhost\compac` (confirmado creando un proveedor real vía `ctx.erp` headless para el
+> caso de humo "crear OC" — `Invalid column name 'BusinessEntityName'`). El nombre va en
+> `CommercialName`; no hay columna de régimen fiscal en esta tabla en esta versión. Igual
+> que en 8.2: revisa `sys.columns` de tu instancia antes de asumir el esquema de abajo tal
+> cual.
+
 ```csharp
 // 1. Crear la entidad base
 int beId = (int)(long)ctx.Scalar(@"
-    INSERT INTO orgBusinessEntity (BusinessEntityName, BusinessEntityKey, OfficialName,
-        FiscalRegimeID, CreatedBy, CreatedOn, UserID)
+    INSERT INTO orgBusinessEntity (CommercialName, BusinessEntityKey, OfficialName,
+        CreatedBy, CreatedOn, UserID)
     OUTPUT INSERTED.BusinessEntityID
-    VALUES ('Mi Cliente SA', 'CLI-001', 'Mi Cliente SA de CV', 601,
+    VALUES ('Mi Cliente SA', 'CLI-001', 'Mi Cliente SA de CV',
         " + ctx.UserID + @", GETDATE(), 0)");
 
 // 2. Rol de cliente
