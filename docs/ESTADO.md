@@ -39,6 +39,35 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-31, v2.58.0 — Orden de Compra COMPLETA: 5 de 5 variantes, 19/19 en verde)
+
+> Continuación directa de la entrada de abajo. Cierra "dale a lo demás, quiero verlo
+> completo" — Requisición Y Orden de Compra ya tienen sus 5 variantes cada una.
+
+**Bug real corregido, heredado de las plantillas comunitarias viejas:** tanto la versión
+C# como la Python de Orden de Compra decían "no afecta inventario" y por eso no llamaban
+`AffectStockNEW`. Confirmado contra el sandbox que SÍ debe llamarse (deja kardex con
+`Quantity=0`, "compromete sin mover" — no "no afecta"). `MANUAL.md` §7.5 ya lo tenía bien
+documentado, el bug estaba solo en el código.
+
+**Orden de Compra SQL puro fue la plantilla más difícil de todo el catálogo** — a
+diferencia de Requisición (Total siempre $0), aquí hubo que replicar a mano en SQL: cálculo
+de IVA 16%, kardex comprometido, Y el algoritmo completo de "número a letras" en T-SQL
+(sin `CREATE FUNCTION` persistente — tablas de variables + lógica inline), probado contra 6
+casos numéricos reales antes de usarlo. Validada campo por campo contra un documento nativo
+en 9 tablas distintas (incluyendo impuestos). Se encontraron 3 diferencias reales más en el
+camino (`CostPrice`/`TaxPerc` del item, y un hallazgo interesante:
+`UpdateDocumentPaidInfo` en la práctica NO llena `Amount`/`Total` de la agenda de pago como
+su nombre sugeriría en esta versión de Comercial — se replicó el comportamiento real
+observado, no el documentado).
+
+**Arnés de humo: 19/19 en verde** (5 casos nuevos desde v2.57.0: OC SQL puro, WebView2
+C#/Python, y sus 2 casos de validación campo-por-campo).
+
+**Con esto quedan cerradas las dos series completas que pidió el usuario.** Pendiente real:
+confirmar visualmente dentro de CONTPAQi las versiones Forms (C#/Python, no se pudieron
+probar headless por la misma limitación de `ShowDialog()`/`ctx.form()` de siempre.
+
 ## Estás aquí (2026-07-31, v2.57.0 — Requisición de Compra COMPLETA: 5 de 5 variantes)
 
 > Continuación directa de la entrada de abajo. Cierra Requisición, sigue Orden de Compra

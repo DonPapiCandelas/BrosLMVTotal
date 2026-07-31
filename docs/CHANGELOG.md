@@ -6,6 +6,65 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.58.0] — 2026-07-31 — Orden de Compra COMPLETA: las 5 variantes (+ bug real corregido)
+
+> Cierra el trabajo pedido por el usuario: "dale a lo demás, quiero verlo completo".
+> Orden de Compra ahora tiene las mismas 5 variantes que Requisición — SQL puro, Forms
+> C#/Python, WebView2 C#/Python. **19 de 19 casos del arnés en verde.**
+
+### Corregido — bug real en las plantillas comunitarias de OC (heredado, no introducido aquí)
+- **`PLANTILLA_ORDEN_COMPRA_FORMS_CSHARP.ctx` y `PLANTILLA_ORDEN_COMPRA_FORMS_PYTHON.py`**
+  (antes `PLANTILLA_EJEMPLO_ORDEN_COMPRA_{CSHARP,PYTHON}`) decían en un comentario "la Orden
+  de Compra NO afecta inventario" y por eso NO llamaban `ctx.erp.AffectStockNEW`. Es
+  **incorrecto** — confirmado contra el sandbox real: sin esa llamada falta la fila de
+  `orgProductKardex` que una OC nativa SÍ genera (con `Quantity=0`, "compromete sin
+  mover" — no es lo mismo que "no afecta"). `MANUAL.md` §7.5 ya documentaba esto bien; el
+  bug estaba solo en las plantillas. Corregido en ambas.
+
+### Agregado
+- **`PLANTILLA_ORDEN_COMPRA_WEBVIEW2_PYTHON.ctx` y `..._CSHARP.ctx`** (nuevas) — mismo
+  patrón que las de Requisición, con los campos propios de OC: precio unitario por
+  partida, fecha de entrega, `TaxTypeID=5`, `AffectStockNEW`, `UpdateDocumentPaidInfo`.
+  Probadas en vivo contra el sandbox (IVA calculado correctamente: 3×150×1.16=$522.00,
+  2×80×1.16=$185.60) — agregadas como **casos 18 y 19 permanentes del arnés**.
+- **`PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql`** (nueva) — **la plantilla más compleja de todo
+  el catálogo**, validada campo por campo contra un documento nativo real en 9 tablas
+  (`docDocument`, `docDocumentExtra`, `docDocumentCFD`, `docDocumentPaymentAgenda`,
+  `docDocumentItem`, `docDocumentTax`, `docDocumentTaxDetail`, `docDocumentTaxSum`,
+  `orgProductKardex`). A diferencia de Requisición (Total siempre $0), aquí SQL puro tuvo
+  que replicar a mano:
+  - **Cálculo de IVA 16%** (`SubTotal`/`Total`/`TotalTax`).
+  - **"Total en letras" completo** — se reimplementó el algoritmo número-a-letras en
+    T-SQL (tablas de variables para unidades/decenas/centenas, sin `CREATE FUNCTION`
+    persistente), probado contra 6 casos reales (`$185.60`→"CIENTO OCHENTA Y CINCO...",
+    `$1000`→"MIL PESOS...", `$21.50`→"VEINTIUN PESOS...", `$100`→"CIEN PESOS...",
+    `$999,999.99` como límite práctico) antes de usarlo en el documento real.
+  - **Kardex comprometido** (`orgProductKardex` con `Quantity=0`).
+  - **3 diferencias reales encontradas y corregidas** en el camino (no teóricas):
+    `docDocumentItem.CostPrice`/`TaxPerc` deben quedar en `0` (el costo/tasa reales viven
+    en otras tablas, no ahí), y `docDocumentPaymentAgenda.Amount`/`Total` quedan en `0` en
+    la práctica en esta versión de Comercial (`UpdateDocumentPaidInfo` no los llena como
+    su nombre sugeriría — se replicó el comportamiento real observado, no el documentado).
+  - **Advertencia real en el propio archivo**: solo calcula IVA 16% simple — un régimen
+    fiscal distinto (retenciones, IEPS, exento) no está cubierto, extiéndela si lo
+    necesitas.
+  - Agregada como **caso 17 permanente del arnés** (mismo método que el caso 14 de
+    Requisición: crea un documento de referencia nativo en cada corrida y compara).
+- Catálogo de Plantillas (`src/Consola.cs`) actualizado con las 5 variantes de Orden de
+  Compra.
+
+### Resultado
+**Requisición de Compra Y Orden de Compra: 10 de 10 variantes completas entre las dos.**
+Arnés de humo: **19/19 en verde**.
+
+### Pendiente
+- Confirmar visualmente dentro de CONTPAQi real (Forms C#/Python de ambos documentos, no
+  se pudieron probar headless).
+- El catálogo de Plantillas sigue teniendo Recepción de Compra y Factura de Compra fuera
+  del menú (archivos viejos en disco, no listados) — no pedidas en esta tanda.
+
+---
+
 ## [2.57.0] — 2026-07-31 — Requisición de Compra COMPLETA: las 5 variantes
 
 > Cierra el trabajo de Requisición: SQL puro, Forms C#, Forms Python, WebView2 C#, WebView2

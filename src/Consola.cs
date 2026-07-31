@@ -387,6 +387,27 @@ namespace BrosLMV
                 CargarPlantillaArchivo("PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
 
+            // -- Orden de Compra: las mismas 5 variantes (v2.58.0). A diferencia de
+            //    Requisición, SÍ captura precio/costo por partida, fecha de entrega, IVA, y
+            //    SÍ llama AffectStockNEW (compromete inventario sin moverlo). Las versiones
+            //    Forms corrigen un bug real que traía la plantilla comunitaria anterior
+            //    (decía "no afecta inventario" y por eso no llamaba AffectStockNEW).
+            new PlantillaDef("SQL", "Orden de Compra — SQL puro (INSERT directo)",
+                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Orden de Compra — Forms (WinForms nativo)",
+                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_FORMS_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Orden de Compra — WebView2 (HTML)",
+                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_WEBVIEW2_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Orden de Compra — Forms (WinForms vía pythonnet)",
+                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_FORMS_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Orden de Compra — WebView2 (HTML)",
+                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_WEBVIEW2_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+
             // -- El resto del catálogo anterior que SÍ seguía siendo útil y no tenía la
             //    queja de documentación confusa -- se mantiene, solo se le puso categoría.
             new PlantillaDef("Python", "Timbrar CFDI",
