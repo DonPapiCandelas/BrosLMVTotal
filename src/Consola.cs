@@ -626,19 +626,50 @@ namespace BrosLMV
             AddTB(Glyph.New,     "Nuevo script",        "Nuevo script (código)",                   (s, e) => NuevoScript(),   BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Open,    "Abrir",               "Importar script desde archivo",           (s, e) => Abrir(),         BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Save,    "Guardar",             "Guardar en la empresa activa",            (s, e) => Guardar(false),  BtnKind.Toolbar, Color.Empty);
-            AddTB(Glyph.SaveAs,  "Guardar como",        "Guardar con otro nombre (AppKey)",        (s, e) => Guardar(true),   BtnKind.Toolbar, Color.Empty);
-            AddTB(Glyph.Copy,    "Duplicar",            "Duplicar el script actual",               (s, e) => Duplicar(),      BtnKind.Toolbar, Color.Empty);
-            AddTB(Glyph.Check,   "Aprobar",             "Marca este botón como aprobado (requerido si el usuario tiene \"ExigirAprobacion\" activo)", (s, e) => Aprobar(), BtnKind.Toolbar, Color.Empty);
+            
+            var btnMore = new IconButton { Glyph = Glyph.Down, Text = "Más opciones", Kind = BtnKind.Toolbar, Accent = Color.Empty, PadX = 12, MinH = 34, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(3, 1, 3, 1) };
+            var ctxMore = new ContextMenuStrip { Font = AppTheme.FontMain };
+            ctxMore.Items.Add(new ToolStripMenuItem("Guardar como...", null, (s, e) => Guardar(true)));
+            ctxMore.Items.Add(new ToolStripMenuItem("Duplicar", null, (s, e) => Duplicar()));
+            ctxMore.Items.Add(new ToolStripMenuItem("Aprobar", null, (s, e) => Aprobar()));
+            ctxMore.Items.Add(new ToolStripSeparator());
+            ctxMore.Items.Add(new ToolStripMenuItem("Importar paquete...", null, (s, e) => ImportarPaquete()));
+            ctxMore.Items.Add(new ToolStripSeparator());
+            ctxMore.Items.Add(new ToolStripMenuItem("Historial", null, (s, e) => VerHistorial()));
+            ctxMore.Items.Add(new ToolStripMenuItem("Acerca de", null, (s, e) => AcercaDe()));
+            btnMore.Click += (s, e) => ctxMore.Show(btnMore, new Point(0, btnMore.Height));
+            pnlToolbar.Controls.Add(btnMore);
+            
             AddSep();
-            AddTB(Glyph.Folder,  "Importar paquete…",   "Importar un botón (.bros) exportado de otra empresa/equipo", (s, e) => ImportarPaquete(), BtnKind.Toolbar, Color.Empty);
-            AddSep();
-            AddTB(Glyph.History, "Historial",            "Ver historial / auditoría de ejecuciones", (s, e) => VerHistorial(),  BtnKind.Toolbar, Color.Empty);
-            AddTB(Glyph.Info,    "Acerca de",            "Versión y notas de cambios",               (s, e) => AcercaDe(),      BtnKind.Toolbar, Color.Empty);
-            AddSep();
-
+            
             _chkSoloLectura = new CheckBox { Text = "Modo solo lectura", AutoSize = true, BackColor = Color.Transparent, ForeColor = AppTheme.TextMain, Font = AppTheme.FontMain, Margin = new Padding(8, 9, 0, 0), Cursor = Cursors.Hand };
             _tips.SetToolTip(_chkSoloLectura, "Bloquea operaciones de escritura (UPDATE/DELETE/INSERT)");
             pnlToolbar.Controls.Add(_chkSoloLectura);
+            
+            AddSep();
+            var pnlEdTools = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.Transparent, Margin = new Padding(16, 2, 0, 0) };
+            _cboFontSize = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 64, Font = AppTheme.FontSmall, FlatStyle = FlatStyle.Flat, Margin = new Padding(4, 4, 4, 0) };
+            _cboFontSize.Items.AddRange(new object[] { "11 px", "12 px", "13 px", "14 px", "16 px", "18 px" });
+            _cboFontSize.SelectedIndex = 0;
+            _cboFontSize.SelectedIndexChanged += (s, e) =>
+            {
+                var t = (_cboFontSize.SelectedItem as string ?? "11").Split(' ')[0];
+                if (int.TryParse(t, out int pt)) AplicarTamanoFuente(pt);
+            };
+            var chkWrap = new CheckBox { Text = "Ajuste", AutoSize = true, Appearance = Appearance.Normal, ForeColor = AppTheme.TextMain, BackColor = Color.Transparent, Font = AppTheme.FontMain, Margin = new Padding(8, 6, 4, 0), Cursor = Cursors.Hand };
+            chkWrap.CheckedChanged += (s, e) => { try { if (_activeTab?.Editor != null) _activeTab.Editor.WrapMode = chkWrap.Checked ? WrapMode.Word : WrapMode.None; } catch { } };
+            var btnBuscarEd = new IconButton { Glyph = Glyph.Search, Text = "Buscar", Kind = BtnKind.Toolbar, MinH = 34, AutoSize = true, Radius = 4, Margin = new Padding(2, 1, 0, 1) };
+            btnBuscarEd.Click += (s, e) => MostrarBuscar();
+            _btnZen = new IconButton { Glyph = Glyph.Full, Text = "Zen", Kind = BtnKind.Toolbar, MinH = 34, AutoSize = true, Radius = 4, Margin = new Padding(2, 1, 0, 1) };
+            _btnZen.Click += (s, e) => ToggleZen();
+
+            pnlEdTools.Controls.Add(_cboFontSize);
+            pnlEdTools.Controls.Add(chkWrap);
+            pnlEdTools.Controls.Add(btnBuscarEd);
+            pnlEdTools.Controls.Add(_btnZen);
+            pnlToolbar.Controls.Add(pnlEdTools);
+
+
 
             Controls.Add(pnlToolbar);
             pnlToolbar.BringToFront();
@@ -835,30 +866,10 @@ namespace BrosLMV
             btnMasTab.Click += (s, e) => NuevoScript();
             pnlMasTab.Controls.Add(btnMasTab);
 
-            // Controles a la derecha
-            var pnlEdTools = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = AppTheme.BgMain, Padding = new Padding(0, 4, 8, 0) };
-            _btnZen = new IconButton { Glyph = Glyph.Full, Kind = BtnKind.Ghost, Width = 30, Height = 28, Radius = 4, Margin = new Padding(2, 0, 0, 0) };
-            _btnZen.Click += (s, e) => ToggleZen();
-            var btnBuscarEd = new IconButton { Glyph = Glyph.Search, Kind = BtnKind.Ghost, Width = 30, Height = 28, Radius = 4, Margin = new Padding(2, 0, 0, 0) };
-            btnBuscarEd.Click += (s, e) => MostrarBuscar();
-            var chkWrap = new CheckBox { Text = "Ajuste", AutoSize = true, Appearance = Appearance.Normal, ForeColor = AppTheme.TextMuted, BackColor = Color.Transparent, Font = AppTheme.FontSmall, Margin = new Padding(8, 6, 4, 0), Cursor = Cursors.Hand };
-            chkWrap.CheckedChanged += (s, e) => { try { if (_editor != null) _editor.WrapMode = chkWrap.Checked ? WrapMode.Word : WrapMode.None; } catch { } };
-            _cboFontSize = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 64, Font = AppTheme.FontSmall, FlatStyle = FlatStyle.Flat, Margin = new Padding(4, 4, 4, 0) };
-            _cboFontSize.Items.AddRange(new object[] { "11 px", "12 px", "13 px", "14 px", "16 px", "18 px" });
-            _cboFontSize.SelectedIndex = 0;
-            _cboFontSize.SelectedIndexChanged += (s, e) =>
-            {
-                var t = (_cboFontSize.SelectedItem as string ?? "11").Split(' ')[0];
-                if (int.TryParse(t, out int pt)) AplicarTamanoFuente(pt);
-            };
-            pnlEdTools.Controls.Add(_cboFontSize);
-            pnlEdTools.Controls.Add(chkWrap);
-            pnlEdTools.Controls.Add(btnBuscarEd);
-            pnlEdTools.Controls.Add(_btnZen);
-
+            // (Controles del editor movidos a la barra principal)
             pnlTabEditor.Controls.Add(_tabStrip);
             pnlTabEditor.Controls.Add(pnlMasTab);
-            pnlTabEditor.Controls.Add(pnlEdTools);
+
 
             _pnlEditorHost.Controls.Add(ConstruirBarraBuscar());
             _pnlEditorHost.Controls.Add(pnlTabEditor);
