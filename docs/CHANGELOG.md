@@ -229,6 +229,40 @@ solo las librerías compartidas pesadas deben vivir en `C:\BrosLMV\lib\dashboard
 
 ---
 
+## [2.42.0] — 2026-07-30 — Modo solo lectura forzado por usuario (T2.2)
+
+> Último pendiente de la lista original ("qué falta") — con esto se cierra todo lo que
+> quedaba planeado desde el barrido de T2.1/T1.2, salvo lo explícitamente descartado
+> (T0.4) o excluido con motivo (timbrado, `ctx.form()` headless — ver T4.1 abajo).
+
+### Agregado
+- `ScriptContext.BrosSoloLecturaForzada()` (`src/Scripting.cs`) — lee `zzBrosPref`
+  (`Usuario`/`Tipo='SoloLectura'`/`Valor='1'`), mismo patrón que `ExigirAprobacion` (T2.3):
+  nunca lanza, empresa sin `zzBrosPref` o sin permiso → `false`, no bloquea por un fallo de
+  la verificación misma.
+- Se aplica en los **3 puntos** donde se construye un `ScriptContext`: `ClsMain.cs`
+  (botones del ribbon — el usuario no puede saltárselo, no hay checkbox ahí),
+  `Consola.cs` (el checkbox "Modo solo lectura" queda marcado y **deshabilitado**, no solo
+  con el valor por default — no se puede desactivar desde la UI), y
+  `runner\Program.cs` (`BrosLMV.Runner --userid N`, por si algún día un job programado
+  corre con un usuario restringido).
+- El bloqueo real ya existía desde antes (`ScriptContext.SoloLectura` bloquea
+  `NonQuery`/`EjecutarSql` de escritura y los builders de `ctx.erp` vía `GuardaEscritura()`)
+  — lo nuevo es que ahora se activa solo, sin que el operador tenga que marcar la casilla.
+- **Probado en vivo contra el sandbox `ComercialSP`:** usuario de prueba marcado
+  `SoloLectura=1`, corrido con `BrosLMV.Runner --userid`: una lectura (SQL) siguió
+  funcionando, un intento de crear OC vía `ctx.erp.NuevoDocumento` se rechazó con
+  "Modo SOLO LECTURA activo: no se pueden crear/modificar documentos." Se agregó como
+  **caso 7 del arnés de humo T4.1** (`build\humo\casos\07_solo_lectura_forzada.ps1`) —
+  regresión permanente, no solo prueba puntual.
+
+### Pendiente
+- Confirmar dentro de CONTPAQi real: un usuario marcado `SoloLectura` abre la Consola y ve
+  el checkbox ya marcado y bloqueado (lo probado es el Runner headless, no la UI de
+  Windows Forms en sí — mismo pendiente que T2.1/T2.3 de abajo).
+
+---
+
 ## [2.41.0] — 2026-07-30 — Auditoría (empresa) en la Consola (T2.1) + Gestor de Ribbon al núcleo (T1.2)
 
 > Barrido de pendientes explícito a pedido del usuario ("revisa qué falta... dale a todo lo

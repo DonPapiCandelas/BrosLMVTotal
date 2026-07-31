@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.41.0.0")]
+[assembly: AssemblyVersion("2.42.0.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -126,6 +126,10 @@ namespace BrosLMV
         private void EjecutarScript(string appKey)
         {
             var ctx = new ScriptContext(UserID, XEngineLib);
+            // T2.2: si el usuario tiene la preferencia SoloLectura en zzBrosPref, se fuerza
+            // aqui mismo -- ni el ribbon ni ningun boton pueden saltarsela (a diferencia de
+            // la Consola, que ademas deshabilita el checkbox para que no parezca opcional).
+            if (ctx.BrosSoloLecturaForzada()) ctx.SoloLectura = true;
             string emp = SafeEmpresa(ctx);
 
             // 1) Buscar el script en SQL (zzBrosScript de la empresa activa). Asi se

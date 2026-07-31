@@ -39,6 +39,27 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — v2.42.0, T2.2: solo lectura forzado por usuario)
+
+> Continuación directa de la entrada de abajo. Con esto **se cierra el último pendiente
+> real de la lista original** ("qué falta") — lo único que queda es lo explícitamente
+> descartado (T0.4) o excluido con motivo (timbrado, `ctx.form()` headless).
+
+**T2.2 implementado, probado en vivo contra el sandbox y agregado como caso 7 permanente
+del arnés de humo.** `ScriptContext.BrosSoloLecturaForzada()` lee `zzBrosPref`
+(`Usuario`/`Tipo='SoloLectura'`) y fuerza `ctx.SoloLectura=true` en los 3 lugares donde se
+construye un `ScriptContext` (ribbon, Consola, Runner) — el bloqueo real (`NonQuery`/
+`ctx.erp`) ya existía, lo nuevo es que se activa solo. Probado marcando un usuario de
+prueba en `ComercialSP`: una lectura siguió pasando, un intento de crear OC se rechazó con
+"Modo SOLO LECTURA activo…". Addon en **v2.42.0**.
+
+**Con esto, todo lo planeado en el barrido original de esta sesión queda cerrado.** Lo
+único genuinamente pendiente: confirmar T2.1/T2.2/T2.3 haciendo clic dentro de CONTPAQi
+real (no solo por SQL/Runner), y la decisión de producto sobre `ctx.erp` de escritura en
+jobs contra clientes reales (T3.3). Lo siguiente, si se quiere seguir, ya no es "cerrar
+pendientes" sino features nuevas grandes: T3.1 (motor de recetas no-code, la meta
+estratégica del proyecto) o T3.2 (importador Excel genérico).
+
 ## Estás aquí (2026-07-30, aún más tarde — T4.1 completo: 5 casos en verde + 2 excluidos con motivo)
 
 > Continuación directa de la entrada de abajo, mismo día. Cierra los 6 casos del plan

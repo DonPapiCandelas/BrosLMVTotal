@@ -115,6 +115,9 @@ namespace BrosLMV.Runner
             }
 
             var ctx = new ScriptContext(userId, xe);
+            // T2.2: mismo forzado que ClsMain.cs/Consola.cs -- si --userid corresponde a un
+            // usuario con SoloLectura en zzBrosPref, el Runner tampoco puede saltarselo.
+            if (ctx.BrosSoloLecturaForzada()) ctx.SoloLectura = true;
             string emp = "";
             try { emp = ctx.Empresa(); } catch { }
             Console.WriteLine("Conectado. Empresa activa: " + (string.IsNullOrEmpty(emp) ? "(desconocida)" : emp));

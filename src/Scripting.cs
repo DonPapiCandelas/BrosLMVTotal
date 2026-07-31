@@ -906,6 +906,21 @@ namespace BrosLMV
             catch { return new List<Dictionary<string, object>>(); }
         }
 
+        // ===== Solo lectura forzado por usuario (T2.2) =====
+        // Mismo patron que ExigirAprobacion (T2.3, mas abajo): zzBrosPref Usuario/Tipo=
+        // 'SoloLectura'/Valor='1'. Nunca lanza -- si algo falla (empresa vieja sin
+        // zzBrosPref, sin permiso), regresa false y la ejecucion sigue como si no hubiera
+        // preferencia (no bloquear por un fallo de la verificacion misma).
+        public bool BrosSoloLecturaForzada()
+        {
+            try
+            {
+                var pref = Query("SELECT Valor FROM zzBrosPref WHERE Usuario=" + UserID + " AND Tipo=" + SqlStr("SoloLectura"));
+                return pref.Count > 0 && Convert.ToString(pref[0]["Valor"]) == "1";
+            }
+            catch { return false; }
+        }
+
         // ===== Integridad de scripts (T2.3) =====
         // HashSHA256 solo lo recalcula BrosGuardar -- un UPDATE crudo de Codigo por fuera
         // de la consola (SSMS, otro script) deja el hash viejo sin tocar, lo que hace el

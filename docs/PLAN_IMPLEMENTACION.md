@@ -306,6 +306,17 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T2.2 — Modo solo-lectura por usuario
 
+> **Estado (2026-07-30): ✅ HECHO (v2.42.0).** `ScriptContext.BrosSoloLecturaForzada()`
+> (mismo patrón que `ExigirAprobacion` de T2.3) se aplica en los 3 puntos donde se
+> construye un `ScriptContext`: `ClsMain.cs` (ribbon), `Consola.cs` (checkbox marcado y
+> deshabilitado, no solo con el valor por default) y `runner\Program.cs` (`--userid`).
+> **Probado en vivo contra el sandbox `ComercialSP`:** usuario de prueba marcado, una
+> lectura siguió funcionando, un intento de crear OC vía `ctx.erp` se rechazó con el
+> mensaje esperado. Agregado como **caso 7 permanente del arnés de humo T4.1**
+> (`build\humo\casos\07_solo_lectura_forzada.ps1`). **Pendiente real:** confirmar dentro
+> de CONTPAQi real que la casilla de la Consola aparece marcada/bloqueada (lo probado es
+> el Runner headless).
+
 - **Qué:** forzar `SoloLectura` por usuario vía `zzBrosPref` (la tabla ya existe: Usuario/Tipo/Valor).
 - **Por qué (H8 mitigación):** hoy cualquier script puede escribir si el operador tiene permiso en Comercial. Un almacenista debería poder correr reportes pero no `RecepcionOc`.
 - **Cómo:**

@@ -1199,6 +1199,28 @@ ctx.Msg("Recepción creada: doc=" + rc);
 
 ## 12. Advertencias y buenas prácticas
 
+### 👁️ Solo lectura forzado por usuario (desde v2.42.0, T2.2)
+Cualquier script (SQL, C#, Python) ya respeta `ctx.SoloLectura` — bloquea
+`NonQuery`/escrituras SQL y los builders de `ctx.erp` (`NuevoDocumento`, `AgregarArticulo`,
+`Save`, etc.). Desde v2.42.0 puedes **forzar** ese modo para un usuario, sin que dependa de
+que alguien marque una casilla:
+
+```sql
+INSERT INTO zzBrosPref (Usuario, Tipo, Valor) VALUES (<UserID>, 'SoloLectura', '1');
+```
+
+Con eso activo, ese usuario:
+- **En el ribbon:** cualquier botón que intente escribir truena con "Modo SOLO LECTURA
+  activo…" — no hay forma de saltárselo desde ahí, no hay casilla que desmarcar.
+- **En la Consola:** la casilla "Modo solo lectura" de la barra de herramientas aparece
+  **marcada y deshabilitada** — no es el valor por default, literalmente no se puede quitar.
+- **En `BrosLMV.Runner`** (si el job programado corre con `--userid` de ese usuario): igual
+  de forzado que en el ribbon.
+
+Útil para un almacenista que debe poder correr reportes pero no `RecepcionOc`, o para
+cualquier usuario al que quieras dar acceso de solo consulta sin tocar los permisos nativos
+de Comercial. Quita la fila de `zzBrosPref` (o pon `Valor='0'`) para revertirlo.
+
 ### 🔒 Integridad de scripts: hash y aprobación (desde v2.35.0)
 Cada vez que guardas un script desde la Consola (**Guardar**/**Guardar como**), BrosLMV
 calcula un hash SHA-256 del código y lo guarda junto con él (`zzBrosScript.HashSHA256`).

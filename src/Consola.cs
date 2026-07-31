@@ -389,6 +389,16 @@ namespace BrosLMV
             Rutas.AsegurarCarpetas();
             try { Datos.Inicializar(); } catch { }
             BuildUI();
+            // T2.2: si zzBrosPref fuerza SoloLectura para este usuario, el checkbox se deja
+            // marcado y BLOQUEADO -- no es solo el valor por default, el usuario no puede
+            // desactivarlo desde aqui (ExecuteScript() lee _chkSoloLectura.Checked en cada
+            // corrida, asi que con Enabled=false queda forzado de verdad, no solo sugerido).
+            if (_ctx.BrosSoloLecturaForzada())
+            {
+                _chkSoloLectura.Checked = true;
+                _chkSoloLectura.Enabled = false;
+                _tips.SetToolTip(_chkSoloLectura, "Solo lectura forzado para tu usuario (preferencia en zzBrosPref) -- no se puede desactivar aquí.");
+            }
             ConfigurarEditor();
             CargarArbol();
             CargarMetodos();
