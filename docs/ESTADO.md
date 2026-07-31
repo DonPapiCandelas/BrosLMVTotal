@@ -39,6 +39,25 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — v2.54.0, WebView2 de 2 vías: `ctx.show_html_formulario`)
+
+> Continuación directa de la entrada de abajo. El usuario pidió reconstruir el catálogo de
+> plantillas (Requisición/OC/Recepción, cada una con versión Forms y versión WebView2
+> "impresionante"). Al planearlo se descubrió que `ctx.show_html` es de una sola vía — no
+> hay forma de que la página HTML regrese datos al script. Se decidió (con el usuario)
+> agregar comunicación de 2 vías de verdad, no simular una versión "solo bonita".
+
+**`ctx.show_html_formulario()` — nuevo, probado en vivo.** Cambios en 4 capas: `.proto`
+(`esperar_respuesta`/`timeout_ms`/`html_response`), `src/HostClient.cs`
+(`WebMessageReceived` + espera con timeout), el host (.NET 8,
+`IHostCallbackSink`/`RelayingCallbackSink`/`PythonProcess.cs`, parseo JSON con
+`System.Text.Json` nativo), y `ctx.py` (sincronizado en sus 3 copias). Probado contra el
+sandbox: envío real (JS auto-enviado para poder automatizarlo sin humano) y timeout (nadie
+responde). Agregado como **caso 12 permanente del arnés** — **12/12 en verde**.
+
+**Con esto ya se puede construir la Requisición en WebView2 de verdad** (crea el documento,
+no solo lo muestra) — es lo que sigue.
+
 ## Estás aquí (2026-07-30, aún más tarde — v2.53.0, se repara la regla de oro rota + bug real del asistente)
 
 > Continuación directa de la entrada de abajo. El usuario avanzó por su cuenta (o delegó a

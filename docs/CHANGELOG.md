@@ -6,6 +6,42 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.54.0] — 2026-07-30 — `ctx.show_html_formulario()`: WebView2 de 2 vías
+
+> A pedido del usuario, camino a construir plantillas HTML/WebView2 "impresionantes" que de
+> verdad puedan crear documentos (no solo mostrar). `ctx.show_html` existente es de una
+> sola vía — no había forma de que una página HTML le regresara datos al script. Esto lo
+> resuelve con una pieza nueva de infraestructura, no solo una plantilla.
+
+### Agregado
+- **`protocol/broslmv.proto`**: `UiShowHtml.esperar_respuesta` (bool) + `.timeout_ms`
+  (int32), y `UiResponse.html_response` (string) en el `oneof result`.
+- **`src/HostClient.cs`** (`RenderUiHtml`): cuando `esperar_respuesta=true`, se suscribe a
+  `CoreWebView2.WebMessageReceived` y el hilo que llamó espera (con timeout, default 10
+  min — del otro lado hay un humano llenando un formulario) hasta que la página llama
+  `window.chrome.webview.postMessage(JSON.stringify(datos))`, o hasta que la ventana se
+  cierra sin enviar nada (`{"submitted": false}`, no un error).
+- **`host/BrosLMV.Host/Callbacks/IHostCallbackSink.cs` + `RelayingCallbackSink.cs`**:
+  `ShowHtmlFormulario(...)` — manda el `UiRequest` con las banderas nuevas, parsea
+  `html_response` (JSON crudo) con `System.Text.Json` (nativo en .NET 8, sin dependencia
+  nueva) a `Dictionary<string, object?>`.
+- **`host/BrosLMV.Host/Workers/PythonProcess.cs`**: nuevo método ctx `"show_html_formulario"`
+  en el switch de despacho.
+- **`workers/python/broslmv/ctx.py`** (sincronizado en sus 3 copias):
+  `ctx.show_html_formulario(html, title, width, height, timeout_ms) -> dict`. Documentado
+  en `MANUAL.md` §9.4, con la advertencia real sobre el timeout general del script vs. el
+  de la ventana (son independientes).
+- **Probado en vivo contra el sandbox `ComercialSP`**, los 2 caminos: envío real (JS
+  auto-enviado, sin humano, para poder automatizarlo) y timeout (nadie responde a tiempo).
+  Agregado como **caso 12 permanente del arnés de humo**
+  (`build/humo/casos/12_show_html_formulario.ps1`). Arnés completo: **12/12 en verde**.
+
+### Pendiente
+- Ahora sí construir las plantillas WebView2 que usan esto de verdad (Requisición, y lo que
+  siga) — esta versión es solo la infraestructura que las hace posibles.
+
+---
+
 ## [2.53.0] — 2026-07-30 — Rediseño del asistente "Nueva acción" + bug real corregido + ejemplos
 
 > **Contexto:** entre v2.48.0 y v2.52.0 se hicieron cambios reales al producto

@@ -32,6 +32,11 @@ public interface IHostCallbackSink
     void Progress(string executionId, string text, int percent);
     Dictionary<string, object?> Form(string executionId, Dictionary<string, object?> spec);
     void ShowHtml(string executionId, string html, string title, int width, int height, bool modal);
+    // Como ShowHtml, pero BLOQUEA hasta que la pagina llame
+    // window.chrome.webview.postMessage(JSON.stringify(datos)) (o el usuario cierre la
+    // ventana sin enviar nada). Para plantillas WebView2 que necesitan crear/guardar algo,
+    // no solo mostrar -- ver docs/RECETAS_NOCODE.md / MANUAL.md "ctx.show_html_formulario".
+    Dictionary<string, object?> ShowHtmlFormulario(string executionId, string html, string title, int width, int height, int timeoutMs);
     string SelectFile(string executionId, string title, string filter, bool save, string initialDir);
     string SelectFolder(string executionId, string title, string initialDir);
 }
@@ -72,6 +77,12 @@ public sealed class LoggingHostCallbackSink : IHostCallbackSink
 
     public void ShowHtml(string executionId, string html, string title, int width, int height, bool modal) =>
         Append(executionId, "SHOW_HTML", "Ventana HTML solicitada sin addon conectado.");
+
+    public Dictionary<string, object?> ShowHtmlFormulario(string executionId, string html, string title, int width, int height, int timeoutMs)
+    {
+        Append(executionId, "SHOW_HTML_FORMULARIO", "Formulario HTML solicitado sin addon conectado.");
+        return new Dictionary<string, object?> { ["submitted"] = false };
+    }
 
     public string SelectFile(string executionId, string title, string filter, bool save, string initialDir)
     {

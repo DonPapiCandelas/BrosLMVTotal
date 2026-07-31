@@ -697,6 +697,12 @@ namespace BrosLMV
             string perfil = Path.Combine(Path.GetTempPath(), "BrosLMV_WebView2_" + Guid.NewGuid().ToString("N"));
             Exception hiloEx = null;
             var listo = new System.Threading.ManualResetEventSlim(false);
+            // Canal de 2 vias (esperar_respuesta=true): la pagina llama
+            // window.chrome.webview.postMessage(JSON.stringify(datos)) y ese JSON llega aqui
+            // via WebMessageReceived. respuestaJson queda null si el usuario cierra la
+            // ventana sin enviar nada -- se distingue de "no configurado" con respuestaListo.
+            string respuestaJson = null;
+            var respuestaLista = new System.Threading.ManualResetEventSlim(false);
 
             var hilo = new System.Threading.Thread(() =>
             {
@@ -712,6 +718,13 @@ namespace BrosLMV
                     webView.Dock = DockStyle.Fill;
                     frm.Controls.Add(webView);
 
+                    // Si esperamos respuesta, cerrar la ventana (por la X, o porque ya se
+                    // recibio el postMessage) SIEMPRE debe liberar al hilo que espera --
+                    // sin esto, cerrar sin enviar nada dejaria a respuestaLista.Wait() colgado
+                    // hasta el timeout en vez de regresar "no enviado" de inmediato.
+                    if (spec.EsperarRespuesta)
+                        frm.FormClosed += (s, e) => respuestaLista.Set();
+
                     // EnsureCoreWebView2Async necesita que YA haya un bucle de mensajes
                     // bombeando en este hilo -- por eso la carga se dispara desde Load (que
                     // solo se activa una vez que ShowDialog()/Application.Run() ya esta
@@ -725,6 +738,17 @@ namespace BrosLMV
                             var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment
                                 .CreateAsync(userDataFolder: perfil);
                             await webView.EnsureCoreWebView2Async(env);
+
+                            if (spec.EsperarRespuesta)
+                            {
+                                webView.CoreWebView2.WebMessageReceived += (s2, e2) =>
+                                {
+                                    try { respuestaJson = e2.TryGetWebMessageAsString(); }
+                                    catch { respuestaJson = e2.WebMessageAsJson; } // respaldo si no era un string plano
+                                    respuestaLista.Set();
+                                    frm.Close(); // dispara FormClosed -> limpieza normal de abajo
+                                };
+                            }
 
                             // Mapea C:\BrosLMV\lib\ (runtime compartido, lo puebla el instalador,
                             // no cada script) a https://broslmv.local/ -- para que un reporte
@@ -808,7 +832,20 @@ namespace BrosLMV
 
             if (hiloEx != null)
                 return new UiResponse { Error = new Error { Code = "SHOW_HTML_ERROR", Message = hiloEx.Message } };
-            return new UiResponse { Ok = new Empty() };
+
+            if (!spec.EsperarRespuesta)
+                return new UiResponse { Ok = new Empty() };
+
+            // Con esperar_respuesta=true SI esperamos a que la ventana se cierre (por
+            // postMessage o por la X) -- aqui es donde de verdad bloqueamos al script, no
+            // solo hasta que la pagina cargue. Timeout largo por default (10 min): del otro
+            // lado hay un humano llenando un formulario, no un proceso.
+            int timeoutMs = spec.TimeoutMs > 0 ? spec.TimeoutMs : 600000;
+            bool respondioATiempo = respuestaLista.Wait(timeoutMs);
+            if (!respondioATiempo)
+                return new UiResponse { Error = new Error { Code = "SHOW_HTML_TIMEOUT", Message = "Se agoto el tiempo de espera (" + timeoutMs + " ms) sin respuesta del formulario." } };
+
+            return new UiResponse { HtmlResponse = respuestaJson ?? "{\"submitted\": false}" };
         }
 
         private static Control CreateFormControl(FormField field)

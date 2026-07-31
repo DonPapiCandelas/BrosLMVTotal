@@ -327,6 +327,15 @@ message UiShowHtml {
   int32  width   = 3;
   int32  height  = 4;
   bool   modal   = 5;
+  // Canal de 2 vias (agregado para plantillas WebView2 que necesitan crear/guardar algo,
+  // no solo mostrar). Si es true, RenderUiHtml (src/HostClient.cs) NO regresa al cargar la
+  // pagina -- espera a que el JS de la pagina llame
+  // window.chrome.webview.postMessage(JSON.stringify(datos)), hasta timeout_ms (default
+  // 600000 = 10 min, porque del otro lado hay un humano llenando un formulario, no un
+  // proceso). Si el usuario cierra la ventana sin enviar nada, cuenta como "no enviado"
+  // (UiResponse.html_response = '{"submitted": false}'), no como error.
+  bool   esperar_respuesta = 6;
+  int32  timeout_ms        = 7;
 }
 
 // Respuesta de la UI.
@@ -337,6 +346,7 @@ message UiResponse {
     string     selected_path = 3;   // select_file / select_folder
     FormResult form_result   = 4;   // form
     Error      error         = 5;
+    string     html_response = 6;   // show_html con esperar_respuesta=true: JSON crudo que la pagina mando via postMessage
   }
 }
 message FormResult {

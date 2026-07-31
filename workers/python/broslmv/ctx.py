@@ -234,6 +234,32 @@ class Context:
         """
         _bridge.call("show_html", html or "", title, width, height, modal)
 
+    def show_html_formulario(self, html: str, title: str = "BrosLMV", width: int = 900,
+                              height: int = 700, timeout_ms: int = 600000) -> dict[str, Any]:
+        """Como show_html, pero BLOQUEA el script hasta que la pagina envie datos de vuelta
+        o el usuario cierre la ventana. Para formularios HTML reales (crear/guardar algo),
+        a diferencia de show_html que es de una sola via (solo para mostrar).
+
+        En el HTML, el boton de guardar/enviar debe llamar:
+            window.chrome.webview.postMessage(JSON.stringify({campo1: valor1, ...}))
+
+        Regresa ese mismo diccionario, con "submitted" agregado (True si se envio algo,
+        False si se cerro la ventana sin enviar nada).
+
+        IMPORTANTE: si el formulario puede tardar mas de 2 minutos en llenarse (lo normal
+        para un humano), agrega "# timeout: 1800" (segundos) en las primeras lineas del
+        script -- sin eso, el timeout por default del script completo (no de esta ventana)
+        puede tronar antes de que el usuario termine de llenar el formulario.
+
+        Ejemplo:
+            r = ctx.show_html_formulario("<input id='n'><button onclick=\"" +
+                "window.chrome.webview.postMessage(JSON.stringify({nombre: n.value}))\">" +
+                "Guardar</button>")
+            if r["submitted"]:
+                ctx.msg("Recibido: " + r["nombre"])
+        """
+        return dict(_bridge.call("show_html_formulario", html or "", title, width, height, timeout_ms))
+
     def dashboard(self, title: str, data: list[dict[str, Any]],
                    columns: list[dict[str, str]] | None = None,
                    width: int = 1000, height: int = 700, modal: bool = True) -> None:

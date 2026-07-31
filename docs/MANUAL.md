@@ -1001,10 +1001,36 @@ else:
 - **Sin transacciones** en Python (`ctx.OpenConn` no existe).
 - **Encoding:** asegurar UTF-8 en datos con acentos/Ñ.
 
-### 9.4 `ctx.show_html` y `ctx.dashboard` (solo Python)
+### 9.4 `ctx.show_html`, `ctx.show_html_formulario` y `ctx.dashboard` (solo Python)
 
 - `ctx.show_html(html, title="BrosLMV", width=800, height=600, modal=True)` — ventana con
-  HTML/CSS/JS real (WebView2), embebida en CONTPAQi. Desde v2.24.0.
+  HTML/CSS/JS real (WebView2), embebida en CONTPAQi. Desde v2.24.0. **De una sola vía**:
+  la ventana se muestra pero no hay forma de que le mande datos de vuelta al script.
+- `ctx.show_html_formulario(html, title="BrosLMV", width=900, height=700, timeout_ms=600000)
+  → dict` — **desde v2.54.0**, el mismo WebView2 pero de **2 vías**: bloquea el script
+  hasta que la página llama `window.chrome.webview.postMessage(JSON.stringify({...}))`
+  (o el usuario cierra la ventana sin enviar nada). Regresa ese diccionario con
+  `"submitted"` agregado (`True` si se envió algo, `False` si se cerró sin enviar).
+  Pensado para formularios HTML reales que crean/guardan algo, no solo muestran —
+  la alternativa nativa es `ctx.form()` (WinForms), que ya hacía esto pero sin HTML/CSS
+  libre.
+
+  ```python
+  r = ctx.show_html_formulario("""
+      <input id="n" placeholder="Nombre">
+      <button onclick="window.chrome.webview.postMessage(JSON.stringify({nombre: n.value}))">
+          Guardar
+      </button>
+  """)
+  if r["submitted"]:
+      ctx.msg("Recibido: " + r["nombre"])
+  ```
+
+  > ⚠️ **Si el formulario puede tardar más de 2 minutos en llenarse (lo normal para un
+  > humano), agrega `# timeout: 1800` (segundos) en las primeras líneas del script.** El
+  > `timeout_ms` de `show_html_formulario` solo controla CUÁNTO ESPERA LA VENTANA; el
+  > timeout general del script completo (2 min por default) es independiente y puede
+  > tronar primero si no lo amplías — confirmado en pruebas reales contra el sandbox.
 - `ctx.dashboard(title, data, columns=None, width=1000, height=700, modal=True)` — dashboard
   completo (tabla ordenable, buscador, paginación, exportar a Excel) a partir de una lista
   de dict, sin escribir HTML/CSS/JS ni crear carpeta de assets por script. Desde v2.34.0.

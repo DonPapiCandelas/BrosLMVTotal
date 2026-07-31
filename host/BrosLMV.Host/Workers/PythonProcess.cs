@@ -117,7 +117,7 @@ public sealed class PythonProcess
             // un dialogo -- no es que el script este "colgado" de verdad) y sugiere la
             // cabecera "# timeout: N" (segundos) para scripts interactivos de varios
             // pasos, que necesitan mas que el limite por default.
-            bool esperandoUi = _ultimoMetodoCtx is "form" or "confirm" or "msg" or "select_file" or "select_folder" or "show_html";
+            bool esperandoUi = _ultimoMetodoCtx is "form" or "confirm" or "msg" or "select_file" or "select_folder" or "show_html" or "show_html_formulario";
             string detalle = _ultimoMetodoCtx == ""
                 ? "No llego a pedir ninguna interaccion al host antes del timeout (pudo trabarse compilando, en un import, o en un loop sin llamadas a ctx)."
                 : esperandoUi
@@ -199,6 +199,7 @@ public sealed class PythonProcess
                 "confirm" => HandleConfirm(msg),
                 "form" => HandleForm(msg),
                 "show_html" => HandleShowHtml(msg),
+                "show_html_formulario" => HandleShowHtmlFormulario(msg),
                 "select_file" => HandleSelectFile(msg),
                 "select_folder" => HandleSelectFolder(msg),
                 "log" => HandleLog(msg),
@@ -242,6 +243,16 @@ public sealed class PythonProcess
             GetIntArg(msg, 3, 600),
             GetBoolArg(msg, 4, true));
         return true;
+    }
+
+    private object HandleShowHtmlFormulario(RunnerMessage msg)
+    {
+        return _callbacks.ShowHtmlFormulario(_executionId,
+            GetStringArg(msg, 0),
+            GetStringArg(msg, 1, "BrosLMV"),
+            GetIntArg(msg, 2, 900),
+            GetIntArg(msg, 3, 700),
+            GetIntArg(msg, 4, 600000));
     }
 
     private object HandleSelectFile(RunnerMessage msg)

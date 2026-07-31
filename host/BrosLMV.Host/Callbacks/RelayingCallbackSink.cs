@@ -191,6 +191,64 @@ public sealed class RelayingCallbackSink : IHostCallbackSink
         }
     }
 
+    public Dictionary<string, object?> ShowHtmlFormulario(string executionId, string html, string title, int width, int height, int timeoutMs)
+    {
+        try
+        {
+            UiResponse resp = _channel.SendUi(new UiRequest
+            {
+                ShowHtml = new UiShowHtml
+                {
+                    Html = html ?? "",
+                    Title = title ?? "BrosLMV",
+                    Width = width,
+                    Height = height,
+                    Modal = true,
+                    EsperarRespuesta = true,
+                    TimeoutMs = timeoutMs
+                }
+            });
+            if (resp.Error != null)
+                return new Dictionary<string, object?> { ["submitted"] = false, ["error"] = resp.Error.Code + ": " + resp.Error.Message };
+
+            // resp.HtmlResponse es el JSON crudo que la pagina mando via postMessage --
+            // System.Text.Json (nativo en .NET 8, sin dependencia nueva) lo convierte a
+            // Dictionary<string,object?> con el mismo criterio que Form() usa para sus
+            // propios valores (numeros como double, para no perder decimales).
+            string json = string.IsNullOrEmpty(resp.HtmlResponse) ? "{\"submitted\": false}" : resp.HtmlResponse;
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            var result = JsonElementToDict(doc.RootElement);
+            if (!result.ContainsKey("submitted")) result["submitted"] = true; // la pagina mando algo -> se interpreta como envio
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logFallback.Log(executionId, "ERROR", "SHOW_HTML_FORMULARIO: " + ex.Message);
+            return new Dictionary<string, object?> { ["submitted"] = false, ["error"] = ex.Message };
+        }
+    }
+
+    private static Dictionary<string, object?> JsonElementToDict(System.Text.Json.JsonElement el)
+    {
+        var dict = new Dictionary<string, object?>();
+        if (el.ValueKind != System.Text.Json.JsonValueKind.Object) return dict;
+        foreach (var prop in el.EnumerateObject())
+            dict[prop.Name] = JsonElementToObject(prop.Value);
+        return dict;
+    }
+
+    private static object? JsonElementToObject(System.Text.Json.JsonElement el) => el.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.String => el.GetString(),
+        System.Text.Json.JsonValueKind.Number => el.TryGetInt64(out var l) ? l : el.GetDouble(),
+        System.Text.Json.JsonValueKind.True => true,
+        System.Text.Json.JsonValueKind.False => false,
+        System.Text.Json.JsonValueKind.Null => null,
+        System.Text.Json.JsonValueKind.Object => JsonElementToDict(el),
+        System.Text.Json.JsonValueKind.Array => el.EnumerateArray().Select(JsonElementToObject).ToList(),
+        _ => null
+    };
+
     private static UiForm ToUiForm(Dictionary<string, object?> spec)
     {
         var form = new UiForm
