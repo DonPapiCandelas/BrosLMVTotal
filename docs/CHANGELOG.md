@@ -81,10 +81,30 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   canales (C# y Python). Mismo patrón de verificación que el caso 3 (conteo de OC
   antes/después + auditoría `Origen='runner-python'`).
 
-### Aún pendiente
-- Casos de humo restantes: `ctx.form()`, `show_html`, `read_excel`. `ctx.form()`/`show_html`
-  son diálogos pensados para un humano — su "humo" automatizado sería más débil (solo
-  confirmar que no truenan al invocarse, no que un humano los usó).
+### Agregado (casos 5-6, mismo día — los 6 casos del plan original ya en verde o excluidos con motivo)
+- `build\humo\casos\05_show_html.ps1` + `05_show_html.codigo.py` — quinto caso:
+  `ctx.show_html()` headless. **Investigando `HostClient.RenderUiHtml` (`src\HostClient.cs`
+  línea 675) se encontró que NO bloquea esperando a que un humano cierre la ventana** — la
+  llamada regresa en cuanto la página termina de cargar (`listo.Set()`), la ventana WebView2
+  queda abierta en su propio hilo en segundo plano. Por eso el caso 5 es un smoke real (se
+  valida que el Runner responda en menos de 30s), no solo "no truena".
+- `build\humo\casos\06_read_excel.ps1` + `06_read_excel.codigo.py` — sexto caso:
+  `ctx.read_excel()`. Puro I/O de archivo (`openpyxl`, sin UI) — el script es autocontenido:
+  escribe su propio `.xlsx` de prueba con `openpyxl` (misma librería que usa `read_excel` por
+  dentro, ya empaquetada en `instalador\runtimes\python\Lib\site-packages\openpyxl`), lo lee
+  de vuelta con `ctx.read_excel()`, compara el contenido real, y lo borra. Sin fixture
+  binaria que mantener en el repo.
+- **`ctx.form()` EXCLUIDO del harness — igual criterio que el timbrado (bloqueador real, no
+  indecisión).** A diferencia de `show_html`, `RenderUiForm` (`src\HostClient.cs` línea 408)
+  usa `frm.ShowDialog()` síncrono: headless no hay nadie para cerrarlo, la ejecución se
+  queda colgada hasta que el timeout de seguridad (2 min por default) la mata. No tiene
+  caso "smoke testearlo" en automático — siempre terminaría en timeout. Documentado también
+  en `MANUAL.md` §9.4 para que nadie intente usarlo en un botón `# job: safe-offline`.
+
+Con esto, **los 6 casos del plan original de T4.1 quedan resueltos**: 5 en verde
+(`build\probar_humo.ps1` los corre todos) y 1 (`ctx.form()`) excluido con motivo técnico
+real, igual que el timbrado (licencia de prueba). Pendiente real: la decisión de producto
+sobre `ctx.erp` de escritura en jobs programados contra empresas de clientes (ver T3.3).
 
 ### Excluido por ahora (bloqueador real, no decisión técnica)
 - **Timbrado en modo pruebas — descartado del harness por ahora.** La licencia de CONTPAQi

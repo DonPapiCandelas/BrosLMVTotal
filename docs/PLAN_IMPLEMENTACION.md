@@ -412,28 +412,27 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T4.1 — Harness de pruebas contra empresa sandbox
 
-> **Estado (2026-07-30): 🟡 EN PROGRESO — 4 de 6 casos en verde (los 2 restantes son de
-> automatización débil; el 7mo, timbrado, excluido con motivo).** Sandbox designado:
-> `ComercialSP` en `localhost\compac` (provisionado, `ProvisionVersion=2.41.0`). Arnés
-> (`build\probar_humo.ps1` + `build\humo\casos\*.ps1`) probado con caso real en verde Y con
-> un caso forzado a fallar (confirma que sí reporta rojo). **Caso 1 (SQL headless)**,
-> **caso 2 (alta de producto, Python headless, sin `ctx.erp`)**, **caso 3 (crear OC, C#,
-> `ctx.erp` de ESCRITURA headless)** y **caso 4 (la misma OC, canal Python)** verdes — los
-> casos 3-4 demuestran que la escritura `ctx.erp` funciona headless por los dos canales
-> (creó un `docDocument` real con IVA calculado por `RecalcCompleto`), pero eso es
-> evidencia, no la decisión de producto pendiente de T3.3 sobre habilitarlo en jobs
-> programados contra empresas reales. **Pendientes:** `ctx.form()`, `show_html`,
-> `read_excel`. **Timbrado en modo pruebas EXCLUIDO por ahora** (bloqueador real, no
-> indecisión técnica): la licencia de CONTPAQi en este servidor es de prueba — cualquier
-> timbrado devuelve error del PAC sin importar qué tan bien esté hecho el script. No tiene
-> caso construir ese caso hasta tener una licencia que sí permita timbrar. Detalle completo
-> en `CHANGELOG.md`.
+> **Estado (2026-07-30): 🟢 LOS 6 CASOS DEL PLAN ORIGINAL RESUELTOS (5 en verde + 1 excluido
+> con motivo).** Sandbox designado: `ComercialSP` en `localhost\compac` (provisionado,
+> `ProvisionVersion=2.41.0`). Arnés (`build\probar_humo.ps1` + `build\humo\casos\*.ps1`)
+> probado con caso real en verde Y con un caso forzado a fallar (confirma que sí reporta
+> rojo). **En verde:** caso 1 (SQL headless), caso 2 (alta de producto, Python headless, sin
+> `ctx.erp`), caso 3 (crear OC, C#, `ctx.erp` de ESCRITURA headless — creó un `docDocument`
+> real con IVA calculado por `RecalcCompleto`), caso 4 (la misma OC, canal Python), caso 5
+> (`ctx.show_html()` — no bloquea headless, confirmado leyendo `RenderUiHtml`), caso 6
+> (`ctx.read_excel()`, autocontenido, sin fixture binaria). **Excluidos con motivo técnico
+> real (no indecisión):** `ctx.form()` (`RenderUiForm` usa `ShowDialog()` síncrono —
+> headless se queda colgado hasta el timeout de 2 min, no tiene caso automatizarlo) y
+> timbrado en modo pruebas (licencia de CONTPAQi de prueba en este servidor — error de PAC
+> garantizado). **Pendiente real de T4.1 y T3.3:** la decisión de producto sobre habilitar
+> `ctx.erp` de escritura en jobs programados contra empresas de clientes reales — el
+> mecanismo ya está probado, falta decidir el alcance. Detalle completo en `CHANGELOG.md`.
 
 - **Qué:** batería automatizada de humo + equivalencia, reusando las herramientas del laboratorio de `Entrenamiento/`.
 - **Por qué (H11):** hoy cada release se valida a mano en vivo; el laboratorio ya resolvió la parte difícil (snapshot before/after, `Compare-Documento.ps1`, matriz de equivalencia campo por campo).
 - **Cómo:**
   1. Designar sandbox en `localhost\compac`: `ComercialSP` (sin provisionar, sin scripts) o restaurar `Comercial_IA_Auditoria` (ver T0.2).
-  2. Batería mínima: crear OC (C# y Python), alta de producto, `ctx.form()` smoke, `show_html` smoke, `read_excel` smoke. ~~Timbrado en modo pruebas~~ **excluido por ahora** — la licencia de CONTPAQi en este servidor es de prueba y no permite timbrar (error de PAC garantizado, no un problema del script). Cada caso con verificación SQL automática contra "documento dorado" (`Compare-Documento.ps1`).
+  2. Batería mínima: crear OC (C# y Python), alta de producto, ~~`ctx.form()` smoke~~, `show_html` smoke, `read_excel` smoke. ~~`ctx.form()`~~ **excluido** — bloquea síncrono (`ShowDialog()`), headless se cuelga hasta el timeout. ~~Timbrado en modo pruebas~~ **excluido por ahora** — la licencia de CONTPAQi en este servidor es de prueba y no permite timbrar (error de PAC garantizado, no un problema del script). Cada caso con verificación SQL automática contra "documento dorado" (`Compare-Documento.ps1`).
   3. `build\probar_humo.ps1` → corre todo y da verde/rojo. Regla: **no se corre `generar_exes.ps1` sin humo en verde**.
 - **Esfuerzo: XL inicial, luego incremental. Riesgo: bajo.**
 - **Criterio:** checklist de release automatizado al 80%.

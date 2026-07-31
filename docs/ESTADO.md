@@ -39,6 +39,31 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — T4.1 completo: 5 casos en verde + 2 excluidos con motivo)
+
+> Continuación directa de la entrada de abajo, mismo día. Cierra los 6 casos del plan
+> original de T4.1.
+
+**Casos 5 y 6 construidos y en verde.** `ctx.show_html()` (caso 5): investigando
+`HostClient.RenderUiHtml` se encontró que NO bloquea esperando a que un humano cierre la
+ventana (regresa en cuanto la página carga) — sí es automatizable de verdad headless, se
+validó con un límite de 30s de respuesta. `ctx.read_excel()` (caso 6): puro I/O de archivo,
+autocontenido (escribe y lee su propio `.xlsx` de prueba con `openpyxl`, sin fixture en el
+repo).
+
+**`ctx.form()` se excluyó del arnés — mismo criterio que el timbrado (motivo técnico real,
+no indecisión).** A diferencia de `show_html`, `RenderUiForm` usa `ShowDialog()` síncrono:
+headless no hay nadie para cerrarlo, la ejecución se cuelga hasta que el timeout de
+seguridad (2 min) la mata. Documentado en `MANUAL.md` §9.4 para que nadie lo use en un
+botón `# job: safe-offline` por error.
+
+**Con esto, los 6 casos del plan original de T4.1 quedan resueltos**: 5 en verde
+(`build\probar_humo.ps1` corre los 6 — 5 pasan, `ctx.form()` ni siquiera se intentó
+construir) y 1 excluido con motivo. Lo único que queda realmente pendiente de T4.1/T3.3 es
+la decisión de producto sobre `ctx.erp` de escritura en jobs programados contra empresas de
+clientes reales — el mecanismo ya está probado con evidencia real, falta decidir el
+alcance.
+
 ## Estás aquí (2026-07-30, aún más tarde — T4.1, caso 4: la OC también funciona por Python)
 
 > Continuación directa de la entrada de abajo, mismo día.

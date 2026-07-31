@@ -946,6 +946,16 @@ else:
   de dict, sin escribir HTML/CSS/JS ni crear carpeta de assets por script. Desde v2.34.0.
   Guía completa: [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md).
 
+> **`ctx.form()` vs `ctx.show_html()` en `BrosLMV.Runner` (headless, T4.1, 2026-07-30):**
+> **`ctx.form()` SIEMPRE bloquea** (`RenderUiForm` en `src\HostClient.cs` usa
+> `frm.ShowDialog()` síncrono) — headless no hay nadie para cerrarlo, así que la ejecución
+> se queda colgada hasta que la revienta el timeout de seguridad (2 min por default, o el
+> que se haya puesto con `# timeout: N`). **No uses `ctx.form()` en un botón `# job:
+> safe-offline`.** `ctx.show_html()` es distinto: `RenderUiHtml` regresa en cuanto la
+> página termina de CARGAR, no espera a que se cierre la ventana (queda abierta en su
+> propio hilo en segundo plano) — sí es seguro headless, confirmado con el caso de humo
+> `build\humo\casos\05_show_html.ps1`.
+
 > ⚠️ **`ctx.nuevo("docDocument")` NO crea un documento válido.** No genera folio, anclas ni defaults.
 > Para documentos usar siempre `ctx.erp.NuevoDocumento(...)`. `ctx.nuevo` solo para tablas simples.
 
