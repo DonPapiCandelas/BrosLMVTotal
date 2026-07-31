@@ -1,4 +1,4 @@
-// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+﻿// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
 // Copyright (C) 2026 Cristofer Candelas Garcia
 //
 // This program is free software: you can redistribute it and/or modify
@@ -37,27 +37,7 @@ namespace BrosLMV
     {
         private readonly ScriptContext _ctx;
 
-        private class ScriptTab
-        {
-            public string AppKey = "";
-            public Scintilla Editor;
-            public Panel Chip;
-            public Label LblName;
-            public bool IsModified;
-            public string Titulo => (string.IsNullOrEmpty(AppKey) ? "Nuevo script" : AppKey) + (IsModified ? " *" : "");
-        }
-        private List<ScriptTab> _tabs = new List<ScriptTab>();
-        private ScriptTab _activeTab;
-        private Panel _pnlEditorHost;
-        private FlowLayoutPanel _tabStrip;
-
-        private Scintilla _editor => _activeTab?.Editor;
-        private string _appKey
-        {
-            get => _activeTab?.AppKey ?? "";
-            set { if (_activeTab != null) { _activeTab.AppKey = value; _activeTab.LblName.Text = _activeTab.Titulo; } }
-        }
-
+        private Scintilla   _editor;
         private TreeView    _tree;
         private RichTextBox _outSalida, _outErrores, _outMensajes;
         private TabControl  _tabsOut;
@@ -65,7 +45,7 @@ namespace BrosLMV
         private Label        _lblCtx;
         private CheckBox     _chkSoloLectura;
         private ToolStripStatusLabel _status, _statusTiempo, _statusScript, _statusLang, _statusPos, _statusVer;
-        // private string _appKey
+        private string       _appKey = "";   // AppKey del script abierto (en SQL)
 
         // Versión del addon (de AssemblyVersion). Se lee de memoria una vez: costo cero.
         // v2.18.0 — 4 anclas + campos universales + partida como nativa (ver CHANGELOG).
@@ -75,7 +55,7 @@ namespace BrosLMV
 
         // --- Controles de la refactorización visual ---
         private SplitContainer _splitLeft, _splitMain, _splitEditor;
-        private Label        _lblEstadoDoc, _lblErrCount;
+        private Label        _lblTabName, _lblEstadoDoc, _lblErrCount;
         private ToolTip      _tips;
         private ComboBox     _cboFontSize;
         private int          _fontSize = 11;
@@ -440,6 +420,7 @@ namespace BrosLMV
                 _chkSoloLectura.Enabled = false;
                 _tips.SetToolTip(_chkSoloLectura, "Solo lectura forzado para tu usuario (preferencia en zzBrosPref) -- no se puede desactivar aquí.");
             }
+            ConfigurarEditor();
             CargarArbol();
             CargarMetodos();
             NuevoScript();
@@ -735,13 +716,13 @@ namespace BrosLMV
         private void RefrescarEstadoDoc()
         {
             bool guardado = !string.IsNullOrEmpty(_appKey);
-            // lblTabName deleted
+            if (_lblTabName != null) { _lblTabName.Text = guardado ? _appKey : "Nuevo script"; _lblTabName.Invalidate(); }
             if (_lblEstadoDoc != null)
             {
                 _lblEstadoDoc.Text = guardado ? "● Guardado" : "● Sin guardar";
                 _lblEstadoDoc.ForeColor = guardado ? AppTheme.Success : AppTheme.Warning;
             }
-            if (_statusScript != null) _statusScript.Text = guardado ? _appKey : "(sin guardar)"; if (_activeTab != null) { _activeTab.IsModified = !guardado; _activeTab.LblName.Text = _activeTab.Titulo; }
+            if (_statusScript != null) _statusScript.Text = guardado ? _appKey : "(sin guardar)";
         }
 
         // =========================================================
@@ -822,30 +803,43 @@ namespace BrosLMV
         {
             var pnlEditorHost = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgSurface };
 
-            _pnlEditorHost = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgSurface };
-
+            // --- Franja de pestañas del editor ---
             var pnlTabEditor = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = AppTheme.BgMain };
             pnlTabEditor.Paint += (s, e) => BordeInferior(e.Graphics, pnlTabEditor);
 
-            _tabStrip = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoScroll = true, BackColor = AppTheme.BgMain };
-            
-            var pnlMasTab = new Panel { Dock = DockStyle.Left, Width = 34, BackColor = AppTheme.BgMain };
-            var btnMasTab = new IconButton { Glyph = Glyph.Add, Kind = BtnKind.Ghost, Dock = DockStyle.Fill, Radius = 4 };
+            // Pestaña activa (chip).
+            var tabChip = new Panel { Dock = DockStyle.Left, Width = 220, BackColor = AppTheme.BgSurface };
+            tabChip.Paint += (s, e) =>
+            {
+                using (var b = new SolidBrush(AppTheme.Primary)) e.Graphics.FillRectangle(b, 0, 0, tabChip.Width, 2);
+                using (var p = new Pen(AppTheme.Border)) { e.Graphics.DrawLine(p, tabChip.Width - 1, 2, tabChip.Width - 1, tabChip.Height); }
+            };
+            _lblTabName = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = AppTheme.FontMain, ForeColor = AppTheme.TextMain, Padding = new Padding(12, 0, 0, 0), BackColor = AppTheme.BgSurface, Text = "Nuevo script" };
+            var btnCerrarTab = new IconButton { Glyph = Glyph.Close, Kind = BtnKind.Ghost, Dock = DockStyle.Right, Width = 30, Font = AppTheme.FontIconSmall, Radius = 4 };
+            _tips.SetToolTip(btnCerrarTab, "Cerrar / nuevo script");
+            btnCerrarTab.Click += (s, e) => NuevoScript();
+            tabChip.Controls.Add(_lblTabName);
+            tabChip.Controls.Add(btnCerrarTab);
+
+            var btnMasTab = new IconButton { Glyph = Glyph.Add, Kind = BtnKind.Ghost, Dock = DockStyle.Left, Width = 34, Radius = 4 };
             _tips.SetToolTip(btnMasTab, "Nuevo script");
             btnMasTab.Click += (s, e) => NuevoScript();
-            pnlMasTab.Controls.Add(btnMasTab);
 
-            // Controles a la derecha
+            // Controles discretos a la derecha (tamaño de fuente, ajuste, buscar, pantalla completa).
             var pnlEdTools = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = AppTheme.BgMain, Padding = new Padding(0, 4, 8, 0) };
             _btnZen = new IconButton { Glyph = Glyph.Full, Kind = BtnKind.Ghost, Width = 30, Height = 28, Radius = 4, Margin = new Padding(2, 0, 0, 0) };
+            _tips.SetToolTip(_btnZen, "Pantalla completa del editor (F11)");
             _btnZen.Click += (s, e) => ToggleZen();
             var btnBuscarEd = new IconButton { Glyph = Glyph.Search, Kind = BtnKind.Ghost, Width = 30, Height = 28, Radius = 4, Margin = new Padding(2, 0, 0, 0) };
+            _tips.SetToolTip(btnBuscarEd, "Buscar en el editor (Ctrl+F)");
             btnBuscarEd.Click += (s, e) => MostrarBuscar();
             var chkWrap = new CheckBox { Text = "Ajuste", AutoSize = true, Appearance = Appearance.Normal, ForeColor = AppTheme.TextMuted, BackColor = Color.Transparent, Font = AppTheme.FontSmall, Margin = new Padding(8, 6, 4, 0), Cursor = Cursors.Hand };
-            chkWrap.CheckedChanged += (s, e) => { try { if (_editor != null) _editor.WrapMode = chkWrap.Checked ? WrapMode.Word : WrapMode.None; } catch { } };
+            _tips.SetToolTip(chkWrap, "Ajuste de línea");
+            chkWrap.CheckedChanged += (s, e) => { try { _editor.WrapMode = chkWrap.Checked ? WrapMode.Word : WrapMode.None; } catch { } };
             _cboFontSize = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 64, Font = AppTheme.FontSmall, FlatStyle = FlatStyle.Flat, Margin = new Padding(4, 4, 4, 0) };
             _cboFontSize.Items.AddRange(new object[] { "11 px", "12 px", "13 px", "14 px", "16 px", "18 px" });
             _cboFontSize.SelectedIndex = 0;
+            _tips.SetToolTip(_cboFontSize, "Tamaño de fuente del editor");
             _cboFontSize.SelectedIndexChanged += (s, e) =>
             {
                 var t = (_cboFontSize.SelectedItem as string ?? "11").Split(' ')[0];
@@ -856,14 +850,15 @@ namespace BrosLMV
             pnlEdTools.Controls.Add(btnBuscarEd);
             pnlEdTools.Controls.Add(_btnZen);
 
-            pnlTabEditor.Controls.Add(_tabStrip);
-            pnlTabEditor.Controls.Add(pnlMasTab);
             pnlTabEditor.Controls.Add(pnlEdTools);
+            pnlTabEditor.Controls.Add(btnMasTab);
+            pnlTabEditor.Controls.Add(tabChip);
 
-            _pnlEditorHost.Controls.Add(ConstruirBarraBuscar());
-            _pnlEditorHost.Controls.Add(pnlTabEditor);
-            return _pnlEditorHost;
-
+            _editor = new Scintilla { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None };
+            pnlEditorHost.Controls.Add(_editor);
+            pnlEditorHost.Controls.Add(ConstruirBarraBuscar());   // oculta hasta Ctrl+F
+            pnlEditorHost.Controls.Add(pnlTabEditor);
+            return pnlEditorHost;
         }
 
         // Barra de búsqueda incremental del editor (oculta por defecto).
@@ -1276,7 +1271,7 @@ namespace BrosLMV
                 int col = ed.CurrentPosition - ed.Lines[ed.CurrentLine].Position + 1;
                 _statusPos.Text = "Lín " + line + ", Col " + col;
             };
-            ed.TextChanged += (s, e) => { DetectarLenguajeStatus(); if (_activeTab != null && !string.IsNullOrEmpty(ed.Text)) { _activeTab.IsModified = true; _activeTab.LblName.Text = _activeTab.Titulo; } };
+            ed.TextChanged += (s, e) => DetectarLenguajeStatus();
 
             // Atajos dentro del editor (Scintilla es nativo y a veces captura las teclas
             // antes que KeyPreview del formulario, así que los atendemos aquí también).
@@ -1963,10 +1958,29 @@ namespace BrosLMV
         // =====================================================
         //   Acciones de script (en SQL, por empresa)
         // =====================================================
-
+        private void NuevoScript()
+        {
+            _appKey = "";
+            _editor.Text = "";
+            Text = "BrosLMV — Consola de scripts — (sin guardar)";
+            _status.Text = "Nuevo script";
+        }
 
         // Abre un script de la empresa activa (desde zzBrosScript).
-
+        private void AbrirScript(string appKey)
+        {
+            try
+            {
+                string codigo = _ctx.BrosCargar(appKey);
+                if (codigo == null) { ctxError("No se encontró el script: " + appKey); return; }
+                _editor.Text = codigo;
+                _appKey = appKey;
+                Text = "BrosLMV — " + appKey;
+                _status.Text = "Abierto: " + appKey;
+                Datos.AgregarReciente(appKey);
+            }
+            catch (Exception ex) { ctxError("No se pudo abrir: " + ex.Message); }
+        }
 
         // Importar desde archivo (.ctx/.csx): carga el contenido al editor; con Guardar
         // queda registrado en la empresa. Sirve para migrar scripts viejos a SQL.
@@ -2224,120 +2238,7 @@ namespace BrosLMV
 
         private static string SqlLit(string s) { return "N'" + (s ?? "").Replace("'", "''") + "'"; }
 
-                private void ActivarTab(ScriptTab tab)
-        {
-            if (_activeTab != null && _activeTab.Chip != null)
-            {
-                _activeTab.Chip.BackColor = AppTheme.BgMain;
-                _activeTab.LblName.BackColor = AppTheme.BgMain;
-                _activeTab.Editor.Visible = false;
-            }
-            _activeTab = tab;
-            _activeTab.Chip.BackColor = AppTheme.BgSurface;
-            _activeTab.LblName.BackColor = AppTheme.BgSurface;
-            _activeTab.Editor.Visible = true;
-            _activeTab.Editor.Focus();
-            if (_pnlEditorHost != null) _pnlEditorHost.Controls.SetChildIndex(_activeTab.Editor, 0);
-            
-            Text = "BrosLMV — " + (string.IsNullOrEmpty(_activeTab.AppKey) ? "(sin guardar)" : _activeTab.AppKey);
-            if (_status != null) _status.Text = string.IsNullOrEmpty(_activeTab.AppKey) ? "Nuevo script" : "Abierto: " + _activeTab.AppKey;
-            
-            foreach (var t in _tabs) { if(t.Chip != null) t.Chip.Invalidate(); }
-        }
-
-        private void CerrarTab(ScriptTab tab)
-        {
-            if (tab.IsModified)
-            {
-                var r = MessageBox.Show($"El script '{tab.Titulo}' tiene cambios sin guardar. ¿Desea cerrarlo de todas formas?", "Cerrar pestaña", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                if (r != DialogResult.Yes) return;
-            }
-            
-            _tabs.Remove(tab);
-            if (_tabStrip != null) _tabStrip.Controls.Remove(tab.Chip);
-            if (_pnlEditorHost != null) _pnlEditorHost.Controls.Remove(tab.Editor);
-            if (tab.Chip != null) tab.Chip.Dispose();
-            if (tab.Editor != null) tab.Editor.Dispose();
-            
-            if (_tabs.Count > 0)
-                ActivarTab(_tabs.Last());
-            else
-                NuevoScript(); 
-        }
-
-        private void NuevoScript()
-        {
-            var tab = new ScriptTab();
-            _activeTab = tab; 
-            
-            tab.Editor = new Scintilla { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Visible = false };
-            if (_pnlEditorHost != null) _pnlEditorHost.Controls.Add(tab.Editor);
-            ConfigurarEditor(); 
-            
-            tab.Chip = new Panel { Width = 180, Height = 36, BackColor = AppTheme.BgMain, Margin = new Padding(0) };
-            tab.Chip.Paint += (s, e) =>
-            {
-                if (_activeTab == tab)
-                    using (var b = new SolidBrush(AppTheme.Primary)) e.Graphics.FillRectangle(b, 0, 0, tab.Chip.Width, 2);
-                using (var p = new Pen(AppTheme.Border)) e.Graphics.DrawLine(p, tab.Chip.Width - 1, 2, tab.Chip.Width - 1, tab.Chip.Height);
-            };
-            
-            tab.LblName = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = AppTheme.FontMain, ForeColor = AppTheme.TextMain, Padding = new Padding(12, 0, 0, 0), BackColor = AppTheme.BgMain, Text = tab.Titulo };
-            tab.LblName.Click += (s, e) => ActivarTab(tab);
-            tab.Chip.Click += (s, e) => ActivarTab(tab);
-            
-            var btnCerrarTab = new IconButton { Glyph = Glyph.Close, Kind = BtnKind.Ghost, Dock = DockStyle.Right, Width = 30, Font = AppTheme.FontIconSmall, Radius = 4 };
-            btnCerrarTab.Click += (s, e) => CerrarTab(tab);
-            
-            tab.Chip.Controls.Add(tab.LblName);
-            tab.Chip.Controls.Add(btnCerrarTab);
-            
-            _tabs.Add(tab);
-            if (_tabStrip != null) _tabStrip.Controls.Add(tab.Chip);
-            
-            ActivarTab(tab);
-        }
-
-        private void AbrirScript(string appKey)
-        {
-            try
-            {
-                var tabEx = _tabs.FirstOrDefault(t => string.Equals(t.AppKey, appKey, StringComparison.OrdinalIgnoreCase));
-                if (tabEx != null)
-                {
-                    ActivarTab(tabEx);
-                    return;
-                }
-            
-                string codigo = _ctx.BrosCargar(appKey);
-                if (codigo == null) { ctxError("No se encontró el script: " + appKey); return; }
-                
-                if (string.IsNullOrEmpty(_activeTab.AppKey) && !_activeTab.IsModified && _activeTab.Editor.Text == "")
-                {
-                    _activeTab.Editor.Text = codigo;
-                    _appKey = appKey; 
-                    _activeTab.IsModified = false;
-                    _activeTab.LblName.Text = _activeTab.Titulo;
-                    ActivarTab(_activeTab);
-                }
-                else
-                {
-                    NuevoScript();
-                    _activeTab.Editor.Text = codigo;
-                    _appKey = appKey;
-                    _activeTab.IsModified = false;
-                    _activeTab.LblName.Text = _activeTab.Titulo;
-                    ActivarTab(_activeTab);
-                }
-                
-                Datos.AgregarReciente(appKey);
-            }
-            catch (Exception ex)
-            {
-                ctxError("Error al cargar el script: " + ex.Message);
-            }
-        }
-private void Guardar(bool comoNuevo)
+        private void Guardar(bool comoNuevo)
         {
             string ak = _appKey;
             if (comoNuevo || string.IsNullOrEmpty(ak))
