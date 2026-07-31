@@ -6,6 +6,16 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.46.0] — 2026-07-30 — T3.1 fase 4: receta estrella "crear documento a partir de otro"
+
+> **Nota técnica:** la ventana visual con grid editable es la fase 6, no esta — aquí solo se implementó el motor de ejecución, probado con JSON armado a mano.
+
+### Agregado
+- `src\Recetas.cs`: `RecetaCrearDocumentoDesdeOtro`. Lee el módulo destino, `depotId`, `businessEntityId` y una lista de `partidas` desde el JSON, invoca a `EstructurasRegistro` para saber cómo armar el documento, y utiliza `ctx.erp` para crearlo en Comercial PRO (incluyendo la afectación de inventario y la generación de información de pago si el tipo de documento lo requiere).
+- `build\humo\casos\09_receta_crear_documento.ps1`: Prueba que la receta funciona creando un documento en la base de datos de pruebas `ComercialSP` usando el runner de manera headless.
+
+---
+
 ## [2.45.0] — 2026-07-30 — T3.1 fase 3: almacén de estructuras de documento
 
 > **Nota técnica:** generaliza MANUAL.md §7.2-7.8. Sin ejecución propia todavía — lo usa la fase 4.

@@ -67,6 +67,67 @@ namespace BrosLMV
         }
     }
 
+    public class RecetaCrearDocumentoDesdeOtro : IReceta
+    {
+        public string Id => "crear_documento_desde_otro";
+        public string Nombre => "Crear documento a partir de otro";
+
+        public string Ejecutar(Dictionary<string, object> config, ScriptContext ctx)
+        {
+            if (config == null) return "ERROR: falta config.";
+            if (!config.ContainsKey("moduloDestino"))
+                return "ERROR: config.moduloDestino es requerido.";
+
+            int moduloDestino = Convert.ToInt32(config["moduloDestino"]);
+            var estructura = EstructurasRegistro.Buscar(moduloDestino);
+            if (estructura == null)
+                return "ERROR: no hay EstructuraDocumento registrada para ModuleID=" + moduloDestino +
+                       " (agrégala en src/EstructurasDocumento.cs antes de usar este módulo).";
+
+            int depotId = config.ContainsKey("depotId") ? Convert.ToInt32(config["depotId"]) : 1;
+            int businessEntityId = config.ContainsKey("businessEntityId") ? Convert.ToInt32(config["businessEntityId"]) : 0;
+
+            if (!config.ContainsKey("partidas") || !(config["partidas"] is System.Collections.ArrayList partidas) || partidas.Count == 0)
+                return "ERROR: config.partidas debe ser una lista con al menos 1 partida.";
+
+            try
+            {
+                int doc = ctx.erp.NuevoDocumento(moduloDestino, depotId, businessEntityId);
+
+                string depotIdFromExpr = estructura.DepotIdFromEsDepotId ? "DepotID" : "0";
+                string fechas = estructura.RequiereFechaEntrega
+                    ? ", DateDelivery=GETDATE(), DateDocDelivery=GETDATE()" : "";
+                ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=" + depotIdFromExpr +
+                              ", PaymentTermID=" + estructura.PaymentTermId + fechas +
+                              " WHERE DocumentID=" + doc);
+
+                foreach (Dictionary<string, object> p in partidas)
+                {
+                    int productId = Convert.ToInt32(p["productId"]);
+                    double cantidad = Convert.ToDouble(p["cantidad"]);
+                    double precio = p.ContainsKey("precio") ? Convert.ToDouble(p["precio"]) : -1;
+                    double costo = p.ContainsKey("costo") ? Convert.ToDouble(p["costo"]) : -1;
+                    ctx.erp.AgregarArticulo(doc, productId, cantidad, precio, costo);
+                }
+
+                if (estructura.TaxTypeIdPartida.HasValue)
+                    ctx.NonQuery("UPDATE docDocumentItem SET TaxTypeID=" + estructura.TaxTypeIdPartida.Value +
+                                  " WHERE DocumentID=" + doc + " AND DeletedOn IS NULL");
+
+                ctx.erp.RecalcCompleto(doc);
+                if (estructura.AfectaInventario) ctx.erp.AffectStockNEW(doc);
+                ctx.erp.Save(doc);
+                if (estructura.GeneraInfoPago) ctx.erp.UpdateDocumentPaidInfo(doc);
+
+                return "Documento creado: doc=" + doc + " (" + estructura.Nombre + ")";
+            }
+            catch (Exception ex)
+            {
+                return "ERROR: " + ex.Message;
+            }
+        }
+    }
+
     public static class RecetasRegistro
     {
         private static readonly Dictionary<string, IReceta> Todas = new Dictionary<string, IReceta>(StringComparer.OrdinalIgnoreCase);
@@ -74,6 +135,7 @@ namespace BrosLMV
         static RecetasRegistro()
         {
             Registrar(new RecetaSqlTokens());
+            Registrar(new RecetaCrearDocumentoDesdeOtro());
             // Nuevas recetas (fases futuras): Registrar(new RecetaXyz());
         }
 

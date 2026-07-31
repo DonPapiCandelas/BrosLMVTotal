@@ -83,6 +83,9 @@ post-proceso de XEngine aplica. **Esto hace genérica** la receta de "crear docu
 observado de cada documento y se guarda como **JSON** (ver formato en esa doc).
 
 ### 2.4 Receta estrella: "Crear documento a partir de otro"
+
+> **Implementado (2026-07-30, v2.46.0, fase 4):** Se desarrolló `RecetaCrearDocumentoDesdeOtro` en C#, que usa el diccionario `EstructurasRegistro` para crear un documento y agregar artículos de manera general a través de `ctx.erp`. Se probó contra `ComercialSP` de manera headless. La interfaz gráfica se desarrollará en la fase 6.
+
 Generalización del `Boton ejemplo 1.py` (Req→OC) del cliente:
 1. Lee la **estructura** del documento destino.
 2. Muestra la ventana: encabezado editable (proveedor, módulo, fecha, moneda...) + grid de
