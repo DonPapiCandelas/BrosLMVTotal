@@ -357,8 +357,7 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T3.1 — Motor de recetas no-code (MVP con 3 recetas) ⭐ (la meta estratégica)
 
-> **Estado (2026-07-30): 🟡 EN PROGRESO — fases 1-5 de 6 hechas (v2.47.0).** Plan de 6 fases
-> acordado con el usuario (mockup visual mostrado y aprobado antes de empezar).
+> **Estado (2026-07-30): ✅ TERMINADO (v2.48.0).** Las 6 fases fueron implementadas. Con esto, el MVP original (planeado como 3 recetas) queda terminado entregando 2 recetas operativas ("sql_tokens" y "crear_documento_desde_otro"). La funcionalidad de pasos encadenados se agregó en la fase 5. Queda pendiente para una iteración futura mejorar el grid de partidas para la creación de documentos (actualmente es un JSON crudo) y probar visualmente el modo asistente en CONTPAQi real.
 > **Fase 1 — motor de tokens hacia el wizard:** los 5 tokens fijos (`{pID}`, `{pIDs}`,
 > `{pUserID}`, `{pModulo}`, `{pEmpresa}`) ya son clicables en la pestaña "Tokens" de la
 > Consola (antes "Datos"), con el snippet correcto por lenguaje. Hallazgo real: Python no

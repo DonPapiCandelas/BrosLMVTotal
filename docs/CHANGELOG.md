@@ -6,6 +6,16 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.48.0] — 2026-07-30 — T3.1 fase 6: modo asistente "Nueva acción" en la Consola
+
+> **Pendiente:** Confirmar visualmente dentro de CONTPAQi real — es UI de Windows Forms, compila pero no hay forma de verificar el render sin abrir la Consola de verdad. Con esto, T3.1 (el MVP de 3 recetas planeado originalmente) queda terminado con 2 recetas operativas ("sql_tokens" y "crear_documento_desde_otro"). La tabla de partidas de la receta creadora de documentos quedó como un textbox de JSON crudo; generar un DataGridView amigable para el usuario es trabajo para una futura versión.
+
+### Agregado
+- `src\Consola.cs`: Nuevo botón "Nueva acción" en la barra de herramientas de la consola.
+- `src\Consola.cs`: Nuevo diálogo dinámico `NuevaAccionForm`. Lee el `EsquemaConfig` (agregado a `IReceta`) de la receta elegida para generar los controles en pantalla (Cajas de texto o numéricas) y guarda la configuración seleccionada por el usuario formateándola en el JSON con la etiqueta `# lang: receta` sin requerir que escriba código. Las propiedades marcadas con `PermiteTokens` incluyen un botón de menú que inserta el token deseado.
+
+---
+
 ## [2.47.0] — 2026-07-30 — T3.1 fase 5: pasos encadenados
 
 > **Limitación conocida (documentada en MANUAL.md):** No hay transacción entre pasos. Si una receta con pasos encadenados falla en el paso 2, los efectos del paso 1 ya se habrán aplicado a la base de datos de manera definitiva y no se revertirán.

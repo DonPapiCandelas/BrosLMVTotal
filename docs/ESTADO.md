@@ -39,6 +39,14 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — v2.48.0, T3.1 fase 6: modo asistente "Nueva acción")
+
+> Continuación directa de la entrada de abajo. Fase 6 de 6 de T3.1. ¡META ALCANZADA!
+
+**Modo asistente en la Consola.** Se agregó el botón "Nueva acción" a la Consola y el formulario `NuevaAccionForm` que lee dinámicamente el `EsquemaConfig` de las recetas para presentar inputs visuales en lugar de obligar al usuario a programar. Se probó la generación del JSON y la compilación limpia del entorno.
+
+**Pendiente real:** Confirmar visualmente dentro de CONTPAQi real que el asistente rinde correctamente (y las posiciones/tamaños de los botones y menus contextuales se ven bien). Queda para futuro construir un DataGridView de verdad para el campo de partidas de la creación de documentos, en lugar de JSON.
+
 ## Estás aquí (2026-07-30, aún más tarde — v2.47.0, T3.1 fase 5: pasos encadenados)
 
 > Continuación directa de la entrada de abajo. Fase 5 de 6 de T3.1.

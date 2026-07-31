@@ -34,12 +34,22 @@ using System.Web.Script.Serialization;
 
 namespace BrosLMV
 {
+    public class CampoReceta
+    {
+        public string Nombre;      // clave en el JSON de config, p. ej. "sql"
+        public string Etiqueta;    // texto visible, p. ej. "SQL (con tokens opcionales)"
+        public string Tipo;        // "texto" | "numero" | "texto_multilinea"
+        public bool PermiteTokens; // si true, el campo muestra el boton "Insertar token" (fase 1)
+        public bool Requerido;
+    }
+
     // Contrato de una receta: que le pregunta al usuario al crear el boton (EsquemaConfig,
     // usado por el futuro asistente de la Consola, fase 6) y que hace al ejecutarse.
     public interface IReceta
     {
         string Id { get; }       // identificador estable, va en el JSON guardado
         string Nombre { get; }   // nombre visible en el futuro asistente
+        List<CampoReceta> EsquemaConfig { get; } // campos a pedir en el wizard
         // Ejecuta con el config ya parseado (JSON -> Dictionary). Debe seguir la misma
         // convencion que ctx.EjecutarSql/ScriptRunner.Ejecutar: "" o texto normal = OK,
         // "ERROR: ..." = fallo (nunca lanza hacia el llamador).
@@ -54,6 +64,9 @@ namespace BrosLMV
     {
         public string Id => "sql_tokens";
         public string Nombre => "Ejecutar SQL con tokens";
+        public List<CampoReceta> EsquemaConfig => new List<CampoReceta> {
+            new CampoReceta { Nombre="sql", Etiqueta="SQL (con tokens opcionales)", Tipo="texto_multilinea", PermiteTokens=true, Requerido=true }
+        };
 
         public string Ejecutar(Dictionary<string, object> config, ScriptContext ctx)
         {
@@ -71,6 +84,12 @@ namespace BrosLMV
     {
         public string Id => "crear_documento_desde_otro";
         public string Nombre => "Crear documento a partir de otro";
+        public List<CampoReceta> EsquemaConfig => new List<CampoReceta> {
+            new CampoReceta { Nombre="moduloDestino", Etiqueta="ID del Módulo Destino", Tipo="numero", Requerido=true },
+            new CampoReceta { Nombre="depotId", Etiqueta="ID del Almacén", Tipo="numero", Requerido=true },
+            new CampoReceta { Nombre="businessEntityId", Etiqueta="ID de la Entidad (Proveedor/Cliente)", Tipo="texto", PermiteTokens=true, Requerido=true },
+            new CampoReceta { Nombre="partidas", Etiqueta="Partidas (JSON, ej: [{\"productId\":1,\"cantidad\":5}])", Tipo="texto_multilinea", Requerido=true }
+        };
 
         public string Ejecutar(Dictionary<string, object> config, ScriptContext ctx)
         {
@@ -140,6 +159,8 @@ namespace BrosLMV
         }
 
         private static void Registrar(IReceta r) { Todas[r.Id] = r; }
+
+        public static IEnumerable<IReceta> Listar() => Todas.Values;
 
         public static IReceta Buscar(string id)
         { return (!string.IsNullOrEmpty(id) && Todas.TryGetValue(id, out var r)) ? r : null; }

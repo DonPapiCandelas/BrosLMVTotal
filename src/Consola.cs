@@ -1,4 +1,4 @@
-﻿// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
 // Copyright (C) 2026 Cristofer Candelas Garcia
 //
 // This program is free software: you can redistribute it and/or modify
@@ -603,7 +603,8 @@ namespace BrosLMV
             AddTB(Glyph.PlaySel, "Ejecutar selección",  "Ejecutar solo el texto seleccionado",     (s, e) => Ejecutar(true),  BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Check,   "Verificar",           "Compilar/verificar sin ejecutar",         (s, e) => Verificar(),     BtnKind.Toolbar, Color.Empty);
             AddSep();
-            AddTB(Glyph.New,     "Nuevo",               "Nuevo script",                            (s, e) => NuevoScript(),   BtnKind.Toolbar, Color.Empty);
+            AddTB(Glyph.New,     "Nueva acción",        "Asistente visual",                        (s, e) => { using (var f = new NuevaAccionForm(_ctx)) f.ShowDialog(this); }, BtnKind.Toolbar, Color.Empty);
+            AddTB(Glyph.New,     "Nuevo script",        "Nuevo script (código)",                   (s, e) => NuevoScript(),   BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Open,    "Abrir",               "Importar script desde archivo",           (s, e) => Abrir(),         BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Save,    "Guardar",             "Guardar en la empresa activa",            (s, e) => Guardar(false),  BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.SaveAs,  "Guardar como",        "Guardar con otro nombre (AppKey)",        (s, e) => Guardar(true),   BtnKind.Toolbar, Color.Empty);
@@ -2840,5 +2841,181 @@ namespace BrosLMV
         public override Color MenuItemSelectedGradientBegin => AppTheme.PrimarySelected;
         public override Color MenuItemSelectedGradientEnd => AppTheme.PrimarySelected;
         public override Color MenuItemBorder => AppTheme.PrimarySelected;
+    }
+
+    internal sealed class NuevaAccionForm : Form
+    {
+        private ScriptContext _ctx;
+        private ComboBox _cboRecetas;
+        private Panel _pnlCampos;
+        private TextBox _txtAppKey;
+        private TextBox _txtNombre;
+        private Dictionary<string, Control> _inputs = new Dictionary<string, Control>();
+
+        public NuevaAccionForm(ScriptContext ctx)
+        {
+            _ctx = ctx;
+            Text = "Nueva acción sin código (Asistente)";
+            Width = 500;
+            Height = 600;
+            StartPosition = FormStartPosition.CenterParent;
+            BackColor = AppTheme.BgMain;
+            Font = AppTheme.FontMain;
+            ForeColor = AppTheme.TextMain;
+            ShowIcon = false;
+            MinimizeBox = false;
+            MaximizeBox = false;
+
+            var pnlMain = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
+            pnlMain.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Receta
+            pnlMain.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // Campos dinámicos
+            pnlMain.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // AppKey
+            pnlMain.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Nombre
+            pnlMain.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Boton
+
+            // 1. Selector de receta
+            var pnlHeader = new Panel { Dock = DockStyle.Fill, Height = 60, Padding = new Padding(10) };
+            pnlHeader.Controls.Add(new Label { Text = "Tipo de acción:", Dock = DockStyle.Top, Height = 20 });
+            _cboRecetas = new ComboBox { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList };
+            _cboRecetas.Items.AddRange(System.Linq.Enumerable.ToArray(RecetasRegistro.Listar()));
+            _cboRecetas.DisplayMember = "Nombre";
+            _cboRecetas.SelectedIndexChanged += (s, e) => ConstruirFormulario();
+            pnlHeader.Controls.Add(_cboRecetas);
+            pnlMain.Controls.Add(pnlHeader, 0, 0);
+
+            // 2. Panel dinámico
+            _pnlCampos = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10), BackColor = AppTheme.BgSurface };
+            pnlMain.Controls.Add(_pnlCampos, 0, 1);
+
+            // 3. AppKey y Nombre
+            var pnlFooter = new Panel { Dock = DockStyle.Fill, Height = 120, Padding = new Padding(10) };
+            pnlFooter.Controls.Add(_txtNombre = new TextBox { Dock = DockStyle.Top });
+            pnlFooter.Controls.Add(new Label { Text = "Nombre visible (Ej. 'Crear OC'):", Dock = DockStyle.Top, Height = 25, Padding = new Padding(0, 5, 0, 0) });
+            pnlFooter.Controls.Add(_txtAppKey = new TextBox { Dock = DockStyle.Top });
+            pnlFooter.Controls.Add(new Label { Text = "Clave interna (AppKey, sin espacios):", Dock = DockStyle.Top, Height = 25, Padding = new Padding(0, 5, 0, 0) });
+            pnlMain.Controls.Add(pnlFooter, 0, 2);
+
+            // 4. Botón guardar
+            var btnGuardar = new Button { Text = "Guardar acción", Dock = DockStyle.Fill, Height = 40, BackColor = AppTheme.Primary, ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnGuardar.FlatAppearance.BorderSize = 0;
+            btnGuardar.Click += BtnGuardar_Click;
+            var pnlBtn = new Panel { Dock = DockStyle.Fill, Height = 60, Padding = new Padding(10) };
+            pnlBtn.Controls.Add(btnGuardar);
+            pnlMain.Controls.Add(pnlBtn, 0, 3);
+
+            Controls.Add(pnlMain);
+            
+            if (_cboRecetas.Items.Count > 0)
+                _cboRecetas.SelectedIndex = 0;
+        }
+
+        private void ConstruirFormulario()
+        {
+            _pnlCampos.Controls.Clear();
+            _inputs.Clear();
+            var receta = _cboRecetas.SelectedItem as IReceta;
+            if (receta == null || receta.EsquemaConfig == null) return;
+
+            int y = 0;
+            foreach (var c in receta.EsquemaConfig)
+            {
+                var lbl = new Label { Text = c.Etiqueta + (c.Requerido ? " *" : ""), Location = new Point(0, y), AutoSize = true };
+                _pnlCampos.Controls.Add(lbl);
+                y += 20;
+
+                Control input = null;
+                if (c.Tipo == "numero")
+                {
+                    var num = new NumericUpDown { Location = new Point(0, y), Width = 150, Maximum = 99999999, Minimum = -1 };
+                    input = num;
+                }
+                else
+                {
+                    var txt = new TextBox { Location = new Point(0, y), Width = _pnlCampos.Width - 50 };
+                    if (c.Tipo == "texto_multilinea")
+                    {
+                        txt.Multiline = true;
+                        txt.Height = 80;
+                        txt.ScrollBars = ScrollBars.Vertical;
+                    }
+                    input = txt;
+
+                    if (c.PermiteTokens)
+                    {
+                        var btnToken = new Button { Text = "{...}", Location = new Point(txt.Right + 5, y), Width = 40, Height = 23, Cursor = Cursors.Hand };
+                        btnToken.Click += (s, e) => MostrarTokensMenu(btnToken, txt);
+                        _pnlCampos.Controls.Add(btnToken);
+                    }
+                }
+                _pnlCampos.Controls.Add(input);
+                _inputs[c.Nombre] = input;
+                y += input.Height + 10;
+            }
+        }
+
+        private void MostrarTokensMenu(Button btn, TextBox txt)
+        {
+            var ctx = new ContextMenuStrip();
+            string[] tokens = { "{pID}", "{pIDs}", "{pUserID}", "{pModulo}", "{pEmpresa}" };
+            foreach (var t in tokens)
+            {
+                var item = ctx.Items.Add(t);
+                item.Click += (s, e) => txt.SelectedText = t;
+            }
+            ctx.Show(btn, new Point(0, btn.Height));
+        }
+
+        private void BtnGuardar_Click(object sender, EventArgs e)
+        {
+            var receta = _cboRecetas.SelectedItem as IReceta;
+            if (receta == null) return;
+
+            string ak = _txtAppKey.Text.Trim().Replace(" ", "_");
+            string nom = _txtNombre.Text.Trim();
+            if (string.IsNullOrEmpty(ak) || string.IsNullOrEmpty(nom))
+            {
+                MessageBox.Show("Falta AppKey o Nombre.");
+                return;
+            }
+
+            var config = new Dictionary<string, object>();
+            foreach (var c in receta.EsquemaConfig)
+            {
+                var input = _inputs[c.Nombre];
+                if (c.Tipo == "numero")
+                    config[c.Nombre] = (int)((NumericUpDown)input).Value;
+                else
+                    config[c.Nombre] = input.Text.Trim();
+                
+                if (c.Requerido && string.IsNullOrEmpty(config[c.Nombre].ToString()))
+                {
+                    MessageBox.Show("El campo " + c.Etiqueta + " es requerido.");
+                    return;
+                }
+            }
+
+            var jsonDict = new Dictionary<string, object>
+            {
+                { "receta", receta.Id },
+                { "config", config }
+            };
+
+            var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+            string json = serializer.Serialize(jsonDict);
+            string codigoCompleto = "# lang: receta\n" + json;
+
+            try
+            {
+                _ctx.BrosAsegurarTablas();
+                _ctx.BrosGuardar(ak, nom, codigoCompleto, _ctx.ModuloActivo());
+                MessageBox.Show("Acción guardada con éxito. Actualiza el árbol para verla.");
+                this.DialogResult = DialogResult.OK;
+                this.Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error al guardar: " + ex.Message);
+            }
+        }
     }
 }

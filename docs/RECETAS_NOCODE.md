@@ -111,6 +111,67 @@ paso 3 falla, los efectos del paso 1 y 2 (como crear un documento) NO se deshace
 > preparar tabla → insertar N filas → lanzar una acción), todo **sin escribir código**.
 > Se implementa de forma independiente, con código propio.
 
+### 2.6 Modo asistente en la Consola
+
+> **Implementado (2026-07-30, v2.48.0, fase 6):** Se desarrolló la UI en `NuevaAccionForm` para que la Consola muestre el asistente. Este diálogo lista todas las recetas disponibles, lee sus requerimientos vía `EsquemaConfig`, muestra un formulario dinámico con soporte de botón `{...}` para variables (tokens) y guarda automáticamente la acción en `zzBrosScript` sin requerir codificación.
+
+El botón **Nueva acción** en la barra de la Consola abre el wizard.
+1. Combobox: "¿Qué quieres que haga este botón?" (lista de recetas registradas).
+2. Formulario auto-generado según la receta (ej. caja de texto para SQL, numérico para módulo,
+   etc.). Algunas cajas tienen un botón `(x)` o `{...}` al lado para insertar tokens (`{pID}`,
+   etc.) usando el mismo panel de la pestaña "Tokens".
+3. "Guardar": arma el JSON y lo guarda. El usuario NUNCA ve el JSON, solo el asistente.
+
+---
+
+## 3. Cómo lo vive un no-programador (escena objetivo)
+
+1. En la consola: **Nueva acción → "Crear documento a partir de otro"**.
+2. Le pide *Documento origen*: arrastra el token `{pID}`.
+3. Le pide *Módulo destino*: lo selecciona de una lista (o escribe el ID).
+4. Guarda el botón. **Sin escribir código.**
+5. En Comercial: selecciona una requisición → pulsa el botón → sale la ventana con
+   proveedor + partidas editables → guarda → **documento creado**.
+
+---
+
+## 4. Almacenamiento
+
+- Un botón no-code = una fila en `zzBrosScript` con `Tipo = 'receta'` y un **JSON de
+  config** (qué receta + sus parámetros), en vez de código fuente.
+- Las **estructuras de documento** = JSON versionado (en repo y/o tabla `zzBros*`),
+  generado a partir del análisis del comportamiento observado.
+- Convive con los tipos existentes (`csharp`) y futuros (`python`, `sql`).
+
+---
+
+## 5. Relación con el resto
+
+- **Tokens** y **pasos encadenados** sirven también a los scripts de código (todos los
+  lenguajes), no solo a las recetas.
+- La capa **`ctx.erp.*`** (ver [`XENGINE_FUNCIONES.md`](XENGINE_FUNCIONES.md)) es la que
+  las recetas usan para escribir vía motor.
+- Las **estructuras de documento** salen de observar lo que Comercial PRO hace al
+  crear/cancelar cada documento (snapshot-diff + captura en vivo).
+
+---
+
+## 5b. Convención de vistas SQL reutilizables (`BRO_`)
+
+Convención propia para nombrar vistas SQL que crea/usa BrosLMV, de modo que sean
+identificables y reutilizables sin chocar con objetos del ERP.
+
+Cuando un script BrosLMV necesite SQL que pueda ser reutilizado por otros scripts o
+por el motor de recetas, se crea una **vista** en la base de datos con prefijo `BRO_`:
+
+```sql
+-- Ejemplo: vista reutilizable para el motor de recetas
+CREATE VIEW BRO_RemisionesPendientesFacturar_VW AS
+SELECT r.DocumentID, r.FolioPrefix + r.Folio AS Folio, ...
+FROM docDocument r WHERE r.ModuleID = 157 AND ...
+```
+
+**Reglas:**
 ---
 
 ## 3. Cómo lo vive un no-programador (escena objetivo)
@@ -170,8 +231,7 @@ FROM docDocument r WHERE r.ModuleID = 157 AND ...
 ## 6. Orden de construcción sugerido
 
 1. **Motor de tokens** (base reutilizable, pieza chica).
-2. **Registro de acciones** + tipo de script `receta` + **una receta simple** (p. ej.
-   "Ejecutar SQL con tokens") para probar el flujo de punta a punta.
+2. **Primera receta simple** sin código (validar flujo + UI de config mínima).
 3. **Almacén de estructuras** (formato JSON) — alimentado por la metodología.
 4. **Receta estrella** "Crear documento a partir de otro" + su ventana genérica.
 5. **Pasos encadenados** / hooks.
