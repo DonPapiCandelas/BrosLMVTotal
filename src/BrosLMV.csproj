@@ -22,6 +22,7 @@
     <Compile Include="Datos.cs" />
     <Compile Include="Consola.cs" />
     <Compile Include="HostClient.cs" />
+    <Compile Include="Recetas.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -56,6 +57,9 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
+    <!-- T3.1 fase 2: JavaScriptSerializer para parsear el config JSON de las recetas,
+         ya incluido en .NET Framework, sin agregar un paquete NuGet nuevo. -->
+    <Reference Include="System.Web.Extensions" />
   </ItemGroup>
 
 </Project>

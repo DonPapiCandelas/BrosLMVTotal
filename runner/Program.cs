@@ -162,11 +162,12 @@ namespace BrosLMV.Runner
                 }
             }
 
-            bool esSql = false, esPython = false;
+            bool esSql = false, esPython = false, esReceta = false;
             if (!string.IsNullOrEmpty(codigo))
             {
                 esPython = HostClient.EsPython(codigo);
                 if (!esPython) esSql = HostClient.EsSql(codigo);
+                if (!esPython && !esSql) esReceta = HostClient.EsReceta(codigo);
             }
             else
             {
@@ -211,6 +212,12 @@ namespace BrosLMV.Runner
                 origen = "runner-python";
                 res = EjecutarPythonHeadless(codigo, ctx, appKey, emp, userId);
             }
+            else if (esReceta)
+            {
+                origen = "runner-receta";
+                try { res = RecetasRegistro.Ejecutar(codigo, ctx); }
+                catch (Exception ex) { res = "ERROR: " + ex.Message; }
+            }
             else
             {
                 origen = "runner-csharp";
@@ -218,7 +225,7 @@ namespace BrosLMV.Runner
             }
             sw.Stop();
 
-            bool error = (esSql || esPython) ? res.StartsWith("ERROR", StringComparison.Ordinal) : res != "";
+            bool error = (esSql || esPython || esReceta) ? res.StartsWith("ERROR", StringComparison.Ordinal) : res != "";
             try
             {
                 Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), userId, appKey,

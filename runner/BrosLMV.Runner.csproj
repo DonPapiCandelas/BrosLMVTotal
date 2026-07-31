@@ -37,6 +37,7 @@
     <Compile Include="..\src\Scripting.cs" Link="Scripting.cs" />
     <Compile Include="..\src\Datos.cs" Link="Datos.cs" />
     <Compile Include="..\src\HostClient.cs" Link="HostClient.cs" />
+    <Compile Include="..\src\Recetas.cs" Link="Recetas.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 
@@ -63,6 +64,7 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
+    <Reference Include="System.Web.Extensions" />
   </ItemGroup>
 
 </Project>

@@ -39,6 +39,29 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — v2.44.0, T3.1 fase 2: primera receta sin código)
+
+> Continuación directa de la entrada de abajo. Fase 2 de 6 de T3.1.
+
+**Registro de recetas + primera receta real, probados de punta a punta.** `src/Recetas.cs`
+(nuevo): `IReceta` + `RecetasRegistro`. Un botón receta se guarda como `# lang: receta` +
+JSON (`{"receta":"<id>","config":{...}}`) — sin código. Primera receta: `sql_tokens`
+("Ejecutar SQL con tokens"), delega a `ctx.EjecutarSql` (mismo camino ya probado de los
+botones tipo `sql`). Cableado en el ribbon (`ClsMain.cs`) y en `BrosLMV.Runner` (para
+poder probarlo headless).
+
+**Probado en vivo contra `ComercialSP`:** caso de éxito (SQL real, resultado correcto) y
+caso de error (receta con id desconocido, mensaje claro). Agregado como **caso 8
+permanente del arnés de humo** (`build\humo\casos\08_receta_sql_tokens.ps1`) — el arnés
+ahora corre 8 casos de punta a punta de un jalón.
+
+**A propósito, NO se cableó en la Consola** — su botón "Ejecutar" trataría el JSON como C#
+y fallaría al compilar. No es un pendiente técnico: las recetas no están pensadas para
+editarse a mano, tendrán su propia UI hasta la fase 6 (modo asistente).
+
+**Pendiente real:** confirmar el render dentro de CONTPAQi de verdad (mismo tipo de
+pendiente que T2.1/T2.2/T2.3/T3.1-fase1). Faltan las fases 3-6 de T3.1.
+
 ## Estás aquí (2026-07-30, aún más tarde — v2.43.0, arranca T3.1: motor de recetas no-code)
 
 > Continuación directa de la entrada de abajo. Con T2.2 cerrado (último pendiente de la

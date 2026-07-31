@@ -44,6 +44,23 @@ selección y puede leer la fila activa del grid, así que genera un panel de tok
 arrastrables y hace la sustitución.
 
 ### 2.2 Registro de acciones (recetas)
+
+> **Implementado (2026-07-30, v2.44.0, fase 2):** `IReceta` (interfaz) + `RecetasRegistro`
+> en `src/Recetas.cs`. Un botón receta se guarda con el marcador `# lang: receta` (mismo
+> criterio que `# lang: python`/`-- lang: sql`) seguido de JSON: `{"receta":"<id>",
+> "config":{...}}`. `RecetasRegistro.Ejecutar()` quita las líneas de cabecera, parsea el
+> JSON (`JavaScriptSerializer`, ya incluido en .NET Framework — no se agregó dependencia
+> nueva), busca la receta por id y le pasa el `config` ya parseado. Cableado en los 2
+> caminos de ejecución que ya existían: ribbon (`ClsMain.cs`) y `BrosLMV.Runner` headless
+> (para poder probarlo contra el sandbox sin abrir Comercial). **Primera receta real:**
+> `sql_tokens` ("Ejecutar SQL con tokens") — delega a `ctx.EjecutarSql`, el MISMO camino que
+> ya usan los botones tipo `sql`, probado de punta a punta contra `ComercialSP` (caso de
+> éxito y caso de receta desconocida), agregado como **caso 8 permanente del arnés de humo**
+> (`build\humo\casos\08_receta_sql_tokens.ps1`). **No cableado todavía en la Consola** (su
+> botón "Ejecutar" compilaría el JSON como C# y fallaría) — las recetas no están pensadas
+> para editarse a mano en el editor de código, tendrán su propia UI en la fase 6 (modo
+> asistente).
+
 Catálogo de capacidades **parametrizadas**. Cada receta declara dos cosas:
 1. **Esquema de configuración** — qué le pregunta al usuario al *crear el botón* (sus
    campos, cuáles aceptan tokens, listas de selección, valores por defecto).

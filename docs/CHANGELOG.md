@@ -229,6 +229,45 @@ solo las librerías compartidas pesadas deben vivir en `C:\BrosLMV\lib\dashboard
 
 ---
 
+## [2.44.0] — 2026-07-30 — T3.1 fase 2: registro de recetas + primera receta ("Ejecutar SQL con tokens")
+
+> Segundo paso del motor de recetas no-code. Fase 2 del plan de 6 fases: probar el flujo
+> completo de punta a punta (botón guardado sin código → detección → registro → ejecución →
+> auditoría) con la receta más simple posible, antes de construir la receta estrella
+> (fase 4, crear documento a partir de otro).
+
+### Agregado
+- `src/Recetas.cs` (nuevo): interfaz `IReceta` (`Id`, `Nombre`, `Ejecutar(config, ctx)`),
+  `RecetasRegistro` (catálogo estático + `Ejecutar(codigoConMarcador, ctx)`), y la primera
+  receta real: `RecetaSqlTokens` (`sql_tokens`, "Ejecutar SQL con tokens") — delega a
+  `ctx.EjecutarSql`, el MISMO camino que ya usan los botones tipo `sql` (resuelve tokens,
+  respeta `SoloLectura`, T2.2). No reescribe nada: la receta es una capa de configuración
+  sobre un mecanismo que ya existía y ya estaba probado.
+- `HostClient.EsReceta(codigo)`: detección por marcador `# lang: receta`, mismo criterio
+  que `EsPython`/`EsSql`.
+- Un botón receta se guarda como `# lang: receta` + JSON: `{"receta":"<id>","config":{...}}`
+  — sin código, la Consola no necesita cambios para GUARDARLO (sigue siendo texto en
+  `zzBrosScript.Codigo`), solo para ejecutarlo bien.
+- Cableado en **ribbon** (`ClsMain.cs` → `EjecutarReceta`, mismo patrón que `EjecutarSql`,
+  audita con `Origen='boton-receta'`) y en **`BrosLMV.Runner`** (`Origen='runner-receta'`,
+  para poder probarlo headless contra el sandbox).
+- **Probado en vivo contra `ComercialSP`:** caso de éxito (SQL real ejecutado, resultado
+  correcto) y caso de error (receta con id desconocido, mensaje claro, no un stack trace
+  crudo). Agregado como **caso 8 permanente del arnés de humo**
+  (`build\humo\casos\08_receta_sql_tokens.ps1`).
+- Referencia nueva: `System.Web.Extensions` (`JavaScriptSerializer`) — ya incluida en .NET
+  Framework, sin agregar un paquete NuGet.
+
+### Pendiente
+- **No cableado en la Consola** (su botón "Ejecutar" trataría el JSON como C# y fallaría al
+  compilar) — a propósito: las recetas no se editan a mano, tendrán su propia UI en la fase
+  6 (modo asistente). No es un pendiente técnico, es una decisión de diseño.
+- Fases 3-6 de T3.1 (almacén de estructuras de documento, receta estrella, pasos
+  encadenados, modo asistente) — ver `PLAN_IMPLEMENTACION.md` T3.1.
+- Confirmar visualmente dentro de CONTPAQi real (mismo pendiente que el resto de T3.1/T2.x).
+
+---
+
 ## [2.43.0] — 2026-07-30 — T3.1 fase 1: panel de tokens fijos en la Consola
 
 > Primer paso del motor de recetas no-code (`RECETAS_NOCODE.md`), a pedido del usuario tras

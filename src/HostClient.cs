@@ -149,6 +149,26 @@ namespace BrosLMV
             return false;
         }
 
+        // Detección del tipo de script 'receta' (T3.1, motor no-code): un botón guardado
+        // desde el futuro asistente, sin código -- solo JSON de configuración. Mismo criterio
+        // de marcador que EsPython/EsSql, sin heurístico de respaldo (el JSON de una receta
+        // no tiene forma característica que distinguirlo de cualquier otro texto).
+        public static bool EsReceta(string codigo)
+        {
+            if (string.IsNullOrEmpty(codigo)) return false;
+            int revisadas = 0;
+            foreach (var raw in codigo.Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0) continue;
+                string low = line.ToLowerInvariant();
+                if (low.Contains("broslmv:receta") || low.StartsWith("# lang: receta") || low.StartsWith("#lang:receta"))
+                    return true;
+                if (++revisadas >= LineasCabeceraARevisar) break;
+            }
+            return false;
+        }
+
         // Directiva opcional de cabecera para scripts con UI interactiva (WinForms real via
         // pythonnet, ctx.form, etc.) que necesitan más que el timeout de seguridad por default.
         // Formato: "# timeout: 1800" (segundos) en cualquiera de las primeras líneas.

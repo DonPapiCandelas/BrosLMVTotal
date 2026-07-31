@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.43.0.0")]
+[assembly: AssemblyVersion("2.44.0.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -220,10 +220,12 @@ namespace BrosLMV
             }
 
             // Scripts en SQL (zzBrosScript) declaran su lenguaje con un marcador en la 1a linea.
+            bool esReceta = false;
             if (!esPython && !esSql && !string.IsNullOrEmpty(codigo))
             {
                 esPython = HostClient.EsPython(codigo);
                 if (!esPython) esSql = HostClient.EsSql(codigo);
+                if (!esPython && !esSql) esReceta = HostClient.EsReceta(codigo);
             }
 
             if (string.IsNullOrEmpty(codigo))
@@ -237,6 +239,7 @@ namespace BrosLMV
 
             if (esPython) { EjecutarPython(appKey, codigo, ctx, emp); return; }
             if (esSql)    { EjecutarSql(appKey, codigo, ctx, emp); return; }
+            if (esReceta) { EjecutarReceta(appKey, codigo, ctx, emp); return; }
 
             // --- Script C# (Roslyn, en proceso) ---
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -347,6 +350,27 @@ namespace BrosLMV
             catch { }
 
             MessageBox.Show(res, "BrosLMV SQL - " + appKey, MessageBoxButtons.OK,
+                error ? MessageBoxIcon.Error : MessageBoxIcon.Information);
+        }
+
+        private void EjecutarReceta(string appKey, string codigo, ScriptContext ctx, string emp)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string res;
+            try { res = RecetasRegistro.Ejecutar(codigo, ctx); }
+            catch (Exception ex) { res = "ERROR: " + ex.Message; }
+            sw.Stop();
+
+            bool error = res.StartsWith("ERROR");
+            try
+            {
+                Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
+                    "boton-receta", sw.ElapsedMilliseconds, ctx.FilasAfectadas,
+                    error ? "ERROR" : "OK", res, ctx);
+            }
+            catch { }
+
+            MessageBox.Show(res, "BrosLMV Receta - " + appKey, MessageBoxButtons.OK,
                 error ? MessageBoxIcon.Error : MessageBoxIcon.Information);
         }
 
