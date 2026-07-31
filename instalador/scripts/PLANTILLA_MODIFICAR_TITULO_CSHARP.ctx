@@ -1,0 +1,14 @@
+// lang: csharp
+// PLANTILLA: Modificar título del documento (C#)
+//
+// Qué hace: EXACTAMENTE lo mismo que la plantilla de SQL con el mismo nombre -- cambia el
+// campo Title (nota libre, no es el Folio) del documento seleccionado.
+//
+// Diferencia real contra SQL: ctx.NonQuery() en vez de ctx.Query() -- Query es para LEER
+// (SELECT), NonQuery es para ESCRIBIR (UPDATE/INSERT/DELETE) y regresa cuántas filas
+// afectó. Igual que en SQL, si el modo solo lectura está activo, NonQuery se bloquea con un
+// mensaje claro en vez de escribir.
+var sql = ctx.ResolverTokens("UPDATE docDocument SET Title = 'Script de Prueba en C#' WHERE DocumentID = {pID}");
+int filas = ctx.NonQuery(sql);
+
+ctx.Msg(filas > 0 ? "Título actualizado." : "No se encontró el documento (¿seleccionaste uno?).");

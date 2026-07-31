@@ -1,0 +1,15 @@
+-- lang: sql
+-- PLANTILLA: Extracción de datos (SQL)
+--
+-- Qué hace: consulta el folio, total y fecha del documento que tengas seleccionado en
+-- Comercial, y te lo muestra.
+--
+-- Cómo funciona: {pID} es un TOKEN -- se sustituye SOLO, justo antes de correr la consulta,
+-- por el DocumentID del documento seleccionado. No lo escribes tú a mano cada vez: el mismo
+-- botón sirve para cualquier documento que selecciones. Ver la pestaña "Tokens" en el panel
+-- de Referencias de la Consola para ver los demás tokens disponibles ({pIDs}, {pUserID},
+-- {pModulo}, {pEmpresa}).
+--
+-- Cuándo usar esta plantilla: es la forma MÁS SIMPLE de sacar información sin escribir
+-- código real -- un botón "de consulta" que cualquiera puede leer y modificar.
+SELECT Folio, Total, DateDocument FROM docDocument WHERE DocumentID = {pID}

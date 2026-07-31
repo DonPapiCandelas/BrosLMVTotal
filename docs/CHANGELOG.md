@@ -6,6 +6,60 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.55.0] — 2026-07-30 — Catálogo de plantillas reorganizado por lenguaje + Requisición Forms/WebView2
+
+> Reconstrucción del menú de Plantillas a pedido del usuario: organizado por lenguaje
+> (C#/Python/SQL), documentación real (no banners decorativos), y el primer par
+> Forms/WebView2 de una plantilla que crea documentos de verdad.
+
+### Agregado
+- **Árbol de Plantillas agrupado por lenguaje** (`src/Consola.cs`): antes era una lista
+  plana ("Ejemplo Premium · X"); ahora tiene subcarpetas C#/Python/SQL, mismo patrón que ya
+  usaba la sección "Scripts" para agrupar por categoría.
+- **2 plantillas nuevas × 3 lenguajes**, con documentación que EXPLICA (no solo describe):
+  - `PLANTILLA_EXTRACCION_DATOS_{SQL,CSHARP,PYTHON}` — `SELECT Folio, Total, DateDocument
+    FROM docDocument WHERE DocumentID = {pID}` (o su equivalente por lenguaje), con la
+    diferencia real entre los 3 explicada en cada archivo (tokens automáticos en SQL vs.
+    `ctx.ResolverTokens` en C# vs. `ctx.get_selected_ids()` en Python — Python no tiene
+    tokens de texto).
+  - `PLANTILLA_MODIFICAR_TITULO_{SQL,CSHARP,PYTHON}` — mismo criterio, de escritura
+    (`UPDATE`/`ctx.NonQuery`/`ctx.execute`, respeta `SoloLectura` de T2.2).
+- **`PLANTILLA_REQUISICION_FORMS_CSHARP.ctx`** — la Requisición de Compra que ya existía
+  (`PLANTILLA_EJEMPLO_CSHARP_WINFORMS.ctx`, 551 líneas, funcional y probada) con una pasada
+  real de documentación: qué hace cada sección y POR QUÉ, referencias a `MANUAL.md` §7/§10,
+  el patrón canónico de 3 pasos señalado exactamente donde ocurre en el código. **Cero
+  cambios de lógica** — mismo comportamiento, mejor explicado.
+- **`PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py`** (nueva) — la misma Requisición de Compra,
+  pero con una página HTML/CSS real (buscador de proveedor/almacén, tabla de partidas
+  editable en JS) usando `ctx.show_html_formulario()` (v2.54.0) para crear el documento de
+  verdad al enviar el formulario. Mismo resultado final en Comercial que la versión Forms
+  (mismo módulo 1040, mismo patrón `NuevoDocumento`→`AgregarArticulo`→`RecalcCompleto`→
+  `Save`).
+- **Probado en vivo contra el sandbox `ComercialSP`**: la versión WebView2 se probó de
+  punta a punta (JS auto-enviado para poder automatizarlo) — creó una Solicitud de Compra
+  real, verificada por SQL (`DocumentTypeID=49`, `ModuleID=1040`, partida correcta).
+  Agregado como **caso 13 permanente del arnés de humo**
+  (`build/humo/casos/13_requisicion_webview2.ps1`). Arnés completo: **13/13 en verde**.
+
+### Quitado (solo del menú — los archivos siguen en `instalador/scripts/`)
+- Plantillas base en blanco (C#/Python WinForms), Orden de Compra (C#/Python), Recepción de
+  Compra (C#), Factura de Compra (C#), y el ejemplo genérico "Python Web" — quitadas del
+  menú a propósito, van a rehacerse con el mismo criterio de documentación real +
+  par Forms/WebView2 cuando corresponda. **Decisión explícita del usuario:** no borrar los
+  archivos todavía.
+- Se mantuvieron sin cambios (no tenían la queja de documentación confusa): Timbrar CFDI,
+  Grid editable (conteo físico), Dashboard HTML de ventas, Importar Excel → Requisición,
+  SQL Dashboard — solo se les asignó categoría.
+
+### Pendiente
+- Orden de Compra y Recepción de Compra, mismo tratamiento (Forms + WebView2, documentación
+  real) — siguiente en la lista, a pedido explícito del usuario.
+- Confirmar visualmente dentro de CONTPAQi real: el árbol agrupado, y ver/usar la
+  Requisición WebView2 con un humano de verdad llenando el formulario (lo probado fue con
+  JS auto-enviado).
+
+---
+
 ## [2.54.0] — 2026-07-30 — `ctx.show_html_formulario()`: WebView2 de 2 vías
 
 > A pedido del usuario, camino a construir plantillas HTML/WebView2 "impresionantes" que de

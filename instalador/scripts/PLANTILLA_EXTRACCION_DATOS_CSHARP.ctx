@@ -1,0 +1,22 @@
+// lang: csharp
+// PLANTILLA: Extracción de datos (C#)
+//
+// Qué hace: EXACTAMENTE lo mismo que la plantilla de SQL con el mismo nombre -- consulta
+// folio, total y fecha del documento seleccionado, y lo muestra en un mensaje.
+//
+// Diferencia real contra la versión SQL: en C#, los tokens ({pID}, {pIDs}, etc.) NO se
+// sustituyen solos -- hay que envolver el texto en ctx.ResolverTokens(...) a propósito. Si
+// olvidas esto, la consulta literalmente le manda "{pID}" a SQL Server y truena. Esta es la
+// razón #1 por la que un botón SQL simple a veces conviene más que uno en C#: menos que
+// recordar.
+//
+// Cuándo usar C# en vez de SQL: cuando necesitas lógica además de la consulta (un if, un
+// bucle, formatear el resultado de una forma particular, mostrar una ventana). Para "solo
+// traer datos y verlos", SQL puro es más simple y hay una menos que aprender.
+var sql = ctx.ResolverTokens("SELECT Folio, Total, DateDocument FROM docDocument WHERE DocumentID = {pID}");
+var filas = ctx.Query(sql);
+
+if (filas.Count == 0) { ctx.Msg("No se encontró el documento (¿seleccionaste uno?)."); return; }
+
+var f = filas[0];
+ctx.Msg("Folio: " + f["Folio"] + "\nTotal: $" + f["Total"] + "\nFecha: " + f["DateDocument"]);

@@ -39,6 +39,29 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — v2.55.0, plantillas reorganizadas + Requisición Forms/WebView2)
+
+> Continuación directa de la entrada de abajo (el canal de 2 vías de WebView2). Con eso ya
+> construido, se armó la primera plantilla real que lo usa.
+
+**Árbol de Plantillas agrupado por lenguaje (C#/Python/SQL)**, mismo patrón que ya usaba la
+sección "Scripts". **2 plantillas nuevas × 3 lenguajes** (Extracción de datos, Modificar
+título) con documentación que enseña, no solo describe. **Requisición de Compra en su par
+Forms (C#, la que ya existía, ahora bien documentada, cero cambios de lógica) + WebView2
+(Python, nueva, usa `ctx.show_html_formulario`)** — mismo resultado final en Comercial,
+distinta interfaz. Probado en vivo contra `ComercialSP`: la versión WebView2 creó una
+Solicitud de Compra real (verificada por SQL). Agregado como **caso 13 permanente del
+arnés** — **13/13 en verde**.
+
+**Las plantillas viejas (Orden de Compra, Recepción, Factura, bases en blanco) se quitaron
+del MENÚ a propósito** (decisión explícita del usuario) — los archivos siguen en
+`instalador\scripts\`, van a rehacerse con el mismo criterio. **Siguiente pendiente:** Orden
+de Compra y Recepción de Compra, mismo tratamiento.
+
+**Importante — el instalador quedó desactualizado otra vez** (misma trampa de siempre, ver
+más abajo): hay que correr `generar_instalador.ps1` + `generar_exes.ps1` de nuevo desde una
+consola elevada para que `dist\` y `C:\BrosLMV` reflejen v2.55.0.
+
 ## Estás aquí (2026-07-30, aún más tarde — v2.54.0, WebView2 de 2 vías: `ctx.show_html_formulario`)
 
 > Continuación directa de la entrada de abajo. El usuario pidió reconstruir el catálogo de

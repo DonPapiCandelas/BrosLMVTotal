@@ -325,80 +325,73 @@ namespace BrosLMV
             new MetodoCtx("{DATOS:x}", "{DATOS:Campo}", "Valor del campo en la fila seleccionada del grid.", "WHERE Folio = '{DATOS:Folio}'"),
         };
 
-        // ---- Plantillas / ejemplos (uno bien hecho por cada lenguaje) ----
-        private static readonly KeyValuePair<string, string>[] PLANTILLAS = new[]
+        // ---- Plantillas / ejemplos, organizadas por lenguaje (2026-07-30) ----
+        // Antes era una lista plana ("Ejemplo Premium · X", "Nuevo · Y") sin orden claro y
+        // con documentación mínima (banners decorativos, sin explicar el por qué). Ahora
+        // cada plantilla trae categoría (para agruparse en el árbol, ver CargarArbol) y
+        // vive en su propio archivo con comentarios que ENSEÑAN, no solo documentan.
+        //
+        // Las plantillas viejas (WinForms genéricas, Orden de Compra, Recepción, Factura,
+        // Python Web genérico) se quitaron de este menú a propósito -- van a rehacerse con
+        // el mismo criterio (documentación real + versión Forms/WebView2 según aplique).
+        // SUS ARCHIVOS NO SE BORRARON de instalador\scripts\, solo dejaron de listarse aquí.
+        private class PlantillaDef
         {
-            // Bases minimas (ventana modeless en blanco + protecciones): punto de partida
-            // recomendado para un script nuevo. Ver MANUAL.md #10 "Ventanas WinForms: modeless".
-            new KeyValuePair<string,string>("Base  ·  C# WinForms (modeless, en blanco)",
-                CargarPlantillaArchivo("PLANTILLA_BASE_CSHARP_WINFORMS.ctx",
-                    "// No se encontró la plantilla PLANTILLA_BASE_CSHARP_WINFORMS.ctx.\r\n")),
-
-            new KeyValuePair<string,string>("Base  ·  Python WinForms (modeless, en blanco)",
-                CargarPlantillaArchivo("PLANTILLA_BASE_PYTHON_WINFORMS.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            new KeyValuePair<string,string>("Ejemplo Premium  ·  C# WinForms (Nativo)",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_CSHARP_WINFORMS.ctx",
-                    "// No se encontró la plantilla PLANTILLA_EJEMPLO_CSHARP_WINFORMS.ctx.\r\n")),
-
-            new KeyValuePair<string,string>("Ejemplo Premium  ·  Python WinForms",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_PYTHON_WINFORMS.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            new KeyValuePair<string,string>("Ejemplo Premium  ·  Python Web (HTML/CSS)",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_PYTHON_WEB.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            // Orden de Compra (módulo 183): a diferencia de la Requisición (1040), SÍ
-            // captura precio por partida (compromiso real con el proveedor) y fecha de
-            // entrega esperada. No afecta inventario (eso es la Recepción, módulo 184).
-            new KeyValuePair<string,string>("Ejemplo Premium  ·  C# Orden de Compra",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_ORDEN_COMPRA_CSHARP.ctx",
-                    "// No se encontró la plantilla PLANTILLA_EJEMPLO_ORDEN_COMPRA_CSHARP.ctx.\r\n")),
-
-            new KeyValuePair<string,string>("Ejemplo Premium  ·  Python Orden de Compra",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_ORDEN_COMPRA_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            // Recepción de Compra (módulo 184): a diferencia de la Orden de Compra, SÍ afecta
-            // inventario (AffectStockNEW) y sus partidas vienen de lo pendiente de 1 o varias
-            // Órdenes de Compra del MISMO proveedor (cálculo propio vía DeliverDocumentItemID,
-            // no de la vista nativa que solo soporta 1 OC por Recepción).
-            new KeyValuePair<string,string>("Ejemplo Premium  ·  C# Recepción de Compra",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_RECEPCION_COMPRA_CSHARP.ctx",
-                    "// No se encontró la plantilla PLANTILLA_EJEMPLO_RECEPCION_COMPRA_CSHARP.ctx.\r\n")),
-
-            // Factura de Compra (módulo 152): a diferencia de OC/RC, arranca de ctx.GetSelectedIds()
-            // (1+ OC seleccionadas en el grid NATIVO de Comercial, no un buscador dentro de la
-            // ventana), NO afecta inventario, y SÍ genera póliza contable (automática en Save).
-            new KeyValuePair<string,string>("Ejemplo Premium  ·  C# Factura de Compra",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_FACTURA_COMPRA_CSHARP.ctx",
-                    "// No se encontró la plantilla PLANTILLA_EJEMPLO_FACTURA_COMPRA_CSHARP.ctx.\r\n")),
-
-            new KeyValuePair<string,string>("Ejemplo Premium  ·  SQL Dashboard",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_SQL.sql",
+            public string Categoria, Nombre, Codigo;
+            public PlantillaDef(string cat, string n, string c) { Categoria = cat; Nombre = n; Codigo = c; }
+        }
+        private static readonly PlantillaDef[] PLANTILLAS_DEF = new[]
+        {
+            // -- Extracción de datos: la plantilla más simple posible, mismo resultado en
+            //    los 3 lenguajes, para ver de un vistazo qué cambia entre ellos.
+            new PlantillaDef("SQL", "Extracción de datos",
+                CargarPlantillaArchivo("PLANTILLA_EXTRACCION_DATOS_SQL.sql",
                     "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Extracción de datos",
+                CargarPlantillaArchivo("PLANTILLA_EXTRACCION_DATOS_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Extracción de datos",
+                CargarPlantillaArchivo("PLANTILLA_EXTRACCION_DATOS_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
 
-            // A partir de aqui: ejemplos de las capacidades agregadas en v2.24.0-2.31.0
-            // (ctx.form con grid, ctx.show_html, ctx.erp.Timbrar, ctx.read_excel/select_file).
-            // Deliberadamente CORTOS -- el punto es mostrar que estas funciones nuevas
-            // reemplazan cientos de lineas de WinForms a mano por unas cuantas declarativas.
-            new KeyValuePair<string,string>("Nuevo  ·  Timbrar CFDI (Python)",
+            // -- Modificar título: mismo criterio, pero de ESCRITURA (UPDATE/NonQuery/execute).
+            new PlantillaDef("SQL", "Modificar título del documento",
+                CargarPlantillaArchivo("PLANTILLA_MODIFICAR_TITULO_SQL.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Modificar título del documento",
+                CargarPlantillaArchivo("PLANTILLA_MODIFICAR_TITULO_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Modificar título del documento",
+                CargarPlantillaArchivo("PLANTILLA_MODIFICAR_TITULO_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+
+            // -- Requisición de Compra: la primera plantilla "de verdad" (crea un documento
+            //    real), en su par Forms/WebView2 -- mismo resultado en Comercial, distinta
+            //    interfaz. La versión WebView2 usa ctx.show_html_formulario (v2.54.0).
+            new PlantillaDef("C#", "Requisición de Compra — Forms (WinForms nativo)",
+                CargarPlantillaArchivo("PLANTILLA_REQUISICION_FORMS_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Requisición de Compra — WebView2 (HTML)",
+                CargarPlantillaArchivo("PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+
+            // -- El resto del catálogo anterior que SÍ seguía siendo útil y no tenía la
+            //    queja de documentación confusa -- se mantiene, solo se le puso categoría.
+            new PlantillaDef("Python", "Timbrar CFDI",
                 CargarPlantillaArchivo("PLANTILLA_EJEMPLO_TIMBRAR_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            new KeyValuePair<string,string>("Nuevo  ·  Grid editable — conteo físico (Python)",
+            new PlantillaDef("Python", "Grid editable — conteo físico",
                 CargarPlantillaArchivo("PLANTILLA_EJEMPLO_CONTEO_GRID_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            new KeyValuePair<string,string>("Nuevo  ·  Dashboard HTML de ventas (Python)",
+            new PlantillaDef("Python", "Dashboard HTML de ventas",
                 CargarPlantillaArchivo("PLANTILLA_EJEMPLO_DASHBOARD_VENTAS_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            new KeyValuePair<string,string>("Nuevo  ·  Importar Excel → Requisición (Python)",
+            new PlantillaDef("Python", "Importar Excel → Requisición",
                 CargarPlantillaArchivo("PLANTILLA_EJEMPLO_IMPORTAR_EXCEL_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+            new PlantillaDef("SQL", "Dashboard",
+                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_SQL.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
         };
 
         private static string CargarPlantillaArchivo(string nombreArchivo, string fallback)
@@ -1443,11 +1436,23 @@ namespace BrosLMV
             }
             _tree.Nodes.Add(nScripts);
 
-            // ---- Plantillas ----
+            // ---- Plantillas, agrupadas por lenguaje (C#/Python/SQL) -- mismo patrón que
+            //      el agrupado por Categoria de "Scripts" de arriba. El Tag de cada hoja
+            //      sigue siendo KeyValuePair<string,string> (Nombre, Código) para no tocar
+            //      el manejador de doble clic que ya la inserta en el editor.
             var nPlant = new TreeNode("Plantillas") { ImageKey = "folder", SelectedImageKey = "folder" };
-            foreach (var p in PLANTILLAS)
-                if (!filtrando || p.Key.ToLower().Contains(filtro))
-                    nPlant.Nodes.Add(new TreeNode(p.Key) { Tag = p, ImageKey = "template", SelectedImageKey = "template" });
+            var gruposPlant = new SortedDictionary<string, TreeNode>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in PLANTILLAS_DEF)
+            {
+                if (filtrando && !p.Nombre.ToLower().Contains(filtro)) continue;
+                if (!gruposPlant.TryGetValue(p.Categoria, out TreeNode nCat))
+                {
+                    nCat = new TreeNode(p.Categoria) { ImageKey = "folder", SelectedImageKey = "folder" };
+                    gruposPlant[p.Categoria] = nCat;
+                    nPlant.Nodes.Add(nCat);
+                }
+                nCat.Nodes.Add(new TreeNode(p.Nombre) { Tag = new KeyValuePair<string, string>(p.Nombre, p.Codigo), ImageKey = "template", SelectedImageKey = "template" });
+            }
             _tree.Nodes.Add(nPlant);
 
             // Buscando: expandir todo (si no, resultados quedan escondidos en grupos colapsados).

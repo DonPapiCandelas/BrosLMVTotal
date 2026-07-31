@@ -1,0 +1,15 @@
+-- lang: sql
+-- PLANTILLA: Modificar título del documento (SQL)
+--
+-- Qué hace: cambia el campo Title del documento seleccionado. Este campo es una nota
+-- libre que aparece en algunas vistas y reportes -- NO es el Folio ni afecta la
+-- numeración del documento.
+--
+-- Cómo funciona: igual que la plantilla de "Extracción de datos", {pID} se sustituye solo
+-- por el documento seleccionado. La diferencia real es que esto ESCRIBE (UPDATE) -- si el
+-- botón está en modo solo lectura (checkbox de la Consola, o preferencia SoloLectura del
+-- usuario, T2.2), se bloquea con un mensaje claro, no truena feo.
+--
+-- Cuándo usar esta plantilla: como punto de partida para cualquier botón que actualice UN
+-- campo de UN documento -- cambia "Title" y el texto por el campo/valor que necesites.
+UPDATE docDocument SET Title = 'Script de Prueba en SQL' WHERE DocumentID = {pID}
