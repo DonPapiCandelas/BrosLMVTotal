@@ -6,6 +6,121 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.53.0] — 2026-07-30 — Rediseño del asistente "Nueva acción" + bug real corregido + ejemplos
+
+> **Contexto:** entre v2.48.0 y v2.52.0 se hicieron cambios reales al producto
+> (pestañas múltiples, dos rediseños de la barra de herramientas) **sin documentarlos** —
+> se rompió la regla de oro del proyecto (4 versiones sin entrada de `CHANGELOG.md`). Esta
+> entrada documenta esos 4 cambios retroactivamente (ver abajo, `[2.49.0]`-`[2.52.0]`) y
+> además corrige un bug real encontrado al revisar todo: el asistente "Nueva acción" se
+> veía mal (controles sin tema visual, texto pegado, un botón que se salía del panel en
+> pantallas angostas) y, más grave, **el JSON que generaba no funcionaba** — la receta
+> "Crear documento a partir de otro" siempre fallaba con "config.partidas debe ser una
+> lista" cuando se guardaba desde el asistente.
+
+### Corregido
+- **Bug real: toda receta "Crear documento a partir de otro" guardada desde "Nueva acción"
+  fallaba al ejecutarse.** El campo "Partidas" del asistente es un textbox de texto libre
+  (no hay grid editable todavía) — su valor llega como STRING con JSON adentro, no como
+  una lista JSON anidada. `RecetaCrearDocumentoDesdeOtro.Ejecutar` (`src/Recetas.cs`) solo
+  aceptaba la forma anidada (la que usa el caso de humo 9, escrito a mano). Corregido para
+  aceptar ambas formas: si `config.partidas` llega como string, se parsea como JSON antes
+  de usarse. **Encontrado probando el JSON EXACTO que arma el asistente contra el sandbox**
+  (no en teoría) — agregado como **caso 11 permanente del arnés de humo**
+  (`build/humo/casos/11_receta_wizard_formato.ps1`).
+- **`src/Consola_utf8.cs` eliminado.** Era una copia vieja y completa de `Consola.cs`
+  (3021 líneas), **no referenciada en `BrosLMV.csproj`** (código muerto, nunca se
+  compilaba) — quedó de un intento de arreglar un problema de codificación de caracteres
+  que nunca se limpió. Comparado línea por línea contra el `Consola.cs` real antes de
+  borrarlo: no tenía nada que no estuviera ya en el archivo activo (era una versión más
+  vieja, de antes de las pestañas múltiples de v2.49.0).
+
+### Cambiado — rediseño visual de `NuevaAccionForm`
+- Reescrito con el mismo lenguaje visual que el resto de la Consola (`AppTheme`, tarjetas
+  con borde redondeado vía `BordeTarjeta`, `IconButton`) — antes usaba controles de Windows
+  Forms sin tema (`Button`/`Label` planos) y posicionamiento absoluto
+  (`Location = new Point(0, y)`) calculado a mano, que tenía un bug real: el botón de
+  insertar token podía quedar fuera del panel visible. Ahora usa `TableLayoutPanel` en
+  cada fila (se reacomoda solo, nunca se sale del contenedor).
+- **Agregado:** cada receta ahora tiene una `Descripcion` (explica en una frase qué hace,
+  visible en cuanto se elige) y un `Ejemplo` (valores reales por campo) — con un botón
+  **"Llenar con este ejemplo"** que carga el formulario completo de un clic. Antes no había
+  ninguna ayuda dentro del asistente; había que adivinar qué poner en cada campo.
+- **Agregado:** botón "Cancelar" (antes solo se podía cerrar con la X de la ventana).
+- Orden de los campos "Nombre visible"/"Clave interna (AppKey)" corregido — antes, por un
+  detalle real de cómo `Dock=Top` apila controles en WinForms (el último agregado queda
+  visualmente arriba, no abajo), el orden en pantalla no coincidía con el orden en que se
+  agregaban los controles en el código, lo que dejaba las etiquetas desalineadas con su
+  campo.
+- `BordeTarjeta`/`BordeInferior` (helpers de dibujo, antes `private` dentro de
+  `BrosConsola`) pasaron a `internal` para poder reusarlos desde `NuevaAccionForm` sin
+  duplicar código de dibujo.
+
+### Agregado — ejemplos de uso
+- **`docs/MANUAL.md` §4** — nueva subsección "Opción sin código — 'Nueva acción'" con 2
+  ejemplos completos, paso a paso: (1) "avísame el total de un documento" con la receta
+  `sql_tokens` (el más simple), (2) "crear una OC desde una Requisición" con
+  `crear_documento_desde_otro` (el flujo completo, incluyendo cómo conseguir los IDs que
+  pide y la limitación conocida de "Partidas" como JSON a mano).
+- **Botón de ejemplo real y visible sembrado en el sandbox** `ComercialSP`
+  (`AppKey='EJEMPLO_VER_FOLIO_TOTAL'`) — el ejemplo 1 de arriba, ya guardado y funcional,
+  para poder abrirlo en la Consola y verlo de verdad en vez de solo leerlo en un documento.
+  **A propósito NO se agregó a `provision_empresa.sql`** — no tiene sentido meter un botón
+  de ejemplo en el ribbon de una empresa de cliente real.
+
+### Pendiente
+- Confirmar visualmente dentro de CONTPAQi real que el rediseño se ve bien — compila, pero
+  sigue siendo UI de Windows Forms sin forma de verificar el render aquí.
+- Reescribir retroactivamente el resto de la documentación (`ESTADO.md`,
+  `PLAN_IMPLEMENTACION.md`) para reflejar v2.49.0-v2.53.0.
+
+## [2.52.0] — 2026-07-30 — "Nueva acción"/"Nuevo script" de vuelta, dentro de "Más opciones"
+
+> **Documentado retroactivamente** (2026-07-30, al revisar la regla de oro rota) — esta
+> versión se subió sin entrada de CHANGELOG en su momento.
+
+### Agregado
+- `src/Consola.cs`: "Nueva acción" y "Nuevo script" se agregan al menú "Más opciones" (con
+  un separador antes de "Duplicar"/"Aprobar") — quedaron ahí después de que v2.51.0 los
+  quitara de la barra de herramientas principal. Decisión del usuario: quedarse en el menú,
+  no en la barra — confirmado explícitamente al revisar este historial.
+
+## [2.51.0] — 2026-07-30 — Reorganiza la barra de herramientas: quita "Nuevo script"/"Nueva acción", agrega "Guardar como"/"Importar paquete"
+
+> **Documentado retroactivamente** (2026-07-30, al revisar la regla de oro rota).
+
+### Cambiado
+- `src/Consola.cs`: la barra de herramientas principal deja de mostrar "Nuevo
+  script"/"Nueva acción" como botones de primer nivel (se movieron al menú "Más opciones"
+  en v2.52.0, ver arriba) — en su lugar aparecen "Guardar como" e "Importar paquete…",
+  botones de uso más frecuente que antes competían por espacio.
+- `.agents/AGENTS.md` (nuevo): nota de un agente para sí mismo ("siempre que modifiques
+  código con scripts o herramientas de reemplazo, verifica con `git diff` antes de
+  compilar/empacar") — quedó con acentos corruptos (problema de codificación al escribirlo,
+  nunca corregido). No es parte del producto, es una nota operativa.
+
+## [2.50.0] — 2026-07-30 — Rediseño de la barra de herramientas: acciones secundarias a un menú
+
+> **Documentado retroactivamente** (2026-07-30, al revisar la regla de oro rota).
+
+### Cambiado
+- `src/Consola.cs`: mueve acciones secundarias de la barra de herramientas principal a un
+  menú desplegable, y trae herramientas de edición a la barra — libera espacio para la
+  tira de pestañas (multi-pestañas, v2.49.0, ver abajo).
+
+## [2.49.0] — 2026-07-30 — Pestañas múltiples en la Consola (varios scripts abiertos a la vez)
+
+> **Documentado retroactivamente** (2026-07-30, al revisar la regla de oro rota) — el
+> commit original ("T4.1: multi-tabs feature") etiquetó esto como parte de T4.1 (arnés de
+> pruebas) por error; no tiene relación con T4.1, es una feature de UI de la Consola.
+
+### Agregado
+- `src/Consola.cs`: la Consola ahora permite tener varios scripts abiertos al mismo tiempo,
+  cada uno en su propia pestaña (`ScriptTab`: `AppKey`, editor `Scintilla`, indicador de
+  modificado), en vez de un solo editor que se sobreescribía al abrir otro script.
+
+---
+
 ## [2.48.0] — 2026-07-30 — T3.1 fase 6: modo asistente "Nueva acción" en la Consola
 
 > **Pendiente:** Confirmar visualmente dentro de CONTPAQi real — es UI de Windows Forms, compila pero no hay forma de verificar el render sin abrir la Consola de verdad. Con esto, T3.1 (el MVP de 3 recetas planeado originalmente) queda terminado con 2 recetas operativas ("sql_tokens" y "crear_documento_desde_otro"). La tabla de partidas de la receta creadora de documentos quedó como un textbox de JSON crudo; generar un DataGridView amigable para el usuario es trabajo para una futura versión.

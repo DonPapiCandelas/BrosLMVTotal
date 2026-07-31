@@ -48,7 +48,15 @@ namespace BrosLMV
     public interface IReceta
     {
         string Id { get; }       // identificador estable, va en el JSON guardado
-        string Nombre { get; }   // nombre visible en el futuro asistente
+        string Nombre { get; }   // nombre visible en el asistente
+        // Explicacion corta (1-2 frases) de que hace la receta -- se muestra en el
+        // asistente cuando el usuario la elige, para que sepa que va a pasar sin tener
+        // que adivinar por los nombres de los campos.
+        string Descripcion { get; }
+        // Valores de ejemplo YA VALIDOS para cada campo de EsquemaConfig (mismas claves).
+        // El asistente los usa para el boton "Llenar con ejemplo" -- la forma mas rapida
+        // de entender que se espera en cada campo sin leer documentacion aparte.
+        Dictionary<string, string> Ejemplo { get; }
         List<CampoReceta> EsquemaConfig { get; } // campos a pedir en el wizard
         // Ejecuta con el config ya parseado (JSON -> Dictionary). Debe seguir la misma
         // convencion que ctx.EjecutarSql/ScriptRunner.Ejecutar: "" o texto normal = OK,
@@ -64,6 +72,14 @@ namespace BrosLMV
     {
         public string Id => "sql_tokens";
         public string Nombre => "Ejecutar SQL con tokens";
+        public string Descripcion =>
+            "Corre una consulta SQL cuando se hace clic en el botón. Puedes usar tokens " +
+            "como {pID} (el documento seleccionado) para que la consulta cambie según qué " +
+            "esté seleccionado en Comercial. Útil para reportes rápidos o actualizaciones " +
+            "puntuales sin escribir C#/Python.";
+        public Dictionary<string, string> Ejemplo => new Dictionary<string, string> {
+            { "sql", "SELECT Folio, Total FROM docDocument WHERE DocumentID = {pID}" }
+        };
         public List<CampoReceta> EsquemaConfig => new List<CampoReceta> {
             new CampoReceta { Nombre="sql", Etiqueta="SQL (con tokens opcionales)", Tipo="texto_multilinea", PermiteTokens=true, Requerido=true }
         };
@@ -84,6 +100,21 @@ namespace BrosLMV
     {
         public string Id => "crear_documento_desde_otro";
         public string Nombre => "Crear documento a partir de otro";
+        public string Descripcion =>
+            "Crea un documento nuevo (por ejemplo una Orden de Compra) con encabezado y " +
+            "partidas, usando el mismo motor que usa Comercial (calcula impuestos, afecta " +
+            "inventario si aplica, etc.). Necesitas saber el ID del módulo destino (183 = " +
+            "Orden de compra), el ID del almacén y el ID del proveedor/cliente -- consíguelos " +
+            "con una consulta SQL si no los sabes de memoria. El módulo debe tener una " +
+            "\"estructura\" registrada en src/EstructurasDocumento.cs (hoy: 183 y 202); si " +
+            "usas otro módulo, la receta te lo va a decir con un error claro, no va a fallar " +
+            "en silencio.";
+        public Dictionary<string, string> Ejemplo => new Dictionary<string, string> {
+            { "moduloDestino", "183" },
+            { "depotId", "1" },
+            { "businessEntityId", "2" },
+            { "partidas", "[{\"productId\": 1, \"cantidad\": 5, \"precio\": 250, \"costo\": 200}]" }
+        };
         public List<CampoReceta> EsquemaConfig => new List<CampoReceta> {
             new CampoReceta { Nombre="moduloDestino", Etiqueta="ID del Módulo Destino", Tipo="numero", Requerido=true },
             new CampoReceta { Nombre="depotId", Etiqueta="ID del Almacén", Tipo="numero", Requerido=true },
@@ -106,7 +137,26 @@ namespace BrosLMV
             int depotId = config.ContainsKey("depotId") ? Convert.ToInt32(config["depotId"]) : 1;
             int businessEntityId = config.ContainsKey("businessEntityId") ? Convert.ToInt32(config["businessEntityId"]) : 0;
 
-            if (!config.ContainsKey("partidas") || !(config["partidas"] is System.Collections.ArrayList partidas) || partidas.Count == 0)
+            // "partidas" llega de dos formas validas: ya como lista (JSON anidado, p. ej. el
+            // arnes de humo la manda asi) o como STRING con JSON adentro (el asistente
+            // "Nueva acción" la pide en un textbox de texto libre porque no hay un grid
+            // editable todavia -- ver docs/RECETAS_NOCODE.md 2.4). Sin este segundo camino,
+            // toda receta guardada desde el asistente fallaba con "config.partidas debe ser
+            // una lista" -- encontrado probando el JSON EXACTO que arma NuevaAccionForm
+            // contra el sandbox, no en teoria.
+            if (!config.ContainsKey("partidas"))
+                return "ERROR: config.partidas es requerido.";
+            object partidasRaw = config["partidas"];
+            if (partidasRaw is string partidasTexto)
+            {
+                try { partidasRaw = new JavaScriptSerializer().Deserialize<object>(partidasTexto); }
+                catch (Exception ex) { return "ERROR: config.partidas no es JSON valido -- " + ex.Message; }
+            }
+            if (!(partidasRaw is System.Collections.IEnumerable partidas) || partidasRaw is string)
+                return "ERROR: config.partidas debe ser una lista con al menos 1 partida.";
+            int totalPartidas = 0;
+            foreach (var _ in partidas) totalPartidas++;
+            if (totalPartidas == 0)
                 return "ERROR: config.partidas debe ser una lista con al menos 1 partida.";
 
             try

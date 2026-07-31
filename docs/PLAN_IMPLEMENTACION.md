@@ -357,7 +357,17 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T3.1 — Motor de recetas no-code (MVP con 3 recetas) ⭐ (la meta estratégica)
 
-> **Estado (2026-07-30): ✅ TERMINADO (v2.48.0).** Las 6 fases fueron implementadas. Con esto, el MVP original (planeado como 3 recetas) queda terminado entregando 2 recetas operativas ("sql_tokens" y "crear_documento_desde_otro"). La funcionalidad de pasos encadenados se agregó en la fase 5. Queda pendiente para una iteración futura mejorar el grid de partidas para la creación de documentos (actualmente es un JSON crudo) y probar visualmente el modo asistente en CONTPAQi real.
+> **Estado (2026-07-30): ✅ TERMINADO (v2.53.0, corregido tras auditoría).** Las 6 fases
+> fueron implementadas. Con esto, el MVP original (planeado como 3 recetas) queda
+> terminado entregando 2 recetas operativas ("sql_tokens" y "crear_documento_desde_otro").
+> **v2.53.0 corrigió un bug real** encontrado al auditar el trabajo (el JSON que el
+> asistente generaba para "crear_documento_desde_otro" no funcionaba — ver
+> `CHANGELOG.md` v2.53.0) y rediseñó el asistente visualmente (antes usaba controles sin
+> tema y tenía un bug de layout real). Arnés de humo: **11/11 en verde**, incluyendo un
+> caso que prueba el JSON EXACTO que produce el asistente, no una versión simplificada.
+> Queda pendiente para una iteración futura mejorar el grid de partidas para la creación de
+> documentos (actualmente es un JSON crudo, con ejemplo y explicación en `MANUAL.md` §4) y
+> confirmar visualmente el rediseño dentro de CONTPAQi real.
 > **Fase 1 — motor de tokens hacia el wizard:** los 5 tokens fijos (`{pID}`, `{pIDs}`,
 > `{pUserID}`, `{pModulo}`, `{pEmpresa}`) ya son clicables en la pestaña "Tokens" de la
 > Consola (antes "Datos"), con el snippet correcto por lenguaje. Hallazgo real: Python no

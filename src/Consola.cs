@@ -759,7 +759,8 @@ namespace BrosLMV
         }
 
         // Borde inferior/superior de 1px para separar bandas (sustituye sombras pesadas).
-        private static void BordeInferior(Graphics g, Control c)
+        // internal (no private): NuevaAccionForm tambien la usa.
+        internal static void BordeInferior(Graphics g, Control c)
         { using (var p = new Pen(AppTheme.Border)) g.DrawLine(p, 0, c.Height - 1, c.Width, c.Height - 1); }
 
         // Refleja el nombre del script en la pestaña y el estado "guardado/sin guardar".
@@ -1089,7 +1090,9 @@ namespace BrosLMV
             return lv;
         }
 
-        private static void BordeTarjeta(Graphics g, Control c)
+        // internal (no private): NuevaAccionForm (misma namespace, otra clase) la reusa
+        // para que sus tarjetas se vean iguales a las del resto de la Consola.
+        internal static void BordeTarjeta(Graphics g, Control c)
         {
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             using (var p = new Pen(AppTheme.Border)) using (var path = ModernUI.Round(new Rectangle(0, 0, c.Width - 1, c.Height - 1), 8))
@@ -2953,11 +2956,20 @@ private void Guardar(bool comoNuevo)
         public override Color MenuItemBorder => AppTheme.PrimarySelected;
     }
 
+    // Asistente "Nueva acción": crea un botón sin escribir código, eligiendo una receta
+    // (RecetasRegistro) y llenando un formulario generado desde su EsquemaConfig. Mismo
+    // estilo visual que el resto de la Consola (AppTheme, tarjetas con BordeTarjeta,
+    // IconButton) -- antes de v2.53.0 usaba controles crudos sin tema y posicionamiento
+    // absoluto (Location = new Point(0, y)), lo que además tenía un bug real: el botón de
+    // insertar token se colocaba fuera del panel visible en pantallas angostas. Reescrito
+    // con TableLayoutPanel (cada fila se autoajusta, nunca se sale del contenedor).
     internal sealed class NuevaAccionForm : Form
     {
         private ScriptContext _ctx;
         private ComboBox _cboRecetas;
-        private Panel _pnlCampos;
+        private Label _lblDescripcion;
+        private TableLayoutPanel _tlCampos;
+        private TextBox _txtEjemplo;
         private TextBox _txtAppKey;
         private TextBox _txtNombre;
         private Dictionary<string, Control> _inputs = new Dictionary<string, Control>();
@@ -2965,9 +2977,9 @@ private void Guardar(bool comoNuevo)
         public NuevaAccionForm(ScriptContext ctx)
         {
             _ctx = ctx;
-            Text = "Nueva acción sin código (Asistente)";
-            Width = 500;
-            Height = 600;
+            Text = "Nueva acción sin código";
+            Width = 620;
+            Height = 760;
             StartPosition = FormStartPosition.CenterParent;
             BackColor = AppTheme.BgMain;
             Font = AppTheme.FontMain;
@@ -2976,115 +2988,223 @@ private void Guardar(bool comoNuevo)
             MinimizeBox = false;
             MaximizeBox = false;
 
-            var pnlMain = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
-            pnlMain.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Receta
-            pnlMain.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // Campos dinámicos
-            pnlMain.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // AppKey
-            pnlMain.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Nombre
-            pnlMain.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Boton
+            // ---- Encabezado: título + explicación de qué es esta ventana ----
+            var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 64, BackColor = AppTheme.BgChrome, Padding = new Padding(18, 10, 18, 10) };
+            pnlHeader.Paint += (s, e) => BrosConsola.BordeInferior(e.Graphics, pnlHeader);
+            var lblTitulo = new Label { Text = "Nueva acción sin código", Dock = DockStyle.Top, AutoSize = false, Height = 24, Font = AppTheme.FontHeader, ForeColor = AppTheme.TextMain };
+            var lblSub = new Label { Text = "Elige qué debe hacer el botón y llena los datos — no hace falta escribir código.", Dock = DockStyle.Top, AutoSize = false, Height = 20, Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMuted };
+            pnlHeader.Controls.Add(lblSub);
+            pnlHeader.Controls.Add(lblTitulo);
+            Controls.Add(pnlHeader);
 
-            // 1. Selector de receta
-            var pnlHeader = new Panel { Dock = DockStyle.Fill, Height = 60, Padding = new Padding(10) };
-            pnlHeader.Controls.Add(new Label { Text = "Tipo de acción:", Dock = DockStyle.Top, Height = 20 });
-            _cboRecetas = new ComboBox { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList };
+            // ---- Pie: Nombre/AppKey + botones (Dock=Bottom, se agrega ANTES del cuerpo para
+            //      que quede reservado abajo sin pelearse por el espacio con el AutoScroll) ----
+            var pnlFooter = new Panel { Dock = DockStyle.Bottom, Height = 172, BackColor = AppTheme.BgChrome, Padding = new Padding(18, 12, 18, 12) };
+            pnlFooter.Paint += (s, e) => BordeSuperior(e.Graphics, pnlFooter);
+
+            var lblNombreCap = new Label { Text = "Nombre visible (ej. \"Crear OC desde requisición\")", AutoSize = false, Dock = DockStyle.Top, Height = 18, Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMuted };
+            _txtNombre = new TextBox { Dock = DockStyle.Top, Font = AppTheme.FontMain };
+            var espN = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Color.Transparent };
+            var lblAppKeyCap = new Label { Text = "Clave interna (AppKey, sin espacios ni acentos)", AutoSize = false, Dock = DockStyle.Top, Height = 18, Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMuted };
+            _txtAppKey = new TextBox { Dock = DockStyle.Top, Font = AppTheme.FontMain };
+            var espA = new Panel { Dock = DockStyle.Top, Height = 12, BackColor = Color.Transparent };
+
+            var pnlBotones = new TableLayoutPanel { Dock = DockStyle.Top, Height = 38, ColumnCount = 2 };
+            pnlBotones.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65));
+            pnlBotones.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
+            var btnGuardar = new IconButton { Text = "Guardar acción", Kind = BtnKind.Primary, Accent = AppTheme.Success, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 6, 0) };
+            btnGuardar.Click += BtnGuardar_Click;
+            var btnCancelar = new IconButton { Text = "Cancelar", Kind = BtnKind.Toolbar, Accent = Color.Empty, Dock = DockStyle.Fill, Margin = new Padding(6, 0, 0, 0) };
+            btnCancelar.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
+            pnlBotones.Controls.Add(btnGuardar, 0, 0);
+            pnlBotones.Controls.Add(btnCancelar, 1, 0);
+
+            // Se agregan en orden inverso porque Dock=Top apila cada control nuevo ARRIBA de
+            // los anteriores -- ver la nota T4.1 en ESTADO.md sobre este mismo gotcha.
+            pnlFooter.Controls.Add(pnlBotones);
+            pnlFooter.Controls.Add(espA);
+            pnlFooter.Controls.Add(_txtAppKey);
+            pnlFooter.Controls.Add(lblAppKeyCap);
+            pnlFooter.Controls.Add(espN);
+            pnlFooter.Controls.Add(_txtNombre);
+            pnlFooter.Controls.Add(lblNombreCap);
+            Controls.Add(pnlFooter);
+
+            // ---- Cuerpo (scrollable): selector de receta + campos dinámicos + ejemplo ----
+            var pnlBody = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(18, 14, 18, 14), BackColor = AppTheme.BgMain };
+
+            var pnlRecetaCard = new Panel { Dock = DockStyle.Top, AutoSize = true, BackColor = AppTheme.BgSurface, Padding = new Padding(14), Margin = new Padding(0, 0, 0, 14) };
+            pnlRecetaCard.Paint += (s, e) => BrosConsola.BordeTarjeta(e.Graphics, pnlRecetaCard);
+            var lblRecetaCap = new Label { Text = "Tipo de acción", Dock = DockStyle.Top, AutoSize = false, Height = 18, Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMuted };
+            _cboRecetas = new ComboBox { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList, Font = AppTheme.FontMain };
             _cboRecetas.Items.AddRange(System.Linq.Enumerable.ToArray(RecetasRegistro.Listar()));
             _cboRecetas.DisplayMember = "Nombre";
             _cboRecetas.SelectedIndexChanged += (s, e) => ConstruirFormulario();
-            pnlHeader.Controls.Add(_cboRecetas);
-            pnlMain.Controls.Add(pnlHeader, 0, 0);
+            var espR = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Color.Transparent };
+            _lblDescripcion = new Label { Dock = DockStyle.Top, AutoSize = false, Height = 48, Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMain };
+            // Orden inverso de nuevo (Dock=Top apila hacia arriba):
+            pnlRecetaCard.Controls.Add(_lblDescripcion);
+            pnlRecetaCard.Controls.Add(espR);
+            pnlRecetaCard.Controls.Add(_cboRecetas);
+            pnlRecetaCard.Controls.Add(lblRecetaCap);
 
-            // 2. Panel dinámico
-            _pnlCampos = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(10), BackColor = AppTheme.BgSurface };
-            pnlMain.Controls.Add(_pnlCampos, 0, 1);
+            var pnlCamposCard = new Panel { Dock = DockStyle.Top, AutoSize = true, BackColor = AppTheme.BgSurface, Padding = new Padding(14), Margin = new Padding(0, 0, 0, 14) };
+            pnlCamposCard.Paint += (s, e) => BrosConsola.BordeTarjeta(e.Graphics, pnlCamposCard);
+            var lblCamposCap = new Label { Text = "Datos de la acción", Dock = DockStyle.Top, AutoSize = false, Height = 18, Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMuted, Margin = new Padding(0, 0, 0, 6) };
+            _tlCampos = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1 };
+            _tlCampos.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            pnlCamposCard.Controls.Add(_tlCampos);
+            pnlCamposCard.Controls.Add(lblCamposCap);
 
-            // 3. AppKey y Nombre
-            var pnlFooter = new Panel { Dock = DockStyle.Fill, Height = 120, Padding = new Padding(10) };
-            pnlFooter.Controls.Add(_txtNombre = new TextBox { Dock = DockStyle.Top });
-            pnlFooter.Controls.Add(new Label { Text = "Nombre visible (Ej. 'Crear OC'):", Dock = DockStyle.Top, Height = 25, Padding = new Padding(0, 5, 0, 0) });
-            pnlFooter.Controls.Add(_txtAppKey = new TextBox { Dock = DockStyle.Top });
-            pnlFooter.Controls.Add(new Label { Text = "Clave interna (AppKey, sin espacios):", Dock = DockStyle.Top, Height = 25, Padding = new Padding(0, 5, 0, 0) });
-            pnlMain.Controls.Add(pnlFooter, 0, 2);
+            var pnlEjemploCard = new Panel { Dock = DockStyle.Top, AutoSize = true, BackColor = AppTheme.BgSurface, Padding = new Padding(14), Margin = new Padding(0, 0, 0, 14) };
+            pnlEjemploCard.Paint += (s, e) => BrosConsola.BordeTarjeta(e.Graphics, pnlEjemploCard);
+            var lblEjemploCap = new Label { Text = "¿No sabes qué poner? Mira un ejemplo real", Dock = DockStyle.Top, AutoSize = false, Height = 18, Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMuted };
+            _txtEjemplo = new TextBox { Dock = DockStyle.Top, Multiline = true, ReadOnly = true, Height = 70, Font = AppTheme.FontMono, BackColor = AppTheme.BgSubtle, ForeColor = AppTheme.TextMuted, BorderStyle = BorderStyle.FixedSingle };
+            var espE = new Panel { Dock = DockStyle.Top, Height = 6, BackColor = Color.Transparent };
+            var btnUsarEjemplo = new IconButton { Text = "Llenar con este ejemplo", Kind = BtnKind.Outline, Accent = AppTheme.Primary, Dock = DockStyle.Top, Height = 32 };
+            btnUsarEjemplo.Click += (s, e) => LlenarConEjemplo();
+            pnlEjemploCard.Controls.Add(btnUsarEjemplo);
+            pnlEjemploCard.Controls.Add(espE);
+            pnlEjemploCard.Controls.Add(_txtEjemplo);
+            pnlEjemploCard.Controls.Add(lblEjemploCap);
 
-            // 4. Botón guardar
-            var btnGuardar = new Button { Text = "Guardar acción", Dock = DockStyle.Fill, Height = 40, BackColor = AppTheme.Primary, ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnGuardar.FlatAppearance.BorderSize = 0;
-            btnGuardar.Click += BtnGuardar_Click;
-            var pnlBtn = new Panel { Dock = DockStyle.Fill, Height = 60, Padding = new Padding(10) };
-            pnlBtn.Controls.Add(btnGuardar);
-            pnlMain.Controls.Add(pnlBtn, 0, 3);
+            // Orden inverso otra vez para que quede Receta -> Datos -> Ejemplo de arriba a abajo:
+            pnlBody.Controls.Add(pnlEjemploCard);
+            pnlBody.Controls.Add(pnlCamposCard);
+            pnlBody.Controls.Add(pnlRecetaCard);
+            Controls.Add(pnlBody);
+            pnlBody.BringToFront();
 
-            Controls.Add(pnlMain);
-            
             if (_cboRecetas.Items.Count > 0)
                 _cboRecetas.SelectedIndex = 0;
         }
 
+        private static void BordeSuperior(Graphics g, Control c)
+        { using (var p = new Pen(AppTheme.Border)) g.DrawLine(p, 0, 0, c.Width, 0); }
+
         private void ConstruirFormulario()
         {
-            _pnlCampos.Controls.Clear();
+            _tlCampos.Controls.Clear();
+            _tlCampos.RowStyles.Clear();
+            _tlCampos.RowCount = 0;
             _inputs.Clear();
-            var receta = _cboRecetas.SelectedItem as IReceta;
-            if (receta == null || receta.EsquemaConfig == null) return;
 
-            int y = 0;
+            var receta = _cboRecetas.SelectedItem as IReceta;
+            if (receta == null) return;
+
+            _lblDescripcion.Text = receta.Descripcion ?? "";
+            ActualizarEjemploTexto(receta);
+
+            if (receta.EsquemaConfig == null) return;
+
+            int fila = 0;
             foreach (var c in receta.EsquemaConfig)
             {
-                var lbl = new Label { Text = c.Etiqueta + (c.Requerido ? " *" : ""), Location = new Point(0, y), AutoSize = true };
-                _pnlCampos.Controls.Add(lbl);
-                y += 20;
+                var lbl = new Label { Text = c.Etiqueta + (c.Requerido ? " *" : ""), AutoSize = false, Dock = DockStyle.Top, Height = 18, Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMain, Margin = new Padding(0, fila == 0 ? 0 : 8, 0, 2) };
+                _tlCampos.RowCount++;
+                _tlCampos.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                _tlCampos.Controls.Add(lbl, 0, fila++);
 
-                Control input = null;
+                // Fila del control de entrada, en su propia mini tabla de 2 columnas
+                // (input=Fill, boton de token=ancho fijo) -- así el botón NUNCA queda fuera
+                // del panel visible, a diferencia de la versión con Location a mano.
+                var fila2 = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0) };
+                fila2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+                Control input;
                 if (c.Tipo == "numero")
                 {
-                    var num = new NumericUpDown { Location = new Point(0, y), Width = 150, Maximum = 99999999, Minimum = -1 };
-                    input = num;
+                    input = new NumericUpDown { Dock = DockStyle.Fill, Maximum = 999999999, Minimum = -999999999, Font = AppTheme.FontMain };
                 }
                 else
                 {
-                    var txt = new TextBox { Location = new Point(0, y), Width = _pnlCampos.Width - 50 };
+                    var txt = new TextBox { Dock = DockStyle.Fill, Font = AppTheme.FontMain };
                     if (c.Tipo == "texto_multilinea")
                     {
                         txt.Multiline = true;
-                        txt.Height = 80;
+                        txt.Height = 64;
                         txt.ScrollBars = ScrollBars.Vertical;
                     }
                     input = txt;
-
-                    if (c.PermiteTokens)
-                    {
-                        var btnToken = new Button { Text = "{...}", Location = new Point(txt.Right + 5, y), Width = 40, Height = 23, Cursor = Cursors.Hand };
-                        btnToken.Click += (s, e) => MostrarTokensMenu(btnToken, txt);
-                        _pnlCampos.Controls.Add(btnToken);
-                    }
                 }
-                _pnlCampos.Controls.Add(input);
+                fila2.Controls.Add(input, 0, 0);
+
+                if (c.PermiteTokens && input is TextBox txtTok)
+                {
+                    fila2.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                    var btnToken = new IconButton { Text = "{ }", Kind = BtnKind.Toolbar, Accent = Color.Empty, Dock = DockStyle.Fill, Margin = new Padding(6, 0, 0, 0), MinH = txtTok.Multiline ? 26 : 0 };
+                    _tips2.SetToolTip(btnToken, "Insertar un token ({pID}, {pUserID}...)");
+                    btnToken.Click += (s, e) => MostrarTokensMenu(btnToken, txtTok);
+                    fila2.Controls.Add(btnToken, 1, 0);
+                }
+
+                _tlCampos.RowCount++;
+                _tlCampos.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                _tlCampos.Controls.Add(fila2, 0, fila++);
+
                 _inputs[c.Nombre] = input;
-                y += input.Height + 10;
             }
         }
 
-        private void MostrarTokensMenu(Button btn, TextBox txt)
+        private readonly ToolTip _tips2 = new ToolTip();
+
+        private void ActualizarEjemploTexto(IReceta receta)
         {
-            var ctx = new ContextMenuStrip();
-            string[] tokens = { "{pID}", "{pIDs}", "{pUserID}", "{pModulo}", "{pEmpresa}" };
-            foreach (var t in tokens)
+            if (receta.Ejemplo == null || receta.Ejemplo.Count == 0 || receta.EsquemaConfig == null)
+            { _txtEjemplo.Text = "(esta receta no trae ejemplo)"; return; }
+
+            var sb = new System.Text.StringBuilder();
+            foreach (var c in receta.EsquemaConfig)
+                if (receta.Ejemplo.ContainsKey(c.Nombre))
+                    sb.AppendLine(c.Etiqueta + ": " + receta.Ejemplo[c.Nombre]);
+            _txtEjemplo.Text = sb.ToString().TrimEnd();
+        }
+
+        private void LlenarConEjemplo()
+        {
+            var receta = _cboRecetas.SelectedItem as IReceta;
+            if (receta == null || receta.Ejemplo == null) return;
+            foreach (var c in receta.EsquemaConfig)
             {
-                var item = ctx.Items.Add(t);
-                item.Click += (s, e) => txt.SelectedText = t;
+                if (!receta.Ejemplo.ContainsKey(c.Nombre) || !_inputs.ContainsKey(c.Nombre)) continue;
+                string valor = receta.Ejemplo[c.Nombre];
+                var input = _inputs[c.Nombre];
+                if (input is NumericUpDown num)
+                { if (decimal.TryParse(valor, out var d)) num.Value = Math.Max(num.Minimum, Math.Min(num.Maximum, d)); }
+                else if (input is TextBox txt)
+                    txt.Text = valor;
             }
-            ctx.Show(btn, new Point(0, btn.Height));
+            if (string.IsNullOrWhiteSpace(_txtNombre.Text)) _txtNombre.Text = receta.Nombre + " (ejemplo)";
+        }
+
+        private void MostrarTokensMenu(Control anclaje, TextBox txt)
+        {
+            var menu = new ContextMenuStrip { Font = AppTheme.FontMain };
+            var tokens = new[] {
+                ("{pID}", "primer ID seleccionado"),
+                ("{pIDs}", "todos los IDs seleccionados"),
+                ("{pUserID}", "usuario activo"),
+                ("{pModulo}", "módulo activo"),
+                ("{pEmpresa}", "empresa (BD) activa"),
+            };
+            foreach (var (token, desc) in tokens)
+            {
+                var item = menu.Items.Add(token + "  —  " + desc);
+                item.Click += (s, e) => { txt.SelectedText = token; txt.Focus(); };
+            }
+            menu.Show(anclaje, new Point(0, anclaje.Height));
         }
 
         private void BtnGuardar_Click(object sender, EventArgs e)
         {
             var receta = _cboRecetas.SelectedItem as IReceta;
-            if (receta == null) return;
+            if (receta == null) { MessageBox.Show("Elige un tipo de acción primero.", "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
 
             string ak = _txtAppKey.Text.Trim().Replace(" ", "_");
             string nom = _txtNombre.Text.Trim();
             if (string.IsNullOrEmpty(ak) || string.IsNullOrEmpty(nom))
             {
-                MessageBox.Show("Falta AppKey o Nombre.");
+                MessageBox.Show("Falta el nombre visible o la clave interna (AppKey).", "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -3092,39 +3212,31 @@ private void Guardar(bool comoNuevo)
             foreach (var c in receta.EsquemaConfig)
             {
                 var input = _inputs[c.Nombre];
-                if (c.Tipo == "numero")
-                    config[c.Nombre] = (int)((NumericUpDown)input).Value;
-                else
-                    config[c.Nombre] = input.Text.Trim();
-                
-                if (c.Requerido && string.IsNullOrEmpty(config[c.Nombre].ToString()))
+                object valor = (c.Tipo == "numero") ? (object)((NumericUpDown)input).Value : ((TextBox)input).Text.Trim();
+
+                if (c.Requerido && (valor == null || string.IsNullOrEmpty(valor.ToString())))
                 {
-                    MessageBox.Show("El campo " + c.Etiqueta + " es requerido.");
+                    MessageBox.Show("El campo \"" + c.Etiqueta + "\" es obligatorio.", "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+                config[c.Nombre] = valor;
             }
 
-            var jsonDict = new Dictionary<string, object>
-            {
-                { "receta", receta.Id },
-                { "config", config }
-            };
-
+            var jsonDict = new Dictionary<string, object> { { "receta", receta.Id }, { "config", config } };
             var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
-            string json = serializer.Serialize(jsonDict);
-            string codigoCompleto = "# lang: receta\n" + json;
+            string codigoCompleto = "# lang: receta\n" + serializer.Serialize(jsonDict);
 
             try
             {
                 _ctx.BrosAsegurarTablas();
                 _ctx.BrosGuardar(ak, nom, codigoCompleto, _ctx.ModuloActivo());
-                MessageBox.Show("Acción guardada con éxito. Actualiza el árbol para verla.");
-                this.DialogResult = DialogResult.OK;
-                this.Close();
+                MessageBox.Show("Acción \"" + nom + "\" guardada. Actualiza el árbol de la izquierda para verla.", "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                DialogResult = DialogResult.OK;
+                Close();
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error al guardar: " + ex.Message);
+                MessageBox.Show("No se pudo guardar: " + ex.Message, "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

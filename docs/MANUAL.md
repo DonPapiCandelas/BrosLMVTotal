@@ -182,6 +182,69 @@ Después de cualquier cambio hay que **reiniciar CONTPAQi** para verlo reflejado
 ribbon (los cambios ya quedaron guardados en la base — solo falta que Comercial vuelva a
 leer la estructura).
 
+### Opción sin código — "Nueva acción" (desde v2.44.0/2.48.0, asistente)
+
+Las dos opciones de arriba requieren escribir código (C#/Python/SQL) o al menos saber SQL.
+**"Nueva acción"** no requiere ninguna de las dos cosas — eliges qué debe hacer el botón de
+una lista y llenas un formulario. Vive en la Consola, botón **"Más opciones" → "Nueva
+acción"**.
+
+Hoy hay 2 acciones disponibles ("recetas"):
+
+| Receta | Qué hace | Cuándo usarla |
+|---|---|---|
+| **Ejecutar SQL con tokens** | Corre una consulta que tú escribes, sustituyendo tokens como `{pID}` por el documento seleccionado | Reportes rápidos, consultas puntuales — lo más simple posible |
+| **Crear documento a partir de otro** | Crea un documento nuevo (ej. una Orden de Compra) con encabezado y partidas, usando el mismo motor que Comercial | Automatizar un flujo tipo "de esta Requisición, genera la OC" |
+
+#### Ejemplo 1 — "avísame el total de un documento" (con "Ejecutar SQL con tokens")
+
+El ejemplo más simple posible, para entender el mecanismo:
+
+1. Abre la Consola → **Más opciones → Nueva acción**.
+2. En "Tipo de acción" elige **"Ejecutar SQL con tokens"**. Debajo aparece una explicación
+   de qué hace.
+3. Clic en **"Llenar con este ejemplo"** — llena el campo SQL con
+   `SELECT Folio, Total FROM docDocument WHERE DocumentID = {pID}`. Ese `{pID}` se
+   sustituye solo por el documento que tengas seleccionado en Comercial cuando el botón se
+   ejecute — no lo escribes tú cada vez, es automático.
+4. En "Nombre visible" pon algo como `Ver folio y total`. En "Clave interna (AppKey)" pon
+   `VER_FOLIO_TOTAL` (sin espacios).
+5. **Guardar acción**.
+6. Ve al **Gestor de Ribbon** (ver arriba) y da de alta el botón `BrosLMV.VER_FOLIO_TOTAL`
+   donde quieras que aparezca (o créalo con el SQL de siempre, `plantilla_crear_boton.sql`
+   — "Nueva acción" solo guarda el contenido del botón, no lo pone en el ribbon).
+7. Reinicia CONTPAQi, selecciona un documento, haz clic en tu botón nuevo.
+
+#### Ejemplo 2 — "crear una OC desde una Requisición" (con "Crear documento a partir de otro")
+
+Más avanzado, pero sigue sin escribir código:
+
+1. **Antes de empezar, consigue 3 datos con una consulta SQL** (esto sí requiere saber el
+   ID de las cosas, no hay forma de evitarlo sin un buscador visual — trabajo futuro):
+   - El **ID del módulo destino**: `183` para Orden de compra (ver la tabla completa en
+     §7.2 más abajo).
+   - El **ID del almacén**: `SELECT DepotID, DepotName FROM orgDepot`.
+   - El **ID del proveedor**:
+     `SELECT BusinessEntityID, OfficialName FROM orgBusinessEntity WHERE ... `.
+2. Abre la Consola → **Más opciones → Nueva acción** → elige **"Crear documento a partir
+   de otro"**.
+3. Clic en **"Llenar con este ejemplo"** para ver el formato exacto que espera cada campo
+   — en particular, el campo **"Partidas"** espera JSON escrito a mano:
+   `[{"productId": 1, "cantidad": 5, "precio": 250, "costo": 200}]` (puedes poner varias
+   partidas separadas por coma dentro de los corchetes). **Esto es una limitación conocida
+   de esta primera versión** — no hay todavía una tabla visual para llenar partidas, se
+   escribe el JSON a mano. Ver `docs/RECETAS_NOCODE.md` §2.4 para el detalle.
+4. Reemplaza los valores del ejemplo por tus IDs reales (módulo, almacén, proveedor,
+   productos).
+5. Nombre visible + AppKey, **Guardar acción**, dar de alta en el ribbon (Gestor de
+   Ribbon), reiniciar CONTPAQi.
+
+> **Si el módulo que necesitas no es 183 (OC) ni 202 (Entrada de almacén):** la receta te
+> va a avisar con un error claro ("no hay EstructuraDocumento registrada para ModuleID=X")
+> en vez de fallar en silencio o crear un documento a medias. Agregar un módulo nuevo
+> requiere tocar código (`src/EstructurasDocumento.cs`) — pídeselo a quien mantenga el
+> proyecto.
+
 ---
 
 ## 5. API de `ctx`

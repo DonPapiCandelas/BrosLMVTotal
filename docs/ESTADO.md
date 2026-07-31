@@ -39,6 +39,46 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — v2.53.0, se repara la regla de oro rota + bug real del asistente)
+
+> Continuación directa de la entrada de abajo. El usuario avanzó por su cuenta (o delegó a
+> otra IA) entre v2.48.0 y v2.52.0 y esa parte **rompió la regla de oro del proyecto**: 4
+> versiones seguidas sin entrada de `CHANGELOG.md`/`notas_version.html`. Se detectó al
+> pedirle al usuario "analiza qué está pasando, la interfaz no se parece a lo que me
+> mostraste".
+
+**Lo que se encontró (auditoría completa, ver `CHANGELOG.md` v2.53.0/v2.49.0-v2.52.0 para
+el detalle):**
+- Regla de oro rota: `verificar_regla_de_oro.ps1` fallaba (versión 2.52.0 sin CHANGELOG).
+  **Documentado retroactivamente** con los diffs reales de cada commit.
+- `src/Consola_utf8.cs`: copia vieja completa de `Consola.cs` (3021 líneas), código muerto
+  (no está en el `.csproj`) — **borrado** (confirmado byte por byte que no tenía nada que
+  el archivo activo no tuviera ya).
+- "Nueva acción" SÍ sigue existiendo — el usuario confirmó que ponerlo en "Más opciones" es
+  intencional y está bien. El problema real era el diálogo en sí: controles sin tema visual
+  (`Button`/`Label` planos), posicionamiento absoluto con un bug real (el botón de token
+  podía quedar fuera del panel), y sin ninguna ayuda/ejemplo — "así no le entendí nada".
+  **Reescrito** con `AppTheme`/`TableLayoutPanel`, más `Descripcion` + `Ejemplo` +
+  botón "Llenar con este ejemplo" por receta.
+- **Bug real y grave:** el JSON que el asistente generaba para "Crear documento a partir de
+  otro" **nunca funcionaba** — el campo "Partidas" es texto libre (string con JSON
+  adentro), pero el motor solo aceptaba JSON ya anidado. La entrada de v2.48.0 decía
+  "se probó la generación del JSON" pero no que se hubiera CORRIDO de verdad contra el
+  motor — por eso el bug pasó desapercibido. **Corregido en `src/Recetas.cs`** (acepta
+  ambas formas) y agregado como **caso 11 permanente del arnés**
+  (`build/humo/casos/11_receta_wizard_formato.ps1`, prueba el JSON EXACTO que produce el
+  asistente, no una versión simplificada a mano). Arnés completo: **11/11 en verde**.
+- Agregados 2 ejemplos paso a paso en `MANUAL.md` §4 y un botón de ejemplo real, ya
+  funcionando, sembrado en el sandbox `ComercialSP` (`EJEMPLO_VER_FOLIO_TOTAL`) — a
+  propósito NO en `provision_empresa.sql` (no tiene sentido meterlo en el ribbon de un
+  cliente real).
+
+**Lección para la próxima fase/feature:** "se probó que compila y se generó el JSON" no es
+lo mismo que "se corrió contra el motor real" — este bug lo hubiera atrapado el caso 11 si
+hubiera existido desde la fase 6. Cualquier feature que genere configuración para otro
+sistema (un wizard que genera JSON, un formulario que genera SQL, etc.) necesita una
+prueba que la END-TO-END, no solo una prueba de que el generador no truena.
+
 ## Estás aquí (2026-07-30, aún más tarde — v2.48.0, T3.1 fase 6: modo asistente "Nueva acción")
 
 > Continuación directa de la entrada de abajo. Fase 6 de 6 de T3.1. ¡META ALCANZADA!
