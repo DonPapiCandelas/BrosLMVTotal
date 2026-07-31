@@ -20,6 +20,7 @@
 // archivo): así el usuario puede seguir usando Comercial (o tener varias requisiciones
 // abiertas a la vez) sin que esta ventana se lo impida. El patrón completo, con las reglas
 // para que no truene, está en MANUAL.md §10 "Ventanas WinForms: modeless".
+
 using System;
 using System.Drawing;
 using System.Windows.Forms;

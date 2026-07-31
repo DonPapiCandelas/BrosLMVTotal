@@ -4,11 +4,18 @@
 // Qué hace: EXACTAMENTE lo mismo que la plantilla de SQL con el mismo nombre -- cambia el
 // campo Title (nota libre, no es el Folio) del documento seleccionado.
 //
-// Diferencia real contra SQL: ctx.NonQuery() en vez de ctx.Query() -- Query es para LEER
-// (SELECT), NonQuery es para ESCRIBIR (UPDATE/INSERT/DELETE) y regresa cuántas filas
-// afectó. Igual que en SQL, si el modo solo lectura está activo, NonQuery se bloquea con un
-// mensaje claro en vez de escribir.
-var sql = ctx.ResolverTokens("UPDATE docDocument SET Title = 'Script de Prueba en C#' WHERE DocumentID = {pID}");
-int filas = ctx.NonQuery(sql);
+// Por qué NO se usa {pID} aquí: mismo motivo que en "Extracción de datos" -- {pID} es texto
+// que solo se sustituye solo en SQL puro. Aquí se usa la función nativa ctx.GetSelectedIds()
+// en vez de envolver la consulta en ctx.ResolverTokens("...{pID}...").
+//
+// Diferencia real contra la plantilla de solo lectura: ctx.NonQuery() en vez de ctx.Query()
+// -- Query es para LEER (SELECT), NonQuery es para ESCRIBIR (UPDATE/INSERT/DELETE) y
+// regresa cuántas filas afectó. Si el modo solo lectura está activo (checkbox de la
+// Consola, o preferencia SoloLectura del usuario, T2.2), NonQuery se bloquea con un mensaje
+// claro en vez de escribir.
 
-ctx.Msg(filas > 0 ? "Título actualizado." : "No se encontró el documento (¿seleccionaste uno?).");
+var ids = ctx.GetSelectedIds();
+if (ids.Count == 0) { ctx.Msg("No se encontró el documento (¿seleccionaste uno?)."); return; }
+
+int filas = ctx.NonQuery("UPDATE docDocument SET Title = 'Script de Prueba en C#' WHERE DocumentID = " + ids[0]);
+ctx.Msg(filas > 0 ? "Título actualizado." : "No se pudo actualizar.");

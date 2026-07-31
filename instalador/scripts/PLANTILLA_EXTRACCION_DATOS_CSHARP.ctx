@@ -4,19 +4,24 @@
 // Qué hace: EXACTAMENTE lo mismo que la plantilla de SQL con el mismo nombre -- consulta
 // folio, total y fecha del documento seleccionado, y lo muestra en un mensaje.
 //
-// Diferencia real contra la versión SQL: en C#, los tokens ({pID}, {pIDs}, etc.) NO se
-// sustituyen solos -- hay que envolver el texto en ctx.ResolverTokens(...) a propósito. Si
-// olvidas esto, la consulta literalmente le manda "{pID}" a SQL Server y truena. Esta es la
-// razón #1 por la que un botón SQL simple a veces conviene más que uno en C#: menos que
-// recordar.
+// Por qué NO se usa {pID} aquí: {pID} es un TOKEN de TEXTO -- en SQL funciona solo porque
+// EjecutarSql llama a ctx.ResolverTokens(...) automáticamente antes de correr la consulta.
+// En C# nadie hace esa sustitución por ti; usar {pID} en C# significaría escribir
+// ctx.ResolverTokens("...{pID}...") a propósito -- un paso extra, y si se te olvida el
+// texto literal "{pID}" se manda tal cual a SQL Server y truena. C# YA tiene la función
+// nativa que da el mismo dato sin ese rodeo: ctx.GetSelectedIds() -- es lo que se usa abajo.
+//
+// Si de verdad quisieras el camino de tokens en C# (por ejemplo, para reusar una consulta
+// escrita como texto plano, compartida con un botón SQL), así se vería:
+//     var sql = ctx.ResolverTokens("SELECT Folio, Total FROM docDocument WHERE DocumentID = {pID}");
+//     var filas = ctx.Query(sql);
 //
 // Cuándo usar C# en vez de SQL: cuando necesitas lógica además de la consulta (un if, un
-// bucle, formatear el resultado de una forma particular, mostrar una ventana). Para "solo
-// traer datos y verlos", SQL puro es más simple y hay una menos que aprender.
-var sql = ctx.ResolverTokens("SELECT Folio, Total, DateDocument FROM docDocument WHERE DocumentID = {pID}");
-var filas = ctx.Query(sql);
+// bucle, formatear el resultado de una forma particular, mostrar una ventana).
 
-if (filas.Count == 0) { ctx.Msg("No se encontró el documento (¿seleccionaste uno?)."); return; }
+var ids = ctx.GetSelectedIds();
+if (ids.Count == 0) { ctx.Msg("No se encontró el documento (¿seleccionaste uno?)."); return; }
 
+var filas = ctx.Query("SELECT Folio, Total, DateDocument FROM docDocument WHERE DocumentID = " + ids[0]);
 var f = filas[0];
 ctx.Msg("Folio: " + f["Folio"] + "\nTotal: $" + f["Total"] + "\nFecha: " + f["DateDocument"]);

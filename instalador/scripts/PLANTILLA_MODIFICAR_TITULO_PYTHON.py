@@ -8,6 +8,7 @@
 # (SELECT), execute es para ESCRIBIR (UPDATE/INSERT/DELETE) y regresa cuántas filas afectó.
 # Sin tokens de texto (ver la plantilla de Extracción de datos): se usa
 # ctx.get_selected_ids() para saber cuál documento.
+
 from broslmv import ctx
 
 ids = ctx.get_selected_ids()

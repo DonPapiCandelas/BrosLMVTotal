@@ -1312,26 +1312,79 @@ namespace BrosLMV
         }
 
         // Aplica colores, fuente y márgenes del editor para un tamaño dado (reutilizable).
+        // Antes de v2.56.0 SIEMPRE usaba Lexer.Cpp, sin importar el lenguaje real del
+        // script -- por eso un botón SQL (marcador "-- lang: sql") se veía todo del mismo
+        // color: el lexer C++ no reconoce "--" como comentario, así que comentario y
+        // código quedaban indistinguibles. Ahora el lexer se elige según el lenguaje
+        // detectado (mismo detector que ya usa la barra de estado).
         private void EstilizarEditor(int size)
         {
             var ed = _editor;
-            ed.Lexer = Lexer.Cpp;
+            string codigo = ed.Text;
+            bool esPython = HostClient.EsPython(codigo);
+            bool esSql = !esPython && HostClient.EsSql(codigo);
+
+            ed.Lexer = esPython ? Lexer.Python : esSql ? Lexer.Sql : Lexer.Cpp;
             ed.Styles[Style.Default].Font = AppTheme.FontMono.Name;
             ed.Styles[Style.Default].Size = size;
             ed.Styles[Style.Default].BackColor = AppTheme.BgSurface;
             ed.Styles[Style.Default].ForeColor = AppTheme.TextMain;
             ed.StyleClearAll();
 
-            ed.Styles[Style.Cpp.Comment].ForeColor = Color.FromArgb(0, 128, 0);
-            ed.Styles[Style.Cpp.CommentLine].ForeColor = Color.FromArgb(0, 128, 0);
-            ed.Styles[Style.Cpp.CommentLineDoc].ForeColor = Color.FromArgb(128, 128, 128);
-            ed.Styles[Style.Cpp.Number].ForeColor = Color.FromArgb(9, 134, 88);
-            ed.Styles[Style.Cpp.String].ForeColor = Color.FromArgb(163, 21, 21);
-            ed.Styles[Style.Cpp.Character].ForeColor = Color.FromArgb(163, 21, 21);
-            ed.Styles[Style.Cpp.Word].ForeColor = Color.FromArgb(0, 0, 255);
-            ed.Styles[Style.Cpp.Word2].ForeColor = Color.FromArgb(43, 145, 175);
-            ed.Styles[Style.Cpp.Operator].ForeColor = Color.FromArgb(100, 100, 100);
-            ed.Styles[Style.Cpp.Preprocessor].ForeColor = Color.FromArgb(128, 128, 128);
+            // Misma paleta en los 3 lexers (verde=comentario, sienna=string, azul=palabra
+            // clave) -- así cambiar de lenguaje no cambia el "idioma visual" del editor,
+            // solo qué palabras cuentan como qué.
+            var cComentario = Color.FromArgb(0, 128, 0);
+            var cNumero     = Color.FromArgb(9, 134, 88);
+            var cString     = Color.FromArgb(163, 21, 21);
+            var cPalabra    = Color.FromArgb(0, 0, 255);
+            var cPalabra2   = Color.FromArgb(43, 145, 175);
+            var cOperador   = Color.FromArgb(100, 100, 100);
+            var cGris       = Color.FromArgb(128, 128, 128);
+
+            if (esPython)
+            {
+                ed.SetKeywords(0, "and as assert async await break class continue def del elif else except finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield self");
+                ed.Styles[Style.Python.CommentLine].ForeColor = cComentario;
+                ed.Styles[Style.Python.Number].ForeColor = cNumero;
+                ed.Styles[Style.Python.String].ForeColor = cString;
+                ed.Styles[Style.Python.Character].ForeColor = cString;
+                ed.Styles[Style.Python.Triple].ForeColor = cString;
+                ed.Styles[Style.Python.TripleDouble].ForeColor = cString;
+                ed.Styles[Style.Python.Word].ForeColor = cPalabra;
+                ed.Styles[Style.Python.Word2].ForeColor = cPalabra2;
+                ed.Styles[Style.Python.Operator].ForeColor = cOperador;
+                ed.Styles[Style.Python.Decorator].ForeColor = cGris;
+            }
+            else if (esSql)
+            {
+                ed.SetKeywords(0, "select insert update delete from where join inner left right outer on group by order having as into values set null is not and or in like between top distinct union all case when then else end declare exec execute create alter drop table view index primary key foreign references default");
+                ed.Styles[Style.Sql.Comment].ForeColor = cComentario;
+                ed.Styles[Style.Sql.CommentLine].ForeColor = cComentario;
+                ed.Styles[Style.Sql.CommentDoc].ForeColor = cGris;
+                ed.Styles[Style.Sql.Number].ForeColor = cNumero;
+                ed.Styles[Style.Sql.String].ForeColor = cString;
+                ed.Styles[Style.Sql.Character].ForeColor = cString;
+                ed.Styles[Style.Sql.Word].ForeColor = cPalabra;
+                ed.Styles[Style.Sql.Word2].ForeColor = cPalabra2;
+                ed.Styles[Style.Sql.Operator].ForeColor = cOperador;
+                ed.Styles[Style.Sql.Identifier].ForeColor = AppTheme.TextMain;
+            }
+            else
+            {
+                ed.SetKeywords(0, "abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using var virtual void volatile while async await dynamic");
+                ed.SetKeywords(1, "List Dictionary StringBuilder DateTime Math Convert Console MessageBox Color Form ctx");
+                ed.Styles[Style.Cpp.Comment].ForeColor = cComentario;
+                ed.Styles[Style.Cpp.CommentLine].ForeColor = cComentario;
+                ed.Styles[Style.Cpp.CommentLineDoc].ForeColor = cGris;
+                ed.Styles[Style.Cpp.Number].ForeColor = cNumero;
+                ed.Styles[Style.Cpp.String].ForeColor = cString;
+                ed.Styles[Style.Cpp.Character].ForeColor = cString;
+                ed.Styles[Style.Cpp.Word].ForeColor = cPalabra;
+                ed.Styles[Style.Cpp.Word2].ForeColor = cPalabra2;
+                ed.Styles[Style.Cpp.Operator].ForeColor = cOperador;
+                ed.Styles[Style.Cpp.Preprocessor].ForeColor = cGris;
+            }
 
             // Gutter de números con fondo claro propio.
             ed.Styles[Style.LineNumber].BackColor = AppTheme.BgSubtle;
@@ -1349,12 +1402,21 @@ namespace BrosLMV
             ed.ExtraDescent = 3; // mejor interlineado
         }
 
-        // Refleja el lenguaje detectado en la barra de estado.
+        // Refleja el lenguaje detectado en la barra de estado, y re-aplica el lexer
+        // correcto si el lenguaje cambió desde el último cambio de texto (p. ej. el
+        // usuario acaba de escribir "-- lang: sql" en un script nuevo) -- sin este
+        // chequeo, re-estilizar en CADA tecla sería un desperdicio y podría parpadear.
+        private string _ultimoLenguajeEditor = "";
         private void DetectarLenguajeStatus()
         {
-            if (_statusLang == null) return;
             string c = _editor.Text;
-            _statusLang.Text = HostClient.EsPython(c) ? "Python" : HostClient.EsSql(c) ? "SQL" : "C#";
+            string lang = HostClient.EsPython(c) ? "Python" : HostClient.EsSql(c) ? "SQL" : "C#";
+            if (_statusLang != null) _statusLang.Text = lang;
+            if (lang != _ultimoLenguajeEditor)
+            {
+                _ultimoLenguajeEditor = lang;
+                try { EstilizarEditor(_fontSize); } catch { }
+            }
         }
 
         // =====================================================

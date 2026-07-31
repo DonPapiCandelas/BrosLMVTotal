@@ -6,6 +6,69 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.56.0] — 2026-07-31 — Editor con resaltado real por lenguaje + plantillas nativas + Requisición SQL puro (validada)
+
+> A pedido del usuario, tras revisar cómo se veían las plantillas en la Consola: el editor
+> no distinguía comentario de código en SQL, las plantillas C#/Python usaban un patrón de
+> tokens "de más show" en vez del nativo de cada lenguaje, y faltaba la variante SQL puro de
+> Requisición.
+
+### Corregido — resaltado de sintaxis real por lenguaje
+- **`src/Consola.cs` (`EstilizarEditor`): antes SIEMPRE usaba `Lexer.Cpp`, sin importar el
+  lenguaje real del script** — por eso un botón SQL (`-- lang: sql`) se veía todo del mismo
+  color: el lexer C++ no reconoce `--` como comentario. Ahora el lexer cambia según el
+  lenguaje detectado (`Lexer.Python`/`Lexer.Sql`/`Lexer.Cpp`), con la misma paleta de
+  colores en los 3 (verde=comentario, sienna=string, azul=palabra clave) para que cambiar
+  de lenguaje no cambie el "idioma visual". Se re-aplica automáticamente si el lenguaje
+  detectado cambia mientras se escribe (p. ej. al agregar `-- lang: sql` a un script nuevo).
+- Línea en blanco agregada entre el bloque de documentación y el código real en las 8
+  plantillas que ya existían — antes quedaban pegados, ahora se distingue dónde empieza uno
+  y termina el otro.
+
+### Cambiado — plantillas simples usan la función nativa de cada lenguaje, no tokens envueltos
+- `PLANTILLA_EXTRACCION_DATOS_CSHARP.ctx` y `PLANTILLA_MODIFICAR_TITULO_CSHARP.ctx`: antes
+  usaban `ctx.ResolverTokens("...{pID}...")`; ahora usan `ctx.GetSelectedIds()[0]`
+  directamente — la función nativa de C#, sin el paso extra de envolver una cadena de texto.
+  La documentación explica por qué (en C# nadie sustituye `{pID}` solo, hay que pedirlo a
+  propósito con `ResolverTokens`) y muestra ese camino como alternativa, con ejemplo, no
+  como el default.
+- Las versiones Python ya usaban `ctx.get_selected_ids()` (Python no tiene tokens de texto
+  en absoluto) — se dejaron igual, solo se les agregó la línea en blanco.
+
+### Agregado — Requisición de Compra, variante SQL puro (validada campo por campo)
+- **`PLANTILLA_REQUISICION_SQL_PURO.sql`** — crea una Solicitud de Compra real insertando
+  directamente en `docDocument`/`docDocumentExtra`/`docDocumentCFD`/
+  `docDocumentPaymentAgenda`/`docDocumentItem`, sin pasar por `ctx.erp`. **Validada
+  campo por campo contra un documento nativo real** (mismo método que
+  `docs/REQUISICION_SOLICITUD_COMPRA.md` ya había usado antes): se creó un documento por el
+  camino `ctx.erp.NuevoDocumento`/`AgregarArticulo`/`RecalcCompleto`/`Save`, se comparó con
+  el creado por SQL puro, y se corrigieron **3 diferencias reales** que aparecieron en el
+  camino (no teóricas):
+  1. `FolioPrefix` quedaba `NULL` en vez de `''`.
+  2. `TotalLetter` quedaba `NULL` — lo llena `RecalcCompleto`/`Save`, no `NuevoDocumento`;
+     SQL puro no tiene forma de calcularlo, se fijó como `'CERO PESOS 00/100 M.N.'` (correcto
+     porque Requisición nunca captura importes, Total siempre es 0).
+  3. `CoefUnit` quedaba `0` en vez de `1`, y `ObjetoImpuesto` copiaba el valor del producto
+     en vez de dejarse vacío (así lo hace `AgregarArticulo` en este tipo de documento —
+     Solicitud de Compra no genera CFDI).
+  - **Advertencia real incluida en el propio archivo**: esta es la forma más frágil de
+    crear un documento — replica a mano lo que `ctx.erp.NuevoDocumento` ya resuelve de forma
+    probada. Documentado como "usar cuando sepas por qué la necesitas, no como default".
+  - Agregado como **caso 14 permanente del arnés de humo**
+    (`build/humo/casos/14_requisicion_sql_puro.ps1`) — a diferencia de los demás casos,
+    este compara campo por campo contra un documento de referencia creado en el mismo run
+    (no solo "creó 1 documento más"), para atrapar si alguien la modifica y deja de
+    coincidir con el nativo. Arnés completo: **14/14 en verde**.
+
+### Pendiente (siguiente en la lista, mismo orden acordado con el usuario)
+- Requisición: revisar la versión Forms (C#) contra el estándar del proyecto, construir la
+  versión Forms en Python (pythonnet, WinForms real — confirmado que es posible, ya existía
+  un ejemplo así antes de esta sesión), construir la versión WebView2 en C#, y completar los
+  campos que le faltan a la versión WebView2 en Python (moneda, condición de pago, RFC).
+- Después: las mismas 5 variantes para Orden de Compra (módulo 183).
+
+---
+
 ## [2.55.0] — 2026-07-30 — Catálogo de plantillas reorganizado por lenguaje + Requisición Forms/WebView2
 
 > Reconstrucción del menú de Plantillas a pedido del usuario: organizado por lenguaje

@@ -12,4 +12,5 @@
 --
 -- Cuándo usar esta plantilla: como punto de partida para cualquier botón que actualice UN
 -- campo de UN documento -- cambia "Title" y el texto por el campo/valor que necesites.
+
 UPDATE docDocument SET Title = 'Script de Prueba en SQL' WHERE DocumentID = {pID}

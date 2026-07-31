@@ -12,4 +12,5 @@
 --
 -- Cuándo usar esta plantilla: es la forma MÁS SIMPLE de sacar información sin escribir
 -- código real -- un botón "de consulta" que cualquiera puede leer y modificar.
+
 SELECT Folio, Total, DateDocument FROM docDocument WHERE DocumentID = {pID}

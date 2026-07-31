@@ -39,6 +39,34 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-31, v2.56.0 — editor con colores reales + Requisición SQL puro validada)
+
+> Continuación directa de la entrada de abajo. El usuario pidió, tras ver las plantillas en
+> pantalla: (1) arreglar que el editor no distinguía comentario de código en SQL, (2) que
+> C#/Python usaran su función nativa en vez de tokens envueltos, (3) 5 variantes por
+> documento (SQL puro, Forms C#, Forms Python, WebView2 C#, WebView2 Python) para
+> Requisición y Orden de Compra. Se confirmó el plan completo con el usuario antes de picar
+> código (incluyendo el riesgo real del SQL puro, ya investigado antes en
+> `docs/REQUISICION_SOLICITUD_COMPRA.md`).
+
+**Editor:** `EstilizarEditor` ahora cambia el lexer de Scintilla según el lenguaje
+detectado (antes SIEMPRE usaba `Lexer.Cpp`, por eso SQL no se veía bien). **4 plantillas
+simples reescritas** para usar `ctx.GetSelectedIds()[0]`/`ctx.get_selected_ids()[0]` nativo
+en vez de `ctx.ResolverTokens("...{pID}...")`.
+
+**Requisición SQL puro — construida y validada campo por campo contra un documento nativo
+real**, misma metodología que ya existía en `docs/REQUISICION_SOLICITUD_COMPRA.md`. Se
+encontraron y corrigieron 3 diferencias reales (`FolioPrefix`, `TotalLetter`, `CoefUnit`/
+`ObjetoImpuesto`) que solo aparecen comparando de verdad, no a simple vista. Trae una
+advertencia real en el propio archivo: es la forma más frágil de crear un documento,
+"úsala cuando sepas por qué la necesitas, no como default". Agregada como **caso 14
+permanente del arnés** (compara campo por campo en cada corrida, no solo "creó un
+documento más") — **14/14 en verde**.
+
+**Pendiente, mismo orden acordado:** Requisición Forms C# (revisar), Forms Python (nueva,
+pythonnet), WebView2 C# (nueva), WebView2 Python (completar campos faltantes) — después,
+las mismas 5 variantes para Orden de Compra.
+
 ## Estás aquí (2026-07-30, aún más tarde — v2.55.0, plantillas reorganizadas + Requisición Forms/WebView2)
 
 > Continuación directa de la entrada de abajo (el canal de 2 vías de WebView2). Con eso ya
