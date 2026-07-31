@@ -357,7 +357,7 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T3.1 — Motor de recetas no-code (MVP con 3 recetas) ⭐ (la meta estratégica)
 
-> **Estado (2026-07-30): 🟡 EN PROGRESO — fases 1-3 de 6 hechas (v2.45.0).** Plan de 6 fases
+> **Estado (2026-07-30): 🟡 EN PROGRESO — fases 1-5 de 6 hechas (v2.47.0).** Plan de 6 fases
 > acordado con el usuario (mockup visual mostrado y aprobado antes de empezar).
 > **Fase 1 — motor de tokens hacia el wizard:** los 5 tokens fijos (`{pID}`, `{pIDs}`,
 > `{pUserID}`, `{pModulo}`, `{pEmpresa}`) ya son clicables en la pestaña "Tokens" de la

@@ -6,6 +6,16 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.47.0] — 2026-07-30 — T3.1 fase 5: pasos encadenados
+
+> **Limitación conocida (documentada en MANUAL.md):** No hay transacción entre pasos. Si una receta con pasos encadenados falla en el paso 2, los efectos del paso 1 ya se habrán aplicado a la base de datos de manera definitiva y no se revertirán.
+
+### Agregado
+- `src\Recetas.cs`: El JSON del botón soporta ahora un formato de `{"pasos": [ ... ]}` en lugar de un `{"receta": ... }`. `RecetasRegistro.Ejecutar` procesa cada paso en orden. Si alguno falla, el proceso se detiene en el primer error reportándolo claramente.
+- `build\humo\casos\10_receta_pasos_encadenados.ps1`: Prueba de caso de éxito de una ejecución encadenada y un caso con una falla a propósito. 
+
+---
+
 ## [2.46.0] — 2026-07-30 — T3.1 fase 4: receta estrella "crear documento a partir de otro"
 
 > **Nota técnica:** la ventana visual con grid editable es la fase 6, no esta — aquí solo se implementó el motor de ejecución, probado con JSON armado a mano.

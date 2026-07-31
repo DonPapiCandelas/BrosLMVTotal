@@ -39,6 +39,23 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — v2.47.0, T3.1 fase 5: pasos encadenados)
+
+> Continuación directa de la entrada de abajo. Fase 5 de 6 de T3.1.
+
+**Receta "Pasos encadenados".** Ahora `RecetasRegistro.Ejecutar` en `src/Recetas.cs` puede detectar un JSON que empiece con la clave `"pasos"` en lugar de `"receta"`, y ejecutará todos los pasos en orden. Se agregó la lógica para detenerse en el primer error reportándolo claramente.
+Validado de manera headless contra el sandbox `ComercialSP`. Se agregó como el caso #10 al arnés de humo. Limitación documentada: no hay transacción entre pasos.
+
+**Pendiente real:** La fase 6: "Modo asistente en la Consola", la cual proveerá la interfaz gráfica (formulario) que genera este JSON.
+
+## Estás aquí (2026-07-30, aún más tarde — v2.46.0, T3.1 fase 4: receta estrella "crear documento a partir de otro")
+
+> Continuación directa de la entrada de abajo. Fase 4 de 6 de T3.1.
+
+**Receta "Crear documento a partir de otro" (motor headless).** Se implementó `RecetaCrearDocumentoDesdeOtro` en `src/Recetas.cs`. Lee del JSON los parámetros de entrada (`moduloDestino`, `depotId`, `businessEntityId`, `partidas`), consulta la `EstructuraDocumento` y utiliza `ctx.erp` para generar el documento completo (incluyendo validaciones de impuestos e inventario). Probado de manera headless a través de JSON puro y validado contra el sandbox `ComercialSP`. Se agregó como el caso #9 al arnés de humo.
+
+**Pendiente real:** Esta fase solo incluye el motor de ejecución. Falta la interfaz gráfica con el grid editable (que se realizará en la fase 6). Además, falta la fase 5: "Pasos encadenados".
+
 ## Estás aquí (2026-07-30, aún más tarde — v2.45.0, T3.1 fase 3: almacén de estructuras de documento)
 
 > Continuación directa de la entrada de abajo. Fase 3 de 6 de T3.1.

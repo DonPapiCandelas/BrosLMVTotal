@@ -95,10 +95,16 @@ Generalización del `Boton ejemplo 1.py` (Req→OC) del cliente:
    `Save`, para preservar inventario/contabilidad/folios. El builder ya crea las 4 anclas y los
    campos universales como el nativo (v2.18.0).
 
-### 2.5 Botón no-code + pasos encadenados
-Un botón puede guardar una **config de receta** (no código). Y puede enganchar **varios
-pasos en orden** (estilo eventos de AF): p. ej. *validar con SQL* → *crear documento* →
-*notificar*. Cada paso puede ser una receta, un SQL con tokens, o un script (C#/Python).
+### 2.5 Pasos encadenados
+
+> **Implementado (2026-07-30, v2.47.0, fase 5):** Se modificó `RecetasRegistro.Ejecutar` para detectar un array en la clave `"pasos"` del JSON. Ejecuta los pasos secuencialmente y aborta en el primer error, reportando en qué paso falló. Se agregó el caso 10 al arnés de humo para probarlo (Headless, `ComercialSP`).
+
+Un botón puede ejecutar varios pasos. Ejemplo conceptual:
+1. Validar que la cotización está "Aprobada" (`sql_tokens`) — si no, aborta.
+2. Crear la orden de compra a partir de la cotización (`crear_documento_desde_otro`).
+
+**Limitación documentada:** no hay transacciones cruzadas. Si un botón tiene 3 pasos y el
+paso 3 falla, los efectos del paso 1 y 2 (como crear un documento) NO se deshacen.).
 
 > **Objetivo del motor de recetas:** un grid de captura definido solo con datos
 > (columnas + una vista SQL de origen) y procesos por pasos secuenciales (p. ej.

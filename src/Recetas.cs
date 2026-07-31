@@ -156,23 +156,41 @@ namespace BrosLMV
                 string json = QuitarMarcador(codigoConMarcador);
                 var serializer = new JavaScriptSerializer();
                 var raiz = serializer.Deserialize<Dictionary<string, object>>(json);
-                if (raiz == null || !raiz.ContainsKey("receta"))
-                    return "ERROR: el JSON de la receta no trae la clave \"receta\" (id).";
 
-                string id = Convert.ToString(raiz["receta"]);
-                var receta = Buscar(id);
-                if (receta == null)
-                    return "ERROR: receta desconocida \"" + id + "\" (no esta en RecetasRegistro).";
+                if (raiz != null && raiz.ContainsKey("pasos") && raiz["pasos"] is System.Collections.ArrayList pasos)
+                {
+                    var resultados = new System.Text.StringBuilder();
+                    for (int i = 0; i < pasos.Count; i++)
+                    {
+                        var pasoDict = pasos[i] as Dictionary<string, object>;
+                        if (pasoDict == null) return "ERROR: paso " + (i + 1) + " tiene un formato invalido.";
 
-                Dictionary<string, object> config = raiz.ContainsKey("config") && raiz["config"] is Dictionary<string, object> d
-                    ? d : new Dictionary<string, object>();
+                        string r = EjecutarUnaReceta(pasoDict, ctx);
+                        if (r != null && r.StartsWith("ERROR"))
+                            return "ERROR: paso " + (i + 1) + " de " + pasos.Count + " fallo -- " + r;
+                        resultados.AppendLine("Paso " + (i + 1) + ": " + r);
+                    }
+                    return resultados.ToString().TrimEnd();
+                }
 
-                return receta.Ejecutar(config, ctx);
+                return EjecutarUnaReceta(raiz, ctx);
             }
             catch (Exception ex)
             {
                 return "ERROR: JSON de receta invalido -- " + ex.Message;
             }
+        }
+
+        private static string EjecutarUnaReceta(Dictionary<string, object> raiz, ScriptContext ctx)
+        {
+            if (raiz == null || !raiz.ContainsKey("receta"))
+                return "ERROR: el JSON no trae la clave \"receta\" (id).";
+            string id = Convert.ToString(raiz["receta"]);
+            var receta = Buscar(id);
+            if (receta == null) return "ERROR: receta desconocida \"" + id + "\" (no esta en RecetasRegistro).";
+            var config = raiz.ContainsKey("config") && raiz["config"] is Dictionary<string, object> d
+                ? d : new Dictionary<string, object>();
+            return receta.Ejecutar(config, ctx);
         }
 
         // Salta TODAS las lineas de cabecera (comentarios "#..." y vacias) antes del JSON, no
