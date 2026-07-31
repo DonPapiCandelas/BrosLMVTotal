@@ -284,12 +284,14 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T2.1 — Auditoría central en `zzBrosAuditoria` ⭐
 
-> **Estado (2026-07-29): escritura HECHA (v2.36.0), lectura/UI pendiente.** Compilado con
-> 0 errores. Probado el `INSERT` real contra `zzBrosAuditoria` en `EmpresaA` (fila de
-> prueba insertada, verificada, y borrada). **Falta el paso 3** (pestaña "Auditoría
-> (empresa)" en el Historial de la Consola) — hoy los datos ya se escriben pero no hay
-> forma de verlos desde la UI, solo por SQL directo. No probado el flujo completo dentro
-> de CONTPAQi real (solo la escritura SQL simulada).
+> **Estado (2026-07-30, corregido — el banner de abajo estaba desactualizado): ✅ HECHO
+> (escritura v2.36.0 + lectura/UI v2.41.0).** La pestaña "Auditoría (empresa)" en el
+> Historial de la Consola (`src\Consola.cs`, filtros por fecha/AppKey/estado) ya existía
+> desde v2.41.0 — quedó documentada en `CHANGELOG.md` pero este banner nunca se actualizó
+> para reflejarlo (encontrado revisando el plan el 2026-07-30). **Único pendiente real:**
+> confirmar el flujo completo **dentro de CONTPAQi real** (clic en el botón del ribbon y en
+> "Auditoría (empresa)" de la Consola, viendo la fila aparecer) — hasta ahora solo se probó
+> la escritura SQL y, por separado, el camino headless del Runner (T3.3).
 
 - **Qué:** escribir cada ejecución (botón y consola) también en la tabla central de la empresa.
 - **Por qué (H3):** la tabla existe desde la provisión con el esquema exacto y nadie la llena. La auditoría local SQLite se fragmenta por terminal y se pierde al reinstalar. Para un cliente con control interno (o una auditoría fiscal), "quién ejecutó qué y cuándo" debe responderse a nivel empresa.
