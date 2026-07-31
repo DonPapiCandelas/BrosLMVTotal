@@ -692,6 +692,12 @@ namespace BrosLMV
         // en STA -- si algo ya lo inicializo como MTA antes, crear el WebView2 ahi truena con
         // RPC_E_CHANGED_MODE ("no se puede cambiar el modo de subproceso"), confirmado en
         // pruebas reales. Por eso esto SIEMPRE corre en un hilo STA dedicado y nuevo.
+        // Entrada directa para scripts C# (corren EN PROCESO en el addon, a diferencia de
+        // Python que habla por el pipe con el host) -- reusa exactamente el mismo
+        // RenderUiHtml que ya usa el canal de Python (mismo WebView2, mismo
+        // WebMessageReceived, mismo timeout), sin duplicar la logica de la ventana.
+        internal static UiResponse RenderUiHtmlDirecto(UiShowHtml spec) => RenderUiHtml(spec);
+
         private static UiResponse RenderUiHtml(UiShowHtml spec)
         {
             string perfil = Path.Combine(Path.GetTempPath(), "BrosLMV_WebView2_" + Guid.NewGuid().ToString("N"));

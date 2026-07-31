@@ -32,6 +32,7 @@ using System.Windows.Forms;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
+using BrosLMV.Protocol;
 
 namespace BrosLMV
 {
@@ -1179,6 +1180,40 @@ namespace BrosLMV
                     "[" + DateTime.Now.ToString("HH:mm:ss") + "] " + texto + Environment.NewLine);
             }
             catch { }
+        }
+
+        // ctx.ShowHtml/ctx.ShowHtmlFormulario para C# -- mismo WebView2 que ya usa Python
+        // (ctx.show_html/ctx.show_html_formulario), invocado DIRECTO porque el script C#
+        // ya corre en proceso en el addon (Python necesita el pipe al host; C# no).
+        public void ShowHtml(string html, string titulo = "BrosLMV", int ancho = 800, int alto = 600, bool modal = true)
+        {
+            HostClient.RenderUiHtmlDirecto(new UiShowHtml { Html = html ?? "", Title = titulo ?? "BrosLMV", Width = ancho, Height = alto, Modal = modal });
+        }
+
+        // Bloquea hasta que la pagina llame window.chrome.webview.postMessage(JSON.stringify(...))
+        // o el usuario cierre la ventana sin enviar nada. Ver MANUAL.md 9.4 para el detalle
+        // completo (mismo mecanismo, documentado ahi para Python -- aplica igual aqui).
+        public Dictionary<string, object> ShowHtmlFormulario(string html, string titulo = "BrosLMV", int ancho = 900, int alto = 700, int timeoutMs = 600000)
+        {
+            var resp = HostClient.RenderUiHtmlDirecto(new UiShowHtml
+            {
+                Html = html ?? "", Title = titulo ?? "BrosLMV", Width = ancho, Height = alto,
+                Modal = true, EsperarRespuesta = true, TimeoutMs = timeoutMs
+            });
+
+            var resultado = new Dictionary<string, object>();
+            if (resp.Error != null) { resultado["submitted"] = false; resultado["error"] = resp.Error.Code + ": " + resp.Error.Message; return resultado; }
+
+            string json = string.IsNullOrEmpty(resp.HtmlResponse) ? "{\"submitted\": false}" : resp.HtmlResponse;
+            try
+            {
+                var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+                var dict = serializer.Deserialize<Dictionary<string, object>>(json);
+                foreach (var kv in dict) resultado[kv.Key] = kv.Value;
+                if (!resultado.ContainsKey("submitted")) resultado["submitted"] = true;
+            }
+            catch (Exception ex) { resultado["submitted"] = false; resultado["error"] = "JSON invalido: " + ex.Message; }
+            return resultado;
         }
 
         // ---- ctx.erp: wrapper tipado de XEngine + COM auxiliares ----

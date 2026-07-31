@@ -6,6 +6,56 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.57.0] — 2026-07-31 — Requisición de Compra COMPLETA: las 5 variantes
+
+> Cierra el trabajo de Requisición: SQL puro, Forms C#, Forms Python, WebView2 C#, WebView2
+> Python — mismo resultado final en Comercial (misma Solicitud de Compra, módulo 1040),
+> 5 formas distintas de construirla. Sigue el orden acordado con el usuario: Requisición
+> completa primero, Orden de Compra después.
+
+### Agregado
+- **`ctx.ShowHtml()` / `ctx.ShowHtmlFormulario()` para C#** (`src/Scripting.cs`) — hasta
+  ahora WebView2 (`ctx.show_html`/`ctx.show_html_formulario`) era exclusivo de Python
+  (documentado como tal en `MANUAL.md` §9.4). Un script C# ya corre EN PROCESO en el addon
+  (a diferencia de Python, que habla por el pipe con el host), así que
+  `HostClient.RenderUiHtmlDirecto` (nuevo, expone el mismo `RenderUiHtml` que ya usa el
+  canal de Python) se llama directo, sin pipe. Mismo mecanismo, misma ventana, mismo
+  resultado. Probado en vivo (JS auto-enviado) — agregado como **caso 15 permanente del
+  arnés**.
+- **`PLANTILLA_REQUISICION_WEBVIEW2_CSHARP.ctx`** (nueva) — misma página HTML que la
+  versión Python (proveedor con RFC, almacén, moneda, condición de pago, partidas), pero en
+  C#, usando `ctx.ShowHtmlFormulario()`. Probada en vivo contra el sandbox — agregada como
+  **caso 16 permanente del arnés**.
+- **`PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py` completada** — le faltaban moneda,
+  condición de pago y RFC del proveedor comparada con la versión Forms (quedaba "coja",
+  como notó el usuario). Agregados los 3 campos, actualizado el caso 13 del arnés para
+  probarlos.
+- **`PLANTILLA_REQUISICION_FORMS_PYTHON.py`** (nueva, basada en la plantilla que ya existía
+  con muy buena documentación) — mismo patrón `NuevoDocumento`→`AgregarArticulo`→
+  `RecalcCompleto`→`Save` que la versión C#, construida con `pythonnet` (WinForms real, no
+  una aproximación). **Nota real, no escondida**: usa `frm.ShowDialog()` (modal), a
+  diferencia de la versión C# que usa `frm.Show()` (modeless) — no se probó headless contra
+  el sandbox por el mismo motivo que `ctx.form()`: `ShowDialog()` bloquea esperando a un
+  humano, no hay forma de automatizarlo sin herramientas de UI automation que este proyecto
+  no tiene. Se revisó el código (sintaxis válida, mismo patrón de creación ya probado en
+  las otras 4 variantes).
+- Catálogo de Plantillas (`src/Consola.cs`) actualizado: Requisición ahora tiene sus 5
+  variantes listadas (SQL, C# ×2, Python ×2).
+
+### Resultado
+**Requisición de Compra: 5 de 5 variantes completas.** Arnés de humo: **16/16 en verde**
+(2 nuevos desde la última versión: canal `ShowHtmlFormulario` en C#, Requisición WebView2
+en C#).
+
+### Pendiente
+- Confirmar visualmente dentro de CONTPAQi real: en particular la versión Forms Python
+  (`ShowDialog`), que no se pudo probar headless.
+- **Siguiente: las mismas 5 variantes para Orden de Compra** (módulo 183) — a diferencia de
+  Requisición, SÍ captura precio/costo por partida, fecha de entrega, IVA, y SÍ llama
+  `AffectStockNEW` (compromete inventario sin moverlo). Ver `MANUAL.md` §7.5.
+
+---
+
 ## [2.56.0] — 2026-07-31 — Editor con resaltado real por lenguaje + plantillas nativas + Requisición SQL puro (validada)
 
 > A pedido del usuario, tras revisar cómo se veían las plantillas en la Consola: el editor

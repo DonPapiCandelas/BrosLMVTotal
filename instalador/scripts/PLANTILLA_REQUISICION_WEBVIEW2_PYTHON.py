@@ -3,50 +3,53 @@
 #
 # Qué hace: EXACTAMENTE lo mismo que PLANTILLA_REQUISICION_FORMS_CSHARP.ctx (la versión
 # "Forms") -- crea una Solicitud de Compra real en Comercial -- pero la ventana es una
-# página HTML/CSS/JS de verdad (WebView2), no controles de Windows Forms. Elige la que
-# prefieras: el RESULTADO final en Comercial es idéntico, cambia solo cómo se ve/captura.
+# página HTML/CSS/JS de verdad (WebView2), no controles de Windows Forms. Mismas opciones
+# que la versión Forms (proveedor con RFC, almacén, moneda, condición de pago,
+# comentarios, partidas) -- elige la que prefieras, el RESULTADO en Comercial es idéntico.
 #
-# Cómo funciona el envío de datos (LO NUEVO, desde v2.54.0): ctx.show_html() normal es de
-# UNA SOLA VÍA -- puede mostrar una página, pero la página no puede mandarle nada de vuelta
-# al script. Por eso existe ctx.show_html_formulario(): la página, cuando el usuario
-# presiona "Crear Requisición", llama
+# Cómo funciona el envío de datos: ctx.show_html() normal es de UNA SOLA VÍA -- puede
+# mostrar una página, pero la página no puede mandarle nada de vuelta al script. Por eso
+# existe ctx.show_html_formulario() (v2.54.0): la página, al presionar "Crear
+# Requisición", llama
 #     window.chrome.webview.postMessage(JSON.stringify({...datos...}))
-# y ESO es lo que ctx.show_html_formulario() regresa como diccionario Python. Sin esa
-# llamada JS, el botón de Guardar no haría nada -- es la pieza que conecta el HTML con
-# Comercial.
+# y ESO es lo que ctx.show_html_formulario() regresa como diccionario Python.
 #
-# # timeout: 1800 (abajo) es OBLIGATORIO aquí: el timeout normal del script (2 min) es para
-# scripts que NO esperan a un humano. Un formulario real puede tardar varios minutos en
-# llenarse -- sin ampliar el timeout, el script se cancelaría solo antes de que el usuario
-# termine.
+# timeout: 1800 -- OBLIGATORIO: un formulario real puede tardar varios minutos en llenarse,
+# el timeout normal del script (2 min) es para scripts que NO esperan a un humano.
 # timeout: 1800
 
 from broslmv import ctx
 import json
 
-# ---- Datos iniciales: los mismos catálogos que la versión Forms, pero aquí se insertan
-# directo en el HTML (como JS) porque la página no puede volver a preguntarle a Python a
-# medio llenado -- todo lo que el formulario necesita debe ir ya incluido de una vez.
+# ---- Datos iniciales: mismos catálogos que la versión Forms, insertados directo en el
+# HTML (como JS) porque la página no puede volver a preguntarle a Python a medio llenado.
 proveedores = ctx.query("""
-    SELECT be.BusinessEntityID, be.OfficialName
+    SELECT be.BusinessEntityID, be.OfficialName, ISNULL(m.OfficialNumber,'') AS RFC
     FROM orgBusinessEntity be
     INNER JOIN orgSupplier s ON s.BusinessEntityID = be.BusinessEntityID
+    LEFT JOIN orgBusinessEntityMainInfo m ON m.BusinessEntityID = be.BusinessEntityID
     WHERE be.DeletedOn IS NULL
     ORDER BY be.OfficialName
 """)
 almacenes = ctx.query("SELECT DepotID, DepotName FROM orgDepot WHERE DeletedOn IS NULL ORDER BY DepotName")
+monedas = ctx.query("SELECT CurrencyID, IntlSymbol, Currency FROM vwLBSCurrencyList ORDER BY CurrencyID")
+condiciones = ctx.query("SELECT PaymentTermID, PaymentTermName FROM vwLBSPaymentTermList WHERE Buys=1 AND Deleted=0 ORDER BY PaymentTermID")
 productos = ctx.query("""
     SELECT TOP 300 ProductID, ProductKey, ProductName, Unit
     FROM orgProduct WHERE DeletedOn IS NULL AND TaxTypeID IS NOT NULL AND TaxTypeID > 0
     ORDER BY ProductName
 """)
 
-opciones_proveedor = "".join(
-    '<option value="%d">%s</option>' % (p["BusinessEntityID"], p["OfficialName"]) for p in proveedores
+proveedores_json = json.dumps([
+    {"id": p["BusinessEntityID"], "nombre": p["OfficialName"], "rfc": p["RFC"] or "(sin RFC)"}
+    for p in proveedores
+])
+opciones_almacen = "".join('<option value="%d">%s</option>' % (a["DepotID"], a["DepotName"]) for a in almacenes)
+opciones_moneda = "".join(
+    '<option value="%d"%s>%s - %s</option>' % (m["CurrencyID"], ' selected' if m["CurrencyID"] == 3 else '', m["IntlSymbol"], m["Currency"])
+    for m in monedas
 )
-opciones_almacen = "".join(
-    '<option value="%d">%s</option>' % (a["DepotID"], a["DepotName"]) for a in almacenes
-)
+opciones_condicion = "".join('<option value="%d">%s</option>' % (c["PaymentTermID"], c["PaymentTermName"]) for c in condiciones)
 productos_json = json.dumps([
     {"id": p["ProductID"], "key": p["ProductKey"], "nombre": p["ProductName"], "unidad": p["Unit"]}
     for p in productos
@@ -66,6 +69,7 @@ html = """
   .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
   label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   select, input { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+  input[readonly] { background: #F1F4F9; color: var(--muted); }
   .row { display: flex; gap: 12px; }
   .row > div { flex: 1; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -85,11 +89,25 @@ html = """
     <div class="row">
       <div>
         <label>Proveedor</label>
-        <select id="proveedor">__OPCIONES_PROVEEDOR__</select>
+        <select id="proveedor" onchange="mostrarRFC()"></select>
       </div>
+      <div>
+        <label>RFC</label>
+        <input id="rfc" readonly>
+      </div>
+    </div>
+    <div class="row">
       <div>
         <label>Almacén</label>
         <select id="almacen">__OPCIONES_ALMACEN__</select>
+      </div>
+      <div>
+        <label>Moneda</label>
+        <select id="moneda">__OPCIONES_MONEDA__</select>
+      </div>
+      <div>
+        <label>Condición de pago</label>
+        <select id="condicion">__OPCIONES_CONDICION__</select>
       </div>
     </div>
     <label>Comentarios</label>
@@ -123,8 +141,17 @@ html = """
   </div>
 
 <script>
+  const PROVEEDORES = __PROVEEDORES_JSON__;
   const PRODUCTOS = __PRODUCTOS_JSON__;
   let partidas = [];
+
+  const selProv = document.getElementById('proveedor');
+  PROVEEDORES.forEach(p => selProv.add(new Option(p.nombre, p.id)));
+  function mostrarRFC() {
+    const p = PROVEEDORES.find(x => x.id == selProv.value);
+    document.getElementById('rfc').value = p ? p.rfc : '';
+  }
+  mostrarRFC();
 
   function porId(id) { return PRODUCTOS.find(p => p.id == id); }
 
@@ -157,8 +184,10 @@ html = """
   function crear() {
     if (partidas.length === 0) { alert('Agrega al menos un producto.'); return; }
     window.chrome.webview.postMessage(JSON.stringify({
-      businessEntityId: parseInt(document.getElementById('proveedor').value),
+      businessEntityId: parseInt(selProv.value),
       depotId: parseInt(document.getElementById('almacen').value),
+      monedaId: parseInt(document.getElementById('moneda').value),
+      condicionId: parseInt(document.getElementById('condicion').value),
       comentarios: document.getElementById('comentarios').value,
       partidas: partidas
     }));
@@ -169,18 +198,22 @@ html = """
 """
 
 html = (html
-    .replace("__OPCIONES_PROVEEDOR__", opciones_proveedor)
     .replace("__OPCIONES_ALMACEN__", opciones_almacen)
+    .replace("__OPCIONES_MONEDA__", opciones_moneda)
+    .replace("__OPCIONES_CONDICION__", opciones_condicion)
     .replace("__OPCIONES_PRODUCTO__", "".join('<option value="%d">%s</option>' % (p["ProductID"], p["ProductKey"] + " - " + p["ProductName"]) for p in productos))
+    .replace("__PROVEEDORES_JSON__", proveedores_json)
     .replace("__PRODUCTOS_JSON__", productos_json))
 
-r = ctx.show_html_formulario(html, title="Nueva Requisición de Compra (WebView2)", width=760, height=680)
+r = ctx.show_html_formulario(html, title="Nueva Requisición de Compra (WebView2)", width=820, height=720)
 
 if r.get("cancelado") or not r.get("submitted"):
     result = "Cancelado, no se creó ningún documento."
 else:
     be = r.get("businessEntityId")
     depot = r.get("depotId")
+    moneda = r.get("monedaId") or 3
+    condicion = r.get("condicionId") or 0
     partidas = r.get("partidas") or []
     comentarios = r.get("comentarios") or ""
 
@@ -192,8 +225,9 @@ else:
         # una requisición creada con la versión C#.
         doc = ctx.erp.NuevoDocumento(1040, depot, be)
         ctx.execute(
-            "UPDATE docDocument SET DepotIDFrom=0, Comments=" +
-            "N'" + comentarios.replace("'", "''") + "' WHERE DocumentID=" + str(doc)
+            "UPDATE docDocument SET DepotIDFrom=0, CurrencyID=" + str(moneda) +
+            ", PaymentTermID=" + str(condicion) +
+            ", Comments=N'" + comentarios.replace("'", "''") + "' WHERE DocumentID=" + str(doc)
         )
         for p in partidas:
             ctx.erp.AgregarArticulo(doc, int(p["id"]), float(p["cantidad"]))

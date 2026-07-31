@@ -39,6 +39,33 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-31, v2.57.0 — Requisición de Compra COMPLETA: 5 de 5 variantes)
+
+> Continuación directa de la entrada de abajo. Cierra Requisición, sigue Orden de Compra
+> (mismo orden acordado con el usuario: "dale a lo demás, quiero verlo completo").
+
+**Las 5 variantes de Requisición ya existen y están probadas donde es posible probarlas
+headless:**
+- SQL puro — validada campo por campo (caso 14).
+- Forms C# — revisada, documentada, sin cambios de lógica.
+- Forms Python (pythonnet) — código revisado, sintaxis válida, mismo patrón de creación
+  probado en las otras 4. **No se pudo probar headless** (usa `ShowDialog()` modal, igual
+  limitación que `ctx.form()` — bloquea esperando un humano).
+- WebView2 C# (nueva) — para esto se agregó `ctx.ShowHtml()`/`ctx.ShowHtmlFormulario()` a
+  C# por primera vez (antes solo Python) — `HostClient.RenderUiHtmlDirecto` reusa el mismo
+  `RenderUiHtml` sin pipe (C# ya corre en proceso). Probada en vivo, caso 15 (canal) + caso
+  16 (la plantilla completa).
+- WebView2 Python — completada con los campos que le faltaban (moneda, condición de pago,
+  RFC), caso 13 actualizado.
+
+**Arnés: 16/16 en verde.** Catálogo de Plantillas (`Consola.cs`) actualizado con las 5
+entradas de Requisición.
+
+**Siguiente: las mismas 5 variantes para Orden de Compra** (módulo 183) — mismo patrón,
+pero SÍ captura precio/costo, fecha de entrega, IVA, y SÍ llama `AffectStockNEW`. Reusa
+directamente `ctx.ShowHtml()`/`ctx.ShowHtmlFormulario()` de C# (ya construido, no hay que
+repetir ese trabajo de infraestructura).
+
 ## Estás aquí (2026-07-31, v2.56.0 — editor con colores reales + Requisición SQL puro validada)
 
 > Continuación directa de la entrada de abajo. El usuario pidió, tras ver las plantillas en

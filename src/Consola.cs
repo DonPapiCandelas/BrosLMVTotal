@@ -365,12 +365,24 @@ namespace BrosLMV
                 CargarPlantillaArchivo("PLANTILLA_MODIFICAR_TITULO_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
 
-            // -- Requisición de Compra: la primera plantilla "de verdad" (crea un documento
-            //    real), en su par Forms/WebView2 -- mismo resultado en Comercial, distinta
-            //    interfaz. La versión WebView2 usa ctx.show_html_formulario (v2.54.0).
+            // -- Requisición de Compra: las 5 variantes completas (v2.56.0/v2.57.0) --
+            //    mismo resultado final en Comercial, 5 formas distintas de construirlo.
+            //    SQL puro validado campo por campo contra un documento nativo (caso 14 del
+            //    arnés); WebView2 (C#/Python) usan ctx.ShowHtmlFormulario/
+            //    ctx.show_html_formulario (v2.54.0/v2.56.0); Forms Python usa pythonnet
+            //    (WinForms real, no una aproximación).
+            new PlantillaDef("SQL", "Requisición de Compra — SQL puro (INSERT directo)",
+                CargarPlantillaArchivo("PLANTILLA_REQUISICION_SQL_PURO.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
             new PlantillaDef("C#", "Requisición de Compra — Forms (WinForms nativo)",
                 CargarPlantillaArchivo("PLANTILLA_REQUISICION_FORMS_CSHARP.ctx",
                     "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Requisición de Compra — WebView2 (HTML)",
+                CargarPlantillaArchivo("PLANTILLA_REQUISICION_WEBVIEW2_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Requisición de Compra — Forms (WinForms vía pythonnet)",
+                CargarPlantillaArchivo("PLANTILLA_REQUISICION_FORMS_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
             new PlantillaDef("Python", "Requisición de Compra — WebView2 (HTML)",
                 CargarPlantillaArchivo("PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
