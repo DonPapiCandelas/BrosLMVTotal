@@ -38,6 +38,7 @@
     <Compile Include="..\src\Datos.cs" Link="Datos.cs" />
     <Compile Include="..\src\HostClient.cs" Link="HostClient.cs" />
     <Compile Include="..\src\Recetas.cs" Link="Recetas.cs" />
+    <Compile Include="..\src\EstructurasDocumento.cs" Link="EstructurasDocumento.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 

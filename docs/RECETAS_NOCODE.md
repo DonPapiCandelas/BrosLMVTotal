@@ -73,6 +73,9 @@ Recetas previstas: *Crear documento a partir de otro* (estrella), *Cambiar estat
 > proyecto sea open-source. Una receta nueva = un plugin que implementa el contrato.
 
 ### 2.3 Almacén de "estructuras de documento"
+
+> **Implementado (2026-07-30, v2.45.0, fase 3):** `src/EstructurasDocumento.cs`. Diccionario en memoria (`EstructurasRegistro`) que cataloga la configuración requerida por cada tipo de documento al ser creado en XEngine (como requerimientos de fechas de entrega, afectación de inventarios e impuestos por partida). La fase 4 usará este almacén.
+
 Metadatos **por tipo de documento destino**: qué campos de encabezado son obligatorios,
 cómo mapear las partidas del origen, si afecta inventario, de dónde sale folio/serie, qué
 post-proceso de XEngine aplica. **Esto hace genérica** la receta de "crear documento"

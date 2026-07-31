@@ -39,6 +39,16 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — v2.45.0, T3.1 fase 3: almacén de estructuras de documento)
+
+> Continuación directa de la entrada de abajo. Fase 3 de 6 de T3.1.
+
+**Almacén de estructuras de documento (sin ejecución propia).** `src/EstructurasDocumento.cs` (nuevo): 
+Define `EstructurasRegistro`, que generaliza el patrón de "cómo se arma" un tipo de documento en CONTPAQi (ej. si afecta inventarios o tiene fecha de entrega obligatoria) para evitar casos especiales por cada módulo en el motor de recetas. Se registraron los módulos de Orden de compra (183) y Entrada de almacén (202). 
+Esta fase es solo datos (preparación), no cuenta con ejecución propia y no suma nuevos casos de prueba al arnés (pero los 8 casos existentes siguen en verde).
+
+**Pendiente real:** Implementar la fase 4 (la receta estrella "crear documento a partir de otro") que usará este almacén.
+
 ## Estás aquí (2026-07-30, aún más tarde — v2.44.0, T3.1 fase 2: primera receta sin código)
 
 > Continuación directa de la entrada de abajo. Fase 2 de 6 de T3.1.

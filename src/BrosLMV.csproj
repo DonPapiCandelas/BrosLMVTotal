@@ -23,6 +23,7 @@
     <Compile Include="Consola.cs" />
     <Compile Include="HostClient.cs" />
     <Compile Include="Recetas.cs" />
+    <Compile Include="EstructurasDocumento.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -6,6 +6,14 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.45.0] — 2026-07-30 — T3.1 fase 3: almacén de estructuras de documento
+
+> **Nota técnica:** generaliza MANUAL.md §7.2-7.8. Sin ejecución propia todavía — lo usa la fase 4.
+
+### Agregado
+- `src\EstructurasDocumento.cs`: Diccionario `EstructurasRegistro` con metadatos para inicializar diferentes tipos de documentos en CONTPAQi (perfil de encabezado, impuestos por partida, si afecta inventario, si requiere fecha de entrega, etc).
+- Agregado al csproj principal y al Runner (para que la fase 4 pueda utilizarlo headless).
+
 ---
 
 ## Harness de humo T4.1 — primer incremento (2026-07-30), sin versión de addon
