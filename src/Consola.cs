@@ -629,6 +629,9 @@ namespace BrosLMV
             
             var btnMore = new IconButton { Glyph = Glyph.Down, Text = "Más opciones", Kind = BtnKind.Toolbar, Accent = Color.Empty, PadX = 12, MinH = 34, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(3, 1, 3, 1) };
             var ctxMore = new ContextMenuStrip { Font = AppTheme.FontMain };
+            ctxMore.Items.Add(new ToolStripMenuItem("Nueva acción", null, (s, e) => { using (var f = new NuevaAccionForm(_ctx)) f.ShowDialog(this); }));
+            ctxMore.Items.Add(new ToolStripMenuItem("Nuevo script", null, (s, e) => NuevoScript()));
+            ctxMore.Items.Add(new ToolStripSeparator());
             ctxMore.Items.Add(new ToolStripMenuItem("Duplicar", null, (s, e) => Duplicar()));
             ctxMore.Items.Add(new ToolStripMenuItem("Aprobar", null, (s, e) => Aprobar()));
             ctxMore.Items.Add(new ToolStripSeparator());
