@@ -622,18 +622,15 @@ namespace BrosLMV
             AddTB(Glyph.PlaySel, "Ejecutar selección",  "Ejecutar solo el texto seleccionado",     (s, e) => Ejecutar(true),  BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Check,   "Verificar",           "Compilar/verificar sin ejecutar",         (s, e) => Verificar(),     BtnKind.Toolbar, Color.Empty);
             AddSep();
-            AddTB(Glyph.New,     "Nueva acción",        "Asistente visual",                        (s, e) => { using (var f = new NuevaAccionForm(_ctx)) f.ShowDialog(this); }, BtnKind.Toolbar, Color.Empty);
-            AddTB(Glyph.New,     "Nuevo script",        "Nuevo script (código)",                   (s, e) => NuevoScript(),   BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Open,    "Abrir",               "Importar script desde archivo",           (s, e) => Abrir(),         BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Save,    "Guardar",             "Guardar en la empresa activa",            (s, e) => Guardar(false),  BtnKind.Toolbar, Color.Empty);
+            AddTB(Glyph.SaveAs,  "Guardar como",        "Guardar con otro nombre (AppKey)",        (s, e) => Guardar(true),   BtnKind.Toolbar, Color.Empty);
+            AddTB(Glyph.Folder,  "Importar paquete…",   "Importar un botón (.bros) exportado de otra empresa/equipo", (s, e) => ImportarPaquete(), BtnKind.Toolbar, Color.Empty);
             
             var btnMore = new IconButton { Glyph = Glyph.Down, Text = "Más opciones", Kind = BtnKind.Toolbar, Accent = Color.Empty, PadX = 12, MinH = 34, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(3, 1, 3, 1) };
             var ctxMore = new ContextMenuStrip { Font = AppTheme.FontMain };
-            ctxMore.Items.Add(new ToolStripMenuItem("Guardar como...", null, (s, e) => Guardar(true)));
             ctxMore.Items.Add(new ToolStripMenuItem("Duplicar", null, (s, e) => Duplicar()));
             ctxMore.Items.Add(new ToolStripMenuItem("Aprobar", null, (s, e) => Aprobar()));
-            ctxMore.Items.Add(new ToolStripSeparator());
-            ctxMore.Items.Add(new ToolStripMenuItem("Importar paquete...", null, (s, e) => ImportarPaquete()));
             ctxMore.Items.Add(new ToolStripSeparator());
             ctxMore.Items.Add(new ToolStripMenuItem("Historial", null, (s, e) => VerHistorial()));
             ctxMore.Items.Add(new ToolStripMenuItem("Acerca de", null, (s, e) => AcercaDe()));
