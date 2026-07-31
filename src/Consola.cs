@@ -79,6 +79,27 @@ namespace BrosLMV
             public string Nombre, Firma, Desc, Ejemplo, Cat;
             public MetodoCtx(string n, string f, string d, string e, string cat = "") { Nombre = n; Firma = f; Desc = d; Ejemplo = e; Cat = cat; }
         }
+
+        // T3.1 fase 1: panel de tokens fijos, insertable en la pestaña "Datos" junto a los
+        // campos dinámicos de la selección (ya existían, ver _lstSeleccion). Cada token trae
+        // el snippet correcto por lenguaje -- SQL usa el literal "{pID}" (ResolverTokens lo
+        // resuelve en EjecutarSql); C#/Python NO tienen resolución de tokens de texto, así que
+        // insertan la llamada nativa equivalente (mismo criterio que ya usaba _lstSeleccion
+        // para {DATOS:campo} vs fila["campo"] vs ctx.fila["campo"]).
+        private class TokenFijo
+        {
+            public string Token, Desc, Sql, CSharp, Python;
+            public TokenFijo(string t, string d, string sql, string cs, string py)
+            { Token = t; Desc = d; Sql = sql; CSharp = cs; Python = py; }
+        }
+        private static readonly TokenFijo[] TOKENS_FIJOS = new[]
+        {
+            new TokenFijo("{pID}", "primer ID seleccionado", "{pID}", "ctx.GetSelectedIds()[0]", "ctx.get_selected_ids()[0]"),
+            new TokenFijo("{pIDs}", "todos los IDs seleccionados", "{pIDs}", "ctx.JoinIds(ctx.GetSelectedIds())", "ctx.get_selected_ids()"),
+            new TokenFijo("{pUserID}", "usuario activo", "{pUserID}", "ctx.erp.UserId", "ctx.user_id"),
+            new TokenFijo("{pModulo}", "módulo activo", "{pModulo}", "ctx.ModuloActivo()", "ctx.module_id"),
+            new TokenFijo("{pEmpresa}", "empresa (BD) activa", "{pEmpresa}", "ctx.Empresa()", "ctx.empresa"),
+        };
         // Referencias C#: reflejan el API REAL de ScriptContext (ctx.*) y ErpContext (ctx.erp.*)
         // en src/Scripting.cs. Verificadas 2026-06-27. Cat = grupo en el panel de referencias.
         private static readonly MetodoCtx[] METODOS = new[]
@@ -987,14 +1008,20 @@ namespace BrosLMV
             _lstSeleccion = NuevaListaRef("Campo", "Valor");
             _lstSeleccion.DoubleClick += (s, e) =>
             {
-                if (_lstSeleccion.SelectedItems.Count > 0)
+                if (_lstSeleccion.SelectedItems.Count == 0) return;
+                var item = _lstSeleccion.SelectedItems[0];
+                string codigo = _editor.Text;
+                bool esPython = HostClient.EsPython(codigo);
+                bool esSql = HostClient.EsSql(codigo);
+                if (item.Tag is TokenFijo tok)
                 {
-                    string campo = _lstSeleccion.SelectedItems[0].Text;
-                    string codigo = _editor.Text;
-                    if (HostClient.EsPython(codigo)) InsertarEnEditor("ctx.fila[\"" + campo + "\"]");
-                    else if (HostClient.EsSql(codigo)) InsertarEnEditor("{DATOS:" + campo + "}");
-                    else InsertarEnEditor("fila[\"" + campo + "\"]");
+                    InsertarEnEditor(esPython ? tok.Python : esSql ? tok.Sql : tok.CSharp);
+                    return;
                 }
+                string campo = item.Text;
+                if (esPython) InsertarEnEditor("ctx.fila[\"" + campo + "\"]");
+                else if (esSql) InsertarEnEditor("{DATOS:" + campo + "}");
+                else InsertarEnEditor("fila[\"" + campo + "\"]");
             };
             pnlHost.Controls.Add(_lstSeleccion);
 
@@ -1013,7 +1040,7 @@ namespace BrosLMV
             var btnC = btnTabs[0] = NuevoTab("C#");
             var btnP = btnTabs[1] = NuevoTab("Python");
             var btnS = btnTabs[2] = NuevoTab("SQL");
-            var btnD = btnTabs[3] = NuevoTab("Datos");
+            var btnD = btnTabs[3] = NuevoTab("Tokens");
             btnC.Click += (s, e) => ActivarTab(_lstMetodosCSharp, btnC);
             btnP.Click += (s, e) => ActivarTab(_lstMetodosPython, btnP);
             btnS.Click += (s, e) => ActivarTab(_lstMetodosSql, btnS);
@@ -1874,8 +1901,17 @@ namespace BrosLMV
             Alternar(_lstCtx);
             if (_lblCtx != null) _lblCtx.Text = "Actualizado " + DateTime.Now.ToString("HH:mm:ss");
 
-            // Llenar pestaña de selección
+            // Llenar pestaña de selección: primero los 5 tokens fijos (T3.1 fase 1), luego
+            // los campos dinámicos de la fila activa (ya existía).
             _lstSeleccion.Items.Clear();
+            foreach (var tok in TOKENS_FIJOS)
+            {
+                var it = new ListViewItem(tok.Token);
+                it.SubItems.Add(tok.Desc);
+                it.Tag = tok;
+                it.Font = new Font(_lstSeleccion.Font, FontStyle.Bold);
+                _lstSeleccion.Items.Add(it);
+            }
             var fila = _ctx.GetFilaActiva();
             if (fila != null)
             {

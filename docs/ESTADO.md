@@ -39,6 +39,31 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-07-30, aún más tarde — v2.43.0, arranca T3.1: motor de recetas no-code)
+
+> Continuación directa de la entrada de abajo. Con T2.2 cerrado (último pendiente de la
+> lista original), el usuario pidió empezar T3.1 — la meta estratégica del proyecto. Antes
+> de programar se le mostró un mockup visual (interfaz "Nueva acción" + ventana resultante)
+> y un roadmap de 6 fases; lo aprobó y pidió empezar por la fase 1.
+
+**Fase 1 hecha: motor de tokens hacia el wizard.** Los 5 tokens fijos
+(`{pID}`/`{pIDs}`/`{pUserID}`/`{pModulo}`/`{pEmpresa}`) ya son clicables en la Consola
+(pestaña "Tokens", antes "Datos") — doble clic inserta el snippet correcto según si el
+script es SQL, C# o Python. La mayor parte del mecanismo ya existía (la pestaña "Datos" ya
+insertaba campos dinámicos de la selección); esto solo la completó con los tokens fijos que
+faltaban.
+
+**Hallazgo real:** Python no tenía NINGUNA resolución de tokens de texto —
+`workers\python\broslmv\ctx.py` no conoce `{pID}` en absoluto. Se mapeó cada token fijo a
+su equivalente nativo del bridge Python (`ctx.get_selected_ids()`, `ctx.user_id`
+`@property`, etc.), verificado leyendo el archivo real, no asumido.
+
+**Pendiente real:** confirmar el render dentro de CONTPAQi de verdad — es UI de Windows
+Forms, compila con 0 errores pero no hay forma de verificarla visualmente sin abrir la
+Consola (mismo tipo de pendiente que T2.1/T2.2/T2.3). **Faltan las fases 2-6** de T3.1
+(registro de recetas, almacén de estructuras de documento, receta estrella "crear
+documento a partir de otro", pasos encadenados, modo asistente en la Consola).
+
 ## Estás aquí (2026-07-30, aún más tarde — v2.42.0, T2.2: solo lectura forzado por usuario)
 
 > Continuación directa de la entrada de abajo. Con esto **se cierra el último pendiente

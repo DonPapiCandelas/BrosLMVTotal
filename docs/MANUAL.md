@@ -99,6 +99,7 @@ biblioteca de scripts, inspector de contexto y salida con pestañas.
 | **Nuevo / Abrir / Guardar / Guardar como / Duplicar** | Manejo de archivos `.ctx` |
 | **Historial / Auditoría** | Lista de ejecuciones (fecha, empresa, módulo, usuario, filas, estado) |
 | **Modo solo lectura** | Bloquea las escrituras (`ctx.NonQuery`) |
+| **Referencias → pestaña "Tokens"** (desde v2.43.0) | `{pID}`, `{pIDs}`, `{pUserID}`, `{pModulo}`, `{pEmpresa}` + campos de la fila seleccionada — doble clic inserta el snippet correcto según el lenguaje del script |
 
 El ciclo de trabajo es ágil:
 **escribir → Ejecutar → leer error → corregir → Ejecutar**, sin cerrar CONTPAQi.

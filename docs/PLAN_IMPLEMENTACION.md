@@ -357,6 +357,18 @@ Leyenda de esfuerzo: **XS** < 2h · **S** medio día · **M** 1-2 días · **L**
 
 #### T3.1 — Motor de recetas no-code (MVP con 3 recetas) ⭐ (la meta estratégica)
 
+> **Estado (2026-07-30): 🟡 EN PROGRESO — fase 1 de 6 hecha (v2.43.0).** Plan de 6 fases
+> acordado con el usuario (mockup visual mostrado y aprobado antes de empezar). **Fase 1 —
+> motor de tokens hacia el wizard:** los 5 tokens fijos (`{pID}`, `{pIDs}`, `{pUserID}`,
+> `{pModulo}`, `{pEmpresa}`) ya son clicables en la pestaña "Tokens" de la Consola (antes
+> "Datos"), con el snippet correcto por lenguaje. **Hallazgo real en el camino:** Python no
+> tenía NINGUNA resolución de tokens (`ctx.py` no conoce `{pID}`) — se mapeó a los
+> equivalentes nativos del bridge (`ctx.get_selected_ids()`, `ctx.user_id`, etc.).
+> **Pendiente real:** confirmar el render dentro de CONTPAQi de verdad (compila, pero es
+> UI de Windows Forms sin forma de verificar visualmente sin abrir la Consola). **Faltan
+> las fases 2-6** (registro de recetas, almacén de estructuras, receta estrella, pasos
+> encadenados, modo asistente) — ver `CHANGELOG.md` v2.43.0 para el detalle completo.
+
 - **Qué:** implementar `RECETAS_NOCODE.md` (ya diseñado) con MVP de 3 recetas: **"Crear documento a partir de otro"**, **"Ejecutar SQL con tokens"**, **"Exportar selección a Excel"**.
 - **Por qué:** convierte a BrosLMV de "herramienta para programadores" en "herramienta para el implementador/contador". Es la diferencia decisiva frente a otras herramientas del mercado que exigen programar (IronPython u otro lenguaje) para lo mismo. Todo el fundamento YA existe: tokens (`ctx.ResolverTokens`, v2.x), builders fieles al nativo (`ctx.erp.NuevoDocumento` + 4 anclas, v2.18.0), grid editable en `ctx.form()` (v2.32.0), pestaña propia "Soluciones LMV" (2.33.5).
 - **Cómo (seguir `RECETAS_NOCODE.md` §2 tal cual):**

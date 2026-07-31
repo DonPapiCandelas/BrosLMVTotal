@@ -229,6 +229,44 @@ solo las librerías compartidas pesadas deben vivir en `C:\BrosLMV\lib\dashboard
 
 ---
 
+## [2.43.0] — 2026-07-30 — T3.1 fase 1: panel de tokens fijos en la Consola
+
+> Primer paso del motor de recetas no-code (`RECETAS_NOCODE.md`), a pedido del usuario tras
+> ver un mockup de cómo quedaría la interfaz completa. Fase 1 del plan de 6 fases: exponer
+> el motor de tokens (`{pID}`, `{pIDs}`, `{pUserID}`, `{pModulo}`, `{pEmpresa}`) como algo
+> clicable, no solo documentado en texto.
+
+### Agregado
+- **Pestaña "Tokens" en el panel de Referencias de la Consola** (antes se llamaba "Datos" —
+  renombrada porque ahora cubre más que solo los campos de la fila seleccionada). Los 5
+  tokens fijos aparecen en negritas arriba de los campos dinámicos de la selección (que ya
+  existían); doble clic inserta el snippet correcto según el lenguaje del script activo:
+  - **SQL:** el literal (`{pID}`, `{pUserID}`...) — ya se resolvía automáticamente en
+    `EjecutarSql` vía `ctx.ResolverTokens`.
+  - **C#:** la llamada nativa equivalente (`ctx.GetSelectedIds()[0]`, `ctx.erp.UserId`,
+    `ctx.ModuloActivo()`, `ctx.Empresa()`) — C# no tiene resolución de tokens de texto, así
+    que insertar el literal `{pID}` sería incorrecto sin envolverlo en
+    `ctx.ResolverTokens(...)` a mano.
+  - **Python:** el equivalente nativo del bridge (`ctx.get_selected_ids()[0]`,
+    `ctx.user_id`, `ctx.module_id`, `ctx.empresa`) — **hallazgo real:** Python no tenía
+    NINGUNA resolución de tokens (`{pID}` no existe en `ctx.py`), así que el mapeo a
+    `ctx.get_selected_ids()`/`ctx.user_id`/etc. es la única forma correcta de que el chip
+    funcione ahí. Verificado leyendo `workers\python\broslmv\ctx.py` (`@property` en
+    `user_id`/`module_id`/`empresa`, método con paréntesis en `get_selected_ids()`).
+- `src\Consola.cs`: `TokenFijo` (clase) + `TOKENS_FIJOS` (arreglo de 5), reutiliza el mismo
+  mecanismo de inserción (`InsertarEnEditor`) y detección de lenguaje
+  (`HostClient.EsPython`/`EsSql`) que ya usaba la pestaña de campos dinámicos — sin
+  reescribir nada, solo extendiendo el patrón existente.
+
+### Pendiente
+- Confirmar visualmente dentro de CONTPAQi real (compila con 0 errores, pero es UI de
+  Windows Forms — no hay forma de verificar el render sin abrir la Consola de verdad).
+- Fases 2-6 de T3.1 (registro de recetas, almacén de estructuras, receta estrella "crear
+  documento a partir de otro", pasos encadenados, modo asistente) — ver
+  `PLAN_IMPLEMENTACION.md` T3.1.
+
+---
+
 ## [2.42.0] — 2026-07-30 — Modo solo lectura forzado por usuario (T2.2)
 
 > Último pendiente de la lista original ("qué falta") — con esto se cierra todo lo que
