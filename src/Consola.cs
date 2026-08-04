@@ -482,6 +482,17 @@ namespace BrosLMV
             new PlantillaDef("SQL", "Dashboard",
                 CargarPlantillaArchivo("PLANTILLA_EJEMPLO_SQL.sql",
                     "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+
+            // -- Diseñador visual de formularios: existía en instalador\scripts\ desde hace
+            //    tiempo pero nunca se conectó al menú. Genera código ctx.form({...}) listo
+            //    para pegar -- confirmado que el spec que produce (title/fields/name/label/
+            //    type/required/read_only/default/options/ok_label/cancel_label/width/height)
+            //    coincide exactamente con lo que espera RelayingCallbackSink.ToUiForm() en
+            //    el host, y que los 7 tipos de campo (text/number/decimal/date/bool/combo/
+            //    memo) mapean a un FieldType válido -- no genera código que truene.
+            new PlantillaDef("Python", "Diseñador visual de formularios (ctx.form)",
+                CargarPlantillaArchivo("PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
         };
 
         private static string CargarPlantillaArchivo(string nombreArchivo, string fallback)

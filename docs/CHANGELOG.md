@@ -6,6 +6,28 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.65.0] — 2026-08-04 — Diseñador visual de formularios conectado al menú
+
+> Respuesta a la pregunta del usuario sobre si BrosLMV podía tener algo como el diseñador
+> de interfaz de Acceso Fácil: `PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py` ya existía
+> (arrastrar/soltar campos, vista previa real, genera código `ctx.form({...})` para copiar
+> y pegar), pero nunca se había conectado al menú de Plantillas.
+
+### Agregado
+- **Diseñador visual de formularios** agregado al catálogo de Plantillas (categoría
+  Python). Antes de conectarlo se verificó que el spec que genera (title/fields con name,
+  label, type, required, read_only, default, options/ok_label/cancel_label/width/height)
+  coincide exactamente con lo que espera `RelayingCallbackSink.ToUiForm()` del host, y que
+  los 7 tipos de campo (texto, número, decimal, fecha, sí/no, lista, texto largo) mapean a
+  un `FieldType` válido — no genera código que truene al pegarlo.
+
+### Pendiente
+- No se pudo probar de punta a punta en Comercial real (`ctx.form`/`ctx.show_html` son
+  ventanas bloqueantes, igual que el resto de las plantillas Forms de este catálogo) —
+  en particular, si `navigator.clipboard.writeText()` funciona sin fricción dentro del
+  WebView2 que hospeda esta ventana no está confirmado; si el botón "Copiar" no funciona,
+  es la primera cosa a revisar.
+
 ## [2.64.0] — 2026-08-04 — Recepción de Compra COMPLETA: las 6 variantes — catálogo de compras cerrado
 
 > Cierra el catálogo completo de documentos de compra: Requisición, Orden de Compra,
