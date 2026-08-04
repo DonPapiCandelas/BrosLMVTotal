@@ -6,6 +6,45 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.62.0] — 2026-08-04 — Recepción de Compra y Factura de Compra: SQL puro + Forms (C#)
+
+> Primeras 2 variantes (de las 6 planeadas) de los 2 documentos de compra que faltaban del
+> catálogo: Recepción de Compra (módulo 184, documento DERIVADO de N Órdenes de Compra, SÍ
+> afecta inventario, soporta lote/número de serie) y Factura de Compra (módulo 152,
+> documento DERIVADO desde OC ya seleccionadas, NO afecta inventario, agenda de pago con
+> montos reales). Investigación previa: capturas de profiler ya existentes
+> (`EXP-DOC-recepcion_compra_001/002`, `EXP-DOC-factura_compra_001`) + 2 plantillas
+> comunitarias viejas ya construidas (`PLANTILLA_EJEMPLO_RECEPCION_COMPRA_CSHARP.ctx`,
+> `PLANTILLA_EJEMPLO_FACTURA_COMPRA_CSHARP.ctx`), nunca antes conectadas al menú.
+
+### Agregado
+- **`PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql`** — validado campo por campo contra un
+  documento nativo real creado en este sandbox (no solo contra una captura externa),
+  probando las dos rutas reales: producto con lote y producto con número de serie. Hallazgo
+  no obvio confirmado: `orgProductKardex.QuantityToBeDelivered` queda NEGATIVO
+  (-cantidad recibida) en Recepción, signo contrario al de Orden de Compra.
+- **`PLANTILLA_RECEPCION_COMPRA_FORMS_CSHARP.ctx`** — adaptada de la plantilla comunitaria
+  (ya bien construida: consolida N Órdenes de Compra del mismo proveedor por producto,
+  captura lote/serie con capturador dedicado, reparte cantidades entre las OC de origen).
+- **`PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql`** — validado campo por campo contra un documento
+  nativo real. Documenta una limitación real del sandbox: ni siquiera el camino 100% nativo
+  (`ctx.erp.Save`) generó póliza contable aquí (falta configuración contable), así que
+  ninguna de las 2 variantes puede prometerla sin que el usuario la confirme en su propia
+  instalación.
+- **`PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx`** — adaptada de la plantilla comunitaria,
+  **corrigiendo un bug real**: la versión anterior pasaba el ID de la partida de la OC como
+  8º parámetro de `AgregarArticulo`, que solo escribe `DeliverDocumentItemID` (columna de
+  Recepción) — nunca llegaba a escribir `SourceDocumentItemID` (la columna real que usa
+  Factura). Ahora se pone con un `UPDATE` aparte después de cada `AgregarArticulo`.
+- 2 productos de prueba agregados al sandbox (`HUMO-PROD-LOTE`, `HUMO-PROD-SERIE`) para
+  poder validar las rutas de lote/serie de Recepción, que antes no eran probables (el
+  sandbox solo tenía 1 producto sin control de lote/serie).
+- Las 4 plantillas agregadas al catálogo de Plantillas en `Consola.cs`.
+
+### Pendiente
+- Las 4 variantes restantes de cada documento (Forms Python, WebView2 C#/Python, Forms +
+  SQL puro) — 8 archivos en total, quedan para una siguiente entrega.
+
 ## [2.61.0] — 2026-08-04 — Orden de Compra: Forms + SQL puro (WinForms sin ctx.erp)
 
 ### Agregado

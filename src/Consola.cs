@@ -419,6 +419,28 @@ namespace BrosLMV
                 CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_FORMS_SQL_PURO_CSHARP.ctx",
                     "// No se encontró la plantilla.\r\n")),
 
+            // -- Recepción de Compra: documento DERIVADO (N Órdenes de Compra -> 1 Recepción),
+            //    consolida partidas por producto, captura lote/número de serie, SÍ afecta
+            //    inventario (a diferencia de OC/Requisición). Validado campo por campo contra
+            //    un documento nativo real creado en este sandbox (rutas lote y serie).
+            new PlantillaDef("SQL", "Recepción de Compra — SQL puro (INSERT directo)",
+                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Recepción de Compra — Forms (WinForms nativo)",
+                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_FORMS_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+
+            // -- Factura de Compra: documento DERIVADO desde 1+ OC ya seleccionadas en el
+            //    grid nativo. NO afecta inventario, SÍ genera póliza contable (si tu
+            //    instalación tiene la contabilidad configurada). Corrige un bug real de la
+            //    plantilla comunitaria anterior (SourceDocumentItemID mal puesto).
+            new PlantillaDef("SQL", "Factura de Compra — SQL puro (INSERT directo)",
+                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Factura de Compra — Forms (WinForms nativo)",
+                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+
             // -- El resto del catálogo anterior que SÍ seguía siendo útil y no tenía la
             //    queja de documentación confusa -- se mantiene, solo se le puso categoría.
             new PlantillaDef("Python", "Timbrar CFDI",
