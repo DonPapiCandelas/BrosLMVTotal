@@ -429,6 +429,18 @@ namespace BrosLMV
             new PlantillaDef("C#", "Recepción de Compra — Forms (WinForms nativo)",
                 CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_FORMS_CSHARP.ctx",
                     "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Recepción de Compra — WebView2 (HTML)",
+                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_WEBVIEW2_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Recepción de Compra — Forms + SQL puro (sin ctx.erp)",
+                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_FORMS_SQL_PURO_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Recepción de Compra — Forms (WinForms vía pythonnet)",
+                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_FORMS_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Recepción de Compra — WebView2 (HTML)",
+                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_WEBVIEW2_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
 
             // -- Factura de Compra: documento DERIVADO desde 1+ OC ya seleccionadas en el
             //    grid nativo. NO afecta inventario, SÍ genera póliza contable (si tu

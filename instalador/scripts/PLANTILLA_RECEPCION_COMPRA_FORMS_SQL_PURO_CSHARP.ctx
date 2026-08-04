@@ -1,0 +1,842 @@
+// lang: csharp
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Globalization;
+
+// PLANTILLA: Recepción de Compra — Forms + SQL puro (WinForms nativo, SIN ctx.erp)
+//
+// Qué hace: EXACTAMENTE la misma ventana que PLANTILLA_RECEPCION_COMPRA_FORMS_CSHARP.ctx
+// (consolida N Órdenes de Compra por producto, captura lote/número de serie), pero al
+// presionar "Guardar" NO llama ctx.erp.NuevoDocumento/AgregarArticulo/AffectStockNEW/Save.
+// En vez de eso, ejecuta los mismos INSERT directos ya validados en
+// PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql -- generalizados aquí para soportar VARIAS
+// partidas, cada una repartida entre sus OC de origen (el .sql original solo maneja una).
+//
+// Misma regla real que el resto del catálogo "Forms + SQL puro": costo = precio unitario,
+// QuantityToBeDelivered queda NEGATIVO en el kardex, StatusPaidID/StatusDeliveryID=3 tras
+// simular UpdateStatusDelivery (aquí como parte del INSERT del encabezado, ya que no hay
+// ctx.erp.UpdateStatusDelivery que llamar).
+
+// ═══════════════════ DATOS INICIALES ═══════════════════
+var almacenes = ctx.Query("SELECT DepotID, DepotName FROM orgDepot WHERE DeletedOn IS NULL ORDER BY DepotName");
+var proveedoresConOC = ctx.Query(@"
+    SELECT DISTINCT be.BusinessEntityID, be.OfficialName, ISNULL(m.OfficialNumber,'') AS RFC
+    FROM docDocument d
+    INNER JOIN docDocumentItem i ON i.DocumentID = d.DocumentID AND i.DeletedOn IS NULL AND i.MustBeDelivered <> 0
+    INNER JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID
+    LEFT JOIN orgBusinessEntityMainInfo m ON m.BusinessEntityID = be.BusinessEntityID
+    WHERE d.ModuleID = 183 AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL
+    ORDER BY be.OfficialName");
+
+var ocsPendientes = new List<OcPendiente>();
+var partidasARecibir = new List<PartidaConsolidada>();
+var provAll = new List<Opt>();
+
+// ═══════════════════ COLORES / FUENTES ═══════════════════
+// Morado (mismo código que las demás variantes "Forms + SQL puro") en vez del verde de la
+// versión ctx.erp.
+var C_BG      = Color.FromArgb(241, 245, 249);
+var C_BORDER  = Color.FromArgb(203, 213, 225);
+var C_PRIMARY = Color.FromArgb(147, 51, 234);
+var C_DANGER  = Color.FromArgb(239, 68, 68);
+var C_TEXT    = Color.FromArgb(30, 41, 59);
+var C_MUTED   = Color.FromArgb(100, 116, 139);
+var C_PANEL   = Color.White;
+var C_HEADER  = Color.FromArgb(248, 250, 252);
+var C_BLUE_SEL= Color.FromArgb(238, 242, 255);
+var C_RIBBON    = Color.FromArgb(51, 65, 85);
+var C_RIBBON_TX = Color.FromArgb(226, 232, 240);
+var C_RIBBON_MU = Color.FromArgb(148, 163, 184);
+
+var F_TAB     = new Font("Segoe UI", 10f, FontStyle.Bold);
+var F_H2      = new Font("Segoe UI", 9f, FontStyle.Bold);
+var F_BODY    = new Font("Segoe UI", 9f);
+var F_SM      = new Font("Segoe UI", 8.5f);
+var F_ICON    = new Font("Segoe UI Emoji", 20f);
+var F_ICON_SM = new Font("Segoe UI Emoji", 10f);
+
+// ═══════════════════ VENTANA ═══════════════════
+var frm = new Form {
+    Text = "Nueva Recepción de Compra (SQL puro)",
+    Size = new Size(1160, 900),
+    StartPosition = FormStartPosition.CenterScreen,
+    BackColor = C_BG,
+    KeyPreview = true
+};
+
+// ═══════════════════ CINTA SUPERIOR (RIBBON) ═══════════════════
+var ribbon = new Panel { Location = new Point(10, 10), Size = new Size(1120, 96), BackColor = C_RIBBON, Parent = frm };
+new Label { Text = "Principal (SQL puro)", Font = F_TAB, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 4), AutoSize = true, Parent = ribbon };
+
+int currentX = 12;
+var toolButtons = new Dictionary<string, Panel>();
+Panel AddToolbarBtn(string key, string icon, string text, Color? iconColor = null) {
+    var p = new Panel { Location = new Point(currentX, 24), Size = new Size(78, 66), BackColor = C_RIBBON, Cursor = Cursors.Hand, Parent = ribbon };
+    var lblIcon = new Label { Text = icon, Font = F_ICON, ForeColor = iconColor ?? C_RIBBON_TX, AutoSize = false, Size = new Size(78, 34), TextAlign = ContentAlignment.MiddleCenter, BackColor = C_RIBBON, Parent = p };
+    var lblTxt  = new Label { Text = text, Font = new Font("Segoe UI", 8f), ForeColor = C_RIBBON_TX, AutoSize = false, Size = new Size(78, 30), Location = new Point(0, 34), TextAlign = ContentAlignment.TopCenter, BackColor = C_RIBBON, Parent = p };
+    p.MouseEnter += (_, __) => { p.BackColor = Color.FromArgb(71, 85, 105); lblIcon.BackColor = p.BackColor; lblTxt.BackColor = p.BackColor; };
+    p.MouseLeave += (_, __) => { p.BackColor = C_RIBBON; lblIcon.BackColor = C_RIBBON; lblTxt.BackColor = C_RIBBON; };
+    toolButtons[key] = p;
+    currentX += 80;
+    return p;
+}
+void AddSep() { new Panel { Location = new Point(currentX, 28), Size = new Size(1, 58), BackColor = C_RIBBON_MU, Parent = ribbon }; currentX += 12; }
+
+AddToolbarBtn("guardar",  "💾", "Guardar\nF5",       Color.FromArgb(192, 132, 252));
+AddToolbarBtn("nueva",    "➕", "Guardar y\nNueva");
+AddToolbarBtn("cancelar", "❌", "Cancelar\nEsc",      Color.FromArgb(248, 113, 113));
+AddSep();
+AddToolbarBtn("refrescar","🔄", "Refrescar\npendientes");
+AddSep();
+AddToolbarBtn("limpiar",  "🧹", "Limpiar\ncampos");
+
+var infoPnl = new Panel { Location = new Point(700, 8), Size = new Size(412, 80), BackColor = C_RIBBON, Parent = ribbon };
+infoPnl.Paint += (_, ev) => ev.Graphics.DrawRectangle(new Pen(C_RIBBON_MU), 0, 6, infoPnl.Width - 1, infoPnl.Height - 10);
+new Label { Text = "Información del documento", Font = new Font("Segoe UI", 8f), ForeColor = C_RIBBON_MU, BackColor = C_RIBBON, Location = new Point(8, 0), AutoSize = true, Parent = infoPnl };
+
+new Label { Text = "Fecha:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 24), AutoSize = true, Parent = infoPnl };
+var dtFecha = new DateTimePicker { Location = new Point(60, 21), Size = new Size(100, 23), Format = DateTimePickerFormat.Short, Font = F_BODY, Parent = infoPnl };
+
+new Label { Text = "Folio:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(172, 24), AutoSize = true, Parent = infoPnl };
+var txtFolio = new TextBox { Location = new Point(212, 21), Size = new Size(90, 23), Font = F_BODY, ReadOnly = true, ForeColor = C_MUTED, Parent = infoPnl };
+new Label { Text = "(vista previa)", Font = F_SM, ForeColor = C_RIBBON_MU, BackColor = C_RIBBON, Location = new Point(310, 24), AutoSize = true, Parent = infoPnl };
+
+new Label { Text = "Almacén:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(312, 52), AutoSize = true, Parent = infoPnl };
+var cboDep = new ComboBox { Location = new Point(312, 48), Size = new Size(90, 23), Font = F_BODY, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, Parent = infoPnl };
+foreach (var d in almacenes)
+    cboDep.Items.Add(new Opt(Convert.ToString(d["DepotName"]), Convert.ToInt32(d["DepotID"])));
+if (cboDep.Items.Count > 0) cboDep.SelectedIndex = 0;
+
+// ═══════════════════ HELPERS DE GRUPO ═══════════════════
+Panel CreateGroup(string title, int x, int y, int w, int h, Control parent) {
+    var p = new Panel { Location = new Point(x, y), Size = new Size(w, h), BackColor = C_PANEL, Parent = parent };
+    p.Paint += (s, e) => {
+        var g = e.Graphics;
+        g.DrawRectangle(new Pen(C_BORDER), 0, 0, w - 1, h - 1);
+        g.FillRectangle(new SolidBrush(C_HEADER), 1, 1, w - 2, 28);
+        g.DrawLine(new Pen(C_BORDER), 0, 29, w, 29);
+        g.DrawString(title, F_H2, new SolidBrush(C_TEXT), new PointF(10, 5));
+    };
+    return p;
+}
+Label Lbl(string txt, int x, int y, Control p) {
+    return new Label { Text = txt, Location = new Point(x, y), Font = F_BODY, AutoSize = true, Parent = p };
+}
+
+int topY = 116;
+
+// ═══════════════════ 1. PROVEEDOR ═══════════════════
+var grpProv = CreateGroup("1. Proveedor (con Órdenes de Compra)", 10, topY, 1120, 70, frm);
+Lbl("Buscar (RFC/Nombre):", 15, 38, grpProv);
+var cboProv = new ComboBox { Location = new Point(160, 36), Size = new Size(400, 23), Font = F_BODY, DropDownStyle = ComboBoxStyle.DropDown, FlatStyle = FlatStyle.Flat, Parent = grpProv };
+foreach (var p in proveedoresConOC)
+    provAll.Add(new Opt(Convert.ToString(p["OfficialName"]), Convert.ToInt32(p["BusinessEntityID"]), Convert.ToString(p["RFC"])));
+foreach (var o in provAll) cboProv.Items.Add(o);
+
+Lbl("RFC:", 590, 38, grpProv);
+var lblRfc = new TextBox { Text = "", Location = new Point(630, 36), Size = new Size(180, 23), ReadOnly = true, Font = F_BODY, ForeColor = C_MUTED, Parent = grpProv };
+
+var lblSinProv = Lbl("Selecciona un proveedor para ver sus Órdenes de Compra pendientes de recibir.", 850, 40, grpProv);
+lblSinProv.ForeColor = C_MUTED; lblSinProv.Font = F_SM;
+
+topY += 80;
+
+// ═══════════════════ 2. ÓRDENES DE COMPRA PENDIENTES ═══════════════════
+var grpOcs = CreateGroup("2. Órdenes de Compra pendientes de recibir (marca una o varias)", 10, topY, 1120, 190, frm);
+var gridOcs = new DataGridView {
+    Location = new Point(15, 35), Size = new Size(1090, 145), BackgroundColor = C_PANEL, BorderStyle = BorderStyle.FixedSingle,
+    ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None, EnableHeadersVisualStyles = false,
+    RowHeadersVisible = false, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
+    SelectionMode = DataGridViewSelectionMode.CellSelect, MultiSelect = false, GridColor = C_BORDER, Parent = grpOcs
+};
+gridOcs.ColumnHeadersDefaultCellStyle.BackColor = C_HEADER;
+gridOcs.ColumnHeadersDefaultCellStyle.Font = F_H2;
+gridOcs.ColumnHeadersHeight = 26;
+var colChkOc = new DataGridViewCheckBoxColumn { Name = "Incluir", HeaderText = "", Width = 40 };
+gridOcs.Columns.Add(colChkOc);
+gridOcs.Columns.Add(new DataGridViewTextBoxColumn { Name = "DocID", HeaderText = "DocID", Width = 0, Visible = false });
+gridOcs.Columns.Add(new DataGridViewTextBoxColumn { Name = "Folio", HeaderText = "FOLIO", Width = 110, ReadOnly = true });
+gridOcs.Columns.Add(new DataGridViewTextBoxColumn { Name = "Fecha", HeaderText = "FECHA", Width = 100, ReadOnly = true });
+var colDescOc = new DataGridViewTextBoxColumn { Name = "Partidas", HeaderText = "PARTIDAS PENDIENTES", Width = 400, ReadOnly = true };
+colDescOc.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+gridOcs.Columns.Add(colDescOc);
+gridOcs.Columns.Add(new DataGridViewTextBoxColumn { Name = "NumPartidas", HeaderText = "# PARTIDAS", Width = 90, ReadOnly = true });
+
+var lblOcsVacio = new Label { Text = "Selecciona un proveedor arriba.", Font = F_BODY, ForeColor = C_MUTED, AutoSize = true, Location = new Point(400, 60), Parent = grpOcs };
+
+topY += 200;
+
+// ═══════════════════ 3. PARTIDAS A RECIBIR ═══════════════════
+var grpPart = CreateGroup("3. Partidas a recibir", 10, topY, 1120, 260, frm);
+var grid = new DataGridView {
+    Location = new Point(15, 35), Size = new Size(1090, 215), BackgroundColor = C_PANEL, BorderStyle = BorderStyle.FixedSingle,
+    ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None, EnableHeadersVisualStyles = false,
+    RowHeadersVisible = false, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
+    SelectionMode = DataGridViewSelectionMode.CellSelect, MultiSelect = false, GridColor = C_BORDER, Parent = grpPart
+};
+grid.ColumnHeadersDefaultCellStyle.BackColor = C_HEADER;
+grid.ColumnHeadersDefaultCellStyle.ForeColor = C_TEXT;
+grid.ColumnHeadersDefaultCellStyle.Font = F_H2;
+grid.ColumnHeadersHeight = 28;
+
+DataGridViewColumn Col(string name, string header, int width, bool readOnly, DataGridViewContentAlignment align = DataGridViewContentAlignment.MiddleLeft, string fmt = null, bool chk = false) {
+    DataGridViewColumn c = chk
+        ? new DataGridViewCheckBoxColumn { Name = name, HeaderText = header, Width = width }
+        : new DataGridViewTextBoxColumn { Name = name, HeaderText = header, Width = width, ReadOnly = readOnly };
+    if (!chk) { c.DefaultCellStyle.Alignment = align; if (fmt != null) c.DefaultCellStyle.Format = fmt; }
+    grid.Columns.Add(c);
+    return c;
+}
+Col("Incluir", "", 40, false, chk: true);
+Col("PID", "PID", 0, true).Visible = false;
+Col("OcFolio", "ORDEN(ES) DE COMPRA", 160, true);
+Col("Key", "CLAVE", 90, true);
+var cDesc = Col("Desc", "DESCRIPCIÓN", 200, true);
+cDesc.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+Col("Unit", "U.M.", 55, true);
+Col("Pendiente", "PENDIENTE", 80, true, DataGridViewContentAlignment.MiddleRight, "N2");
+Col("Cantidad", "CANT. A RECIBIR", 110, false, DataGridViewContentAlignment.MiddleRight, "N2");
+Col("Lote", "LOTE", 130, true);
+Col("Serie", "NÚM. SERIE", 150, true);
+grid.DefaultCellStyle.SelectionBackColor = C_BLUE_SEL;
+grid.DefaultCellStyle.SelectionForeColor = C_TEXT;
+
+var lblPartVacio = new Label { Text = "Marca una o varias Órdenes de Compra arriba para ver sus partidas pendientes.", Font = F_BODY, ForeColor = C_MUTED, AutoSize = true, Location = new Point(300, 100), Parent = grpPart };
+
+// Lista flotante de resultados de producto (no usada aquí, se mantiene por paridad visual con
+// las demás plantillas -- Recepción no busca producto libremente, solo recibe lo pendiente).
+
+topY += 270;
+
+// ═══════════════════ 4. COMENTARIOS ═══════════════════
+var grpObs = CreateGroup("4. Comentarios del Documento", 10, topY, 1120, 75, frm);
+var txtObs = new TextBox { Multiline = true, Location = new Point(15, 35), Size = new Size(1090, 30), Font = F_BODY, ScrollBars = ScrollBars.Vertical, Parent = grpObs };
+
+topY += 85;
+
+// ═══════════════════ 5. FOOTER ═══════════════════
+var footerY = frm.ClientSize.Height - 44;
+var pnlFooter = new Panel { Location = new Point(0, footerY), Size = new Size(1160, 44), BackColor = C_PANEL, Parent = frm };
+pnlFooter.Paint += (s, e) => e.Graphics.DrawLine(new Pen(C_BORDER), 0, 0, 1160, 0);
+Lbl("Elaboró:", 20, 13, pnlFooter);
+string elaboro = ""; try { elaboro = ctx.erp.UserName; } catch { }
+new TextBox { Text = elaboro, Location = new Point(80, 11), Size = new Size(200, 23), ReadOnly = true, Font = F_BODY, Parent = pnlFooter };
+new Label { Text = "Mod. 184  Recepción de Compra  ·  SQL puro (sin ctx.erp)  ·  Usa 💾 Guardar (F5).", Location = new Point(300, 13), AutoSize = true, Font = F_BODY, ForeColor = C_MUTED, Parent = pnlFooter };
+
+// ═══════════════════ NÚMERO A LETRAS ═══════════════════
+string[] UNIDADES = { "", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ",
+    "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE" };
+string[] DECENAS = { "", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA" };
+string[] VEINTI = { "VEINTIUNO", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO", "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE" };
+string[] CENTENAS = { "", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS",
+    "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS" };
+string Centenas_(int n) {
+    if (n == 0) return "";
+    if (n == 100) return "CIEN";
+    string s = "";
+    int c = n / 100, r = n % 100;
+    if (c > 0) s += CENTENAS[c] + " ";
+    if (r > 0) {
+        if (r <= 20) s += UNIDADES[r];
+        else {
+            int d = r / 10, u = r % 10;
+            if (d == 2 && u > 0) s += VEINTI[u - 1];
+            else { s += DECENAS[d]; if (u > 0) s += " Y " + UNIDADES[u]; }
+        }
+    }
+    return s.Trim();
+}
+string EnLetras(long n) {
+    if (n == 0) return "CERO";
+    string resultado = "";
+    long millones = n / 1000000; n %= 1000000;
+    long miles = n / 1000; n %= 1000;
+    long resto = n;
+    if (millones > 0) resultado += (millones == 1 ? "UN MILLÓN " : Centenas_((int)millones) + " MILLONES ");
+    if (miles > 0) resultado += (miles == 1 ? "MIL " : Centenas_((int)miles) + " MIL ");
+    if (resto > 0) resultado += Centenas_((int)resto);
+    resultado = resultado.Trim();
+    if (resultado.EndsWith("UNO")) resultado = resultado.Substring(0, resultado.Length - 3) + "UN";
+    return resultado;
+}
+string NumeroALetras(double valor) {
+    if (valor < 0) valor = 0;
+    long entero = (long)Math.Floor(valor);
+    int centavos = (int)Math.Round((valor - entero) * 100);
+    return EnLetras(entero) + " PESOS " + centavos.ToString("00") + "/100";
+}
+
+// ═══════════════════ LÓGICA CORE ═══════════════════
+int DepotSel() { var s = cboDep.SelectedItem as Opt; return s != null ? s.Val : 1; }
+int ProvSel() {
+    var s = cboProv.SelectedItem as Opt;
+    if (s != null) return s.Val;
+    string t = (cboProv.Text ?? "").Trim();
+    var m = provAll.FirstOrDefault(o => o.Txt.Equals(t, StringComparison.OrdinalIgnoreCase));
+    return m != null ? m.Val : 0;
+}
+void ActualizarProveedor() {
+    var s = cboProv.SelectedItem as Opt;
+    if (s == null) {
+        string t = (cboProv.Text ?? "").Trim();
+        s = provAll.FirstOrDefault(o => o.Txt.Equals(t, StringComparison.OrdinalIgnoreCase));
+    }
+    lblRfc.Text = (s != null && !string.IsNullOrWhiteSpace(s.Extra)) ? s.Extra : (s != null ? "(sin RFC)" : "");
+}
+
+void PrecargarFolio() {
+    try {
+        object v = ctx.Scalar("SELECT ISNULL(MAX(TRY_CAST(Folio AS INT)),0)+1 FROM docDocument WHERE ModuleID=184");
+        txtFolio.Text = Convert.ToString(v ?? "");
+    } catch { txtFolio.Text = ""; }
+}
+
+void CargarOcsPendientes() {
+    ocsPendientes.Clear();
+    gridOcs.Rows.Clear();
+    int be = ProvSel();
+    if (be == 0) { lblOcsVacio.Visible = true; lblOcsVacio.Text = "Selecciona un proveedor arriba."; return; }
+
+    List<Dictionary<string, object>> rows;
+    try {
+        rows = ctx.Query(
+            "SELECT d.DocumentID, d.FolioPrefix, d.Folio, d.DateDocument, " +
+            "i.DocumentItemID, i.ProductID, ISNULL(p.ProductKey, i.ProductKey) AS ProductKey, " +
+            "ISNULL(p.ProductName, i.Description) AS ProductName, i.Unit, i.TaxTypeID, i.TaxPerc, " +
+            "i.UnitPrice, i.DiscountPerc, i.Quantity AS Ordenado, " +
+            "ISNULL((SELECT SUM(ri.Quantity) FROM docDocumentItem ri " +
+            "        INNER JOIN docDocument rd ON rd.DocumentID = ri.DocumentID " +
+            "        WHERE ri.DeliverDocumentItemID = i.DocumentItemID AND ri.DeletedOn IS NULL " +
+            "          AND rd.DeletedOn IS NULL AND rd.CancelledOn IS NULL), 0) AS Recibido, " +
+            "ISNULL(p.UseLot,0) AS UseLot, ISNULL(p.UseSerialNumber,0) AS UseSerialNumber " +
+            "FROM docDocumentItem i " +
+            "INNER JOIN docDocument d ON d.DocumentID = i.DocumentID " +
+            "LEFT JOIN orgProduct p ON p.ProductID = i.ProductID " +
+            "WHERE d.ModuleID = 183 AND d.BusinessEntityID = " + be + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL " +
+            "  AND i.DeletedOn IS NULL AND i.MustBeDelivered <> 0 " +
+            "  AND i.ProductID > 0 AND ISNULL(p.ProductIsService,0) = 0 AND ISNULL(p.ProductTypeID,0) <> 4 " +
+            "ORDER BY d.DocumentID, i.LineNumber");
+    } catch (Exception ex) {
+        ctx.Msg("Error al calcular pendientes: " + ex.Message, "Error");
+        return;
+    }
+
+    var porOc = new Dictionary<int, OcPendiente>();
+    foreach (var r in rows) {
+        double ordenado = Convert.ToDouble(r["Ordenado"] ?? 0);
+        double recibido = Convert.ToDouble(r["Recibido"] ?? 0);
+        double pendiente = ordenado - recibido;
+        if (pendiente <= 0.0001) continue;
+
+        int docId = Convert.ToInt32(r["DocumentID"]);
+        if (!porOc.TryGetValue(docId, out var oc)) {
+            oc = new OcPendiente {
+                DocumentID = docId,
+                Folio = Convert.ToString(r["FolioPrefix"]) + Convert.ToString(r["Folio"]),
+                Fecha = Convert.ToDateTime(r["DateDocument"])
+            };
+            porOc[docId] = oc;
+        }
+        oc.Partidas.Add(new Item {
+            PID = Convert.ToInt32(r["ProductID"]),
+            SourceItemId = Convert.ToInt32(r["DocumentItemID"]),
+            OcFolio = oc.Folio,
+            Key = Convert.ToString(r["ProductKey"]),
+            Desc = Convert.ToString(r["ProductName"]),
+            Unit = Convert.ToString(r["Unit"]),
+            TaxTypeId = Convert.ToInt32(r["TaxTypeID"] ?? 0),
+            TaxPerc = Convert.ToDouble(r["TaxPerc"] ?? 0),
+            Precio = Convert.ToDouble(r["UnitPrice"] ?? 0),
+            DescuentoPerc = Convert.ToDouble(r["DiscountPerc"] ?? 0),
+            Pendiente = pendiente,
+            UseLot = Convert.ToInt32(r["UseLot"] ?? 0) != 0,
+            UseSerialNumber = Convert.ToInt32(r["UseSerialNumber"] ?? 0) != 0
+        });
+    }
+
+    ocsPendientes.AddRange(porOc.Values.OrderBy(o => o.DocumentID));
+    foreach (var oc in ocsPendientes) {
+        string resumen = string.Join(", ", oc.Partidas.Take(3).Select(it => it.Key));
+        if (oc.Partidas.Count > 3) resumen += "…";
+        gridOcs.Rows.Add(false, oc.DocumentID, oc.Folio, oc.Fecha.ToString("dd/MM/yyyy"), resumen, oc.Partidas.Count);
+    }
+    lblOcsVacio.Visible = ocsPendientes.Count == 0;
+    lblOcsVacio.Text = "Este proveedor no tiene partidas pendientes de recibir en ninguna Orden de Compra.";
+}
+
+void RefrescarPartidas() {
+    var fuentes = new List<Item>();
+    for (int i = 0; i < gridOcs.Rows.Count; i++) {
+        bool marcado = Convert.ToBoolean(gridOcs.Rows[i].Cells["Incluir"].Value ?? false);
+        if (!marcado) continue;
+        int docId = Convert.ToInt32(gridOcs.Rows[i].Cells["DocID"].Value);
+        var oc = ocsPendientes.FirstOrDefault(o => o.DocumentID == docId);
+        if (oc != null) fuentes.AddRange(oc.Partidas);
+    }
+
+    var previos = partidasARecibir.ToDictionary(p => p.PID);
+    partidasARecibir.Clear();
+    foreach (var grupo in fuentes.GroupBy(f => f.PID)) {
+        var primero = grupo.First();
+        var pc = new PartidaConsolidada {
+            PID = primero.PID, Key = primero.Key, Desc = primero.Desc, Unit = primero.Unit,
+            TaxTypeId = primero.TaxTypeId, TaxPerc = primero.TaxPerc, Precio = primero.Precio,
+            DescuentoPerc = primero.DescuentoPerc, UseLot = primero.UseLot, UseSerialNumber = primero.UseSerialNumber,
+            Fuentes = grupo.OrderBy(f => f.SourceItemId).ToList(),
+            OcsResumen = string.Join(", ", grupo.Select(f => f.OcFolio).Distinct())
+        };
+        pc.Pendiente = pc.Fuentes.Sum(f => f.Pendiente);
+        pc.Qty = pc.Pendiente;
+        if (previos.TryGetValue(primero.PID, out var prev)) {
+            pc.Qty = Math.Min(prev.Qty, pc.Pendiente);
+            pc.Series = prev.Series;
+            pc.Lotes = prev.Lotes;
+        }
+        partidasARecibir.Add(pc);
+    }
+    RefreshGridPartidas();
+}
+
+string ResumenLote(PartidaConsolidada it) {
+    if (!it.UseLot) return "";
+    if (it.Lotes.Count == 0) return "(doble clic para capturar)";
+    double suma = it.Lotes.Sum(l => l.Cantidad);
+    return it.Lotes.Count + " lote(s) · " + suma.ToString("N2");
+}
+string ResumenSerie(PartidaConsolidada it) {
+    if (!it.UseSerialNumber) return "";
+    if (it.Series.Count == 0) return "(doble clic para capturar)";
+    return it.Series.Count + " serie(s)";
+}
+
+void RefreshGridPartidas() {
+    grid.Rows.Clear();
+    foreach (var it in partidasARecibir) {
+        int i = grid.Rows.Add(true, it.PID, it.OcsResumen, it.Key, it.Desc, it.Unit, it.Pendiente, it.Qty, ResumenLote(it), ResumenSerie(it));
+        var row = grid.Rows[i];
+        row.Cells["Lote"].Style.BackColor = it.UseLot ? C_PANEL : C_HEADER;
+        row.Cells["Lote"].Style.ForeColor = it.UseLot && it.Lotes.Count == 0 ? C_DANGER : (it.UseLot ? C_TEXT : C_MUTED);
+        row.Cells["Serie"].Style.BackColor = it.UseSerialNumber ? C_PANEL : C_HEADER;
+        row.Cells["Serie"].Style.ForeColor = it.UseSerialNumber && it.Series.Count == 0 ? C_DANGER : (it.UseSerialNumber ? C_TEXT : C_MUTED);
+    }
+    lblPartVacio.Visible = partidasARecibir.Count == 0;
+}
+
+void LimpiarTodo() {
+    cboProv.SelectedIndex = -1; cboProv.Text = "";
+    ocsPendientes.Clear(); gridOcs.Rows.Clear();
+    partidasARecibir.Clear(); grid.Rows.Clear();
+    lblOcsVacio.Visible = true; lblOcsVacio.Text = "Selecciona un proveedor arriba.";
+    lblPartVacio.Visible = true;
+    txtObs.Clear();
+    lblRfc.Text = "";
+}
+
+// ═══════════════════ CAPTURA DE SERIES Y LOTES (doble clic en la celda) ═══════════════════
+void CapturarSeries(PartidaConsolidada pc) {
+    var det = new Form { Text = "Capturar números de serie", Size = new Size(540, 500), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false, BackColor = C_BG };
+    Lbl("Producto: " + pc.Key + " — " + pc.Desc, 15, 15, det).Font = F_H2;
+    Lbl("Pega o escribe UNA serie por línea (o impórtalas desde un archivo).", 15, 38, det);
+
+    var txt = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Location = new Point(15, 62), Size = new Size(495, 310), Font = F_BODY, Parent = det };
+    txt.Text = string.Join(Environment.NewLine, pc.Series);
+
+    var lblCount = Lbl("", 15, 378, det);
+    void ActualizarConteo() {
+        int n = txt.Text.Replace("\r", "\n").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).Count();
+        int necesarias = (int)Math.Round(pc.Qty);
+        lblCount.Text = n + " serie(s) capturada(s)  ·  se necesitan " + necesarias + ".";
+        lblCount.ForeColor = n == necesarias ? C_PRIMARY : C_DANGER;
+    }
+    txt.TextChanged += (_, __) => ActualizarConteo();
+    ActualizarConteo();
+
+    var btnImportar = new Button { Text = "Importar archivo...", Location = new Point(15, 405), Size = new Size(150, 28), FlatStyle = FlatStyle.Flat, Font = F_BODY, Parent = det };
+    btnImportar.FlatAppearance.BorderColor = C_BORDER;
+    btnImportar.Click += (_, __) => {
+        using (var ofd = new OpenFileDialog { Filter = "CSV/TXT|*.csv;*.txt|Todos los archivos|*.*" }) {
+            if (ofd.ShowDialog(det) == DialogResult.OK) {
+                try {
+                    string raw = System.IO.File.ReadAllText(ofd.FileName);
+                    var partes = raw.Replace("\r", "\n").Split('\n').SelectMany(l => l.Split(',')).Select(s => s.Trim()).Where(s => s.Length > 0);
+                    txt.Text = string.Join(Environment.NewLine, partes);
+                } catch (Exception ex) { ctx.Msg("No se pudo leer el archivo: " + ex.Message, "Error"); }
+            }
+        }
+    };
+    var btnOk = new Button { Text = "Aceptar", Location = new Point(370, 405), Size = new Size(70, 28), BackColor = C_PRIMARY, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = F_BODY, Parent = det };
+    btnOk.FlatAppearance.BorderSize = 0;
+    var btnCancel = new Button { Text = "Cancelar", Location = new Point(445, 405), Size = new Size(65, 28), FlatStyle = FlatStyle.Flat, Font = F_BODY, Parent = det };
+    btnCancel.FlatAppearance.BorderColor = C_BORDER;
+    btnCancel.Click += (_, __) => det.Close();
+    btnOk.Click += (_, __) => {
+        pc.Series = txt.Text.Replace("\r", "\n").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+        det.Close();
+    };
+    det.AcceptButton = btnOk;
+    det.ShowDialog(frm);
+    RefreshGridPartidas();
+}
+
+void CapturarLotes(PartidaConsolidada pc) {
+    var det = new Form { Text = "Capturar lotes", Size = new Size(600, 460), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false, BackColor = C_BG };
+    Lbl("Producto: " + pc.Key + " — " + pc.Desc, 15, 15, det).Font = F_H2;
+    Lbl("Un producto puede recibirse en varios lotes; la suma debe ser igual a la cantidad a recibir.", 15, 38, det);
+
+    var gridLotes = new DataGridView {
+        Location = new Point(15, 62), Size = new Size(555, 260), BackgroundColor = C_PANEL, BorderStyle = BorderStyle.FixedSingle,
+        RowHeadersVisible = false, AllowUserToAddRows = false, ColumnHeadersHeight = 26, GridColor = C_BORDER, Parent = det
+    };
+    gridLotes.ColumnHeadersDefaultCellStyle.BackColor = C_HEADER;
+    gridLotes.ColumnHeadersDefaultCellStyle.Font = F_H2;
+    gridLotes.Columns.Add(new DataGridViewTextBoxColumn { Name = "Lote", HeaderText = "LOTE", Width = 180 });
+    gridLotes.Columns.Add(new DataGridViewTextBoxColumn { Name = "Cantidad", HeaderText = "CANTIDAD", Width = 110, DefaultCellStyle = { Format = "N2", Alignment = DataGridViewContentAlignment.MiddleRight } });
+    gridLotes.Columns.Add(new DataGridViewTextBoxColumn { Name = "Caducidad", HeaderText = "CADUCIDAD (dd/mm/aaaa)", Width = 190 });
+    foreach (var l in pc.Lotes) gridLotes.Rows.Add(l.Lote, l.Cantidad, l.Caducidad.HasValue ? l.Caducidad.Value.ToString("dd/MM/yyyy") : "");
+    if (gridLotes.Rows.Count == 0) gridLotes.Rows.Add("", pc.Qty, "");
+
+    var lblSuma = Lbl("", 15, 330, det);
+    void ActualizarSuma() {
+        double suma = 0;
+        foreach (DataGridViewRow r in gridLotes.Rows) { try { suma += Convert.ToDouble(r.Cells["Cantidad"].Value ?? 0); } catch { } }
+        lblSuma.Text = "Suma capturada: " + suma.ToString("N2") + "  ·  necesario: " + pc.Qty.ToString("N2");
+        lblSuma.ForeColor = Math.Abs(suma - pc.Qty) < 0.001 ? C_PRIMARY : C_DANGER;
+    }
+    gridLotes.CellEndEdit += (_, __) => ActualizarSuma();
+    ActualizarSuma();
+
+    var btnAgregar = new Button { Text = "+ Agregar lote", Location = new Point(15, 358), Size = new Size(120, 28), FlatStyle = FlatStyle.Flat, Font = F_BODY, Parent = det };
+    btnAgregar.FlatAppearance.BorderColor = C_BORDER;
+    btnAgregar.Click += (_, __) => { gridLotes.Rows.Add("", 0, ""); ActualizarSuma(); };
+    var btnQuitar = new Button { Text = "Quitar lote", Location = new Point(145, 358), Size = new Size(100, 28), FlatStyle = FlatStyle.Flat, ForeColor = C_DANGER, Font = F_BODY, Parent = det };
+    btnQuitar.FlatAppearance.BorderColor = C_BORDER;
+    btnQuitar.Click += (_, __) => { if (gridLotes.CurrentRow != null) gridLotes.Rows.RemoveAt(gridLotes.CurrentRow.Index); ActualizarSuma(); };
+
+    var btnOk = new Button { Text = "Aceptar", Location = new Point(430, 405), Size = new Size(70, 28), BackColor = C_PRIMARY, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = F_BODY, Parent = det };
+    btnOk.FlatAppearance.BorderSize = 0;
+    var btnCancel = new Button { Text = "Cancelar", Location = new Point(505, 405), Size = new Size(65, 28), FlatStyle = FlatStyle.Flat, Font = F_BODY, Parent = det };
+    btnCancel.FlatAppearance.BorderColor = C_BORDER;
+    btnCancel.Click += (_, __) => det.Close();
+    btnOk.Click += (_, __) => {
+        var lista = new List<LoteCap>();
+        foreach (DataGridViewRow r in gridLotes.Rows) {
+            string lote = Convert.ToString(r.Cells["Lote"].Value ?? "").Trim();
+            if (lote.Length == 0) continue;
+            double cant; try { cant = Convert.ToDouble(r.Cells["Cantidad"].Value ?? 0); } catch { cant = 0; }
+            if (cant <= 0) continue;
+            DateTime? cad = null;
+            string fechaTxt = Convert.ToString(r.Cells["Caducidad"].Value ?? "").Trim();
+            if (fechaTxt.Length > 0 && DateTime.TryParse(fechaTxt, out var f)) cad = f;
+            lista.Add(new LoteCap { Lote = lote, Cantidad = cant, Caducidad = cad });
+        }
+        pc.Lotes = lista;
+        det.Close();
+    };
+    det.AcceptButton = btnOk;
+    det.ShowDialog(frm);
+    RefreshGridPartidas();
+}
+
+// ═══════════════════ CREAR EN CONTPAQi — SQL PURO (SIN ctx.erp) ═══════════════════
+void CrearRecepcionSqlPuro(bool nueva) {
+    int be = ProvSel();
+    if (be == 0) { ctx.Msg("Selecciona un proveedor."); return; }
+    if (partidasARecibir.Count == 0) { ctx.Msg("Marca al menos una Orden de Compra con partidas pendientes."); return; }
+    if (partidasARecibir.All(p => p.Qty <= 0)) { ctx.Msg("Captura una cantidad a recibir mayor a 0 en al menos una partida."); return; }
+    foreach (var it in partidasARecibir) {
+        if (it.Qty <= 0) continue;
+        if (it.Qty > it.Pendiente + 0.0001) {
+            ctx.Msg("La cantidad a recibir de \"" + it.Desc + "\" (" + it.Qty.ToString("N2") + ") no puede ser mayor a lo pendiente (" + it.Pendiente.ToString("N2") + ").", "Cantidad inválida");
+            return;
+        }
+        if (it.UseSerialNumber && it.Series.Count != (int)Math.Round(it.Qty)) {
+            ctx.Msg("\"" + it.Desc + "\" requiere exactamente " + Math.Round(it.Qty) + " número(s) de serie (capturados: " + it.Series.Count + "). Doble clic en la columna SERIE.", "Series incompletas");
+            return;
+        }
+        if (it.UseLot) {
+            double sumaLotes = it.Lotes.Sum(l => l.Cantidad);
+            if (it.Lotes.Count == 0 || Math.Abs(sumaLotes - it.Qty) > 0.001) {
+                ctx.Msg("\"" + it.Desc + "\" requiere que la suma de lotes (" + sumaLotes.ToString("N2") + ") sea igual a la cantidad a recibir (" + it.Qty.ToString("N2") + "). Doble clic en la columna LOTE.", "Lotes incompletos");
+                return;
+            }
+            if (it.Lotes.Any(l => l.Caducidad == null)) {
+                ctx.Msg("Todos los lotes de \"" + it.Desc + "\" requieren fecha de caducidad.", "Falta información");
+                return;
+            }
+        }
+    }
+
+    var ocsFolios = partidasARecibir.Where(p => p.Qty > 0).SelectMany(p => p.Fuentes.Select(f => f.OcFolio)).Distinct().ToList();
+    if (!ctx.Confirm("¿Crear recepción de compra (SQL puro, sin ctx.erp) con " + partidasARecibir.Count(p => p.Qty > 0) +
+        " partida(s) de " + ocsFolios.Count + " orden(es) de compra?")) return;
+
+    frm.Cursor = Cursors.WaitCursor;
+    var btnG = toolButtons["guardar"]; btnG.Enabled = false;
+    try {
+        var ci = CultureInfo.InvariantCulture;
+        int dep = DepotSel();
+        string fechaSql = "'" + dtFecha.Value.ToString("yyyyMMdd") + "'";
+        string comentarios = txtObs.Text.Replace("'", "''");
+        long supplierID = Convert.ToInt64(ctx.Scalar("SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + be));
+
+        int primeraOcDocId = ocsPendientes
+            .Where(o => o.Partidas.Any(f => partidasARecibir.Any(pc => pc.Qty > 0 && pc.Fuentes.Contains(f))))
+            .Select(o => o.DocumentID)
+            .DefaultIfEmpty(0)
+            .Min();
+
+        double subtotal = 0, descuentoTotal = 0, impuestosTotal = 0;
+        foreach (var it in partidasARecibir.Where(p => p.Qty > 0)) {
+            double importe = it.Qty * it.Precio;
+            double descMonto = importe * it.DescuentoPerc;
+            double neto = importe - descMonto;
+            subtotal += importe; descuentoTotal += descMonto; impuestosTotal += neto * it.TaxPerc;
+        }
+        double subtotalConDescuento = subtotal - descuentoTotal;
+        double total = subtotalConDescuento + impuestosTotal;
+        string totalLetra = (NumeroALetras(total) + " M.N.").Replace("'", "''");
+
+        // ---- 1) Cabecera + anclas satélite (mismo perfil validado en PLANTILLA_RECEPCION_
+        // COMPRA_SQL_PURO.sql: DocRecipientID=2, StatusPaidID=3, StatusDeliveryID=3,
+        // PaymentTermID=0, TotalCost=subtotal porque costo=precio en Recepción). ----
+        var sb = new StringBuilder();
+        sb.Append(@"
+DECLARE @doc TABLE (DocumentID INT);
+DECLARE @item TABLE (DocumentItemID INT);
+DECLARE @itemId INT;
+DECLARE @folio INT = ISNULL((SELECT MAX(TRY_CAST(Folio AS INT)) FROM docDocument WHERE ModuleID = 184), 0) + 1;
+DECLARE @ahora DATETIME = GETDATE();
+INSERT INTO docDocument (
+    ModuleID, DocumentTypeID, DocRecipientID, OwnedBusinessEntityID, BusinessEntityID,
+    DepotID, DepotIDFrom, SourceDocumentID, FolioPrefix, Folio, DateDocument, DateDocDelivery, DateDelivery, DateFrom, DateTo, DateCost,
+    LanguageID, CurrencyID, Rate, PaymentTermID, DateLastPayment, MustBeSynchronized, ExportID,
+    SubTotal, SubTotalWithDiscount, Total, TotalTax, TotalCost, TotalLetter, TotalPaid, Balance, StatusPaidID, StatusDeliveryID,
+    Comments, CreatedOn, CreatedBy, UserID
+)
+OUTPUT INSERTED.DocumentID INTO @doc
+VALUES (
+    184, 3, 2, 1, " + be + @",
+    " + dep + @", 0, " + (primeraOcDocId > 0 ? primeraOcDocId.ToString() : "NULL") + @", '', CAST(@folio AS NVARCHAR), " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @",
+    3, 3, 1, 0, @ahora, 1, 1,
+    " + subtotal.ToString(ci) + @", " + subtotalConDescuento.ToString(ci) + @", " + total.ToString(ci) + @", " + impuestosTotal.ToString(ci) + @", " + subtotal.ToString(ci) + @", N'" + totalLetra + @"', 0, " + total.ToString(ci) + @", 3, 3,
+    N'" + comentarios + @"', @ahora, 0, 0
+);
+DECLARE @docId INT = (SELECT TOP 1 DocumentID FROM @doc);
+INSERT INTO docDocumentExt (IDExtra) VALUES (@docId);
+INSERT INTO docDocumentExtra (DocumentID) VALUES (@docId);
+INSERT INTO docDocumentCFD (DocumentID, FinancialOperationID, Anexo20Ver) VALUES (@docId, 0, '4.0');
+INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy)
+VALUES (@docId, @ahora, 100, 0, 1, @ahora, 0);
+INSERT INTO docDocumentTax (DocumentID, IVA_T, IVA_R, ISR_R, IEPS_T, IEPS_R, Otro, Local_T, Local_R)
+VALUES (@docId, " + impuestosTotal.ToString(ci) + @", 0, 0, 0, 0, 0, 0, 0);
+");
+
+        // ---- 2) Una o más filas de docDocumentItem por partida consolidada (una por cada
+        // OC de origen que aporta cantidad), con su propio lote/serie/kardex. ----
+        int lineNumber = 1;
+        foreach (var pc in partidasARecibir.Where(p => p.Qty > 0)) {
+            double restante = pc.Qty;
+            int serieIdx = 0;
+            var loteQueue = pc.Lotes.Select(l => new LoteCap { Lote = l.Lote, Cantidad = l.Cantidad, Caducidad = l.Caducidad }).ToList();
+
+            foreach (var fuente in pc.Fuentes) {
+                if (restante <= 0.0001) break;
+                double aRecibirDeEsta = Math.Min(restante, fuente.Pendiente);
+                if (aRecibirDeEsta <= 0.0001) continue;
+
+                string qty = aRecibirDeEsta.ToString(ci);
+                string precio = pc.Precio.ToString(ci);
+                string taxPerc = pc.TaxPerc.ToString(ci);
+                string descPerc = pc.DescuentoPerc.ToString(ci);
+                double importe = aRecibirDeEsta * pc.Precio;
+
+                sb.Append(@"
+INSERT INTO docDocumentItem (
+    DocumentID, Quantity, ProductID, Description, ProductKey, Unit, ClaveUnidad,
+    ObjetoImpuesto, TaxTypeID, TaxPerc, UnitPrice, CostPrice, DiscountPerc, Total, LineNumber, MustBeDelivered,
+    ApplyGlobalDiscount, DeductiblePerc, IsBusinessOperation, CoefUnit, DeliverDocumentItemID, DateItem
+)
+OUTPUT INSERTED.DocumentItemID INTO @item
+SELECT
+    @docId, " + qty + @", p.ProductID, p.ProductName, p.ProductKey, p.Unit, p.ClaveUnidad,
+    '', " + pc.TaxTypeId + @", " + taxPerc + @", " + precio + @", " + precio + @", " + descPerc + @", " + importe.ToString(ci) + @", " + lineNumber + @", 1,
+    1, 1, 1, 1, " + fuente.SourceItemId + @", @ahora
+FROM orgProduct p WHERE p.ProductID = " + pc.PID + @";
+SET @itemId = (SELECT MAX(DocumentItemID) FROM @item);
+INSERT INTO orgProductKardex (DateTransaction, DepotID, ProductID, DocumentID, DocumentItemID, Quantity, QuantityToBeDelivered, AmountPrice, Cancelled, ProductImportID, DepotValue, DepotValueAverage, QuantityImport)
+VALUES (@ahora, " + dep + @", " + pc.PID + @", @docId, @itemId, " + qty + @", -" + qty + @", " + precio + @", 0, 0, 0, 0, 0);
+IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + pc.PID + @" AND SupplierID=" + supplierID + @")
+    INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber) VALUES (" + pc.PID + @", " + supplierID + @", " + precio + @", 3, 0);
+");
+
+                if (pc.UseSerialNumber) {
+                    int n = (int)Math.Round(aRecibirDeEsta);
+                    for (int k = 0; k < n && serieIdx < pc.Series.Count; k++, serieIdx++) {
+                        string sn = pc.Series[serieIdx].Replace("'", "''");
+                        sb.Append("INSERT INTO docDocumentSerialNumber (DocumentID, DocumentItemID, ProductID, SerialNumber, Quantity, DepotID, StatusID, CreatedOn, CreatedBy) VALUES (@docId, @itemId, " + pc.PID + ", N'" + sn + "', 1, " + dep + ", 1, @ahora, 0);\n");
+                    }
+                }
+                if (pc.UseLot) {
+                    double faltaEnEsteItem = aRecibirDeEsta;
+                    while (faltaEnEsteItem > 0.0001 && loteQueue.Count > 0) {
+                        var l = loteQueue[0];
+                        double usar = Math.Min(l.Cantidad, faltaEnEsteItem);
+                        string loteNombre = l.Lote.Replace("'", "''");
+                        string expLote = l.Caducidad.HasValue ? "'" + l.Caducidad.Value.ToString("yyyyMMdd") + "'" : "NULL";
+                        sb.Append(
+                            "INSERT INTO docDocumentLot (DocumentID, DocumentItemID, ProductID, Lot, ExpirationDate, Quantity, Unit, BaseUnit, QuantityBaseUnit, DepotID, CreatedOn, CreatedBy) VALUES (@docId, @itemId, " +
+                            pc.PID + ", N'" + loteNombre + "', " + expLote + ", " + usar.ToString(ci) + ", N'" + pc.Unit.Replace("'", "''") + "', N'" + pc.Unit.Replace("'", "''") + "', " + usar.ToString(ci) + ", " + dep + ", @ahora, 0);\n");
+                        l.Cantidad -= usar;
+                        faltaEnEsteItem -= usar;
+                        if (l.Cantidad <= 0.0001) loteQueue.RemoveAt(0);
+                    }
+                }
+
+                lineNumber++;
+                restante -= aRecibirDeEsta;
+            }
+        }
+
+        if (impuestosTotal > 0) {
+            sb.Append(@"
+INSERT INTO docDocumentTaxDetail (DocumentID, DocumentItemID, TaxTypeID, TaxItemID, Amount, Retention, IVASobreIEPS, RegionalTaxID, TaxName, TaxTypeName, TaxBase, TaxPerc, TipoFactor)
+SELECT @docId, DocumentItemID, TaxTypeID, 6, ROUND(Total*(1-DiscountPerc)*TaxPerc,2), 0, 0, 0, 'Impuesto', 'Impuesto', ROUND(Total*(1-DiscountPerc),2), TaxPerc, 'Tasa'
+FROM docDocumentItem WHERE DocumentID=@docId AND TaxPerc>0;
+INSERT INTO docDocumentTaxSum (DocumentID, TaxName1, TaxAmount1, TotalFederal, TotalLocal, TotalOtro)
+VALUES (@docId, 'Impuestos', " + impuestosTotal.ToString(ci) + @", " + impuestosTotal.ToString(ci) + @", 0, 0);
+");
+        }
+
+        sb.Append("SELECT @docId AS DocumentID, @folio AS Folio;");
+
+        var filas = ctx.Query(sb.ToString());
+        if (filas.Count == 0) throw new Exception("El batch no devolvió el documento creado (revisa el SQL generado).");
+        int doc = Convert.ToInt32(filas[0]["DocumentID"]);
+
+        ctx.Msg("Recepción de compra (SQL puro) " + doc + " creada exitosamente.", "OK");
+        if (nueva) { LimpiarTodo(); PrecargarFolio(); }
+        else frm.Close();
+    } catch (Exception ex) {
+        ctx.Msg(ex.Message, "Error");
+    } finally {
+        frm.Cursor = Cursors.Default;
+        toolButtons["guardar"].Enabled = true;
+    }
+}
+
+// ═══════════════════ EVENTOS ═══════════════════
+void WireTool(string key, Action a) {
+    var host = toolButtons[key];
+    EventHandler h = (_, __) => { try { a(); } catch (Exception ex) { ctx.Msg(ex.Message, "Error"); } };
+    host.Click += h;
+    foreach (Control ch in host.Controls) ch.Click += h;
+}
+WireTool("guardar",   () => CrearRecepcionSqlPuro(false));
+WireTool("nueva",     () => CrearRecepcionSqlPuro(true));
+WireTool("cancelar",  () => frm.Close());
+WireTool("refrescar", () => CargarOcsPendientes());
+WireTool("limpiar",   () => { if (partidasARecibir.Count == 0 || ctx.Confirm("¿Limpiar todos los campos?")) LimpiarTodo(); });
+
+cboProv.TextUpdate += (_, __) => {
+    string f = cboProv.Text;
+    string fu = f.ToUpperInvariant();
+    cboProv.Items.Clear();
+    foreach (var o in provAll)
+        if (f.Length == 0 || o.Txt.ToUpperInvariant().Contains(fu) || (o.Extra ?? "").ToUpperInvariant().Contains(fu))
+            cboProv.Items.Add(o);
+    cboProv.Text = f;
+    cboProv.SelectionStart = f.Length;
+    cboProv.SelectionLength = 0;
+    cboProv.DroppedDown = cboProv.Items.Count > 0;
+    ActualizarProveedor();
+};
+cboProv.SelectedIndexChanged += (_, __) => { ActualizarProveedor(); CargarOcsPendientes(); };
+cboProv.Leave += (_, __) => { if (cboProv.SelectedItem == null) { ActualizarProveedor(); CargarOcsPendientes(); } };
+cboDep.SelectedIndexChanged += (_, __) => PrecargarFolio();
+
+gridOcs.CellContentClick += (_, ev) => {
+    if (ev.RowIndex < 0) return;
+    if (gridOcs.Columns[ev.ColumnIndex].Name == "Incluir")
+        gridOcs.BeginInvoke((Action)(() => { gridOcs.EndEdit(); RefrescarPartidas(); }));
+};
+
+grid.CellEndEdit += (_, ev) => {
+    if (ev.RowIndex < 0 || ev.RowIndex >= partidasARecibir.Count) return;
+    var it = partidasARecibir[ev.RowIndex];
+    string col = grid.Columns[ev.ColumnIndex].Name;
+    if (col != "Cantidad") return;
+    try { it.Qty = Convert.ToDouble(grid.Rows[ev.RowIndex].Cells["Cantidad"].Value ?? it.Qty); } catch { }
+    if (it.Qty < 0) it.Qty = 0;
+    if (it.Qty > it.Pendiente) it.Qty = it.Pendiente;
+    grid.BeginInvoke((Action)(() => RefreshGridPartidas()));
+};
+grid.CellContentClick += (_, ev) => {
+    if (ev.RowIndex < 0 || ev.RowIndex >= partidasARecibir.Count) return;
+    if (grid.Columns[ev.ColumnIndex].Name != "Incluir") return;
+    grid.BeginInvoke((Action)(() => {
+        grid.EndEdit();
+        if (ev.RowIndex >= partidasARecibir.Count) return;
+        var it = partidasARecibir[ev.RowIndex];
+        bool marcado = Convert.ToBoolean(grid.Rows[ev.RowIndex].Cells["Incluir"].Value ?? true);
+        it.Qty = marcado ? (it.Qty <= 0 ? it.Pendiente : it.Qty) : 0;
+        RefreshGridPartidas();
+    }));
+};
+grid.CellDoubleClick += (_, ev) => {
+    if (ev.RowIndex < 0 || ev.RowIndex >= partidasARecibir.Count) return;
+    var pc = partidasARecibir[ev.RowIndex];
+    string col = grid.Columns[ev.ColumnIndex].Name;
+    if (col == "Serie") {
+        if (!pc.UseSerialNumber) { ctx.Msg("Este producto no requiere número de serie."); return; }
+        if (pc.Qty <= 0) { ctx.Msg("Primero captura la cantidad a recibir."); return; }
+        CapturarSeries(pc);
+    } else if (col == "Lote") {
+        if (!pc.UseLot) { ctx.Msg("Este producto no requiere lote."); return; }
+        if (pc.Qty <= 0) { ctx.Msg("Primero captura la cantidad a recibir."); return; }
+        CapturarLotes(pc);
+    }
+};
+
+frm.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.F5) { CrearRecepcionSqlPuro(false); ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Escape) { frm.Close(); ev.Handled = true; }
+};
+
+// ═══════════════════ CLASES ═══════════════════
+class Opt {
+    public string Txt; public int Val; public string Extra;
+    public Opt(string t, int v, string e = "") { Txt = t; Val = v; Extra = e; }
+    public override string ToString() => Txt;
+}
+class Item {
+    public int PID; public int SourceItemId; public string OcFolio;
+    public string Key; public string Desc; public string Unit;
+    public int TaxTypeId; public double TaxPerc; public double Precio; public double DescuentoPerc;
+    public double Pendiente;
+    public bool UseLot; public bool UseSerialNumber;
+}
+class OcPendiente {
+    public int DocumentID; public string Folio; public DateTime Fecha;
+    public List<Item> Partidas = new List<Item>();
+}
+class PartidaConsolidada {
+    public int PID; public string Key; public string Desc; public string Unit;
+    public int TaxTypeId; public double TaxPerc; public double Precio; public double DescuentoPerc;
+    public double Pendiente; public double Qty;
+    public bool UseLot; public bool UseSerialNumber;
+    public string OcsResumen;
+    public List<Item> Fuentes = new List<Item>();
+    public List<string> Series = new List<string>();
+    public List<LoteCap> Lotes = new List<LoteCap>();
+}
+class LoteCap { public string Lote; public double Cantidad; public DateTime? Caducidad; }
+
+// ═══════════════════ ARRANQUE: MODELESS ═══════════════════
+ActualizarProveedor();
+PrecargarFolio();
+RefreshGridPartidas();
+frm.Show();

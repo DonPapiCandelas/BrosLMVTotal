@@ -6,6 +6,39 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.64.0] — 2026-08-04 — Recepción de Compra COMPLETA: las 6 variantes — catálogo de compras cerrado
+
+> Cierra el catálogo completo de documentos de compra: Requisición, Orden de Compra,
+> Recepción de Compra y Factura de Compra ya tienen las mismas 6 variantes cada una.
+
+### Agregado
+- **`PLANTILLA_RECEPCION_COMPRA_FORMS_PYTHON.py`** — puerto completo a pythonnet de la
+  versión Forms C#, incluyendo los 2 capturadores (lotes y números de serie) como ventanas
+  modales propias.
+- **`PLANTILLA_RECEPCION_COMPRA_WEBVIEW2_CSHARP.ctx` / `..._PYTHON.py`** — a diferencia del
+  resto del catálogo WebView2 (que precarga los datos de un solo contexto), aquí se
+  precargan los pendientes de TODOS los proveedores con OC activas de una vez (no hay forma
+  de volver a consultar la BD si el usuario cambia de proveedor dentro de la ventana). La
+  consolidación por producto entre las OC marcadas se hace en JavaScript, replicando la
+  misma lógica que `RefrescarPartidas()` de la versión Forms. Captura de lote/serie por
+  textarea inline (una línea por lote/serie) en vez del capturador con grid propio de la
+  versión Forms. Backend (reparto entre OC de origen, `DeliverDocumentItemID`,
+  `docDocumentLot`/`SerialNumber`, kardex) validado contra el sandbox con 2 partidas (una
+  con lote, una con serie) en un mismo documento.
+- **`PLANTILLA_RECEPCION_COMPRA_FORMS_SQL_PURO_CSHARP.ctx`** — la plantilla más compleja de
+  todo el catálogo: misma ventana que la versión Forms C# (consolidación + capturadores de
+  lote/serie), pero escribe con un batch de INSERT directo generalizando
+  `PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql` a N partidas, cada una repartida entre sus OC de
+  origen, con su propio consumo de la cola de lotes y de la lista de series. Validado contra
+  el sandbox con 2 partidas (lote y serie) derivadas de una misma OC — subtotal, IVA por
+  partida, TotalCost, kardex, lote y series cuadran exactos.
+- Las 4 plantillas agregadas al catálogo de Plantillas en `Consola.cs`.
+
+### Cerrado
+- Catálogo de documentos de compra: **Requisición, Orden de Compra, Recepción de Compra y
+  Factura de Compra** — las 4 con sus 6 variantes (SQL puro, Forms C#/Python, WebView2
+  C#/Python, Forms + SQL puro), 24 plantillas en total.
+
 ## [2.63.0] — 2026-08-04 — Factura de Compra COMPLETA: las 6 variantes
 
 > Cierra el catálogo de Factura de Compra con el mismo criterio que Requisición/Orden de
