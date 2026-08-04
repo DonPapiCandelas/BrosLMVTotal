@@ -1,20 +1,28 @@
 // lang: csharp
-// PLANTILLA: Requisición de Compra — versión Forms (C#, WinForms nativo)
+// PLANTILLA: Requisición de Compra — Forms + SQL puro (WinForms nativo, SIN ctx.erp)
 //
-// Qué hace: abre una ventana completa (buscador de proveedor, buscador de producto con
-// existencias, grid de partidas editable) y crea una Solicitud de Compra real en Comercial
-// al presionar "Guardar". Es la versión "Forms" del par Forms/WebView2 — la otra versión
-// (Python, HTML) vive en PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py y hace lo mismo mostrando
-// una página HTML en vez de controles WinForms.
+// Qué hace: EXACTAMENTE la misma ventana que PLANTILLA_REQUISICION_FORMS_CSHARP.ctx
+// (mismo buscador de proveedor/producto, mismo grid de partidas, mismos botones) -- pero
+// al presionar "Guardar" NO llama ctx.erp.NuevoDocumento/AgregarArticulo/RecalcCompleto/
+// Save. En vez de eso, ejecuta los mismos INSERT directos que ya están validados campo por
+// campo en PLANTILLA_REQUISICION_SQL_PURO.sql (docDocument, docDocumentExt,
+// docDocumentExtra, docDocumentCFD, docDocumentPaymentAgenda, docDocumentItem,
+// orgProductSupplier), generalizados para soportar VARIAS partidas (el .sql original solo
+// maneja una).
 //
-// El patrón general para crear CUALQUIER documento (no solo Requisición) está en 3 pasos,
-// documentados a fondo en MANUAL.md §7 "Crear documentos" — busca la función
-// CrearRequisicion() más abajo para verlos aplicados:
-//   1. ctx.erp.NuevoDocumento(moduleId, depotId, businessEntityId) — crea el documento
-//      vacío con las 4 anclas que Comercial necesita.
-//   2. ctx.erp.AgregarArticulo(doc, productId, cantidad, ...) por cada partida.
-//   3. ctx.erp.RecalcCompleto(doc) + ctx.erp.Save(doc) — sin este orden, el documento
-//      queda con totales mal calculados o no se guarda de verdad.
+// Por qué existe esta plantilla: para quien quiere ver una ventana normal (sin editar
+// parámetros a mano en un script SQL) pero sigue queriendo la ruta "SQL puro" por debajo,
+// sin pasar por ctx.erp. Sigue teniendo la MISMA advertencia real que
+// PLANTILLA_REQUISICION_SQL_PURO.sql: es la forma más frágil de crear un documento -- si
+// Comercial cambia de versión y agrega una regla de negocio nueva, esto puede quedar
+// desactualizado sin avisar. Para el uso diario, usa PLANTILLA_REQUISICION_FORMS_CSHARP.ctx
+// (la que sí usa ctx.erp) -- esta plantilla es para cuando necesitas evitar ctx.erp a
+// propósito (por ejemplo, carga masiva por lotes donde no quieres que Comercial recalcule
+// nada por ti).
+//
+// El patrón general para crear CUALQUIER documento con ctx.erp está en MANUAL.md §7 --
+// busca la función CrearRequisicionSqlPuro() más abajo para ver la versión SIN ctx.erp,
+// construida a mano como un solo batch de T-SQL (DECLARE + INSERT × N + SELECT final).
 //
 // Por qué es una ventana MODELESS (frm.Show(), no frm.ShowDialog() — ver el final del
 // archivo): así el usuario puede seguir usando Comercial (o tener varias requisiciones
@@ -26,13 +34,10 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Globalization;
 
 // ═══════════════════ DATOS INICIALES ═══════════════════
-// Todo lo que el formulario necesita ANTES de mostrarse: catálogos para llenar los combos
-// (proveedores, almacenes, monedas, condiciones de pago) y el estado en memoria de la
-// captura en curso (las partidas que el usuario vaya agregando viven en la lista
-// `partidas` hasta que se presiona "Guardar" -- no se escribe nada en Comercial antes de
-// eso).
 var almacenes = ctx.Query("SELECT DepotID, DepotName FROM orgDepot WHERE DeletedOn IS NULL ORDER BY DepotName");
 var proveedores = ctx.Query(@"
     SELECT be.BusinessEntityID, be.OfficialName,
@@ -42,7 +47,6 @@ var proveedores = ctx.Query(@"
     LEFT JOIN orgBusinessEntityMainInfo m ON m.BusinessEntityID=be.BusinessEntityID
     WHERE be.DeletedOn IS NULL
     ORDER BY be.OfficialName");
-// Moneda y condicion de pago: se leen del sistema (vistas nativas del ERP).
 var monedas = ctx.Query("SELECT CurrencyID, IntlSymbol, Currency, Rate FROM vwLBSCurrencyList ORDER BY CurrencyID");
 var condiciones = ctx.Query("SELECT PaymentTermID, PaymentTermName FROM vwLBSPaymentTermList WHERE Buys=1 AND Deleted=0 ORDER BY PaymentTermID");
 
@@ -54,16 +58,17 @@ bool suspenderBusqueda = false;
 bool suspenderProv = false;
 
 // ═══════════════════ COLORES / FUENTES ═══════════════════
+// Morado en vez del verde de la versión ctx.erp -- para distinguir a simple vista que esta
+// ventana crea el documento con SQL puro, no con ctx.erp.
 var C_BG      = Color.FromArgb(241, 245, 249);
 var C_BORDER  = Color.FromArgb(203, 213, 225);
-var C_PRIMARY = Color.FromArgb(16, 185, 129);
+var C_PRIMARY = Color.FromArgb(147, 51, 234);
 var C_DANGER  = Color.FromArgb(239, 68, 68);
 var C_TEXT    = Color.FromArgb(30, 41, 59);
 var C_MUTED   = Color.FromArgb(100, 116, 139);
 var C_PANEL   = Color.White;
 var C_HEADER  = Color.FromArgb(248, 250, 252);
 var C_BLUE_SEL= Color.FromArgb(238, 242, 255);
-// Cinta superior (ribbon): gris oscuro para diferenciarla de los paneles blancos.
 var C_RIBBON    = Color.FromArgb(51, 65, 85);
 var C_RIBBON_TX = Color.FromArgb(226, 232, 240);
 var C_RIBBON_MU = Color.FromArgb(148, 163, 184);
@@ -77,7 +82,7 @@ var F_ICON_SM = new Font("Segoe UI Emoji", 10f);
 
 // ═══════════════════ VENTANA ═══════════════════
 var frm = new Form {
-    Text = "Nueva Requisición de Compra",
+    Text = "Nueva Requisición de Compra (SQL puro)",
     Size = new Size(1100, 800),
     StartPosition = FormStartPosition.CenterScreen,
     BackColor = C_BG,
@@ -86,9 +91,8 @@ var frm = new Form {
 
 // ═══════════════════ CINTA SUPERIOR (RIBBON) ═══════════════════
 var ribbon = new Panel { Location = new Point(10, 10), Size = new Size(1060, 96), BackColor = C_RIBBON, Parent = frm };
-new Label { Text = "Principal", Font = F_TAB, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 4), AutoSize = true, Parent = ribbon };
+new Label { Text = "Principal (SQL puro)", Font = F_TAB, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 4), AutoSize = true, Parent = ribbon };
 
-// Botones de la cinta (clickeables). Devuelve el panel para conectar el Click al final.
 int currentX = 12;
 var toolButtons = new Dictionary<string, Panel>();
 Panel AddToolbarBtn(string key, string icon, string text, string group, Color? iconColor = null) {
@@ -103,16 +107,13 @@ Panel AddToolbarBtn(string key, string icon, string text, string group, Color? i
 }
 void AddSep() { new Panel { Location = new Point(currentX, 28), Size = new Size(1, 58), BackColor = C_RIBBON_MU, Parent = ribbon }; currentX += 12; }
 
-AddToolbarBtn("guardar",  "💾", "Guardar\nF5",       "Registro", Color.FromArgb(52, 211, 153));
+AddToolbarBtn("guardar",  "💾", "Guardar\nF5",       "Registro", Color.FromArgb(192, 132, 252));
 AddToolbarBtn("nueva",    "➕", "Guardar y\nNueva",   "Registro");
 AddToolbarBtn("cancelar", "❌", "Cancelar\nEsc",      "Registro", Color.FromArgb(248, 113, 113));
 AddSep();
-AddToolbarBtn("preview",  "🔎", "Vista\nprevia",      "Documento");
-AddToolbarBtn("imprimir", "🖨️", "Imprimir",          "Documento");
-AddSep();
 AddToolbarBtn("limpiar",  "🧹", "Limpiar\ncampos",    "Acciones");
 
-// Info del documento (Fecha / Serie / Folio) — a la derecha de la cinta, SIN encimarse.
+// Info del documento (Fecha / Serie / Folio) — a la derecha de la cinta.
 var infoPnl = new Panel { Location = new Point(700, 8), Size = new Size(352, 80), BackColor = C_RIBBON, Parent = ribbon };
 infoPnl.Paint += (_, ev) => ev.Graphics.DrawRectangle(new Pen(C_RIBBON_MU), 0, 6, infoPnl.Width - 1, infoPnl.Height - 10);
 new Label { Text = "Información del documento", Font = new Font("Segoe UI", 8f), ForeColor = C_RIBBON_MU, BackColor = C_RIBBON, Location = new Point(8, 0), AutoSize = true, Parent = infoPnl };
@@ -120,13 +121,13 @@ new Label { Text = "Información del documento", Font = new Font("Segoe UI", 8f)
 new Label { Text = "Fecha:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 24), AutoSize = true, Parent = infoPnl };
 var dtFecha = new DateTimePicker { Location = new Point(60, 21), Size = new Size(110, 23), Format = DateTimePickerFormat.Short, Font = F_BODY, Parent = infoPnl };
 
-new Label { Text = "Serie:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(185, 24), AutoSize = true, Parent = infoPnl };
-var txtSerie = new TextBox { Location = new Point(228, 21), Size = new Size(110, 23), Font = F_BODY, Parent = infoPnl };
-
 new Label { Text = "Folio:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 52), AutoSize = true, Parent = infoPnl };
-// Folio editable: se precarga el consecutivo pero el usuario puede modificarlo.
-var txtFolio = new TextBox { Location = new Point(60, 49), Size = new Size(110, 23), Font = F_BODY, Parent = infoPnl };
-new Label { Text = "(consecutivo, editable)", Font = F_SM, ForeColor = C_RIBBON_MU, BackColor = C_RIBBON, Location = new Point(185, 52), AutoSize = true, Parent = infoPnl };
+// Vista previa de solo lectura -- el folio REAL se calcula al momento de guardar como
+// MAX(Folio)+1 (mismo criterio que usa ctx.erp.GetNextFolio() internamente para este
+// módulo), no aquí -- por eso no es editable como en la versión ctx.erp: escribir un folio
+// a mano y que luego el INSERT calcule OTRO sería confuso.
+var txtFolio = new TextBox { Location = new Point(60, 49), Size = new Size(110, 23), Font = F_BODY, ReadOnly = true, ForeColor = C_MUTED, Parent = infoPnl };
+new Label { Text = "(vista previa, no editable)", Font = F_SM, ForeColor = C_RIBBON_MU, BackColor = C_RIBBON, Location = new Point(185, 52), AutoSize = true, Parent = infoPnl };
 
 // ═══════════════════ HELPERS DE GRUPO ═══════════════════
 Panel CreateGroup(string title, int x, int y, int w, int h, Control parent) {
@@ -154,7 +155,6 @@ int topY = 116;
 // ═══════════════════ 1. PROVEEDOR ═══════════════════
 var grpProv = CreateGroup("1. Proveedor", 10, topY, 650, 100, frm);
 Lbl("Buscar (RFC/Nombre):", 15, 40, grpProv);
-// Combo editable con BUSQUEDA INCREMENTAL por nombre o RFC.
 var cboProv = new ComboBox { Location = new Point(150, 38), Size = new Size(280, 23), Font = F_BODY, DropDownStyle = ComboBoxStyle.DropDown, FlatStyle = FlatStyle.Flat, Parent = grpProv };
 foreach (var p in proveedores)
     provAll.Add(new Opt(Convert.ToString(p["OfficialName"]), Convert.ToInt32(p["BusinessEntityID"]), Convert.ToString(p["RFC"])));
@@ -271,7 +271,7 @@ pnlFooter.Paint += (s, e) => e.Graphics.DrawLine(new Pen(C_BORDER), 0, 0, 1100, 
 Lbl("Elaboró:", 20, 13, pnlFooter);
 string elaboro = ""; try { elaboro = ctx.erp.UserName; } catch { }
 new TextBox { Text = elaboro, Location = new Point(80, 11), Size = new Size(200, 23), ReadOnly = true, Font = F_BODY, Parent = pnlFooter };
-new Label { Text = "Usa  💾 Guardar (F5)  en la cinta para crear la requisición.", Location = new Point(300, 13), AutoSize = true, Font = F_BODY, ForeColor = C_MUTED, Parent = pnlFooter };
+new Label { Text = "SQL puro (sin ctx.erp) — usa 💾 Guardar (F5) para crear la requisición.", Location = new Point(300, 13), AutoSize = true, Font = F_BODY, ForeColor = C_MUTED, Parent = pnlFooter };
 
 // ═══════════════════ LÓGICA DE DIBUJO DE LA LISTA ═══════════════════
 lstMatch.DrawItem += (_, ev) => {
@@ -309,13 +309,16 @@ void ActualizarProveedor() {
     lblRfc.Text = (s != null && !string.IsNullOrWhiteSpace(s.Extra)) ? s.Extra : (s != null ? "(sin RFC)" : "");
 }
 
+// Vista previa del folio -- SOLO informativa (mismo criterio MAX(Folio)+1 que se usa de
+// verdad al guardar, calculado aquí nada más para mostrarlo; no reserva nada). Puede no
+// coincidir con el folio final si otro documento del módulo 1040 se crea mientras esta
+// ventana sigue abierta -- limitación real de SQL puro, documentada también en
+// PLANTILLA_REQUISICION_SQL_PURO.sql.
 void PrecargarFolio() {
     try {
-        string pre = ctx.erp.GetFolioPrefix(1040, DepotSel());
-        string fol = ctx.erp.GetNextFolio(1040, pre, DepotSel());
-        txtSerie.Text = pre ?? "";
-        txtFolio.Text = fol ?? "";
-    } catch { txtSerie.Text = "REQ"; txtFolio.Text = ""; }
+        object v = ctx.Scalar("SELECT ISNULL(MAX(TRY_CAST(Folio AS INT)),0)+1 FROM docDocument WHERE ModuleID=1040");
+        txtFolio.Text = Convert.ToString(v ?? "");
+    } catch { txtFolio.Text = ""; }
 }
 
 void OcultarResultados() { pnlDrop.Visible = false; }
@@ -328,9 +331,6 @@ void Buscar(string query) {
     string filtro = q == "#" ? "" : "AND (p.ProductKey LIKE '%" + safe + "%' OR p.ProductName LIKE '%" + safe + "%') ";
     string limite = q == "#" ? "TOP 300" : "TOP 80";
 
-    // Ventana MODELESS (Show, no ShowDialog): un error aquí ya no lo atrapa el
-    // try/catch del script (que terminó apenas se mostró la ventana). Sin este
-    // try/catch, un error de SQL tumbaría Comercial completo, no solo esta ventana.
     List<Dictionary<string, object>> rows;
     try {
         rows = ctx.Query(
@@ -420,77 +420,91 @@ void LimpiarTodo() {
     PrecargarFolio();
 }
 
-// ═══════════════════ CREAR EN CONTPAQI ═══════════════════
-// Esta es la única función que ESCRIBE en Comercial -- todo lo de arriba (búsqueda,
-// combos, grid) solo captura datos en memoria. Sigue el patrón canónico de MANUAL.md §7.1:
-// NuevoDocumento -> (perfil por UPDATE) -> AgregarArticulo x N -> RecalcCompleto -> Save.
-// Cada paso valida ctx.erp.LastError y lanza si algo salió mal -- así el catch de abajo
-// atrapa el punto EXACTO que falló (el mensaje dice "NuevoDocumento: ..." o
-// "AgregarArticulo: ..." etc.), en vez de un error genérico sin pista de dónde ocurrió.
-void CrearRequisicion(bool nueva) {
+// ═══════════════════ CREAR EN CONTPAQI — SQL PURO (SIN ctx.erp) ═══════════════════
+// A diferencia de PLANTILLA_REQUISICION_FORMS_CSHARP.ctx (que llama ctx.erp.NuevoDocumento/
+// AgregarArticulo/RecalcCompleto/Save), esta función arma UN SOLO batch de T-SQL con los
+// mismos INSERT que ya están validados campo por campo en PLANTILLA_REQUISICION_SQL_PURO.sql
+// -- generalizados aquí para escribir N partidas (el .sql original solo maneja una, porque
+// ahí "los parámetros" son fijos; aquí vienen del grid). Se ejecuta con ctx.Query() (no
+// ctx.NonQuery()) porque el batch termina en un SELECT que regresa el DocumentID creado
+// (mismo patrón OUTPUT INSERTED.DocumentID INTO @doc que usa el .sql validado).
+void CrearRequisicionSqlPuro(bool nueva) {
     int be = ProvSel();
     if (be == 0) { ctx.Msg("Selecciona un proveedor."); return; }
     if (partidas.Count == 0) { ctx.Msg("Agrega al menos un producto."); return; }
-
-    long supplierID = Convert.ToInt64(ctx.Scalar("SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + be));
-    if (!ctx.Confirm("¿Crear requisición de compra con " + partidas.Count + " producto" + (partidas.Count == 1 ? "" : "s") + "?")) return;
+    if (!ctx.Confirm("¿Crear requisición de compra (SQL puro, sin ctx.erp) con " + partidas.Count +
+        " producto" + (partidas.Count == 1 ? "" : "s") + "?")) return;
 
     frm.Cursor = Cursors.WaitCursor;
     var btnG = toolButtons["guardar"]; btnG.Enabled = false;
     try {
         int dep = DepotSel();
-        int monedaId = (cboMoneda.SelectedItem as Opt)?.Val ?? 3;
         int condId = (cboCond.SelectedItem as Opt)?.Val ?? 0;
-        double rate = curRate.ContainsKey(monedaId) ? curRate[monedaId] : 1;
+        string fechaSql = "'" + dtFecha.Value.ToString("yyyyMMdd") + "'";
+        string comentarios = txtObs.Text.Replace("'", "''");
+        long supplierID = Convert.ToInt64(ctx.Scalar("SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + be));
 
-        ctx.NonQuery("SET XACT_ABORT OFF; SET IMPLICIT_TRANSACTIONS OFF");
-        // PASO 1: crear el documento vacío (las 4 anclas que Comercial necesita ya las
-        // pone NuevoDocumento). Módulo 1040 = Solicitud de Compra -- ver la tabla completa
-        // de módulos en MANUAL.md §7.2 si necesitas otro tipo de documento.
-        int doc = ctx.erp.NuevoDocumento(1040, dep, be); // 1040 = Solicitud de Compra
-        if (doc <= 0 || !string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("NuevoDocumento: " + ctx.erp.LastError);
+        // ---- 1) Cabecera + anclas satélite (idéntico a PLANTILLA_REQUISICION_SQL_PURO.sql,
+        // salvo que los valores vienen de la ventana en vez de @parámetros fijos) ----
+        var sb = new StringBuilder();
+        sb.Append(@"
+DECLARE @doc TABLE (DocumentID INT);
+DECLARE @folio INT = ISNULL((SELECT MAX(TRY_CAST(Folio AS INT)) FROM docDocument WHERE ModuleID = 1040), 0) + 1;
+DECLARE @ahora DATETIME = GETDATE();
+INSERT INTO docDocument (
+    ModuleID, DocumentTypeID, DocRecipientID, OwnedBusinessEntityID, BusinessEntityID,
+    DepotID, DepotIDFrom, FolioPrefix, Folio, DateDocument, DateDocDelivery, DateFrom, DateTo, DateCost,
+    LanguageID, CurrencyID, Rate, PaymentTermID, DateLastPayment, MustBeSynchronized,
+    ExportID, TotalLetter, Comments, CreatedOn, CreatedBy, UserID
+)
+OUTPUT INSERTED.DocumentID INTO @doc
+VALUES (
+    1040, 49, 2, 1, " + be + @",
+    " + dep + @", 0, '', CAST(@folio AS NVARCHAR), " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @",
+    3, 3, 1, " + condId + @", @ahora, 1,
+    1, 'CERO PESOS 00/100 M.N.', N'" + comentarios + @"', @ahora, 0, 0
+);
+DECLARE @docId INT = (SELECT TOP 1 DocumentID FROM @doc);
+INSERT INTO docDocumentExt (IDExtra) VALUES (@docId);
+INSERT INTO docDocumentExtra (DocumentID) VALUES (@docId);
+INSERT INTO docDocumentCFD (DocumentID, FinancialOperationID, Anexo20Ver) VALUES (@docId, 0, '4.0');
+INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy)
+VALUES (@docId, @ahora, 100, 0, 1, @ahora, 0);
+");
 
-        // Perfil del documento: lo que NuevoDocumento NO llena solo (moneda, condición de
-        // pago, fecha, comentarios) -- varía según el tipo de documento, por eso MANUAL.md
-        // §7 documenta el "perfil" de cada uno por separado.
-        ctx.NonQuery(
-            "UPDATE docDocument SET DepotIDFrom=0, UserID=0, " +
-            "CurrencyID=" + monedaId + ", Rate=" + rate.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", " +
-            "PaymentTermID=" + condId + ", " +
-            "DateDocument='" + dtFecha.Value.ToString("yyyyMMdd") + "', " +
-            "Comments='" + txtObs.Text.Replace("'", "''") + "' WHERE DocumentID=" + doc);
-
-        // Folio manual (si el usuario lo modificó)
-        string folioManual = (txtFolio.Text ?? "").Trim();
-        if (folioManual.Length > 0)
-            ctx.NonQuery("UPDATE docDocument SET Folio=N'" + folioManual.Replace("'", "''") + "' WHERE DocumentID=" + doc);
-
-        // PASO 2: una partida por producto agregado. El INSERT extra a orgProductSupplier
-        // es propio de esta plantilla (no del patrón general) -- registra al proveedor
-        // como fuente de ese producto si todavía no lo era, para que la próxima vez
-        // aparezca ya relacionado.
+        // ---- 2) Una partida por producto agregado en el grid (loop generado en C#, cada
+        // bloque es literal -- no hay forma de parametrizar un batch dinámico de N filas sin
+        // esto en T-SQL puro) ----
+        int lineNumber = 1;
         foreach (var it in partidas) {
-            ctx.erp.AgregarArticulo(doc, it.PID, it.Qty);
-            if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("AgregarArticulo: " + ctx.erp.LastError);
-            ctx.NonQuery("IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + it.PID + " AND SupplierID=" + supplierID + ") " +
-                         "INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber) VALUES (" + it.PID + ", " + supplierID + ", 0, " + monedaId + ", 0)");
+            string qty = it.Qty.ToString(CultureInfo.InvariantCulture);
+            sb.Append(@"
+INSERT INTO docDocumentItem (
+    DocumentID, Quantity, ProductID, Description, ProductKey, Unit, ClaveUnidad,
+    ObjetoImpuesto, TaxTypeID, TaxPerc, LineNumber, MustBeDelivered, ApplyGlobalDiscount,
+    DeductiblePerc, IsBusinessOperation, CoefUnit, DateItem
+)
+SELECT
+    @docId, " + qty + @", p.ProductID, p.ProductName, p.ProductKey, p.Unit, p.ClaveUnidad,
+    '', ISNULL(p.TaxTypeID, 0), ISNULL(tp.IVA_Perc, 0), " + lineNumber + @", 1, 1,
+    1, 1, 1, @ahora
+FROM orgProduct p LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = p.TaxTypeID
+WHERE p.ProductID = " + it.PID + @";
+IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + it.PID + @" AND SupplierID=" + supplierID + @")
+    INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber)
+    VALUES (" + it.PID + @", " + supplierID + @", 0, 3, 0);
+");
+            lineNumber++;
         }
+        sb.Append("SELECT @docId AS DocumentID, @folio AS Folio;");
 
-        // PASO 3: recalcular totales y guardar. La Solicitud de Compra (a diferencia de la
-        // Orden de Compra) NO afecta inventario -- por eso aquí no hay una llamada a
-        // AffectStockNEW, a diferencia de la receta "crear_documento_desde_otro" (T3.1) o
-        // de PLANTILLA_EJEMPLO_ORDEN_COMPRA_CSHARP.ctx.
-        ctx.erp.RecalcCompleto(doc);
-        if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("RecalcCompleto: " + ctx.erp.LastError);
-        ctx.erp.Save(doc);
-        if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("Save: " + ctx.erp.LastError);
-        // NO opcional aunque la Solicitud no afecte inventario -- RecalcCompleto no lo
-        // calcula; sin esto el documento queda con "Estatus de entrega: No Aplica" en el
-        // grid nativo (MANUAL.md §6.3).
-        try { ctx.erp.UpdateStatusDelivery(doc); } catch { }
-        try { ctx.erp.RefreshGrid(); } catch { }
+        // ctx.Query() (no ctx.NonQuery()) porque el batch termina en un SELECT -- es el
+        // mismo mecanismo que usa ctx.EjecutarSql() para correr las plantillas .sql enteras.
+        var filas = ctx.Query(sb.ToString());
+        if (filas.Count == 0) throw new Exception("El batch no devolvió el documento creado (revisa el SQL generado).");
+        int doc = Convert.ToInt32(filas[0]["DocumentID"]);
 
-        ctx.Msg("Requisición de compra " + doc + " creada exitosamente.", "OK");
+        ctx.Msg("Requisición de compra (SQL puro) " + doc + " creada exitosamente.", "OK");
         if (nueva) { LimpiarTodo(); }
         else frm.Close();
     } catch (Exception ex) {
@@ -502,22 +516,15 @@ void CrearRequisicion(bool nueva) {
 }
 
 // ═══════════════════ EVENTOS ═══════════════════
-// Los botones de la cinta (arriba) son Panel + 2 Label hijas (icono y texto), NO un
-// Button real -- así se controla el estilo a mano (colores, hover). WireTool conecta el
-// mismo Click a los 3 controles (panel + sus 2 labels) para que el clic funcione sin
-// importar en qué parte exacta del botón cayó, y envuelve la acción en un try/catch
-// genérico (un solo lugar para atrapar errores de CUALQUIER botón de la cinta).
 void WireTool(string key, Action a) {
     var host = toolButtons[key];
     EventHandler h = (_, __) => { try { a(); } catch (Exception ex) { ctx.Msg(ex.Message, "Error"); } };
     host.Click += h;
     foreach (Control ch in host.Controls) ch.Click += h;
 }
-WireTool("guardar",  () => CrearRequisicion(false));
-WireTool("nueva",    () => CrearRequisicion(true));
+WireTool("guardar",  () => CrearRequisicionSqlPuro(false));
+WireTool("nueva",    () => CrearRequisicionSqlPuro(true));
 WireTool("cancelar", () => frm.Close());
-WireTool("preview",  () => ctx.Msg("Vista previa: en proceso (próxima versión de la plantilla).", "En proceso"));
-WireTool("imprimir", () => ctx.Msg("Impresión: en proceso (próxima versión de la plantilla).", "En proceso"));
 WireTool("limpiar",  () => { if (partidas.Count == 0 || ctx.Confirm("¿Limpiar todos los campos?")) LimpiarTodo(); });
 
 // Búsqueda incremental de proveedor (por nombre o RFC)
@@ -541,7 +548,6 @@ cboProv.TextUpdate += (_, __) => {
 };
 cboProv.SelectedIndexChanged += (_, __) => { if (!suspenderProv) ActualizarProveedor(); };
 
-// Búsqueda de producto (texto + botón lupa)
 txtProducto.TextChanged += (_, __) => {
     if (suspenderBusqueda) return;
     productoSeleccionado = null;
@@ -580,14 +586,11 @@ cboDep.SelectedIndexChanged += (_, __) => PrecargarFolio();
 
 // Atajos globales
 frm.KeyDown += (_, ev) => {
-    if (ev.KeyCode == Keys.F5) { CrearRequisicion(false); ev.Handled = true; }
+    if (ev.KeyCode == Keys.F5) { CrearRequisicionSqlPuro(false); ev.Handled = true; }
     else if (ev.KeyCode == Keys.Escape && !pnlDrop.Visible) { frm.Close(); ev.Handled = true; }
 };
 
 // ═══════════════════ CLASES ═══════════════════
-// DTOs (data transfer objects) pequeños, solo para cargar los ComboBox/grid con algo más
-// que texto plano -- guardan el ID real (Val/PID) junto con lo que se muestra, así no hay
-// que volver a consultar la BD para saber qué eligió el usuario.
 class Opt {
     public string Txt; public int Val; public string Extra;
     public Opt(string t, int v, string e = "") { Txt = t; Val = v; Extra = e; }
@@ -600,9 +603,4 @@ class Prod { public int PID; public string Key; public string Desc; public strin
 ActualizarProveedor();
 PrecargarFolio();
 RefreshGrid();
-
-// MODELESS (no ShowDialog): se puede minimizar y seguir trabajando en Comercial,
-// y se pueden tener varias requisiciones (u otras ventanas de botones) abiertas
-// a la vez. Application.OpenForms la mantiene viva mientras esté abierta; no
-// hace falta guardar la referencia a mano.
 frm.Show();

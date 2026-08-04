@@ -386,6 +386,12 @@ namespace BrosLMV
             new PlantillaDef("Python", "Requisición de Compra — WebView2 (HTML)",
                 CargarPlantillaArchivo("PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+            // Ventana WinForms real (mismo grid/buscador que la versión ctx.erp) pero que
+            // crea el documento con INSERT directo, sin ctx.erp -- para quien quiere ver una
+            // ventana normal sin editar @parámetros a mano, sin dejar la ruta SQL puro.
+            new PlantillaDef("C#", "Requisición de Compra — Forms + SQL puro (sin ctx.erp)",
+                CargarPlantillaArchivo("PLANTILLA_REQUISICION_FORMS_SQL_PURO_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
 
             // -- Orden de Compra: las mismas 5 variantes (v2.58.0). A diferencia de
             //    Requisición, SÍ captura precio/costo por partida, fecha de entrega, IVA, y
@@ -407,6 +413,11 @@ namespace BrosLMV
             new PlantillaDef("Python", "Orden de Compra — WebView2 (HTML)",
                 CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_WEBVIEW2_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+            // Ventana WinForms real (mismo grid/impuesto/descuento que la versión ctx.erp)
+            // pero que crea el documento con INSERT directo, sin ctx.erp.
+            new PlantillaDef("C#", "Orden de Compra — Forms + SQL puro (sin ctx.erp)",
+                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_FORMS_SQL_PURO_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
 
             // -- El resto del catálogo anterior que SÍ seguía siendo útil y no tenía la
             //    queja de documentación confusa -- se mantiene, solo se le puso categoría.

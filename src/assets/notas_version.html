@@ -47,6 +47,62 @@
   </header>
 
   <div class="ver">
+    <h2>2.61.0</h2>
+    <div class="date">2026-08-04 — Orden de Compra: ventana WinForms sin ctx.erp</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Igual que la Requisición: nueva plantilla de Orden de Compra con la ventana de
+            siempre (proveedor, impuesto, descuento, totales en vivo) pero que al guardar
+            escribe con SQL directo en vez de usar las funciones de ayuda del addon.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.60.0</h2>
+    <div class="date">2026-08-04 — Requisición: ventana WinForms sin ctx.erp</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla de Requisición de Compra: la misma ventana de siempre para
+            capturar proveedor, almacén y partidas, pero que al guardar escribe con SQL
+            directo en vez de usar las funciones de ayuda del addon — para quien quiere ver
+            la ruta "SQL puro" funcionando sin editar código a mano.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.59.1</h2>
+    <div class="date">2026-08-04 — Ajuste fino a la Orden de Compra SQL puro</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Pequeño ajuste en el estatus de pago que queda al crear una Orden de Compra
+            con la plantilla SQL puro, para que coincida exactamente con el que deja
+            Comercial de forma nativa.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.59.0</h2>
+    <div class="date">2026-07-31 — Orden de Compra WebView2 completa: impuesto, descuento, totales y detalle de producto</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Las plantillas de Orden de Compra en WebView2 (C# y Python) ahora tienen
+            impuesto y descuento por partida, totales en vivo (Subtotal, Descuento,
+            Impuestos, Total y el total en letra), y el detalle del producto al hacer
+            doble clic en una partida — mismo nivel que la versión con formulario clásico.</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Varios detalles de las plantillas SQL puro (Requisición y Orden de Compra) se
+            afinaron para que coincidan aún más con lo que crea Comercial de forma nativa.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
     <h2>2.58.0</h2>
     <div class="date">2026-07-31 — Orden de Compra: 5 formas de crearla</div>
     <div class="grp add"><div class="h">Agregado</div>

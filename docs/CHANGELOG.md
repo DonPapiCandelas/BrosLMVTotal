@@ -6,6 +6,116 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.61.0] — 2026-08-04 — Orden de Compra: Forms + SQL puro (WinForms sin ctx.erp)
+
+### Agregado
+- **`PLANTILLA_ORDEN_COMPRA_FORMS_SQL_PURO_CSHARP.ctx`** — misma ventana que
+  `PLANTILLA_ORDEN_COMPRA_FORMS_CSHARP.ctx` (impuesto/descuento por partida, totales en
+  vivo, detalle de producto al doble clic), pero al guardar arma un solo batch de T-SQL con
+  los INSERT ya validados en `PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql` (docDocument,
+  docDocumentExt/Extra/CFD/PaymentAgenda, docDocumentItem, docDocumentTax/TaxDetail/TaxSum,
+  docDocumentDeliveryAgenda, orgProductKardex, orgProductSupplier), generalizados para N
+  partidas con impuesto y descuento propios cada una (el `.sql` original solo maneja una
+  partida sin descuento).
+- Validado contra el sandbox con 2 casos: (A) 1 partida sin descuento — mismo resultado
+  exacto ($185.60) que el caso ya validado del `.sql` puro; (B) 2 partidas, una con 10% de
+  descuento — subtotal/descuento/IVA/total y "Son:" en letras cuadran, y cada tabla satélite
+  (docDocumentTaxDetail, docDocumentDeliveryAgenda, orgProductKardex) recibe su fila propia
+  por partida. La combinación "SQL puro + descuento" queda documentada como no comparada
+  campo por campo contra un documento nativo real con descuento (advertencia explícita en
+  el archivo).
+- Agregada al catálogo de Plantillas (categoría C#) en `Consola.cs`.
+
+## [2.60.0] — 2026-08-04 — Requisición: Forms + SQL puro (WinForms sin ctx.erp)
+
+> El usuario esperaba que la plantilla "SQL puro" abriera una ventana para capturar datos
+> -- por diseño no lo hace (es un script de INSERT directo con `@parámetros` que se editan
+> a mano, como el propio usuario pidió originalmente: "yo he hecho documentos con SQL
+> puro"). Para cubrir el caso de querer una ventana normal SIN depender de `ctx.erp`, se
+> agregó una 6ta variante de Requisición.
+
+### Agregado
+- **`PLANTILLA_REQUISICION_FORMS_SQL_PURO_CSHARP.ctx`** — misma ventana WinForms que
+  `PLANTILLA_REQUISICION_FORMS_CSHARP.ctx` (buscador de proveedor/producto, grid de
+  partidas), pero al guardar ejecuta los mismos INSERT directos ya validados en
+  `PLANTILLA_REQUISICION_SQL_PURO.sql` (docDocument, docDocumentExt, docDocumentExtra,
+  docDocumentCFD, docDocumentPaymentAgenda, docDocumentItem, orgProductSupplier) en vez de
+  `ctx.erp.NuevoDocumento/AgregarArticulo/RecalcCompleto/Save` — generalizados para
+  soportar varias partidas (el `.sql` original solo maneja una). Validado contra el
+  sandbox con un caso de 2 partidas del mismo producto (LineNumber 1/2, sin duplicar
+  `orgProductSupplier`).
+- Agregada al catálogo de Plantillas (categoría C#) en `Consola.cs`.
+
+## [2.59.1] — 2026-08-04 — Corrección de una corrección: StatusPaidID de OC SQL puro y arnés de humo #17
+
+> Al re-ejecutar el arnés de humo completo tras v2.59.0, el caso 17 (Orden de Compra SQL
+> puro vs. documento nativo) volvió a fallar. La auditoría de v2.59.0 había cambiado
+> `StatusPaidID` de `3` a `0` basándose en una captura de profiler externa
+> (`empresa_base_cp/orden_compra_compleja/profiler_analisis.md`) que no coincide con el
+> comportamiento real de ESTE sandbox — la metodología establecida del proyecto es que el
+> sandbox local (comparación campo por campo contra un documento creado con `ctx.erp`) es
+> la fuente de verdad para validar SQL puro, no una captura externa de otro entorno.
+
+### Corregido
+- **`PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql`** — `StatusPaidID` regresa a `3` (confirmado
+  reproduciblemente contra el sandbox: tras `Save` + `ctx.erp.UpdateDocumentPaidInfo` +
+  `ctx.erp.UpdateStatusDelivery`, el documento nativo SIEMPRE queda en `StatusPaidID=3`,
+  nunca `0`, pese a lo que el nombre del método sugiere — mismo default documentado en
+  MANUAL.md §7.3 para Solicitud de Compra).
+- **`build/humo/casos/17_orden_compra_sql_puro.ps1`** (el documento de referencia nativo,
+  no la plantilla) tenía 2 bugs propios que hacían que la comparación fuera injusta:
+  1. Usaba `PaymentTermID=0` mientras la plantilla SQL puro usa `@condicionPago=4` por
+     default — ahora la referencia también usa `4`.
+  2. Forzaba `TaxTypeID=5` con un `UPDATE` crudo después de `AgregarArticulo`, lo cual deja
+     `TaxPerc` desincronizado (en `0`, del `TaxTypeID` original del producto). Ahora usa el
+     parámetro `taxTypeIdOverride` de `AgregarArticulo` (`ctx.erp.AgregarArticulo(doc, 1, 2,
+     80, -1, 5)`), que recalcula `TaxPerc` desde `vwLBSTaxPerc` para el impuesto indicado.
+  3. Le faltaba la llamada a `ctx.erp.UpdateStatusDelivery(doc)` después de `Save` (MANUAL.md
+     §6.3) — sin ella, `StatusDeliveryID` se quedaba en `0` en vez de `3`.
+
+Arnés de humo: 19/19 en verde tras esta corrección.
+
+## [2.59.0] — 2026-07-31 — Auditoría completa Requisición/Orden de Compra vs entrenamiento (WebView2 completo + 8 bugs reales corregidos)
+
+> Auditoría de fondo cruzando las 10 plantillas oficiales (SQL puro, Forms y WebView2 en
+> C#/Python, para Requisición y Orden de Compra) contra la evidencia confirmada de
+> `Entrenamiento/` (capturas SQL Profiler reales, experimentos validados, código fuente
+> del addon). Las 4 variantes de OC basadas en `ctx.erp` ya estaban completas; los bugs
+> reales estaban en el SQL puro de ambos documentos y en Requisición.
+
+### Agregado
+- **`PLANTILLA_ORDEN_COMPRA_WEBVIEW2_CSHARP.ctx` y `..._PYTHON.py`** — Impuesto y
+  Descuento % por partida con totales en vivo (Subtotal/Descuento/Impuestos/Total +
+  Total en letra), detalle de producto (existencia/listas de precio/precio por proveedor)
+  al doble clic sobre una partida, y Fecha/Serie/Folio en el formulario (Serie/Folio como
+  vista previa de solo lectura — `NuevoDocumento()` ya los asigna en automático, ver
+  "Corregido" abajo).
+- **Requisición WebView2 (C#/Python)** — registro de `orgProductSupplier` (relación
+  producto-proveedor) al agregar cada partida, igual que las versiones Forms.
+- **Requisición (las 5 variantes)** — llamada a `ctx.erp.UpdateStatusDelivery()` después
+  de `Save`, igual que ya tenía Orden de Compra (MANUAL.md §6.3: no es opcional aunque el
+  documento no afecte inventario, o queda "Estatus de entrega: No Aplica" en el grid nativo).
+
+### Corregido
+- **`PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql`** (la plantilla más frágil del catálogo, 6 bugs):
+  `StatusPaidID` estaba en `3` (el profiler real de 2 OC nativas confirma `0`);
+  `PaymentTermID` estaba fijo en `0` (toda OC real lleva una condición de pago real, nunca
+  0 — ahora es parámetro `@condicionPago`); `docDocumentItem.TaxPerc` estaba en `0` con un
+  comentario que afirmaba (incorrectamente) que eso era lo correcto — el profiler real
+  muestra `0.16`; faltaba `docDocumentDeliveryAgenda` (tabla exclusiva de OC, la genera el
+  `Save` nativo); faltaba `orgProductSupplier`; faltaba `docDocumentExt` (un comentario
+  decía "no aplica en esta versión", pero contradice el propio `Scripting.cs` del addon —
+  la columna se llama `IDExtra`, no `DocumentID`); y `DocRecipientID` reusaba la variable
+  `@proveedorBE` en vez del código de rol fijo (2=proveedor), un bug latente si el
+  proveedor cambia de ID.
+- **`PLANTILLA_REQUISICION_SQL_PURO.sql`** — mismos bugs de `DocRecipientID`,
+  `docDocumentExt` faltante, `orgProductSupplier` faltante y `TaxPerc` de partida sin llenar.
+- **Fecha/Serie/Folio en formularios WebView2 de OC**: la primera versión mostraba
+  Serie/Folio editables y los sobreescribía después de `NuevoDocumento()` — redundante y
+  con riesgo real de folio duplicado si otro documento se creaba mientras el formulario
+  seguía abierto. `NuevoDocumento()` ya los resuelve automáticamente (`Scripting.cs`
+  líneas 1684-1685, `MANUAL.md` §6.6) — ahora son solo vista previa de lectura.
+
 ## [2.58.0] — 2026-07-31 — Orden de Compra COMPLETA: las 5 variantes (+ bug real corregido)
 
 > Cierra el trabajo pedido por el usuario: "dale a lo demás, quiero verlo completo".

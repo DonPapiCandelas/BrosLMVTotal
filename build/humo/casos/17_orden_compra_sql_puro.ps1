@@ -50,13 +50,18 @@ EXEC sp_executesql @sql;
 $codigoNativo = @'
 // job: safe-offline
 int doc = ctx.erp.NuevoDocumento(183, 1, 2);
-ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=0, PaymentTermID=0, DateDelivery=GETDATE(), DateDocDelivery=GETDATE() WHERE DocumentID=" + doc);
-ctx.erp.AgregarArticulo(doc, 1, 2, 80, -1);
-ctx.NonQuery("UPDATE docDocumentItem SET TaxTypeID=5 WHERE DocumentID=" + doc + " AND DeletedOn IS NULL");
+ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=0, PaymentTermID=4, DateDelivery=GETDATE(), DateDocDelivery=GETDATE() WHERE DocumentID=" + doc);
+// taxTypeIdOverride=5 vía AgregarArticulo (no un UPDATE crudo despues) -- asi TaxPerc se
+// recalcula junto con TaxTypeID (Scripting.cs AgregarArticulo consulta vwLBSTaxPerc para el
+// override); un UPDATE manual de solo TaxTypeID deja TaxPerc desincronizado (en 0).
+ctx.erp.AgregarArticulo(doc, 1, 2, 80, -1, 5);
 ctx.erp.RecalcCompleto(doc);
 ctx.erp.AffectStockNEW(doc);
 ctx.erp.Save(doc);
 try { ctx.erp.UpdateDocumentPaidInfo(doc); } catch {}
+// MANUAL.md #6.3: obligatorio despues de Save para un documento sin inventario (Solicitud,
+// OC) -- RecalcCompleto NO lo calcula. Sin esto StatusDeliveryID se queda en 0 en vez de 3.
+try { ctx.erp.UpdateStatusDelivery(doc); } catch {}
 return "doc=" + doc;
 '@
 if (-not (Upsert-Boton "HUMO_OC_REFERENCIA_NATIVA" "Humo 17 - referencia nativa" $codigoNativo)) { exit 1 }

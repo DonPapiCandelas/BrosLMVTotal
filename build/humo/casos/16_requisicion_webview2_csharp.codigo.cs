@@ -33,7 +33,8 @@ var productos = ctx.Query(@"
     FROM orgProduct WHERE DeletedOn IS NULL AND TaxTypeID IS NOT NULL AND TaxTypeID > 0
     ORDER BY ProductName");
 
-string JsonEsc(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
+string JsonEsc(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"")
+    .Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t");
 
 var proveedoresJson = "[" + string.Join(",", proveedores.Select(p =>
     "{\"id\":" + p["BusinessEntityID"] + ",\"nombre\":\"" + JsonEsc(Convert.ToString(p["OfficialName"])) + "\",\"rfc\":\"" + JsonEsc(Convert.ToString(p["RFC"])) + "\"}")) + "]";

@@ -31,7 +31,11 @@ var productos = ctx.Query(@"
     FROM orgProduct WHERE DeletedOn IS NULL AND TaxTypeID IS NOT NULL AND TaxTypeID > 0
     ORDER BY ProductName");
 
-string JsonEsc(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
+// OJO: sin escapar \r/\n/\t, un nombre/descripción con salto de línea deja un newline
+// LITERAL dentro de un string de JS -- error de sintaxis que revienta TODO el <script> en
+// silencio (WebView2 no muestra el error), dejando los combos vacíos sin ningún aviso.
+string JsonEsc(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"")
+    .Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t");
 
 var proveedoresJson = "[" + string.Join(",", proveedores.Select(p =>
     "{\"id\":" + p["BusinessEntityID"] + ",\"nombre\":\"" + JsonEsc(Convert.ToString(p["OfficialName"])) + "\",\"rfc\":\"" + JsonEsc(Convert.ToString(p["RFC"])) + "\"}")) + "]";
@@ -191,14 +195,24 @@ int doc = ctx.erp.NuevoDocumento(1040, depot, be);
 ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=0, CurrencyID=" + moneda + ", PaymentTermID=" + condicion +
              ", Comments='" + comentarios.Replace("'", "''") + "' WHERE DocumentID=" + doc);
 
+long supplierID = Convert.ToInt64(ctx.Scalar("SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + be));
+
 foreach (Dictionary<string, object> p in partidasRecibidas)
 {
     int productId = Convert.ToInt32(p["id"]);
     double cantidad = Convert.ToDouble(p["cantidad"]);
     ctx.erp.AgregarArticulo(doc, productId, cantidad);
+    // Registra al proveedor como fuente de este producto si todavía no lo era (mismo
+    // patrón que la versión Forms).
+    ctx.NonQuery("IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + productId + " AND SupplierID=" + supplierID + ") " +
+                 "INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber) VALUES (" + productId + ", " + supplierID + ", 0, " + moneda + ", 0)");
 }
 
 ctx.erp.RecalcCompleto(doc);
 ctx.erp.Save(doc);
+// NO opcional aunque la Solicitud no afecte inventario -- RecalcCompleto no lo calcula;
+// sin esto el documento queda con "Estatus de entrega: No Aplica" en el grid nativo
+// (MANUAL.md §6.3).
+try { ctx.erp.UpdateStatusDelivery(doc); } catch { }
 
 ctx.Msg("Requisición de compra " + doc + " creada exitosamente.", "OK");

@@ -27,12 +27,17 @@
 -- Cómo se llenan los datos: reemplaza los valores de "PARÁMETROS" antes de correr.
 
 -- ═══════════════════ PARÁMETROS (edítalos antes de correr) ═══════════════════
-DECLARE @proveedorBE INT = 2;
-DECLARE @almacen     INT = 1;
-DECLARE @productoID  INT = 1;
-DECLARE @cantidad    DECIMAL(18,4) = 2;
-DECLARE @precio      DECIMAL(18,2) = 80;   -- precio unitario, sin IVA
-DECLARE @diasEntrega INT = 15;             -- fecha de entrega = hoy + N días
+DECLARE @proveedorBE  INT = 2;
+DECLARE @almacen      INT = 1;
+DECLARE @productoID   INT = 1;
+DECLARE @cantidad     DECIMAL(18,4) = 2;
+DECLARE @precio       DECIMAL(18,2) = 80;   -- precio unitario, sin IVA
+DECLARE @diasEntrega  INT = 15;             -- fecha de entrega = hoy + N días
+-- PaymentTermID: confirmado contra profiler real de una OC nativa (4 = CRÉDITO en el
+-- catálogo de este sandbox; ver empresa_base_cp/orden_compra_compleja/profiler_analisis.md)
+-- -- a diferencia de Entrada/Salida/Solicitud, la OC SIEMPRE lleva una condición de pago
+-- real, nunca 0. Ajusta este valor al PaymentTermID real de tu catálogo si usas otro.
+DECLARE @condicionPago INT = 4;
 
 -- ═══════════════════ VALIDACIONES MÍNIMAS ═══════════════════
 IF NOT EXISTS (SELECT 1 FROM orgBusinessEntity WHERE BusinessEntityID = @proveedorBE)
@@ -45,8 +50,9 @@ DECLARE @folio INT = ISNULL((SELECT MAX(TRY_CAST(Folio AS INT)) FROM docDocument
 DECLARE @ahora DATETIME = GETDATE();
 DECLARE @entrega DATETIME = DATEADD(DAY, @diasEntrega, @ahora);
 
+DECLARE @tasaIva DECIMAL(9,4) = 0.16;
 DECLARE @subtotal DECIMAL(18,2) = @cantidad * @precio;
-DECLARE @iva DECIMAL(18,2) = ROUND(@subtotal * 0.16, 2);
+DECLARE @iva DECIMAL(18,2) = ROUND(@subtotal * @tasaIva, 2);
 DECLARE @total DECIMAL(18,2) = @subtotal + @iva;
 
 -- ---- Número a letras (algoritmo completo, probado contra 6 casos reales) ----
@@ -120,25 +126,37 @@ IF RIGHT(@totalLetra, 3) = 'UNO' SET @totalLetra = LEFT(@totalLetra, LEN(@totalL
 SET @totalLetra = @totalLetra + ' PESOS ' + RIGHT('0' + CAST(@centavos AS NVARCHAR), 2) + '/100 M.N.';
 
 -- ═══════════════════ 1. docDocument (cabecera) ═══════════════════
+-- Perfil de OC (distinto de Entrada/Salida/Solicitud): DocRecipientID=2 (rol proveedor, NO
+-- el BusinessEntityID), PaymentTermID=condición real (nunca 0), StatusDeliveryID=3 (exige
+-- UpdateStatusDelivery -- MANUAL.md §6.3, no es opcional). StatusPaidID=3 -- CONFIRMADO
+-- contra el sandbox real (no 0 como decía una versión anterior de este comentario, basada
+-- en una captura de profiler externa que no coincidía con este entorno): tras Save +
+-- ctx.erp.UpdateDocumentPaidInfo + ctx.erp.UpdateStatusDelivery, el documento nativo queda
+-- en StatusPaidID=3 -- el mismo default documentado para Solicitud de Compra en MANUAL.md
+-- §7.3 ("3 = pagado, es el default, no implica pago real"), UpdateDocumentPaidInfo no lo
+-- cambia a 0 en la práctica pese a lo que su nombre sugiere.
 DECLARE @doc TABLE (DocumentID INT);
 INSERT INTO docDocument (
     ModuleID, DocumentTypeID, DocRecipientID, OwnedBusinessEntityID, BusinessEntityID,
     DepotID, DepotIDFrom, FolioPrefix, Folio, DateDocument, DateDocDelivery, DateDelivery, DateFrom, DateTo, DateCost,
     LanguageID, CurrencyID, Rate, PaymentTermID, DateLastPayment, MustBeSynchronized, ExportID,
-    SubTotal, SubTotalWithDiscount, Total, TotalTax, TotalLetter, TotalPaid, Balance, StatusPaidID,
+    SubTotal, SubTotalWithDiscount, Total, TotalTax, TotalLetter, TotalPaid, Balance, StatusPaidID, StatusDeliveryID,
     CreatedOn, CreatedBy, UserID
 )
 OUTPUT INSERTED.DocumentID INTO @doc
 VALUES (
-    183, 40, @proveedorBE, 1, @proveedorBE,
+    183, 40, 2, 1, @proveedorBE,
     @almacen, 0, '', CAST(@folio AS NVARCHAR), @ahora, @entrega, @entrega, @ahora, @ahora, @ahora,
-    3, 3, 1, 0, @ahora, 1, 1,
-    @subtotal, @subtotal, @total, @iva, @totalLetra, 0, @total, 3,
+    3, 3, 1, @condicionPago, @ahora, 1, 1,
+    @subtotal, @subtotal, @total, @iva, @totalLetra, 0, @total, 3, 3,
     @ahora, 0, 0
 );
 DECLARE @docId INT = (SELECT TOP 1 DocumentID FROM @doc);
 
 -- ═══════════════════ 2. Anclas satélite ═══════════════════
+-- docDocumentExt SÍ aplica -- su columna que guarda el DocumentID se llama IDExtra, no
+-- "DocumentID". Mismo INSERT que usa el propio addon en Scripting.cs NuevoDocumento().
+INSERT INTO docDocumentExt (IDExtra) VALUES (@docId);
 INSERT INTO docDocumentExtra (DocumentID) VALUES (@docId);
 INSERT INTO docDocumentCFD (DocumentID, FinancialOperationID, Anexo20Ver) VALUES (@docId, 0, '4.0');
 -- Amount/Total en 0 (no @total) a propósito -- comparado contra un documento nativo real:
@@ -149,11 +167,12 @@ INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount
 VALUES (@docId, @ahora, 100, 0, 0, 1, @ahora, 0);
 
 -- ═══════════════════ 3. Partida ═══════════════════
--- CostPrice=0 y TaxPerc=0 en docDocumentItem son correctos aunque parezca raro -- el
--- costo real (@precio) y la tasa (0.16) se guardan en otras tablas
--- (orgProductKardex.AmountPrice y docDocumentTaxDetail.TaxPerc); AgregarArticulo/
--- RecalcCompleto dejan estos 2 campos del item en 0 -- confirmado comparando contra un
--- documento nativo, no es una omisión de esta plantilla.
+-- CostPrice=0 en docDocumentItem es correcto aunque parezca raro -- el costo real
+-- (@precio) se guarda en orgProductKardex.AmountPrice; AgregarArticulo/RecalcCompleto
+-- dejan ese campo del item en 0 -- confirmado comparando contra un documento nativo.
+-- TaxPerc SÍ debe llevar la tasa real (0.16), confirmado contra el profiler real de una OC
+-- nativa (docDocumentItem.TaxPerc=0.16 en la partida) -- a diferencia de CostPrice, este
+-- campo NO se queda en 0.
 DECLARE @item TABLE (DocumentItemID INT);
 INSERT INTO docDocumentItem (
     DocumentID, Quantity, ProductID, Description, ProductKey, Unit, ClaveUnidad,
@@ -163,17 +182,34 @@ INSERT INTO docDocumentItem (
 OUTPUT INSERTED.DocumentItemID INTO @item
 SELECT
     @docId, @cantidad, p.ProductID, p.ProductName, p.ProductKey, p.Unit, p.ClaveUnidad,
-    '', 5, 0, @precio, 0, @subtotal, 1, 1,
+    '', 5, @tasaIva, @precio, 0, @subtotal, 1, 1,
     1, 1, 1, 1, @ahora
 FROM orgProduct p WHERE p.ProductID = @productoID;
 DECLARE @itemId INT = (SELECT TOP 1 DocumentItemID FROM @item);
+
+-- ═══════════════════ 3b. Relación producto-proveedor ═══════════════════
+-- Confirmado como paso explícito del método de réplica (EXP-DOC-orden_compra_001,
+-- replication/orden_compra.ctx): registra al proveedor como fuente de este producto si
+-- todavía no lo era.
+DECLARE @supplierID INT = (SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID = @proveedorBE);
+IF @supplierID IS NOT NULL AND NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID = @productoID AND SupplierID = @supplierID)
+    INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber)
+    VALUES (@productoID, @supplierID, @precio, 3, 0);
+
+-- ═══════════════════ 3c. Agenda de entrega ═══════════════════
+-- docDocumentDeliveryAgenda: tabla exclusiva de OC (no aparece en Entrada/Salida/
+-- Solicitud), una fila por partida física -- la genera el Save nativo automáticamente;
+-- como SQL puro no puede llamar Save, se inserta a mano (confirmado en
+-- EXP-DOC-orden_compra_001, sección "docDocumentDeliveryAgenda").
+INSERT INTO docDocumentDeliveryAgenda (DocumentID, DocumentItemID, ProductID, Quantity, QtyDelivered, DateDelivery, CreatedOn, CreatedBy)
+VALUES (@docId, @itemId, @productoID, @cantidad, 0, @entrega, @ahora, 0);
 
 -- ═══════════════════ 4. Impuestos (IVA 16% simple -- ver advertencia al inicio) ═══════════════════
 INSERT INTO docDocumentTax (DocumentID, IVA_T, IVA_R, ISR_R, IEPS_T, IEPS_R, Otro, Local_T, Local_R)
 VALUES (@docId, @iva, 0, 0, 0, 0, 0, 0, 0);
 
 INSERT INTO docDocumentTaxDetail (DocumentID, DocumentItemID, TaxTypeID, TaxItemID, Amount, Retention, IVASobreIEPS, RegionalTaxID, TaxName, TaxTypeName, TaxBase, TaxPerc, TipoFactor)
-VALUES (@docId, @itemId, 5, 6, @iva, 0, 0, 0, 'IVA 16.00%', 'IVA', @subtotal, 0.16, 'Tasa');
+VALUES (@docId, @itemId, 5, 6, @iva, 0, 0, 0, 'IVA 16.00%', 'IVA', @subtotal, @tasaIva, 'Tasa');
 
 INSERT INTO docDocumentTaxSum (DocumentID, TaxName1, TaxAmount1, TotalFederal, TotalLocal, TotalOtro)
 VALUES (@docId, 'IVA 16%', @iva, @iva, 0, 0);

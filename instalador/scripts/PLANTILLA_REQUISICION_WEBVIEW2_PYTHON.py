@@ -229,9 +229,24 @@ else:
             ", PaymentTermID=" + str(condicion) +
             ", Comments=N'" + comentarios.replace("'", "''") + "' WHERE DocumentID=" + str(doc)
         )
+        supplier_id = ctx.scalar("SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + str(be))
         for p in partidas:
-            ctx.erp.AgregarArticulo(doc, int(p["id"]), float(p["cantidad"]))
+            pid = int(p["id"])
+            ctx.erp.AgregarArticulo(doc, pid, float(p["cantidad"]))
+            # Registra al proveedor como fuente de este producto si todavía no lo era
+            # (mismo patrón que la versión Forms).
+            ctx.execute(
+                "IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + str(pid) + " AND SupplierID=" + str(supplier_id) + ") "
+                "INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber) VALUES (" + str(pid) + ", " + str(supplier_id) + ", 0, " + str(moneda) + ", 0)"
+            )
         ctx.erp.RecalcCompleto(doc)
         ctx.erp.Save(doc)
+        # NO opcional aunque la Solicitud no afecte inventario -- RecalcCompleto no lo
+        # calcula; sin esto el documento queda con "Estatus de entrega: No Aplica" en el
+        # grid nativo (MANUAL.md §6.3).
+        try:
+            ctx.erp.UpdateStatusDelivery(doc)
+        except Exception:
+            pass
 
         result = "Requisición de compra " + str(doc) + " creada exitosamente."

@@ -55,6 +55,10 @@ DECLARE @ahora DATETIME = GETDATE();
 -- Perfil validado en docs/REQUISICION_SOLICITUD_COMPRA.md: DepotIDFrom=0, UserID=0,
 -- PaymentTermID=0, CampaignID/CostCenterID/ProjectID=0 (no NULL -- confirmado en el
 -- snapshot real: esta versión de Comercial usa 0, no NULL, en estos 3 campos).
+-- DocRecipientID: código de ROL fijo (2=proveedor), NO el BusinessEntityID real -- confirmado
+-- en Scripting.cs NuevoDocumento() (lo resuelve de engModuleParameter, independiente del
+-- proveedor) y en EXP-DOC-solicitud_compra_001 ("DocRecipientID = 2"). Usar @proveedorBE aquí
+-- sería un bug latente si el proveedor cambia de ID.
 DECLARE @doc TABLE (DocumentID INT);
 -- FolioPrefix='' (no NULL) y TotalLetter='CERO PESOS 00/100 M.N.' (no NULL) son las 2
 -- diferencias reales que se encontraron comparando contra un documento nativo -- sin
@@ -72,7 +76,7 @@ INSERT INTO docDocument (
 )
 OUTPUT INSERTED.DocumentID INTO @doc
 VALUES (
-    1040, 49, @proveedorBE, 1, @proveedorBE,
+    1040, 49, 2, 1, @proveedorBE,
     @almacen, 0, '', CAST(@folio AS NVARCHAR), @ahora, @ahora, @ahora, @ahora, @ahora,
     3, 3, 1, 0, @ahora, 1,
     1, 'CERO PESOS 00/100 M.N.', @ahora, 0, 0
@@ -80,9 +84,10 @@ VALUES (
 DECLARE @docId INT = (SELECT TOP 1 DocumentID FROM @doc);
 
 -- ═══════════════════ 2. Anclas satélite ═══════════════════
--- docDocumentExt NO aplica en esta version de Comercial (la tabla no tiene columna
--- DocumentID -- confirmado revisando sys.columns, es una tabla legacy sin relación con
--- documentos en este esquema). Si tu version de Comercial SÍ la usa, agrégala aquí.
+-- docDocumentExt SÍ aplica -- su columna que guarda el DocumentID se llama IDExtra, no
+-- "DocumentID" (por eso una revisión superficial de columnas la pasaba por alto). Mismo
+-- INSERT que usa el propio addon en Scripting.cs NuevoDocumento().
+INSERT INTO docDocumentExt (IDExtra) VALUES (@docId);
 INSERT INTO docDocumentExtra (DocumentID) VALUES (@docId);
 INSERT INTO docDocumentCFD (DocumentID, FinancialOperationID, Anexo20Ver) VALUES (@docId, 0, '4.0');
 INSERT INTO docDocumentPaymentAgenda (
@@ -97,15 +102,31 @@ VALUES (@docId, @ahora, 100, 0, 1, @ahora, 0);
 -- (no genera CFDI, ese campo es fiscal y no aplica aquí) aunque el producto tenga '02'.
 -- CoefUnit=1 (coeficiente de conversión de unidad, 1 = sin conversión) también hay que
 -- ponerlo a mano -- sin esto queda en 0, que rompe cualquier cálculo que dependa de él.
+-- TaxPerc SÍ se llena (aunque el precio sea 0 y por lo tanto el impuesto también) -- el
+-- profiler real de una Solicitud confirma TaxPerc con la tasa real del TaxTypeID del
+-- producto, no 0.
+DECLARE @item TABLE (DocumentItemID INT);
 INSERT INTO docDocumentItem (
     DocumentID, Quantity, ProductID, Description, ProductKey, Unit, ClaveUnidad,
-    ObjetoImpuesto, TaxTypeID, LineNumber, MustBeDelivered, ApplyGlobalDiscount,
+    ObjetoImpuesto, TaxTypeID, TaxPerc, LineNumber, MustBeDelivered, ApplyGlobalDiscount,
     DeductiblePerc, IsBusinessOperation, CoefUnit, DateItem
 )
+OUTPUT INSERTED.DocumentItemID INTO @item
 SELECT
     @docId, @cantidad, p.ProductID, p.ProductName, p.ProductKey, p.Unit, p.ClaveUnidad,
-    '', ISNULL(p.TaxTypeID, 0), 1, 1, 1,
+    '', ISNULL(p.TaxTypeID, 0), ISNULL(tp.IVA_Perc, 0), 1, 1, 1,
     1, 1, 1, @ahora
-FROM orgProduct p WHERE p.ProductID = @productoID;
+FROM orgProduct p LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = p.TaxTypeID
+WHERE p.ProductID = @productoID;
+DECLARE @itemId INT = (SELECT TOP 1 DocumentItemID FROM @item);
+
+-- ═══════════════════ 4. Relación producto-proveedor ═══════════════════
+-- Igual que las versiones Forms/WebView2 (confirmado como efecto lateral obligatorio de
+-- la Solicitud en EXP-DOC-solicitud_compra_001): registra al proveedor como fuente de
+-- este producto si todavía no lo era.
+DECLARE @supplierID INT = (SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID = @proveedorBE);
+IF @supplierID IS NOT NULL AND NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID = @productoID AND SupplierID = @supplierID)
+    INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber)
+    VALUES (@productoID, @supplierID, 0, 3, 0);
 
 SELECT 'Requisición (SQL puro) creada: doc=' + CAST(@docId AS VARCHAR) + ', folio=' + CAST(@folio AS VARCHAR) AS Resultado;

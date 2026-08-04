@@ -913,6 +913,13 @@ def crear_requisicion(nueva):
         ctx.erp.Save(doc)
         if ctx.erp.LastError():
             raise Exception("Save: " + str(ctx.erp.LastError()))
+        # NO opcional aunque la Solicitud no afecte inventario -- RecalcCompleto no lo
+        # calcula; sin esto el documento queda con "Estatus de entrega: No Aplica" en el
+        # grid nativo (MANUAL.md §6.3).
+        try:
+            ctx.erp.UpdateStatusDelivery(doc)
+        except Exception:
+            pass
         try:
             ctx.erp.RefreshGrid()
         except Exception:
