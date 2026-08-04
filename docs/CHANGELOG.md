@@ -6,6 +6,31 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.63.0] — 2026-08-04 — Factura de Compra COMPLETA: las 6 variantes
+
+> Cierra el catálogo de Factura de Compra con el mismo criterio que Requisición/Orden de
+> Compra: las 6 variantes (SQL puro, Forms C#/Python, WebView2 C#/Python, Forms + SQL puro).
+
+### Agregado
+- **`PLANTILLA_FACTURA_COMPRA_WEBVIEW2_CSHARP.ctx` / `..._PYTHON.py`** — mismo origen
+  (`ctx.GetSelectedIds()`), mismo cálculo de pendientes y misma corrección de
+  `SourceDocumentItemID` que la versión Forms. Validado el backend (reparto entre OC de
+  origen, PaymentAgenda con montos reales) contra el sandbox.
+- **`PLANTILLA_FACTURA_COMPRA_FORMS_PYTHON.py`** — puerto a pythonnet de la versión Forms
+  C#. Simplificación real y documentada: la columna Impuesto del grid es de solo lectura
+  aquí (un `DataGridViewComboBoxColumn` por fila es frágil de enlazar de forma confiable con
+  objetos Python) — para cambiar el impuesto por partida, usa la versión C# o WebView2.
+- **`PLANTILLA_FACTURA_COMPRA_FORMS_SQL_PURO_CSHARP.ctx`** — misma ventana que la versión
+  Forms C#, pero escribe con un batch de INSERT directo (sin ctx.erp), generalizando
+  `PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql` a N partidas repartidas entre sus OC de origen.
+  Validado contra el sandbox con descuento aplicado (subtotal/IVA/total/PaymentAgenda
+  cuadran exactos).
+- Las 4 plantillas agregadas al catálogo de Plantillas en `Consola.cs`.
+
+### Pendiente
+- Recepción de Compra: 4 variantes restantes (Forms Python, WebView2 C#/Python, Forms + SQL
+  puro) — más complejas por la consolidación de N OC y la captura de lote/número de serie.
+
 ## [2.62.0] — 2026-08-04 — Recepción de Compra y Factura de Compra: SQL puro + Forms (C#)
 
 > Primeras 2 variantes (de las 6 planeadas) de los 2 documentos de compra que faltaban del

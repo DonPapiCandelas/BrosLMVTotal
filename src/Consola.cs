@@ -440,6 +440,18 @@ namespace BrosLMV
             new PlantillaDef("C#", "Factura de Compra — Forms (WinForms nativo)",
                 CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx",
                     "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Factura de Compra — WebView2 (HTML)",
+                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_WEBVIEW2_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Factura de Compra — Forms + SQL puro (sin ctx.erp)",
+                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_FORMS_SQL_PURO_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Factura de Compra — Forms (WinForms vía pythonnet)",
+                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_FORMS_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Factura de Compra — WebView2 (HTML)",
+                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_WEBVIEW2_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
 
             // -- El resto del catálogo anterior que SÍ seguía siendo útil y no tenía la
             //    queja de documentación confusa -- se mantiene, solo se le puso categoría.
