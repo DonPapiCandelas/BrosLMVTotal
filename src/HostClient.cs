@@ -958,6 +958,195 @@ namespace BrosLMV
             }
         }
 
+        // ================================================================================
+        // Motor de tokens tipados {DATOS:Tabla.Columna} (v2.75.0+).
+        //
+        // DISTINTO del {DATOS:Campo} viejo (Scripting.cs, ResolverTokensCore): ese (sin punto
+        // en el contenido) lee un valor de la PRIMERA FILA seleccionada en el grid de
+        // Comercial y sigue funcionando exactamente igual, sin cambios. Este token nuevo trae
+        // un punto -- {DATOS:Tabla.Columna} -- y en vez de leer del grid, PIDE un formulario
+        // real al usuario, con el tipo de control (texto/número/fecha/checkbox/memo) inferido
+        // del tipo REAL de la columna en INFORMATION_SCHEMA.COLUMNS. La desambiguación entre
+        // ambos es la presencia del '.': ResolverTokensCore usa "[^}]+" (cualquier cosa sin
+        // '}'), así que SI matchearía un token con punto también -- por eso este motor debe
+        // correr y sustituir ANTES de que el texto llegue a ctx.EjecutarSql/ResolverTokens.
+        //
+        // Variantes soportadas:
+        //   {DATOS:Tabla.Columna}                 -> label = nombre de columna, opcional
+        //   {DATOS:Tabla.Columna:Etiqueta}         -> label personalizado, opcional
+        //   {DATOS:Tabla.Columna:*}                -> sin label personalizado, OBLIGATORIO
+        //   {DATOS:Tabla.Columna:Etiqueta:*}       -> label personalizado y OBLIGATORIO
+        // (si el 3er segmento es exactamente "*" se interpreta como el flag de obligatorio,
+        // no como etiqueta -- así "{DATOS:T.C:*}" no produce un campo con label "*").
+        //
+        // Punto de enganche: llamado por los 3 dispatch (ClsMain.cs, Consola.cs, Recetas.cs)
+        // sobre el texto COMPLETO del script, antes de detectar/ejecutar su lenguaje. Si no
+        // hay ningún match, HuboTokens=false y el llamador sigue el flujo actual sin cambios
+        // (cero overhead para el catálogo existente, que no usa punto en sus {DATOS:...}).
+        private static readonly Regex RxDatosTipado = new Regex(
+            @"\{DATOS:([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(?::([^:}]+))?(?::([^:}]+))?\}",
+            RegexOptions.Compiled);
+
+        // Caché de sesión (mientras el addon siga cargado en el proceso de Comercial):
+        // "Servidor|BD|Tabla|Columna" -> (DATA_TYPE, CHARACTER_MAXIMUM_LENGTH). Evita repetir
+        // el INFORMATION_SCHEMA si el mismo par aparece varias veces o en ejecuciones sucesivas.
+        private static readonly Dictionary<string, Tuple<string, int?>> _cacheColumnasDatos =
+            new Dictionary<string, Tuple<string, int?>>(StringComparer.OrdinalIgnoreCase);
+
+        public sealed class ResolverTokensResult
+        {
+            public bool HuboTokens;     // true si el texto traía al menos un {DATOS:Tabla.Columna}
+            public bool Cancelado;      // true si el usuario cerró/canceló el formulario
+            public string Error = "";   // no vacío si una Tabla.Columna no existe (aborta ANTES de mostrar UI)
+            public string Codigo = "";  // texto con los tokens ya sustituidos por literales SQL-safe
+        }
+
+        // Resuelve todos los {DATOS:Tabla.Columna...} del texto de un script (cualquier
+        // lenguaje: sql/python/csharp -- es sustitución de texto plano, corre antes de que
+        // el runner correspondiente vea el código). ctx se usa solo para consultar
+        // INFORMATION_SCHEMA.COLUMNS por la conexión viva (mismo objeto que ya usan
+        // EjecutarSql/CtxSqlRunner); debe llamarse en el hilo de Comercial (igual que
+        // ctx.EjecutarSql), no requiere UiPump porque ya estamos en ese hilo en los 3 puntos
+        // de dispatch.
+        public static ResolverTokensResult ResolverFormularioTokens(string codigoOriginal, ScriptContext ctx)
+        {
+            var r = new ResolverTokensResult { Codigo = codigoOriginal ?? "" };
+            if (string.IsNullOrEmpty(codigoOriginal)) return r;
+
+            MatchCollection matches = RxDatosTipado.Matches(codigoOriginal);
+            if (matches.Count == 0) return r;
+            r.HuboTokens = true;
+
+            // Pares únicos (Tabla,Columna), en orden de 1a aparición. Si el mismo par se
+            // repite con distinta etiqueta/obligatoriedad, gana la de la 1a aparición.
+            var orden = new List<Tuple<string, string>>();
+            var porPar = new Dictionary<string, Tuple<string, string, string, bool>>(StringComparer.OrdinalIgnoreCase); // key -> (Tabla,Columna,Etiqueta,Requerido)
+            foreach (Match m in matches)
+            {
+                string tabla = m.Groups[1].Value;
+                string columna = m.Groups[2].Value;
+                string key = tabla + "." + columna;
+                string g3 = m.Groups[3].Success ? m.Groups[3].Value.Trim() : "";
+                string g4 = m.Groups[4].Success ? m.Groups[4].Value.Trim() : "";
+                string etiqueta = "";
+                bool requerido = false;
+                if (g3 == "*") requerido = true;
+                else if (g3.Length > 0) { etiqueta = g3; if (g4 == "*") requerido = true; }
+
+                if (!porPar.ContainsKey(key))
+                {
+                    orden.Add(Tuple.Create(tabla, columna));
+                    porPar[key] = Tuple.Create(tabla, columna, etiqueta, requerido);
+                }
+            }
+
+            string cacheNs = (SafeCtxCall(() => ctx?.ServidorActivo()) ?? "") + "|" + (SafeCtxCall(() => ctx?.Empresa()) ?? "");
+            var campos = new List<FormField>();
+
+            foreach (var par in orden)
+            {
+                string key = par.Item1 + "." + par.Item2;
+                string cacheKey = cacheNs + "|" + key;
+                string dataType;
+                int? maxLen;
+                if (_cacheColumnasDatos.TryGetValue(cacheKey, out var cached))
+                {
+                    dataType = cached.Item1;
+                    maxLen = cached.Item2;
+                }
+                else
+                {
+                    try
+                    {
+                        string sqlInfo = "SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS " +
+                            "WHERE TABLE_NAME = N'" + par.Item1.Replace("'", "''") + "' AND COLUMN_NAME = N'" + par.Item2.Replace("'", "''") + "'";
+                        var filas = ctx.Query(sqlInfo);
+                        if (filas == null || filas.Count == 0)
+                        {
+                            r.Error = "El token {DATOS:" + key + "} usa una tabla/columna que no existe en la base de " +
+                                      "datos activa. Revisa el nombre (sensible a como está en INFORMATION_SCHEMA.COLUMNS).";
+                            return r;
+                        }
+                        dataType = Convert.ToString(filas[0].ContainsKey("DATA_TYPE") ? filas[0]["DATA_TYPE"] : null, CultureInfo.InvariantCulture) ?? "";
+                        object mlObj = filas[0].ContainsKey("CHARACTER_MAXIMUM_LENGTH") ? filas[0]["CHARACTER_MAXIMUM_LENGTH"] : null;
+                        maxLen = (mlObj == null || mlObj is DBNull) ? (int?)null : Convert.ToInt32(mlObj, CultureInfo.InvariantCulture);
+                        _cacheColumnasDatos[cacheKey] = Tuple.Create(dataType, maxLen);
+                    }
+                    catch (Exception ex)
+                    {
+                        r.Error = "No se pudo consultar el esquema de \"" + key + "\" para el formulario del token " +
+                                  "{DATOS:...}: " + ex.Message;
+                        return r;
+                    }
+                }
+
+                var info = porPar[key];
+                campos.Add(new FormField
+                {
+                    Name = key,
+                    Label = string.IsNullOrEmpty(info.Item3) ? par.Item2 : info.Item3,
+                    Type = MapDataTypeAFieldType(dataType, maxLen),
+                    Required = info.Item4
+                });
+            }
+
+            var spec = new UiForm { Title = "BrosLMV — Captura de datos", OkLabel = "Aceptar", CancelLabel = "Cancelar" };
+            spec.Fields.AddRange(campos);
+
+            FormResult formResult = RenderUiForm(spec).FormResult;
+            if (formResult == null || !formResult.Submitted)
+            {
+                r.Cancelado = true;
+                return r;
+            }
+
+            string texto = codigoOriginal;
+            foreach (Match m in matches)
+            {
+                string tabla = m.Groups[1].Value;
+                string columna = m.Groups[2].Value;
+                string key = tabla + "." + columna;
+                if (!formResult.Values.TryGetValue(key, out Value val)) continue;
+                string literal = EncodeLiteral(val);
+                texto = texto.Replace(m.Value, literal);
+            }
+            r.Codigo = texto;
+            return r;
+        }
+
+        // Mapeo DATA_TYPE (T-SQL real) -> FieldType del proto. Cualquier tipo no contemplado
+        // cae a FT_TEXT (fallback seguro: nunca truena por un tipo exótico no previsto).
+        private static FieldType MapDataTypeAFieldType(string dataType, int? maxLen)
+        {
+            switch ((dataType ?? "").Trim().ToLowerInvariant())
+            {
+                case "int": case "bigint": case "smallint": case "tinyint":
+                    return FieldType.FtNumber;
+                case "decimal": case "numeric": case "money": case "smallmoney": case "float": case "real":
+                    return FieldType.FtDecimal;
+                case "date": case "datetime": case "datetime2": case "smalldatetime":
+                    return FieldType.FtDate;
+                case "bit":
+                    return FieldType.FtBool;
+                case "text": case "ntext": case "xml":
+                    return FieldType.FtMemo;
+                case "nvarchar": case "varchar": case "char": case "nchar":
+                    // Memo solo para NVARCHAR(MAX)/VARCHAR(MAX) real (maxLen null o -1 en
+                    // INFORMATION_SCHEMA.COLUMNS). Cualquier longitud fija, aunque sea grande
+                    // (ej. Title nvarchar(255)), sigue siendo un campo de una sola línea --
+                    // el largo permitido no implica que el dato conceptualmente sea multilínea.
+                    if (maxLen == null || maxLen < 0) return FieldType.FtMemo;
+                    return FieldType.FtText;
+                default:
+                    return FieldType.FtText;
+            }
+        }
+
+        private static string SafeCtxCall(Func<string> f)
+        {
+            try { return f(); } catch { return ""; }
+        }
+
         // Value (del host/Python) -> CLR, para pasar args a ErpContext. La coerción fina al
         // tipo de cada parámetro (int/double/string...) la hace CtxErpRunner por reflexión.
         private static object FromValueClr(Value v)

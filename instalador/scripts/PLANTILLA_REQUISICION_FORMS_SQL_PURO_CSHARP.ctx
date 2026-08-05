@@ -28,6 +28,21 @@
 // archivo): así el usuario puede seguir usando Comercial (o tener varias requisiciones
 // abiertas a la vez) sin que esta ventana se lo impida. El patrón completo, con las reglas
 // para que no truene, está en MANUAL.md §10 "Ventanas WinForms: modeless".
+//
+// Atomicidad: SÍ (desde esta versión). El batch generado en CrearRequisicionSqlPuro() corre
+// dentro de BEGIN TRAN/COMMIT TRAN con TRY/CATCH + ROLLBACK -- antes, un fallo a mitad del
+// batch dejaba un docDocument "fantasma".
+//
+// Recalculo con XEngine tras el INSERT (docs/INVESTIGACION_XENGINE_SQL_PURO.md): este archivo
+// es C# (no un .sql suelto), así que SÍ tiene acceso a ctx.erp aunque el documento se cree con
+// INSERT directo -- el addon corre embebido en el mismo proceso que XEngine. Tras el COMMIT del
+// batch, se llama ctx.erp.RecalcCompleto(doc) (RecalcDocument+CalcularCostos+
+// UpdateDocumentPaidInfo) y ctx.erp.UpdateStatusDelivery(doc), exactamente la misma secuencia
+// que usa PLANTILLA_REQUISICION_FORMS_CSHARP.ctx (la variante ctx.erp) tras AgregarArticulo --
+// sin esto, "Estatus de entrega" quedaba en blanco en el grid nativo de Comercial. La
+// Requisición no tiene cálculo manual de kardex/costos que quitar (no captura precio ni afecta
+// inventario -- confirmado contra PLANTILLA_REQUISICION_SQL_PURO.sql), así que aquí el cambio
+// es puramente aditivo.
 
 using System;
 using System.Drawing;
@@ -447,7 +462,13 @@ void CrearRequisicionSqlPuro(bool nueva) {
         // ---- 1) Cabecera + anclas satélite (idéntico a PLANTILLA_REQUISICION_SQL_PURO.sql,
         // salvo que los valores vienen de la ventana en vez de @parámetros fijos) ----
         var sb = new StringBuilder();
+        // Todo el batch corre dentro de BEGIN TRAN/COMMIT TRAN (con TRY/CATCH + ROLLBACK) --
+        // antes, un fallo a mitad de los INSERT dejaba un docDocument "fantasma" (cabecera sin
+        // partida o sin anclas satélite), el mismo bug real encontrado en produccion de un
+        // cliente. THROW (sin argumentos, SQL Server 2012+) repropaga el error tras el ROLLBACK.
         sb.Append(@"
+BEGIN TRY
+BEGIN TRAN;
 DECLARE @doc TABLE (DocumentID INT);
 DECLARE @folio INT = ISNULL((SELECT MAX(TRY_CAST(Folio AS INT)) FROM docDocument WHERE ModuleID = 1040), 0) + 1;
 DECLARE @ahora DATETIME = GETDATE();
@@ -496,7 +517,14 @@ IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + it.PID + @" 
 ");
             lineNumber++;
         }
-        sb.Append("SELECT @docId AS DocumentID, @folio AS Folio;");
+        sb.Append(@"
+COMMIT TRAN;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    THROW;
+END CATCH
+SELECT @docId AS DocumentID, @folio AS Folio;");
 
         // ctx.Query() (no ctx.NonQuery()) porque el batch termina en un SELECT -- es el
         // mismo mecanismo que usa ctx.EjecutarSql() para correr las plantillas .sql enteras.
@@ -504,6 +532,22 @@ IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + it.PID + @" 
         if (filas.Count == 0) throw new Exception("El batch no devolvió el documento creado (revisa el SQL generado).");
         int doc = Convert.ToInt32(filas[0]["DocumentID"]);
 
+        // ---- 3) Recálculo con XEngine (ctx.erp), fuera de la transacción SQL -- el documento
+        // ya quedó comprometido (COMMIT) antes de llegar aquí. Mismo orden que la variante
+        // ctx.erp de esta plantilla. Si el motor falla, el documento YA EXISTE (con los datos
+        // del INSERT), pero su "Estatus de entrega" puede quedar sin calcular -- se avisa al
+        // usuario en vez de fallar silenciosamente. ----
+        string avisoRecalc = null;
+        try {
+            ctx.erp.RecalcCompleto(doc);
+            if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("RecalcCompleto: " + ctx.erp.LastError);
+            try { ctx.erp.UpdateStatusDelivery(doc); } catch { }
+        } catch (Exception exErp) {
+            avisoRecalc = "El documento " + doc + " se creó, pero el recálculo con ctx.erp falló: " + exErp.Message +
+                "\n\nRevisa manualmente el documento en Comercial antes de usarlo.";
+        }
+
+        if (avisoRecalc != null) ctx.Msg(avisoRecalc, "Advertencia: recálculo incompleto");
         ctx.Msg("Requisición de compra (SQL puro) " + doc + " creada exitosamente.", "OK");
         if (nueva) { LimpiarTodo(); }
         else frm.Close();

@@ -6,11 +6,20 @@
 -- numeración del documento.
 --
 -- Cómo funciona: igual que la plantilla de "Extracción de datos", {pID} se sustituye solo
--- por el documento seleccionado. La diferencia real es que esto ESCRIBE (UPDATE) -- si el
--- botón está en modo solo lectura (checkbox de la Consola, o preferencia SoloLectura del
--- usuario, T2.2), se bloquea con un mensaje claro, no truena feo.
+-- por el documento seleccionado (token viejo, SIN punto -- lee el grid de Comercial). La
+-- diferencia real es que esto ESCRIBE (UPDATE) -- si el botón está en modo solo lectura
+-- (checkbox de la Consola, o preferencia SoloLectura del usuario, T2.2), se bloquea con un
+-- mensaje claro, no truena feo.
+--
+-- El nuevo título YA NO está hardcodeado: {DATOS:docDocument.Title:*} (token CON punto,
+-- v2.75.0+) hace que, antes de correr el UPDATE, aparezca un formulario real pidiendo el
+-- texto -- el motor consulta INFORMATION_SCHEMA.COLUMNS para docDocument.Title, ve que es
+-- NVARCHAR de longitud fija y muestra un campo de texto de una sola línea (el ":*" lo marca
+-- obligatorio, para no guardar un título vacío por accidente). Este es justo el caso que
+-- resuelve la queja original ("no salió ningún recuadro para escribir el título"): antes,
+-- correr este botón sin editar el archivo a mano siempre escribía el mismo texto fijo.
 --
 -- Cuándo usar esta plantilla: como punto de partida para cualquier botón que actualice UN
--- campo de UN documento -- cambia "Title" y el texto por el campo/valor que necesites.
+-- campo de UN documento -- cambia "Title" y el token {DATOS:...} por el campo que necesites.
 
-UPDATE docDocument SET Title = 'Script de Prueba en SQL' WHERE DocumentID = {pID}
+UPDATE docDocument SET Title = {DATOS:docDocument.Title:*} WHERE DocumentID = {pID}

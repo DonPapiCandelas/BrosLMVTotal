@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.65.0.0")]
+[assembly: AssemblyVersion("2.78.0.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -235,6 +235,23 @@ namespace BrosLMV
                     "\" ni como archivo.",
                     "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
+            }
+
+            // Tokens tipados {DATOS:Tabla.Columna} (v2.75.0+): si el texto trae alguno, pide
+            // un formulario ANTES de ejecutar -- aplica a sql/python/csharp por igual (es
+            // sustitución de texto plano sobre "codigo", antes de que cada runner lo vea).
+            // Sin match, cero cambio de comportamiento (ningún script del catálogo actual
+            // usa punto dentro de {DATOS:...}).
+            var resDatos = HostClient.ResolverFormularioTokens(codigo, ctx);
+            if (resDatos.HuboTokens)
+            {
+                if (!string.IsNullOrEmpty(resDatos.Error))
+                {
+                    MessageBox.Show(resDatos.Error, "BrosLMV — token {DATOS:...}", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                if (resDatos.Cancelado) return; // cancelado por el usuario: sin mensaje de error, no se ejecuta nada.
+                codigo = resDatos.Codigo;
             }
 
             if (esPython) { EjecutarPython(appKey, codigo, ctx, emp); return; }

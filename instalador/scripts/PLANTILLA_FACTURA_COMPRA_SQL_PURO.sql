@@ -33,16 +33,28 @@
 -- confirmado contra el sandbox real, con PaymentTermID=4 el reparto es 50% al momento + 50%
 -- a 3 meses -- si tu catálogo usa otra condición de pago, ajusta el reparto en la sección 4.
 --
--- Cómo se llenan los datos: reemplaza los valores de "PARÁMETROS" antes de correr.
+-- Cómo se llenan los datos (v2.77.0+): los 7 parámetros ahora se capturan con un formulario
+-- automático (token tipado {DATOS:Tabla.Columna:*}, motor v2.75.0/2.76.0). @sourceOC/
+-- @sourceItemId se anclan a docDocument.DocumentID/docDocumentItem.DocumentItemID (mismo tipo
+-- INT que esas columnas) solo para inferir el tipo de campo -- siguen siendo "el DocumentID/
+-- DocumentItemID que tú ya conoces de la OC", no una lectura automática. @cantidad/@precio se
+-- anclan a docDocumentItem.Quantity/UnitPrice y @condicionPago a docDocument.PaymentTermID
+-- por la misma razón.
+--
+-- Atomicidad: SÍ (desde esta versión). Todo el bloque que crea cabecera + anclas satélite +
+-- partida + impuestos + agenda de pago corre dentro de BEGIN TRAN/COMMIT TRAN con BEGIN TRY/
+-- CATCH y ROLLBACK si algo falla a medio camino -- antes, un fallo intermedio dejaba un
+-- docDocument "fantasma". Las validaciones iniciales siguen corriendo ANTES de abrir la
+-- transacción.
 
--- ═══════════════════ PARÁMETROS (edítalos antes de correr) ═══════════════════
-DECLARE @sourceOC        INT = 175;   -- DocumentID de la Orden de Compra que se está facturando
-DECLARE @sourceItemId    INT = 178;   -- DocumentItemID de la partida de esa OC (columna SourceDocumentItemID)
-DECLARE @almacen         INT = 1;
-DECLARE @productoID      INT = 1;
-DECLARE @cantidad        DECIMAL(18,4) = 10;
-DECLARE @precio          DECIMAL(18,2) = 100;  -- precio unitario, sin IVA
-DECLARE @condicionPago   INT = 4;              -- condición de pago real (nunca 0, igual que en OC)
+-- ═══════════════════ PARÁMETROS (se capturan con un formulario automático, v2.77.0+) ═══════════════════
+DECLARE @sourceOC        INT = {DATOS:docDocument.DocumentID:OC origen (DocumentID):*};   -- DocumentID de la Orden de Compra que se está facturando
+DECLARE @sourceItemId    INT = {DATOS:docDocumentItem.DocumentItemID:Partida de la OC (DocumentItemID):*};   -- DocumentItemID de la partida de esa OC (columna SourceDocumentItemID)
+DECLARE @almacen         INT = {DATOS:orgDepot.DepotID:Almacén (DepotID):*};
+DECLARE @productoID      INT = {DATOS:orgProduct.ProductID:Producto (ProductID):*};
+DECLARE @cantidad        DECIMAL(18,4) = {DATOS:docDocumentItem.Quantity:Cantidad:*};
+DECLARE @precio          DECIMAL(18,2) = {DATOS:docDocumentItem.UnitPrice:Precio unitario (sin IVA):*};
+DECLARE @condicionPago   INT = {DATOS:docDocument.PaymentTermID:Condición de pago (PaymentTermID):*};              -- condición de pago real (nunca 0, igual que en OC)
 
 -- ═══════════════════ VALIDACIONES MÍNIMAS ═══════════════════
 DECLARE @proveedorBE INT;
@@ -53,6 +65,15 @@ IF NOT EXISTS (SELECT 1 FROM docDocumentItem WHERE DocumentItemID = @sourceItemI
 BEGIN SELECT 'ERROR: la partida DocumentItemID=' + CAST(@sourceItemId AS VARCHAR) + ' no pertenece a la OC ' + CAST(@sourceOC AS VARCHAR) AS Resultado; RETURN; END
 IF NOT EXISTS (SELECT 1 FROM orgProduct WHERE ProductID = @productoID)
 BEGIN SELECT 'ERROR: no existe el producto ProductID=' + CAST(@productoID AS VARCHAR) AS Resultado; RETURN; END
+
+-- ═══════════════════ TRANSACCIÓN (atomicidad real) ═══════════════════
+-- Todo lo que sigue (cálculos, cabecera, anclas satélite, partida, impuestos, agenda de pago
+-- con montos reales) corre dentro de UNA sola transacción. Antes de esto, un fallo a mitad
+-- del batch dejaba un docDocument "fantasma" -- el mismo bug real que se encontró en
+-- producción de un cliente, con años de documentos incompletos acumulados. THROW (sin
+-- argumentos, SQL Server 2012+) repropaga el error original tras el ROLLBACK.
+BEGIN TRY
+BEGIN TRAN;
 
 -- ═══════════════════ CÁLCULOS ═══════════════════
 DECLARE @folio INT = ISNULL((SELECT MAX(TRY_CAST(Folio AS INT)) FROM docDocument WHERE ModuleID = 152), 0) + 1;
@@ -208,4 +229,13 @@ VALUES (@docId, DATEADD(MONTH, 3, @ahora), 50, ROUND(@total * 0.5, 2), 2, @ahora
 -- Orden de Compra y Recepción). La póliza contable NO se genera aquí -- ver advertencia #2
 -- al inicio del archivo.
 
+COMMIT TRAN;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    THROW;
+END CATCH
+
+-- Fuera del TRY a propósito -- el documento ya quedó comprometido (COMMIT) antes de llegar
+-- aquí; un fallo leyendo este SELECT no debe interpretarse como que la transacción falló.
 SELECT 'Factura de compra (SQL puro) creada: doc=' + CAST(@docId AS VARCHAR) + ', folio=' + CAST(@folio AS VARCHAR) + ', origen=OC ' + CAST(@sourceOC AS VARCHAR) AS Resultado;

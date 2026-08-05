@@ -18,22 +18,34 @@
 -- Usa esta plantilla cuando sepas exactamente por qué la necesitas (por ejemplo, para
 -- carga masiva desde SQL puro sin abrir Comercial), no como default.
 --
--- Cómo se llenan los datos: reemplaza los valores de la sección "PARÁMETROS" de abajo
--- antes de correr -- @proveedorBE, @almacen, @productoID, @cantidad. Esta plantilla NO
--- tiene interfaz -- es la diferencia real contra las versiones Forms/WebView2 (que sí
--- capturan datos con una ventana). Con SQL puro no hay forma de mostrar una ventana; para
--- eso existen las otras 4 variantes de esta misma plantilla.
+-- Cómo se llenan los datos (v2.77.0+): los 4 parámetros (@proveedorBE, @almacen,
+-- @productoID, @cantidad) ahora se capturan con un formulario automático -- cada uno usa el
+-- token tipado {DATOS:Tabla.Columna:*} (motor v2.75.0/2.76.0, ver CHANGELOG). Antes de correr
+-- el script, ResolverFormularioTokens detecta los 4 tokens, consulta el tipo real de cada
+-- columna en INFORMATION_SCHEMA.COLUMNS y muestra UN formulario con un campo por token (todos
+-- numéricos aquí: BusinessEntityID/DepotID/ProductID son INT, Quantity es DECIMAL). @cantidad
+-- no corresponde a una columna de catálogo -- se ancla a docDocumentItem.Quantity (mismo tipo
+-- DECIMAL(18,4) que usa la partida real) solo para inferir el tipo de campo correcto, no para
+-- leer un valor existente de esa tabla. Ya no hace falta editar este archivo a mano antes de
+-- correrlo -- sigue sin haber una ventana con validaciones de negocio (combos con nombres,
+-- etc.); para eso existen las otras 4 variantes (Forms/WebView2) de esta misma plantilla.
 --
 -- Folio: se calcula como MAX(Folio)+1 para el módulo 1040 -- mismo criterio que usa
 -- ctx.erp.GetNextFolio() internamente (consecutivo simple, sin prefijo para este módulo).
 -- No es seguro contra 2 personas creando un documento en el MISMO instante (condición de
 -- carrera real) -- ctx.erp SÍ maneja eso internamente; SQL puro no.
+--
+-- Atomicidad: SÍ (desde esta versión). Todo el bloque que crea cabecera + anclas satélite +
+-- partida + relación proveedor corre dentro de BEGIN TRAN/COMMIT TRAN con BEGIN TRY/CATCH y
+-- ROLLBACK si algo falla a medio camino -- antes, un fallo intermedio dejaba un docDocument
+-- "fantasma" (cabecera sin partida o sin anclas). Las validaciones iniciales (guard clauses)
+-- siguen corriendo ANTES de abrir la transacción, sin necesidad de ella.
 
--- ═══════════════════ PARÁMETROS (edítalos antes de correr) ═══════════════════
-DECLARE @proveedorBE INT = 2;      -- BusinessEntityID del proveedor (orgBusinessEntity)
-DECLARE @almacen     INT = 1;      -- DepotID (orgDepot)
-DECLARE @productoID  INT = 1;      -- ProductID (orgProduct)
-DECLARE @cantidad    DECIMAL(18,4) = 3;
+-- ═══════════════════ PARÁMETROS (se capturan con un formulario automático, v2.77.0+) ═══════════════════
+DECLARE @proveedorBE INT = {DATOS:orgBusinessEntity.BusinessEntityID:Proveedor (BusinessEntityID):*};      -- BusinessEntityID del proveedor (orgBusinessEntity)
+DECLARE @almacen     INT = {DATOS:orgDepot.DepotID:Almacén (DepotID):*};      -- DepotID (orgDepot)
+DECLARE @productoID  INT = {DATOS:orgProduct.ProductID:Producto (ProductID):*};      -- ProductID (orgProduct)
+DECLARE @cantidad    DECIMAL(18,4) = {DATOS:docDocumentItem.Quantity:Cantidad:*};
 
 -- ═══════════════════ VALIDACIONES MÍNIMAS ═══════════════════
 IF NOT EXISTS (SELECT 1 FROM orgBusinessEntity WHERE BusinessEntityID = @proveedorBE)
@@ -46,6 +58,16 @@ BEGIN
     SELECT 'ERROR: no existe el producto ProductID=' + CAST(@productoID AS VARCHAR) AS Resultado;
     RETURN;
 END
+
+-- ═══════════════════ TRANSACCIÓN (atomicidad real) ═══════════════════
+-- Todo lo que sigue (cabecera + anclas satélite + partida + relación proveedor) se ejecuta
+-- dentro de UNA sola transacción. Antes de esto, un fallo a mitad de los INSERT dejaba un
+-- docDocument "fantasma" (cabecera sin partida, o sin anclas satélite) -- exactamente el bug
+-- que se encontró en producción de un cliente real, con años de documentos incompletos
+-- acumulados. THROW (sin argumentos, requiere SQL Server 2012+) repropaga el error original
+-- después del ROLLBACK, para que el llamador (ctx.EjecutarSql) siga viendo el mensaje real.
+BEGIN TRY
+BEGIN TRAN;
 
 -- ═══════════════════ FOLIO ═══════════════════
 DECLARE @folio INT = ISNULL((SELECT MAX(TRY_CAST(Folio AS INT)) FROM docDocument WHERE ModuleID = 1040), 0) + 1;
@@ -129,4 +151,14 @@ IF @supplierID IS NOT NULL AND NOT EXISTS (SELECT 1 FROM orgProductSupplier WHER
     INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber)
     VALUES (@productoID, @supplierID, 0, 3, 0);
 
+COMMIT TRAN;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    THROW;
+END CATCH
+
+-- El SELECT de resultado queda FUERA del TRY a propósito: si algo falla aquí (por ejemplo un
+-- problema de red leyendo el resultado) no debe interpretarse como que la transacción falló --
+-- el documento ya quedó comprometido (COMMIT) antes de llegar a esta línea.
 SELECT 'Requisición (SQL puro) creada: doc=' + CAST(@docId AS VARCHAR) + ', folio=' + CAST(@folio AS VARCHAR) AS Resultado;

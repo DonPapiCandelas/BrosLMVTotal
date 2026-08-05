@@ -47,6 +47,209 @@
   </header>
 
   <div class="ver">
+    <h2>2.78.0</h2>
+    <div class="date">2026-08-05 — Diseñador visual de formularios: navegador de esquema en vivo para tokens {DATOS:Tabla.Columna}</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>El <b>Diseñador visual de formularios</b> tiene una pestaña nueva <b>"Datos {DATOS}"</b>
+            junto a la de siempre ("Disenar (ctx.form)", sin cambios): busca una tabla real de la
+            base (con buscador — hay ~500), ve sus columnas reales con el tipo SQL y el control que
+            le va a tocar al usuario (texto/número/decimal/fecha/checkbox/memo), marca las que
+            necesita, ponles una etiqueta y si son obligatorias, y copia un snippet listo (SQL,
+            Python o C#) con los tokens <code>{DATOS:Tabla.Columna}</code> ya armados — sin
+            escribir nombres de tabla/columna de memoria.</li>
+        <li>El catálogo de tablas/columnas se trae de la base real una sola vez al abrir la
+            ventana (comprimido, mismo mecanismo que los dashboards HTML) — toda la búsqueda y
+            selección es instantánea, sin esperas mientras se usa.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.77.0</h2>
+    <div class="date">2026-08-05 — Catálogo de plantillas SQL puro migrado a tokens tipados {DATOS:Tabla.Columna}</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>Las plantillas <code>PLANTILLA_*_SQL_PURO.sql</code> del catálogo (Requisición, Orden de
+            Compra, Recepción de Compra, Factura de Compra, Cancelar Documento, Autorización por
+            Monto, Generar Series Auto, Requisición→OC Multiproveedor) y
+            <code>PLANTILLA_MODIFICAR_TITULO_SQL.sql</code> ya no requieren editar
+            <code>DECLARE @x TIPO = valor;</code> a mano antes de correr — sus parámetros que
+            corresponden a una columna real ahora usan <code>{DATOS:Tabla.Columna:*}</code> y muestran
+            un formulario automático. Parámetros sin una columna 1:1 clara (días de entrega, lote/
+            caducidad/series, acción AUTORIZAR/REVOCAR, "quién cancela") se dejaron sin migrar a
+            propósito — ver <code>docs/CHANGELOG.md</code> para el detalle por archivo.</li>
+        <li>Resuelve la queja original: <code>PLANTILLA_MODIFICAR_TITULO_SQL.sql</code> ya muestra un
+            recuadro real para escribir el título en vez de un texto fijo hardcodeado.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.76.0</h2>
+    <div class="date">2026-08-05 — Ajuste de umbral texto/memo en los tokens {DATOS:Tabla.Columna}</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Columnas de texto con longitud fija grande (ej. <code>docDocument.Title</code>,
+            <code>nvarchar(255)</code>) ya no se muestran como campo memo (varias líneas) solo por
+            permitir más de 200 caracteres — ahora memo es exclusivo de <code>NVARCHAR(MAX)</code>/
+            <code>VARCHAR(MAX)</code>/longitud desconocida. Cualquier longitud fija se ve como texto
+            de una sola línea.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.75.0</h2>
+    <div class="date">2026-08-05 — Tokens tipados {DATOS:Tabla.Columna}: formulario automático con el tipo real de la columna</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nuevo token <code>{DATOS:Tabla.Columna}</code> (con variantes
+            <code>{DATOS:Tabla.Columna:Etiqueta}</code>, <code>{DATOS:Tabla.Columna:*}</code> obligatorio, y
+            <code>{DATOS:Tabla.Columna:Etiqueta:*}</code>) usable en cualquier script (SQL puro, Python, C#):
+            antes de ejecutar, consulta <code>INFORMATION_SCHEMA.COLUMNS</code> por el tipo real de la
+            columna, arma y muestra un formulario (texto/número/decimal/fecha/checkbox/memo según el tipo)
+            y sustituye cada token por el valor capturado, ya escapado de forma segura para SQL. Si el
+            usuario cancela, no se ejecuta nada. Si la tabla/columna no existe, se avisa con un mensaje
+            claro antes de mostrar cualquier ventana. Es DISTINTO del token viejo <code>{DATOS:Campo}</code>
+            (sin punto), que sigue funcionando igual que siempre (lee un valor de la fila seleccionada en
+            el grid de Comercial) — la presencia de un punto es lo que decide cuál de los dos aplica.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.74.0</h2>
+    <div class="date">2026-08-04 — Cobertura de pruebas: 6 casos de humo nuevos para compras (SQL puro y Forms+SQL puro)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>6 casos de humo automatizados nuevos (comparación campo por campo contra un
+            documento nativo) para las plantillas de compras que quedaron sin prueba dedicada:
+            el camino base de Recepción de Compra SQL puro, Factura de Compra SQL puro, y las
+            4 ventanas "Forms + SQL puro" (Requisición, Orden de Compra, Recepción y Factura de
+            Compra), confirmando que su recálculo con el motor de Comercial (agregado en
+            v2.73.0) produce los mismos totales, impuestos y existencias que el camino 100%
+            nativo.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.73.0</h2>
+    <div class="date">2026-08-04 — Requisición, Orden de Compra, Recepción y Factura de Compra (variante SQL puro): totales y existencias más confiables</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Las 4 ventanas "SQL puro" de Requisición, Orden de Compra, Recepción de Compra y
+            Factura de Compra ahora dejan que Comercial recalcule totales, impuestos y
+            existencias justo después de crear el documento, en vez de calcularlos a mano.
+            Esto reduce el riesgo de que un documento quede con totales o existencias
+            incorrectos por un caso especial (por ejemplo, más de un tipo de impuesto en la
+            misma compra). Si algo falla en ese recálculo, la ventana te avisa claramente para
+            que revises el documento en Comercial antes de usarlo.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.72.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: Adjuntos del Documento</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: gestor de archivos adjuntos por documento (subir, ver/
+            abrir, eliminar, editar descripción). Al subir un archivo, se guarda una copia
+            propia (no solo la ruta original) para que no se pierda si mueves o borras el
+            archivo de tu equipo. Solo quien subió un archivo, o un administrador, puede
+            eliminarlo.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.71.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: Requisición → varias Órdenes de Compra por proveedor</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: dada una Requisición ya aprobada (validada) con
+            renglones de distintos proveedores, genera automáticamente una Orden de Compra por
+            cada proveedor — nunca una sola OC mezclando proveedores. Si algún proveedor ya
+            tenía su OC generada de una corrida anterior, no la duplica.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.70.0</h2>
+    <div class="date">2026-08-04 — Recepción de Compra: consolida varias partidas de la misma OC</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>La plantilla de Recepción de Compra (SQL puro) ya no crea un documento nuevo cada
+            vez que recibes otra partida de la MISMA Orden de Compra (por ejemplo, recepciones
+            parciales en días distintos) — ahora detecta que ya existe una Recepción para esa
+            OC y le agrega el renglón nuevo al mismo documento, con los totales actualizados.
+            Si intentas recibir la misma partida dos veces por error, la plantilla lo rechaza
+            en vez de duplicar el renglón.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.69.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: autonumerar series consecutivas</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: después de crear un documento, asigna
+            automáticamente números de serie consecutivos a los renglones que aún no
+            tienen — para cuando el cliente no trae sus propios números y solo quiere que
+            se autonumeren. Correr la plantilla dos veces sobre el mismo documento es
+            seguro (no genera series repetidas).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.68.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: autorizar documentos con límite de importe</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: autoriza (o revoca) un documento solo si quien firma
+            tiene permiso configurado para aprobar hasta ese monto — Comercial de fábrica
+            solo distingue "autorizado sí/no", sin límite de importe por persona. Configuras
+            quién puede autorizar cuánto en una tabla propia, y la plantilla separa
+            claramente "autorizar" de "revocar": correr el script dos veces por accidente
+            nunca deshace una autorización real.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.67.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: cancelar un documento y su cadena</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: cancela un documento y, automáticamente, todos los
+            documentos que se generaron a partir de él (por ejemplo, cancelar una Orden de
+            Compra cancela también la Recepción que ya se hizo de ella), y le devuelve el
+            inventario a su estado anterior en cada uno — antes no existía forma de deshacer
+            lo que las demás plantillas crean.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.66.0</h2>
+    <div class="date">2026-08-04 — Documentos "SQL puro" más seguros ante fallas</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Las 8 plantillas que crean documentos con SQL directo (Requisición, Orden de
+            Compra, Recepción y Factura de Compra, cada una en su versión de script y su
+            versión con ventana) ahora son "todo o nada": si algo falla a la mitad de
+            crear un documento, ya no queda un documento incompleto en Comercial — se
+            deshace por completo, como si nunca se hubiera intentado.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
     <h2>2.65.0</h2>
     <div class="date">2026-08-04 — Diseñador visual de formularios</div>
     <div class="grp add"><div class="h">Agregado</div>

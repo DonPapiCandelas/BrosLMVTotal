@@ -6,6 +6,495 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.78.0] — 2026-08-05 — Diseñador visual de formularios: navegador de esquema en vivo para tokens `{DATOS:Tabla.Columna}`
+
+> Extiende el diseñador visual existente (`PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py`, conectado
+> al menú desde v2.65.0) con un segundo modo de trabajo: en vez de escribir `Tabla.Columna` de
+> memoria para armar un token `{DATOS:Tabla.Columna}` (motor de v2.75.0/2.76.0/2.77.0), el usuario
+> busca la tabla real (con buscador — la base tiene ~500 tablas), ve sus columnas reales con el
+> `DATA_TYPE` de SQL Server y el control que le va a tocar (mismo mapeo que
+> `MapDataTypeAFieldType` en `HostClient.cs`, replicado en JS), marca las que necesita, y copia un
+> snippet listo (SQL / Python / C#) con los tokens ya armados.
+
+### Agregado
+- **`PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py` — pestaña nueva "Datos {DATOS}"** (Modo B, junto
+  al Modo A "Disenar (ctx.form)" que ya existía, sin cambios de comportamiento): selector de tabla
+  con buscador en vivo, panel de columnas con `DATA_TYPE` real y el tipo de control inferido
+  (texto/número/decimal/fecha/checkbox/memo), "canasta" de columnas elegidas (de una o varias
+  tablas) con etiqueta editable y casilla "Obligatorio", y 3 snippets generados (SQL/Python/C#)
+  con los tokens `{DATOS:Tabla.Columna:Etiqueta:*}` ya armados en un `UPDATE` de ejemplo mínimo.
+- El catálogo de tablas/columnas (`INFORMATION_SCHEMA.TABLES`/`INFORMATION_SCHEMA.COLUMNS`, ~500
+  tablas / ~18k columnas en el sandbox real) se consulta **una sola vez, en Python, antes de abrir
+  la ventana**, y se embebe comprimido (gzip+base64, mismo mecanismo que `ctx.dashboard()`,
+  descomprimido en el navegador con `DecompressionStream` nativo, sin librerías) — decisión de
+  arquitectura obligada por que `ctx.show_html_formulario` (el único canal bidireccional del
+  addon) BLOQUEA y CIERRA la ventana en cuanto llega el primer `postMessage` (confirmado leyendo
+  `RenderUiHtml` en `HostClient.cs`), así que no puede usarse para "navegar" el catálogo en vivo
+  mientras la ventana sigue abierta. Toda la búsqueda/filtro/selección corre 100% del lado del
+  navegador embebido una vez cargado, sin una sola consulta nueva mientras el usuario interactúa
+  — mismo patrón ya establecido en `PLANTILLA_ORDEN_COMPRA_WEBVIEW2_PYTHON.py`.
+- Se extendió el archivo existente (no se creó uno nuevo): un solo diseñador con 2 pestañas es
+  mejor experiencia que 2 herramientas separadas, y no hay ninguna limitación técnica real que
+  obligue a separarlos (el resultado de ambos modos se entrega igual, por portapapeles vía
+  `ctx.show_html`, que sigue siendo de una sola vía — ninguno de los 2 modos necesita guardar nada
+  en Comercial, así que el canal bidireccional no hacía falta para esto).
+
+## [2.77.0] — 2026-08-05 — Catálogo de plantillas SQL puro migrado a tokens tipados `{DATOS:Tabla.Columna}`
+
+> Aplica el motor de tokens tipados de v2.75.0/2.76.0 a las plantillas reales del catálogo
+> (`instalador/scripts/PLANTILLA_*.sql`), que hasta ahora requerían editar `DECLARE @x TIPO =
+> valor;` a mano antes de correr. Resuelve además la queja original que motivó el motor:
+> `PLANTILLA_MODIFICAR_TITULO_SQL.sql` ya no tiene el título hardcodeado.
+
+### Cambiado
+- **`PLANTILLA_MODIFICAR_TITULO_SQL.sql`** — el título ya no es el literal fijo `'Script de
+  Prueba en SQL'`: ahora es `{DATOS:docDocument.Title:*}` (obligatorio). Es el ejemplo mínimo
+  (un solo campo) para demostrar el mecanismo nuevo.
+- **`PLANTILLA_REQUISICION_SQL_PURO.sql`** — `@proveedorBE`→`{DATOS:orgBusinessEntity.
+  BusinessEntityID:*}`, `@almacen`→`{DATOS:orgDepot.DepotID:*}`, `@productoID`→
+  `{DATOS:orgProduct.ProductID:*}`, `@cantidad`→`{DATOS:docDocumentItem.Quantity:*}` (esta
+  última ancla el tipo DECIMAL(18,4) a la columna real de la partida, no lee un valor
+  existente de ahí).
+- **`PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql`** — mismos 4 anteriores más `@precio`→
+  `{DATOS:docDocumentItem.UnitPrice:*}` y `@condicionPago`→`{DATOS:docDocument.
+  PaymentTermID:*}`. `@diasEntrega` se deja hardcodeado a propósito (no corresponde a
+  ninguna columna real, es un número de días que se suma a la fecha de hoy).
+- **`PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql`** — `@sourceOC`→`{DATOS:docDocument.
+  DocumentID:*}`, `@sourceItemId`→`{DATOS:docDocumentItem.DocumentItemID:*}`, `@almacen`,
+  `@productoID`, `@cantidad`, `@precio` migrados igual que arriba. `@lote`/`@caducidad`/
+  `@seriesCSV` se dejan SIN migrar (lógica condicional real entre los 3 — lote XOR serie XOR
+  ninguno — que el formulario automático de hoy no modela).
+- **`PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql`** — mismos parámetros que Recepción
+  (`@sourceOC`/`@sourceItemId`/`@almacen`/`@productoID`/`@cantidad`/`@precio`) más
+  `@condicionPago`→`{DATOS:docDocument.PaymentTermID:*}`.
+- **`PLANTILLA_CANCELAR_DOCUMENTO_SQL_PURO.sql`** — `@documentoID`→`{DATOS:docDocument.
+  DocumentID:*}`, `@motivoID`→`{DATOS:docDocument.CancellationReasonID:*}`. `@canceladoPor`
+  se deja hardcodeado (`0` = convención interna "sistema/SQL puro", no un dato que capture el
+  usuario).
+- **`PLANTILLA_AUTORIZACION_POR_MONTO_SQL_PURO.sql`** — `@documentoID`→`{DATOS:docDocument.
+  DocumentID:*}`, `@usuarioID`→`{DATOS:engUser.UserID:*}`, `@nivel`→`{DATOS:docDocument.
+  ModuleID:*}` (ancla de tipo únicamente — el dominio real sigue siendo 1/2, validado en el
+  script). Ninguno de los dos apunta a `dbo.BrosAutorizaciones` a propósito: esa tabla la crea
+  la sección 0a de este mismo script, y `ResolverFormularioTokens` resuelve todos los tokens
+  del texto completo ANTES de ejecutar nada — en una base de datos donde nadie corrió este
+  botón todavía, `BrosAutorizaciones` no existe cuando se consulta
+  `INFORMATION_SCHEMA.COLUMNS`, y el motor abortaría con "no existe" antes de llegar a la
+  sección que la crea. `@accion` se deja SIN migrar (2 valores fijos sin columna de catálogo
+  detrás — combos de opciones fijas son una fase futura).
+- **`PLANTILLA_GENERAR_SERIES_AUTO_SQL.sql`** — `@documentoID`→`{DATOS:docDocument.
+  DocumentID:*}`.
+- **`PLANTILLA_REQUISICION_A_OC_MULTIPROVEEDOR_SQL_PURO.sql`** — `@requisicionID`→
+  `{DATOS:docDocument.DocumentID:*}`.
+- Los archivos `.ctx` (Forms + SQL puro C#, WebView2) **no se tocaron** — ya tienen su propia
+  ventana de captura de datos; el problema que resuelve esta migración es específico de las
+  plantillas SQL puro sin ningún tipo de UI.
+
+### Corregido (casos de humo)
+- **`build/humo/casos/14_requisicion_sql_puro.ps1`, `17_orden_compra_sql_puro.ps1`,
+  `20_generar_series_auto_sql.ps1`, `21_cancelar_documento_sql_puro.ps1`,
+  `22_autorizacion_por_monto_sql_puro.ps1`, `23_recepcion_compra_consolidada_sql_puro.ps1`,
+  `24_requisicion_a_oc_multiproveedor_sql_puro.ps1`, `26_recepcion_compra_base_sql_puro.ps1`,
+  `27_factura_compra_sql_puro.ps1`, `30_recepcion_compra_forms_sql_puro_csharp.ps1`,
+  `31_factura_compra_forms_sql_puro_csharp.ps1`** — estos casos cargan el archivo `.sql` real
+  y lo corren vía `BrosLMV.Runner.exe`, que NO pasa por `ResolverFormularioTokens` (eso solo
+  ocurre dentro de Comercial/Consola, ver `runner/Program.cs`) -- si el token `{DATOS:...}`
+  llegara tal cual al motor SQL tronaría con un error de sintaxis. Cada caso ahora sustituye
+  los tokens por texto plano (regex sobre `\{DATOS:Tabla\.Columna[^}]*\}`) con los MISMOS
+  valores que antes estaban hardcodeados en el archivo, simulando lo que el formulario real
+  hubiera capturado -- el resto de cada caso (comparación campo por campo contra un documento
+  nativo, validaciones funcionales) no cambió.
+
+## [2.76.0] — 2026-08-05 — Ajuste de umbral texto/memo en `MapDataTypeAFieldType`
+
+> Ajuste sobre v2.75.0: columnas `nvarchar`/`varchar`/`char`/`nchar` con longitud fija grande
+> (ej. `docDocument.Title`, `nvarchar(255)`) mapeaban a campo tipo memo (textarea) solo por
+> tener más de 200 caracteres permitidos, aunque conceptualmente sea un dato de una sola línea.
+
+### Corregido
+- **`MapDataTypeAFieldType` (`src/HostClient.cs`)** — memo ahora solo aplica a
+  `NVARCHAR(MAX)`/`VARCHAR(MAX)`/longitud desconocida (`CHARACTER_MAXIMUM_LENGTH` nulo o -1).
+  Cualquier longitud fija, sin importar qué tan grande, se muestra como campo de texto de una
+  sola línea. Actualizado también `build/humo/casos/32_datos_tabla_columna_sql_puro.ps1` para
+  reflejar el nuevo umbral.
+
+## [2.75.0] — 2026-08-05 — Tokens tipados `{DATOS:Tabla.Columna}`: formulario automático desde el tipo real de columna
+
+> Arquitectura central: nuevo motor de tokens compartido por los 3 lenguajes (SQL puro,
+> Python, C#) y por los 3 puntos de dispatch (`ClsMain.cs` botón de ribbon + recetas,
+> `Consola.cs` consola interactiva). Es sustitución de TEXTO PLANO sobre el código del
+> script, ANTES de detectar/ejecutar su lenguaje — no toca los runtimes Python/Roslyn.
+
+### Agregado
+- **`src/HostClient.cs` — `ResolverFormularioTokens(codigo, ctx)`**: escanea el texto
+  completo del script buscando `{DATOS:Tabla.Columna}` (con variantes opcionales
+  `{DATOS:Tabla.Columna:Etiqueta}`, `{DATOS:Tabla.Columna:*}` obligatorio, y
+  `{DATOS:Tabla.Columna:Etiqueta:*}` con ambos). Por cada par único `(Tabla,Columna)`
+  encontrado, consulta `INFORMATION_SCHEMA.COLUMNS` (con caché en memoria por sesión) para
+  mapear el `DATA_TYPE` real al tipo de campo del formulario (texto/número/decimal/
+  fecha/checkbox/memo; cualquier tipo no contemplado cae a texto, sin tronar), arma un
+  `UiForm` y reutiliza el renderer WinForms ya existente (`RenderUiForm`, el mismo de
+  `ctx.form()` en Python) para mostrarlo. Si el usuario confirma, sustituye cada aparición
+  literal del token por el valor capturado, codificado con `EncodeLiteral` (la misma
+  infraestructura de escaping que ya usan los parámetros `@nombre` — reutilizada, no
+  reinventada). Si cancela, aborta la ejecución completa sin correr nada. Si la
+  tabla/columna no existe, aborta ANTES de mostrar cualquier ventana con un mensaje claro.
+- **Coexistencia con el token viejo `{DATOS:Campo}`** (sin punto, `Scripting.cs` /
+  `ResolverTokensCore`, lee un valor de la fila seleccionada en el grid de Comercial): sigue
+  funcionando exactamente igual, sin cambios. La desambiguación es la presencia de un `.`
+  dentro del token — `{DATOS:Campo}` (sin punto) es el camino viejo; `{DATOS:Tabla.Columna}`
+  (con punto) es el camino nuevo. El motor nuevo corre y sustituye ANTES de que el texto
+  llegue a `ctx.EjecutarSql`/`ResolverTokensCore`, así que nunca hay colisión aunque la
+  regex vieja (`\{DATOS:([^}]+)\}`) técnicamente también matchearía un token con punto.
+- Enganchado en los 3 puntos de dispatch: `src/ClsMain.cs` (botón de ribbon — cubre también
+  recetas, ya que `EjecutarReceta` recibe el texto ya resuelto) y `src/Consola.cs` (consola
+  interactiva), ambos antes de detectar el lenguaje del script. Sin ningún `{DATOS:Tabla.
+  Columna}` en el texto, el camino es idéntico al de antes (cero overhead, cero riesgo de
+  regresión para el catálogo existente).
+- **`build/humo/casos/32_datos_tabla_columna_sql_puro.ps1`** — caso de humo end-to-end del
+  camino SQL puro: valida que `INFORMATION_SCHEMA.COLUMNS` resuelve el tipo real de una
+  columna conocida y que la sustitución de texto (vía `ResolverFormularioTokens` simulado
+  con un `FormResult` de prueba) produce un literal SQL-safe, incluyendo el caso con
+  comillas simples (`O'Brien`).
+
+## [2.74.0] — 2026-08-04 — Cobertura de pruebas: 6 casos de humo nuevos para compras
+
+> Trabajo de cobertura de pruebas (no de producto): tras los cambios de v2.66.0-v2.73.0
+> (transacciones reales en las 8 plantillas SQL_PURO/FORMS_SQL_PURO, consolidación
+> multipartida en Recepción de Compra, y recálculo vía `ctx.erp`/XEngine en los 4 híbridos
+> `FORMS_SQL_PURO_CSHARP.ctx`), 6 plantillas se quedaron sin caso de humo dedicado. Se agrega
+> una sola entrada de versión para los 6, ya que son casos de prueba, no cambios de producto.
+
+### Agregado
+- **`build/humo/casos/26_recepcion_compra_base_sql_puro.ps1`** — valida el camino BASE
+  (primera recepción, sin consolidar) de `PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql`, campo por
+  campo contra un documento nativo. El caso 23 ya cubría la consolidación multipartida
+  (v2.70.0); este caso cubre la única corrida simple que antes no tenía prueba.
+- **`build/humo/casos/27_factura_compra_sql_puro.ps1`** — valida
+  `PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql` campo por campo contra un documento nativo
+  (`docDocument`, `docDocumentItem`, `docDocumentTaxDetail`, agenda de pago con montos reales,
+  0 filas en `orgProductKardex`).
+- **`build/humo/casos/28_requisicion_forms_sql_puro_csharp.ps1`**,
+  **`29_orden_compra_forms_sql_puro_csharp.ps1`**,
+  **`30_recepcion_compra_forms_sql_puro_csharp.ps1`**,
+  **`31_factura_compra_forms_sql_puro_csharp.ps1`** — validan los 4 híbridos
+  `PLANTILLA_*_FORMS_SQL_PURO_CSHARP.ctx` mediante un script companion headless que reproduce
+  literalmente el batch de T-SQL + la secuencia de recálculo con `ctx.erp`/XEngine de cada
+  ventana (mismo límite documentado en el caso 25 de Adjuntos: las ventanas WinForms
+  modeless no son automatizables headless con las herramientas de este proyecto). Cada caso
+  compara el resultado campo por campo contra un documento 100% nativo, confirmando
+  específicamente que el recálculo vía XEngine (agregado en v2.73.0) no introdujo ninguna
+  regresión frente al camino nativo.
+
+## [2.73.0] — 2026-08-04 — Híbridos Forms+SQL puro: recálculo con ctx.erp tras el INSERT
+
+> Aplica el hallazgo de `docs/INVESTIGACION_XENGINE_SQL_PURO.md`: los 4 híbridos
+> `PLANTILLA_*_FORMS_SQL_PURO_CSHARP.ctx` son C# (no `.sql` sueltos) y corren embebidos en el
+> mismo proceso que XEngine, así que YA tenían acceso a `ctx.erp` aunque el documento se creara
+> con INSERT directo -- simplemente no lo usaban tras el INSERT. Verificado empíricamente contra
+> el sandbox (`localhost\compac`/`ComercialSP`): un `docDocumentItem` insertado a mano por SQL
+> puro queda con `SubTotal`/`Total`/`TotalTax`/`TotalLetter` y `docDocumentTaxDetail`/
+> `docDocumentTaxSum` **correctos y generados por el motor** tras `ctx.erp.RecalcCompleto`, y
+> `ctx.erp.AffectStockNEW` genera la fila de `orgProductKardex` sola (idéntica a la que antes se
+> insertaba a mano) sin duplicarla si se llama más de una vez. Comparación campo por campo
+> (Orden de Compra, doc nativo 568 vs. doc SQL puro nuevo 569): `docDocument`,
+> `docDocumentItem`, `orgProductKardex`, `docDocumentTaxDetail` y `docDocumentTaxSum`
+> IDÉNTICOS entre ambas rutas.
+
+### Cambiado
+- **`PLANTILLA_REQUISICION_FORMS_SQL_PURO_CSHARP.ctx`** — tras el `COMMIT` del batch, ahora
+  llama `ctx.erp.RecalcCompleto(doc)` + `ctx.erp.UpdateStatusDelivery(doc)` (misma secuencia
+  que la variante ctx.erp). No había cálculo manual de kardex/costos que quitar (la Requisición
+  no captura precio ni afecta inventario), así que el cambio es aditivo.
+- **`PLANTILLA_ORDEN_COMPRA_FORMS_SQL_PURO_CSHARP.ctx`** — se ELIMINÓ el cálculo manual de
+  `SubTotal`/`Total`/`TotalTax`/`TotalLetter` del encabezado, el INSERT manual a
+  `orgProductKardex` y el resumen manual de `docDocumentTaxDetail`/`docDocumentTaxSum` (este
+  último tenía además un bug real: con más de un tipo de impuesto distinto entre partidas, el
+  resumen a mano quedaba mal calculado). Tras el `COMMIT`, ahora llama
+  `ctx.erp.RecalcCompleto(doc)` + `ctx.erp.AffectStockNEW(doc)` + `ctx.erp.UpdateStatusDelivery(doc)`
+  -- misma secuencia que `PLANTILLA_ORDEN_COMPRA_FORMS_CSHARP.ctx`.
+- **`PLANTILLA_RECEPCION_COMPRA_FORMS_SQL_PURO_CSHARP.ctx`** — mismo cambio que Orden de Compra
+  (se eliminó el INSERT manual a `orgProductKardex` y el resumen manual de impuestos; se agregó
+  `ctx.erp.RecalcCompleto` + `ctx.erp.AffectStockNEW` + `ctx.erp.UpdateStatusDelivery` tras el
+  `COMMIT`). Se conservan `docDocumentLot`/`docDocumentSerialNumber`/`docDocumentDeliveryAgenda`
+  (captura real del usuario, el motor no los puede inventar). La consolidación multipartida
+  (varias OC de origen, añadida en v2.70.0) no se reprobó campo por campo en esta pasada.
+- **`PLANTILLA_FACTURA_COMPRA_FORMS_SQL_PURO_CSHARP.ctx`** — se eliminó el cálculo manual de
+  totales del encabezado y el INSERT manual a `docDocumentTaxSum`. La agenda de pago con montos
+  reales (`engPaymentTermDetail`) ya NO se calcula con un total estimado en C# antes del
+  INSERT -- ahora se genera DESPUÉS de `ctx.erp.RecalcCompleto`, leyendo el `Total` ya oficial
+  desde la BD (mismo patrón que `RegenerarPaymentAgenda()` en la variante ctx.erp). Sin
+  `AffectStockNEW`/`UpdateStatusDelivery` (la Factura no afecta inventario, eso ya lo hizo la
+  Recepción de Compra origen) -- igual que `PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx`.
+- En los 4 archivos: si `ctx.erp` falla tras el `COMMIT` (el documento YA EXISTE por el INSERT),
+  se avisa al usuario con `ctx.Msg` en vez de fallar en silencio -- no se dejó cálculo manual de
+  respaldo a propósito (es la fuente de los bugs reales que motivaron esta investigación).
+
+## [2.72.0] — 2026-08-04 — Nueva plantilla: Adjuntos del Documento (Forms C#)
+
+> BrosLMV no tenía ninguna plantilla de gestión de adjuntos. Se analizaron dos
+> implementaciones reales de cliente ya documentadas en este proyecto: `CargaArch` (AHMEX,
+> `entrenamiento/bacros/evidence/rtAppFunction_34.py`) y `AdjuntarArch` (Business Conexión,
+> `entrenamiento/businessconexion/evidence/rtAppFunction_10.py`, comparación completa en
+> `entrenamiento/businessconexion/docs/07_scripts_documentados_completo.md` sección 1). Ambas
+> apuntan de forma independiente a la misma tabla nativa `dbo.engModuleFile`, pero difieren en
+> dos puntos clave: AHMEX copia el archivo a una carpeta propia por usuario y controla quién
+> puede eliminar; Business Conexión solo guarda la ruta original (adjunto huérfano si se
+> mueve/borra) y no controla el borrado. Esta plantilla se queda con lo mejor de ambas.
+
+### Agregado
+- **`PLANTILLA_ADJUNTOS_DOCUMENTO_FORMS_CSHARP.ctx`** — ventana WinForms sobre el documento
+  seleccionado en el grid nativo (`ctx.GetSelectedIds()`, no `{pID}` -- eso es solo SQL puro):
+  grid con columnas Archivo/Descripción(editable)/Creado/Usuario, botones Agregar/Abrir/
+  Eliminar/Guardar descripciones/Salir. Usa `dbo.engModuleFile` (tabla NATIVA de Comercial
+  Pro, confirmada contra el sandbox `localhost\compac`/`ComercialSP` vía
+  `INFORMATION_SCHEMA.COLUMNS` -- se descartó una tabla propia porque ambos clientes ya
+  apuntan ahí de forma independiente y una tabla propia perdería compatibilidad con
+  instalaciones que ya tengan adjuntos ahí). Al agregar: copia el archivo físico a una carpeta
+  propia por usuario (patrón AHMEX) en vez de solo guardar la ruta de origen (patrón Business
+  Conexión, que deja adjuntos huérfanos) -- maneja duplicados de nombre con sufijo `_1`,
+  `_2`... Al eliminar: solo quien subió el archivo (`CreatedBy` contra `ctx.UserIdReal()`) o un
+  administrador de adjuntos puede borrarlo -- **mejora sobre ambas implementaciones
+  originales**: la carpeta destino y el rol de administrador son CONFIGURABLES vía
+  `zzBrosPref` (`Tipo='AdjuntosCarpeta'` global, `Tipo='AdjuntosAdmin'` por usuario) en vez de
+  hardcodeados (`\\192.168.101.70\...` en AHMEX, `\\10.50.0.253\...` en Business Conexión) o
+  inexistentes (ninguno de los 2 clientes tenía escape de administrador si el dueño original ya
+  no podía actuar). Solo existe como plantilla Forms (necesita selector de archivos real, no
+  tiene sentido como SQL puro sin UI). Caso de humo `25_adjuntos_documento.ps1` valida
+  headless (vía `BrosLMV.Runner.exe`, sin abrir la ventana) el INSERT/ownership sobre
+  `engModuleFile`: dueño puede borrar su propio adjunto, otro usuario normal no puede, un
+  usuario marcado `AdjuntosAdmin` sí puede. La parte de UI (selector de archivos, copia física,
+  clics de botones) solo se validó por inspección de código -- WinForms modal no es
+  automatizable headless con las herramientas de este proyecto (mismo límite que el resto del
+  catálogo de plantillas Forms C#, ninguna tiene smoke test de UI end-to-end).
+
+## [2.71.0] — 2026-08-04 — Requisición → N Órdenes de Compra por proveedor (SQL puro)
+
+> Se identificó este patrón analizando un stored procedure real de producción de un cliente
+> (`ZLCGENERA_OC`, ver `entrenamiento/bacros/docs/07_sp_triggers_para_broslmv.md` sección
+> "ZLCGENERA_OC"): dada una Requisición ya validada con renglones de varios proveedores
+> distintos, genera UNA Orden de Compra POR PROVEEDOR (nunca una sola OC mezclando
+> proveedores). El SP original tenía 2 validaciones reales y correctas (documento origen
+> validado, dedup por proveedor) pero cero transacción y cero manejo de errores.
+
+### Agregado
+- **`PLANTILLA_REQUISICION_A_OC_MULTIPROVEEDOR_SQL_PURO.sql`** — dado `@requisicionID`, genera
+  una OC (módulo 183) por cada proveedor distinto que aparezca en los renglones de la
+  Requisición. **Primera plantilla `SQL_PURO` de BrosLMV que usa el flag nativo
+  `docDocument.ValidatedOn`/`ValidatedBy`** como precondición de negocio: la Requisición debe
+  estar `ValidatedOn IS NOT NULL` — si no, rechaza con mensaje claro antes de tocar nada
+  (guard clause, sin abrir transacción). Proveedor por renglón: se confirmó contra
+  `INFORMATION_SCHEMA` del sandbox que `docDocumentItem.SupplierBusinessEntityID` es una
+  columna que YA EXISTE en el esquema para esto pero que ningún documento del sandbox trae
+  poblada hoy (ni nativos ni `PLANTILLA_REQUISICION_SQL_PURO.sql`, que asume 1 solo proveedor
+  a nivel de cabecera) — se usa `COALESCE(NULLIF(SupplierBusinessEntityID,0),
+  BusinessEntityID de cabecera)` por renglón, así una Requisición "clásica" de un proveedor
+  también funciona (genera 1 sola OC). Dedup: antes de generar la OC de un proveedor, busca si
+  ya existe `docDocument WHERE SourceDocumentID=@requisicionID AND
+  BusinessEntityID=<proveedor> AND ModuleID=183 AND DeletedOn IS NULL AND CancelledOn IS
+  NULL` — si existe, la salta (se reporta en el resultado, no se duplica). Precio de cada
+  partida: `orgProductSupplier.CostPrice` del par (producto, proveedor) si está registrado, 0
+  si no (misma limitación documentada que `PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql`). Todo el
+  bloque (N documentos completos: cabecera + anclas + partidas + agenda de entrega +
+  impuestos + kardex + relación producto-proveedor) corre dentro de UNA transacción — o se
+  generan todas las OC que faltan, o ninguna (`BEGIN TRY/BEGIN TRAN...COMMIT TRAN/END TRY
+  BEGIN CATCH...ROLLBACK TRAN; THROW; END CATCH`, mismo estándar desde v2.66.0). Bug real
+  encontrado y corregido durante la prueba en sandbox: declarar tablas de trabajo
+  (`@itemsProv`/`@itemsIns`) DENTRO del `WHILE` no las reinicia de forma confiable entre
+  vueltas (la 2a vuelta reusó el `DocumentID` de la 1a, violación de PK) — se corrigió
+  declarándolas UNA vez antes del loop con `DELETE` al inicio de cada vuelta, y usando
+  `SCOPE_IDENTITY()` en vez de `OUTPUT INTO` una tabla acumulable para el `DocumentID` nuevo.
+- Caso de humo `24_requisicion_a_oc_multiproveedor_sql_puro.ps1`: arma una Requisición con 2
+  renglones de 2 proveedores distintos, confirma que SIN validar la plantilla rechaza (0 OC
+  generadas), que validada genera EXACTAMENTE 2 OC (una por proveedor, cada una con solo el
+  renglón de su proveedor), y que una 2a corrida sobre la misma Requisición NO duplica
+  (dedup funcionando).
+
+## [2.70.0] — 2026-08-04 — Recepción de Compra: consolidar varias partidas de la misma OC (SQL puro)
+
+> `PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql` creaba un documento de Recepción nuevo en CADA
+> corrida, incluso cuando dos corridas recibían partidas distintas de la MISMA Orden de
+> Compra (ej. recepciones parciales en días distintos) — el caso real de negocio es que esas
+> corridas deberían terminar en el MISMO documento consolidado, no en documentos separados.
+> Se identificó este patrón analizando un stored procedure real de producción de un cliente
+> (`LCCREAResepcioncompra1`, ver `entrenamiento/bacros/docs/07_sp_triggers_para_broslmv.md`
+> sección "LCCREAResepcioncompra / LCCREAResepcioncompra1"), que ya resolvía el caso pero con
+> un antipatrón real: usaba el campo `Custom1` (sobrecargado con otro propósito) como llave
+> de correlación, lo que causó bugs de producción cuando dos documentos de origen distinto
+> compartían el mismo texto en `Custom1`.
+
+### Cambiado
+- **`PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql`** — se extendió la plantilla existente (no se
+  creó una variante `_MULTIPARTIDA.sql` separada: el cambio es un `IF/ELSE` acotado dentro de
+  la transacción ya existente, no ameritaba duplicar 350 líneas de plantilla para mantener dos
+  copias sincronizadas). Antes de crear cabecera nueva, valida si YA existe un `docDocument`
+  (ModuleID=184, `DeletedOn IS NULL`, `CancelledOn IS NULL`) con `SourceDocumentID` igual a la
+  OC origen (`@sourceOC`) — a diferencia del SP original, la llave de correlación es
+  `SourceDocumentID` (columna nativa dedicada, ya poblada por el paso 1 de la plantilla, sin
+  ambigüedad posible), **no** `Custom1`/`Custom2` ni ningún campo compartido con otro
+  propósito. Si existe, la corrida reutiliza ese `DocumentID`: no repite cabecera ni anclas
+  satélite (`docDocumentExt`/`docDocumentExtra`/`docDocumentCFD`/`docDocumentPaymentAgenda`,
+  que son una fila por documento), solo agrega el renglón nuevo (`LineNumber` consecutivo, no
+  fijo en 1) y **recalcula los totales de cabecera** (`SubTotal`, `Total`, `TotalTax`,
+  `TotalCost`, `TotalLetter`, `Balance`) sumando la partida nueva — confirmado que el INSERT
+  del renglón por sí solo NO actualiza la cabecera (son columnas independientes, no una vista
+  calculada). `docDocumentTax`/`docDocumentTaxSum` (una fila por documento) se ACTUALIZAN en
+  vez de insertarse de nuevo cuando se consolida; `docDocumentTaxDetail` (una fila por
+  renglón) siempre se inserta. Guard clause nueva: si la partida de OC indicada
+  (`@sourceItemId`) ya tiene un renglón en esa Recepción (por `DeliverDocumentItemID`), la
+  corrida se rechaza ANTES de abrir la transacción — evita duplicar el mismo renglón dos
+  veces por una corrida repetida por error. Todo sigue dentro de la transacción
+  `BEGIN TRY/BEGIN TRAN...COMMIT TRAN/END TRY BEGIN CATCH...ROLLBACK TRAN; THROW; END CATCH`
+  agregada en v2.66.0. Lo que sigue SIN resolver: consolidar varias OC **distintas** en una
+  sola Recepción (multi-proveedor) — para ese caso sigue aplicando
+  `PLANTILLA_RECEPCION_COMPRA_FORMS_CSHARP.ctx`.
+- Caso de humo `23_recepcion_compra_consolidada_sql_puro.ps1`: crea una OC con 2 partidas
+  (2 productos distintos), corre la plantilla de Recepción dos veces (una por partida)
+  apuntando a la misma OC origen, y confirma con `sqlcmd` que el resultado es UN SOLO
+  `docDocument` de Recepción (no dos) con AMBOS renglones y totales de cabecera acumulados
+  correctamente (`SubTotal`/`TotalTax`/`Total`). También confirma que una 3a corrida
+  repitiendo la misma partida es rechazada por el guard clause sin duplicar el renglón.
+
+## [2.69.0] — 2026-08-04 — Autonumerar series consecutivas (SQL puro)
+
+> `PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql` exige que el usuario liste a mano las series en
+> `@seriesCSV` para productos con `orgProduct.UseSerialNumber=1` — no cubre el caso real
+> "no traigo mis propios números, solo autonumera". Se identificó esta utilidad
+> complementaria analizando un stored procedure real de producción de un cliente
+> (`LCCREASeries`, ver `entrenamiento/bacros/docs/07_sp_triggers_para_broslmv.md` sección
+> "LCCREASeries"), que asignaba series con `DECLARE CURSOR ... WHILE` fila por fila.
+
+### Agregado
+- **`PLANTILLA_GENERAR_SERIES_AUTO_SQL.sql`** — se corre DESPUÉS de crear un documento
+  (`@documentoID`) para asignar series consecutivas a los renglones de productos
+  `UseSerialNumber=1` que se quedaron sin serie, formato `<ClaveProducto>.<consecutivo de
+  5 dígitos>` (idéntico al SP original — no tenía defecto en sí mismo). **Corrige los 2
+  defectos reales del original**: (1) el cursor fila-por-fila tenía una condición de
+  carrera real (dos ejecuciones concurrentes podían leer el mismo `MAX(...)+1` antes de
+  que la primera terminara de insertar, generando series duplicadas) — esta plantilla es
+  100% set-based (`ROW_NUMBER()`, sin cursor, sin `WHILE`) y además toma un
+  `sp_getapplock` exclusivo (`@LockOwner='Transaction'`) antes de leer el máximo existente,
+  que es lo que de verdad serializa corridas concurrentes (`ROW_NUMBER()` solo no evita la
+  carrera entre transacciones distintas); (2) el match del máximo existente
+  (`SerialNumber LIKE '%'+Clave+'%'`) era demasiado laxo y tronaba con `CONVERT` si
+  existía cualquier serie vieja de formato libre — esta plantilla ancla el match al
+  formato exacto con `LIKE '<Clave>.[0-9][0-9][0-9][0-9][0-9]'` + `TRY_CONVERT`, así que
+  series heredadas de otro formato simplemente se ignoran, no rompen el cálculo.
+  Idempotente: correr la plantilla dos veces sobre el mismo documento es un no-op seguro
+  (segunda corrida no encuentra pendientes, no inserta nada, responde `'OK: ...'` en vez de
+  `'ERROR: ...'`). Mismo patrón `BEGIN TRY/BEGIN TRAN...COMMIT TRAN/END TRY BEGIN
+  CATCH...ROLLBACK TRAN; THROW; END CATCH` que el resto del catálogo `SQL_PURO` desde
+  v2.66.0.
+- Caso de humo `20_generar_series_auto_sql.ps1`: crea una Orden de Compra + Recepción de
+  Compra reales para el producto de humo con serie (`HUMO-PROD-SERIE`, `ProductID=3`) sin
+  capturar `@seriesCSV`, corre la plantilla nueva y valida contra el sandbox que las series
+  generadas son consecutivas, sin duplicados, con el formato exacto esperado, y que
+  continúan desde el máximo ya usado por el producto (no reinician en 1 si ya había series
+  de una corrida anterior); corre la plantilla una segunda vez sobre el mismo documento y
+  confirma que no inserta filas nuevas (idempotencia).
+
+## [2.68.0] — 2026-08-04 — Autorización de documentos con límite de importe por firmante
+
+> Comercial Pro solo ofrece autorizado sí/no (2 niveles nativos, `AuthorizedOn`/
+> `AuthorizedBy` y `Authorized2On`/`Authorized2By` en `docDocument`), sin límite de importe
+> configurable por firmante. Se identificó esta necesidad de negocio real analizando 2
+> stored procedures de producción de un cliente real (`ZLCAUTODG`/`ZLCAUTOOP`, ver
+> `entrenamiento/bacros/docs/07_sp_triggers_para_broslmv.md` sección "ZLCAUTODG /
+> ZLCAUTOOP"), que llevan años en producción con el criterio de comparar `Total*Rate` del
+> documento contra un `ImporteMax` configurado por usuario.
+
+### Agregado
+- **Tabla propia `dbo.BrosAutorizaciones`** (`UserID`, `Nivel` 1 o 2, `Rol`, `ImporteMax` —
+  0 = sin límite, mismo criterio que el SP original) — clave primaria `(UserID, Nivel)`.
+  Se crea de forma idempotente (`IF OBJECT_ID(...) IS NULL`) dentro de la propia plantilla,
+  no en `instalador/sql/provision_empresa.sql` — a diferencia de las tablas `zzBros*`
+  (que sí provisiona el instalador una sola vez por empresa), las plantillas
+  `PLANTILLA_*_SQL_PURO.sql` son scripts autocontenidos que el usuario pega y corre
+  directo, sin pasar por el instalador completo.
+- **`PLANTILLA_AUTORIZACION_POR_MONTO_SQL_PURO.sql`** — autoriza o revoca el nivel 1 o 2 de
+  un documento (`@documentoID`, `@usuarioID`, `@nivel`, `@accion`). **Corrige el defecto
+  central del SP original**: `ZLCAUTODG`/`ZLCAUTOOP` hacían TOGGLE (la misma llamada
+  autorizaba si estaba desautorizado y desautorizaba si ya estaba autorizado) — peligroso,
+  porque correr el script 2 veces por accidente revocaba una autorización real sin que
+  nadie lo pidiera. Esta plantilla separa explícitamente `@accion='AUTORIZAR'` de
+  `@accion='REVOCAR'` en un solo script (comparten casi todo el cuerpo — 2 plantillas
+  separadas hubiera duplicado las validaciones sin ganar nada). AUTORIZAR exige que el
+  usuario tenga fila en `BrosAutorizaciones` para ese nivel y que el monto del documento no
+  exceda su `ImporteMax`; REVOCAR no exige límite de importe (revocar siempre debe poder
+  hacerse). Mismo patrón `BEGIN TRY/BEGIN TRAN...COMMIT TRAN/END TRY BEGIN CATCH...ROLLBACK
+  TRAN; THROW; END CATCH` que el resto del catálogo `SQL_PURO` desde v2.66.0.
+- Caso de humo `22_autorizacion_por_monto_sql_puro.ps1`: crea una Orden de Compra real
+  ($185.60) y prueba contra el sandbox los 4 caminos — sin configuración (rechaza), límite
+  insuficiente $50 (rechaza), límite suficiente $99,999 (autoriza), y confirma que llamar
+  AUTORIZAR o REVOCAR 2 veces seguidas NUNCA alterna el estado (la corrección central).
+  Limpia los datos de prueba de `BrosAutorizaciones` al terminar (la tabla se queda, es
+  infraestructura de la plantilla; los datos del usuario de prueba no).
+
+## [2.67.0] — 2026-08-04 — Plantilla de cancelación en cascada (SQL puro)
+
+> Ninguna plantilla del proyecto documentaba cómo deshacer lo que las plantillas
+> `SQL_PURO` crean. Se encontró este hueco analizando un stored procedure real de
+> producción de un cliente (`zLCCANCELADOC`, ver
+> `entrenamiento/bacros/docs/07_sp_triggers_para_broslmv.md`) que cancelaba un documento
+> pero solo un nivel de sus hijos (vía `SourceDocumentID`), y nunca tocaba el kardex —
+> dejaba inventario "fantasma" comprometido o recibido detrás de un documento cancelado.
+
+### Agregado
+- **`PLANTILLA_CANCELAR_DOCUMENTO_SQL_PURO.sql`** — cancela un documento (`@documentoID`)
+  y TODA su cadena de documentos derivados vía `SourceDocumentID` (hijos, nietos, etc.),
+  usando un CTE recursivo (a diferencia del SP de referencia, que solo cancelaba un nivel).
+  Revierte el efecto en `orgProductKardex` de cada documento cancelado marcando
+  `Cancelled=1` (la misma columna que ya usan todas las consultas de Stock del proyecto
+  para excluir movimientos inválidos) — evita tener que calcular a mano el signo de
+  `QuantityToBeDelivered` según cada tipo de documento. Guard clauses (documento debe
+  existir, no estar eliminado, no estar ya cancelado) corren antes de abrir la
+  transacción; todo el UPDATE de cabecera + kardex de la cadena corre dentro de
+  `BEGIN TRY/BEGIN TRAN...COMMIT TRAN/END TRY BEGIN CATCH...ROLLBACK TRAN; THROW; END CATCH`,
+  el mismo estándar que el resto de plantillas `SQL_PURO` desde v2.66.0. Probado en el
+  sandbox real cancelando una cadena Orden de Compra → Recepción de Compra creada con las
+  plantillas existentes: ambos documentos quedaron cancelados y ambas filas de kardex
+  marcadas `Cancelled=1`, confirmado con `sqlcmd`.
+- Caso de humo `21_cancelar_documento_sql_puro.ps1` que valida el flujo completo contra el
+  sandbox.
+
+## [2.66.0] — 2026-08-04 — Atomicidad transaccional en las 8 plantillas "SQL puro"
+
+> Se encontró, analizando código de producción real de un cliente que sufrió este bug
+> durante años, que las plantillas "SQL puro" (que insertan varias tablas relacionadas de
+> un documento — docDocument + docDocumentExtra + docDocumentCFD + docDocumentPaymentAgenda
+> + renglones — con INSERT sueltos) no tenían ninguna protección transaccional: si un
+> INSERT intermedio fallaba, quedaba un docDocument "fantasma" a medias (cabecera sin
+> partida, o sin anclas satélite).
+
+### Cambiado
+- **Las 8 plantillas "SQL puro"** (`PLANTILLA_REQUISICION_SQL_PURO.sql`,
+  `PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql`, `PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql`,
+  `PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql` y sus 4 equivalentes
+  `..._FORMS_SQL_PURO_CSHARP.ctx`) ahora envuelven todo el bloque de INSERT (cabecera +
+  anclas satélite + partidas + impuestos/kardex/agenda de pago según aplique) en
+  `BEGIN TRY / BEGIN TRAN ... COMMIT TRAN / END TRY BEGIN CATCH ... ROLLBACK TRAN; THROW;
+  END CATCH`. Las validaciones iniciales (guard clauses que hacen `RETURN`) siguen
+  corriendo ANTES de abrir la transacción, sin cambios.
+- **`PLANTILLA_FACTURA_COMPRA_FORMS_SQL_PURO_CSHARP.ctx`** además se corrigió para que la
+  agenda de pago (antes insertada con `ctx.NonQuery()` en llamadas SEPARADAS, DESPUÉS del
+  COMMIT del documento) ahora se genere como texto SQL dentro del mismo batch — quedaba
+  fuera de la transacción y podía dejar una Factura sin agenda de pago si fallaba.
+
+### Verificado
+- Los 19 casos de humo permanentes (`build/probar_humo.ps1`) siguen en verde, incluyendo
+  `14_requisicion_sql_puro.ps1` y `17_orden_compra_sql_puro.ps1` (comparan campo por campo
+  contra un documento nativo de referencia).
+- Prueba de rollback manual sobre `PLANTILLA_REQUISICION_SQL_PURO.sql`: se rompió a
+  propósito un INSERT intermedio (columna inexistente) y se confirmó contra el sandbox que
+  NO quedó ningún `docDocument` fantasma (conteo de documentos antes/después idéntico, 0
+  cabeceras sin partida).
+
+### Pendiente
+- `PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql`, `PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql` y los
+  4 `..._FORMS_SQL_PURO_CSHARP.ctx` no tienen un caso de humo dedicado en
+  `build/humo/casos/` (solo Requisición y Orden de Compra lo tienen) — la prueba de
+  rollback de esta versión fue manual, no quedó automatizada. Crear esos casos de humo es
+  trabajo pendiente para otra tarea.
+
 ## [2.65.0] — 2026-08-04 — Diseñador visual de formularios conectado al menú
 
 > Respuesta a la pregunta del usuario sobre si BrosLMV podía tener algo como el diseñador

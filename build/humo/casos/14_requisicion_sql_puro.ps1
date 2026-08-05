@@ -65,7 +65,18 @@ if ($LASTEXITCODE -ne 0) { Write-Host "  [ERROR] No se pudo crear el documento d
 $docNativo = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentID) FROM docDocument" -W 2>&1 | Select-Object -First 1).Trim()
 
 # 2) Crear el documento con la plantilla SQL puro real (el archivo que se distribuye).
-$codigoSqlPuro = "-- job: safe-offline`n" + (Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_REQUISICION_SQL_PURO.sql") -Raw)
+# v2.77.0: los 4 parametros ahora son tokens {DATOS:Tabla.Columna:*} (formulario automatico,
+# ver ResolverFormularioTokens en src/HostClient.cs) en vez de literales hardcodeados -- el
+# Runner headless NO resuelve esos tokens (eso solo pasa dentro de Comercial/Consola real), asi
+# que aqui se sustituyen a mano por los MISMOS valores default que antes traia el archivo
+# (proveedorBE=2, almacen=1, productoID=1, cantidad=3), simulando lo que el formulario hubiera
+# capturado.
+$codigoSqlPuro = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_REQUISICION_SQL_PURO.sql") -Raw
+$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
+$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
+$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'
+$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:docDocumentItem\.Quantity[^}]*\}', '3'
+$codigoSqlPuro = "-- job: safe-offline`n" + $codigoSqlPuro
 if (-not (Upsert-Boton "HUMO_REQ_SQL_PURO" "Humo 14 - SQL puro" $codigoSqlPuro)) { exit 1 }
 
 $salidaPuro = & $RunnerExe --appkey HUMO_REQ_SQL_PURO --bd $Database 2>&1

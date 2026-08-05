@@ -7,11 +7,39 @@
 -- sandbox (no solo contra capturas de otro entorno -- ver advertencia de
 -- PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql sobre por qué eso importa).
 --
--- ⚠️ ADVERTENCIA REAL: esta plantilla recibe UNA sola partida de UNA sola Orden de Compra
--- por corrida (igual que las primeras versiones de PLANTILLA_REQUISICION_SQL_PURO.sql y
--- PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql, que también empezaron así) -- para consolidar VARIAS
--- Órdenes de Compra en una sola Recepción (el caso real de negocio, documentado en
--- MANUAL.md §10.4), usa PLANTILLA_RECEPCION_COMPRA_FORMS_CSHARP.ctx.
+-- ⚠️ ADVERTENCIA REAL (parcialmente superada desde esta versión): esta plantilla recibe UNA
+-- sola partida por corrida -- para consolidar VARIAS partidas de la MISMA OC en una sola
+-- Recepción (una corrida por partida recibida, ej. recepciones parciales en días distintos),
+-- ver la sección "Consolidación por OC origen" más abajo: desde v2.70.0 detecta sola si ya
+-- existe una Recepción abierta para @sourceOC y reutiliza su DocumentID en vez de crear un
+-- documento nuevo cada vez. Lo que SIGUE sin resolver aquí es consolidar VARIAS Órdenes de
+-- Compra DISTINTAS en una sola Recepción (multi-proveedor/multi-OC en un solo documento) --
+-- para ese caso usa PLANTILLA_RECEPCION_COMPRA_FORMS_CSHARP.ctx.
+--
+-- ═══════════════════ Consolidación por OC origen (v2.70.0) ═══════════════════
+-- Motivación real: se identificó este patrón analizando un stored procedure real de
+-- producción de un cliente (`LCCREAResepcioncompra1`, ver
+-- entrenamiento/bacros/docs/07_sp_triggers_para_broslmv.md sección
+-- "LCCREAResepcioncompra / LCCREAResepcioncompra1") -- antes de insertar cabecera nueva,
+-- valida si YA existe una Recepción para la OC origen y, si existe, solo agrega el renglón
+-- en vez de crear un documento nuevo. El SP original usaba el campo `Custom1` como llave de
+-- correlación de forma SOBRECARGADA (también lo usaba para otra cosa) -- eso es un antipatrón
+-- real que causó bugs en producción (dos documentos de origen distinto que compartían el
+-- mismo texto en Custom1 se confundían). Esta plantilla NO repite ese error: usa
+-- `SourceDocumentID` (columna nativa dedicada exactamente a "de qué documento se derivó
+-- este", ya poblada por el paso 1 de abajo) como único criterio de búsqueda -- sin
+-- ambigüedad, sin campo compartido con otro propósito.
+--
+-- Regla exacta: si YA existe un docDocument (ModuleID=184, DeletedOn IS NULL,
+-- CancelledOn IS NULL) con SourceDocumentID=@sourceOC, esta corrida NO crea cabecera nueva
+-- -- reutiliza ese DocumentID, solo agrega el renglón de la partida indicada por
+-- @sourceItemId y RECALCULA los totales de la cabecera existente (SubTotal, Total, TotalTax,
+-- TotalCost, TotalLetter, Balance) sumando esta partida -- el INSERT del renglón por sí solo
+-- NO actualiza la cabecera (confirmado leyendo cómo esta misma plantilla calcula la cabecera
+-- en el paso 1: son columnas independientes, no una vista calculada). Guard clause: si la
+-- partida @sourceItemId YA tiene un renglón en esa Recepción (por DeliverDocumentItemID), la
+-- validación inicial rechaza la corrida ANTES de abrir la transacción -- evita duplicar el
+-- mismo renglón dos veces por una segunda corrida accidental con los mismos parámetros.
 --
 -- Diferencia real frente a Orden de Compra: la Recepción SÍ mueve inventario de verdad
 -- (kardex con Quantity=CANTIDAD RECIBIDA, no 0 como la OC) y usa una columna de vínculo
@@ -33,17 +61,36 @@
 -- al DocumentItemID de ESTA Recepción (docDocumentLot.DocumentItemID / docDocumentSerialNumber
 -- .DocumentItemID), no al de la OC origen.
 --
--- Cómo se llenan los datos: reemplaza los valores de "PARÁMETROS" antes de correr. Deja
--- @lote/@caducidad en NULL si el producto no usa lote; deja @seriesCSV en NULL/vacío si no
--- usa número de serie (nunca los dos a la vez en el mismo producto).
+-- Cómo se llenan los datos (v2.77.0+): @sourceOC, @sourceItemId, @almacen, @productoID,
+-- @cantidad y @precio ahora se capturan con un formulario automático (token tipado
+-- {DATOS:Tabla.Columna:*}, motor v2.75.0/2.76.0). @sourceOC/@sourceItemId se anclan a
+-- docDocument.DocumentID/docDocumentItem.DocumentItemID (mismo tipo INT que esas columnas)
+-- solo para inferir el tipo de campo -- siguen siendo "el DocumentID/DocumentItemID que tú ya
+-- conoces de la OC", no una lectura automática. @cantidad/@precio se anclan a
+-- docDocumentItem.Quantity/UnitPrice por la misma razón.
+--
+-- @lote, @caducidad y @seriesCSV NO se migraron a propósito: son 3 parámetros con lógica
+-- condicional real entre sí (lote XOR serie XOR ninguno, ver comentario arriba) -- el
+-- formulario automático de hoy no soporta "pide este campo solo si el usuario no llenó aquel
+-- otro", así que forzar un token aquí obligaría a mostrar los 3 campos siempre (o a dejarlos
+-- opcionales sin poder garantizar que un campo vacío se traduzca a NULL en vez de cadena
+-- vacía). Sigue habiendo que editarlos a mano antes de correr: deja @lote/@caducidad en NULL
+-- si el producto no usa lote; deja @seriesCSV en NULL/vacío si no usa número de serie (nunca
+-- los dos a la vez en el mismo producto).
+--
+-- Atomicidad: SÍ (desde esta versión). Todo el bloque que crea cabecera + anclas satélite +
+-- partida + impuestos + kardex real + lote/serie corre dentro de BEGIN TRAN/COMMIT TRAN con
+-- BEGIN TRY/CATCH y ROLLBACK si algo falla a medio camino -- antes, un fallo intermedio
+-- dejaba un docDocument "fantasma". Las validaciones iniciales siguen corriendo ANTES de
+-- abrir la transacción.
 
--- ═══════════════════ PARÁMETROS (edítalos antes de correr) ═══════════════════
-DECLARE @sourceOC        INT = 171;   -- DocumentID de la Orden de Compra que se está recibiendo
-DECLARE @sourceItemId    INT = 172;   -- DocumentItemID de la partida de esa OC (columna DeliverDocumentItemID)
-DECLARE @almacen         INT = 1;
-DECLARE @productoID      INT = 2;
-DECLARE @cantidad        DECIMAL(18,4) = 7;    -- cuánto se recibe AHORA (puede ser parcial vs. la OC)
-DECLARE @precio          DECIMAL(18,2) = 250;  -- mismo precio unitario de la OC (costo = precio aquí)
+-- ═══════════════════ PARÁMETROS (la mayoría se capturan con un formulario automático, v2.77.0+) ═══════════════════
+DECLARE @sourceOC        INT = {DATOS:docDocument.DocumentID:OC origen (DocumentID):*};   -- DocumentID de la Orden de Compra que se está recibiendo
+DECLARE @sourceItemId    INT = {DATOS:docDocumentItem.DocumentItemID:Partida de la OC (DocumentItemID):*};   -- DocumentItemID de la partida de esa OC (columna DeliverDocumentItemID)
+DECLARE @almacen         INT = {DATOS:orgDepot.DepotID:Almacén (DepotID):*};
+DECLARE @productoID      INT = {DATOS:orgProduct.ProductID:Producto (ProductID):*};
+DECLARE @cantidad        DECIMAL(18,4) = {DATOS:docDocumentItem.Quantity:Cantidad recibida:*};    -- cuánto se recibe AHORA (puede ser parcial vs. la OC)
+DECLARE @precio          DECIMAL(18,2) = {DATOS:docDocumentItem.UnitPrice:Precio unitario:*};  -- mismo precio unitario de la OC (costo = precio aquí)
 -- Lote (deja NULL ambos si el producto no usa lote -- orgProduct.UseLot=0):
 DECLARE @lote            NVARCHAR(50) = 'LOTE-HUMO-01';
 DECLARE @caducidad       DATE = '2027-12-31';
@@ -64,6 +111,33 @@ BEGIN SELECT 'ERROR: la partida DocumentItemID=' + CAST(@sourceItemId AS VARCHAR
 IF NOT EXISTS (SELECT 1 FROM orgProduct WHERE ProductID = @productoID)
 BEGIN SELECT 'ERROR: no existe el producto ProductID=' + CAST(@productoID AS VARCHAR) AS Resultado; RETURN; END
 
+-- ¿Ya existe una Recepción abierta para esta OC origen? Si existe, esta corrida reutiliza su
+-- DocumentID (consolidación por SourceDocumentID -- ver advertencia arriba). NULL = crea
+-- documento nuevo, como antes.
+DECLARE @docIdExistente INT = (
+    SELECT TOP 1 DocumentID FROM docDocument
+    WHERE SourceDocumentID = @sourceOC AND ModuleID = 184 AND DeletedOn IS NULL AND CancelledOn IS NULL
+);
+-- Guard clause: no duplicar el mismo renglón dos veces en la misma Recepción si esta partida
+-- de OC ya fue recibida antes (mismo @sourceItemId ya tiene renglón vía DeliverDocumentItemID).
+IF @docIdExistente IS NOT NULL AND EXISTS (
+    SELECT 1 FROM docDocumentItem WHERE DocumentID = @docIdExistente AND DeliverDocumentItemID = @sourceItemId
+)
+BEGIN
+    SELECT 'ERROR: la partida DocumentItemID=' + CAST(@sourceItemId AS VARCHAR) + ' de la OC ' + CAST(@sourceOC AS VARCHAR)
+        + ' ya fue recibida en la Recepción DocumentID=' + CAST(@docIdExistente AS VARCHAR) + ' -- no se duplica.' AS Resultado;
+    RETURN;
+END
+
+-- ═══════════════════ TRANSACCIÓN (atomicidad real) ═══════════════════
+-- Todo lo que sigue (cálculos, cabecera, anclas satélite, partida, impuestos, kardex real,
+-- lote, números de serie) corre dentro de UNA sola transacción. Antes de esto, un fallo a
+-- mitad del batch dejaba un docDocument "fantasma" -- el mismo bug real que se encontró en
+-- producción de un cliente, con años de documentos incompletos acumulados. THROW (sin
+-- argumentos, SQL Server 2012+) repropaga el error original tras el ROLLBACK.
+BEGIN TRY
+BEGIN TRAN;
+
 -- ═══════════════════ CÁLCULOS ═══════════════════
 DECLARE @folio INT = ISNULL((SELECT MAX(TRY_CAST(Folio AS INT)) FROM docDocument WHERE ModuleID = 184), 0) + 1;
 DECLARE @ahora DATETIME = GETDATE();
@@ -75,9 +149,17 @@ DECLARE @total DECIMAL(18,2) = @subtotal + @iva;
 -- contra el sandbox: a diferencia de la OC, la Recepción SÍ llena esta columna).
 DECLARE @totalCost DECIMAL(18,2) = @subtotal;
 
+-- Si se está consolidando en una Recepción existente, el total en LETRA (y los totales de
+-- cabecera más abajo) deben reflejar TODO el documento (renglones previos + este renglón
+-- nuevo), no solo esta partida -- @totalParaLetra es ese acumulado; @subtotal/@iva/@total/
+-- @totalCost de arriba siguen siendo SOLO de esta partida (son los que usa el renglón nuevo).
+DECLARE @totalParaLetra DECIMAL(18,2) = @total;
+IF @docIdExistente IS NOT NULL
+    SELECT @totalParaLetra = Total + @total FROM docDocument WHERE DocumentID = @docIdExistente;
+
 -- ---- Número a letras (mismo algoritmo ya probado en PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql) ----
-DECLARE @entero BIGINT = FLOOR(@total);
-DECLARE @centavos INT = ROUND((@total - @entero) * 100, 0);
+DECLARE @entero BIGINT = FLOOR(@totalParaLetra);
+DECLARE @centavos INT = ROUND((@totalParaLetra - @entero) * 100, 0);
 DECLARE @miles BIGINT = (@entero / 1000) % 1000;
 DECLARE @resto BIGINT = @entero % 1000;
 DECLARE @millones BIGINT = @entero / 1000000;
@@ -152,35 +234,49 @@ SET @totalLetra = @totalLetra + ' PESOS ' + RIGHT('0' + CAST(@centavos AS NVARCH
 -- UpdateStatusDelivery -- ver advertencia sobre esto en PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql,
 -- el mismo hallazgo aplica aquí). SourceDocumentID=@sourceOC (informativo, no lo usa el
 -- cálculo real de pendientes -- MANUAL.md §10.4).
-DECLARE @doc TABLE (DocumentID INT);
-INSERT INTO docDocument (
-    ModuleID, DocumentTypeID, DocRecipientID, OwnedBusinessEntityID, BusinessEntityID,
-    DepotID, DepotIDFrom, SourceDocumentID, FolioPrefix, Folio, DateDocument, DateDocDelivery, DateDelivery, DateFrom, DateTo, DateCost,
-    LanguageID, CurrencyID, Rate, PaymentTermID, DateLastPayment, MustBeSynchronized, ExportID,
-    SubTotal, SubTotalWithDiscount, Total, TotalTax, TotalCost, TotalLetter, TotalPaid, Balance, StatusPaidID, StatusDeliveryID,
-    CreatedOn, CreatedBy, UserID
-)
-OUTPUT INSERTED.DocumentID INTO @doc
-VALUES (
-    184, 3, 2, 1, @proveedorBE,
-    @almacen, 0, @sourceOC, '', CAST(@folio AS NVARCHAR), @ahora, @ahora, @ahora, @ahora, @ahora, @ahora,
-    3, 3, 1, 0, @ahora, 1, 1,
-    @subtotal, @subtotal, @total, @iva, @totalCost, @totalLetra, 0, @total, 3, 3,
-    @ahora, 0, 0
-);
-DECLARE @docId INT = (SELECT TOP 1 DocumentID FROM @doc);
+--
+-- Si @docIdExistente NO es NULL, esta corrida está CONSOLIDANDO: no se crea cabecera ni
+-- anclas satélite nuevas (ya existen desde la primera corrida) -- solo se reutiliza @docId y,
+-- más abajo (después de insertar el renglón), se actualizan los totales de la cabecera ya
+-- existente sumando esta partida.
+DECLARE @docId INT;
+IF @docIdExistente IS NULL
+BEGIN
+    DECLARE @doc TABLE (DocumentID INT);
+    INSERT INTO docDocument (
+        ModuleID, DocumentTypeID, DocRecipientID, OwnedBusinessEntityID, BusinessEntityID,
+        DepotID, DepotIDFrom, SourceDocumentID, FolioPrefix, Folio, DateDocument, DateDocDelivery, DateDelivery, DateFrom, DateTo, DateCost,
+        LanguageID, CurrencyID, Rate, PaymentTermID, DateLastPayment, MustBeSynchronized, ExportID,
+        SubTotal, SubTotalWithDiscount, Total, TotalTax, TotalCost, TotalLetter, TotalPaid, Balance, StatusPaidID, StatusDeliveryID,
+        CreatedOn, CreatedBy, UserID
+    )
+    OUTPUT INSERTED.DocumentID INTO @doc
+    VALUES (
+        184, 3, 2, 1, @proveedorBE,
+        @almacen, 0, @sourceOC, '', CAST(@folio AS NVARCHAR), @ahora, @ahora, @ahora, @ahora, @ahora, @ahora,
+        3, 3, 1, 0, @ahora, 1, 1,
+        @subtotal, @subtotal, @total, @iva, @totalCost, @totalLetra, 0, @total, 3, 3,
+        @ahora, 0, 0
+    );
+    SET @docId = (SELECT TOP 1 DocumentID FROM @doc);
 
--- ═══════════════════ 2. Anclas satélite ═══════════════════
-INSERT INTO docDocumentExt (IDExtra) VALUES (@docId);
-INSERT INTO docDocumentExtra (DocumentID) VALUES (@docId);
-INSERT INTO docDocumentCFD (DocumentID, FinancialOperationID, Anexo20Ver) VALUES (@docId, 0, '4.0');
-INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy)
-VALUES (@docId, @ahora, 100, 0, 1, @ahora, 0);
+    -- ═══════════════════ 2. Anclas satélite (solo documento nuevo -- una por documento) ═══════════════════
+    INSERT INTO docDocumentExt (IDExtra) VALUES (@docId);
+    INSERT INTO docDocumentExtra (DocumentID) VALUES (@docId);
+    INSERT INTO docDocumentCFD (DocumentID, FinancialOperationID, Anexo20Ver) VALUES (@docId, 0, '4.0');
+    INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy)
+    VALUES (@docId, @ahora, 100, 0, 1, @ahora, 0);
+END
+ELSE
+    SET @docId = @docIdExistente;
 
 -- ═══════════════════ 3. Partida ═══════════════════
 -- CostPrice = @precio (a diferencia de la OC, donde se queda en 0) -- confirmado contra el
 -- sandbox: "costo = precio unitario" es la regla real en documentos de compra que SÍ mueven
 -- inventario. DeliverDocumentItemID = @sourceItemId (vínculo a la partida de la OC).
+-- LineNumber: consecutivo dentro del documento -- 1 en documento nuevo, MAX+1 si se está
+-- agregando a una Recepción ya existente (evita repetir LineNumber=1 en cada renglón).
+DECLARE @lineNumber INT = ISNULL((SELECT MAX(LineNumber) FROM docDocumentItem WHERE DocumentID = @docId), 0) + 1;
 DECLARE @item TABLE (DocumentItemID INT);
 INSERT INTO docDocumentItem (
     DocumentID, Quantity, ProductID, Description, ProductKey, Unit, ClaveUnidad,
@@ -190,7 +286,7 @@ INSERT INTO docDocumentItem (
 OUTPUT INSERTED.DocumentItemID INTO @item
 SELECT
     @docId, @cantidad, p.ProductID, p.ProductName, p.ProductKey, p.Unit, p.ClaveUnidad,
-    '', 5, @tasaIva, @precio, @precio, @subtotal, 1, 1,
+    '', 5, @tasaIva, @precio, @precio, @subtotal, @lineNumber, 1,
     1, 1, 1, 1, @sourceItemId, @ahora
 FROM orgProduct p WHERE p.ProductID = @productoID;
 DECLARE @itemId INT = (SELECT TOP 1 DocumentItemID FROM @item);
@@ -202,12 +298,38 @@ IF @supplierID IS NOT NULL AND NOT EXISTS (SELECT 1 FROM orgProductSupplier WHER
     VALUES (@productoID, @supplierID, @precio, 3, 0);
 
 -- ═══════════════════ 4. Impuestos ═══════════════════
-INSERT INTO docDocumentTax (DocumentID, IVA_T, IVA_R, ISR_R, IEPS_T, IEPS_R, Otro, Local_T, Local_R)
-VALUES (@docId, @iva, 0, 0, 0, 0, 0, 0, 0);
+-- docDocumentTax/docDocumentTaxSum son UNA fila por documento (agregado de todo el documento,
+-- no por renglón) -- en documento nuevo se INSERTa, en documento existente se ACTUALIZA
+-- sumando el IVA de esta partida. docDocumentTaxDetail SÍ es una fila por renglón -- siempre
+-- se inserta.
+IF @docIdExistente IS NULL
+BEGIN
+    INSERT INTO docDocumentTax (DocumentID, IVA_T, IVA_R, ISR_R, IEPS_T, IEPS_R, Otro, Local_T, Local_R)
+    VALUES (@docId, @iva, 0, 0, 0, 0, 0, 0, 0);
+    INSERT INTO docDocumentTaxSum (DocumentID, TaxName1, TaxAmount1, TotalFederal, TotalLocal, TotalOtro)
+    VALUES (@docId, 'IVA 16%', @iva, @iva, 0, 0);
+END
+ELSE
+BEGIN
+    UPDATE docDocumentTax SET IVA_T = IVA_T + @iva WHERE DocumentID = @docId;
+    UPDATE docDocumentTaxSum SET TaxAmount1 = TaxAmount1 + @iva, TotalFederal = TotalFederal + @iva WHERE DocumentID = @docId;
+END
 INSERT INTO docDocumentTaxDetail (DocumentID, DocumentItemID, TaxTypeID, TaxItemID, Amount, Retention, IVASobreIEPS, RegionalTaxID, TaxName, TaxTypeName, TaxBase, TaxPerc, TipoFactor)
 VALUES (@docId, @itemId, 5, 6, @iva, 0, 0, 0, 'IVA 16.00%', 'IVA', @subtotal, @tasaIva, 'Tasa');
-INSERT INTO docDocumentTaxSum (DocumentID, TaxName1, TaxAmount1, TotalFederal, TotalLocal, TotalOtro)
-VALUES (@docId, 'IVA 16%', @iva, @iva, 0, 0);
+
+-- ═══════════════════ 4b. Totales de cabecera (solo si se consolidó en documento existente) ═══════════════════
+-- El INSERT del renglón NO recalcula la cabecera por sí solo (son columnas independientes,
+-- no una vista calculada) -- hay que sumarle explícitamente esta partida a lo que ya tenía.
+IF @docIdExistente IS NOT NULL
+    UPDATE docDocument
+    SET SubTotal = SubTotal + @subtotal,
+        SubTotalWithDiscount = SubTotalWithDiscount + @subtotal,
+        Total = Total + @total,
+        TotalTax = TotalTax + @iva,
+        TotalCost = TotalCost + @totalCost,
+        TotalLetter = @totalLetra,
+        Balance = Balance + @total
+    WHERE DocumentID = @docId;
 
 -- ═══════════════════ 5. Kardex REAL (a diferencia de la OC, Quantity aquí SÍ mueve) ═══════════════════
 -- QuantityToBeDelivered queda NEGATIVO (-@cantidad) -- reduce el pendiente por recibir de la
@@ -229,4 +351,20 @@ IF @seriesCSV IS NOT NULL AND LEN(@seriesCSV) > 0
     SELECT @docId, @itemId, @productoID, LTRIM(RTRIM(value)), 1, @almacen, 1, @ahora, 0
     FROM STRING_SPLIT(@seriesCSV, ',');
 
-SELECT 'Recepción de compra (SQL puro) creada: doc=' + CAST(@docId AS VARCHAR) + ', folio=' + CAST(@folio AS VARCHAR) + ', origen=OC ' + CAST(@sourceOC AS VARCHAR) AS Resultado;
+COMMIT TRAN;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    THROW;
+END CATCH
+
+-- Fuera del TRY a propósito -- el documento ya quedó comprometido (COMMIT) antes de llegar
+-- aquí; un fallo leyendo este SELECT no debe interpretarse como que la transacción falló.
+-- Folio se relee de la tabla (en vez de usar @folio, que solo se calcula cuando se crea
+-- cabecera nueva) para que el mensaje sea correcto también cuando se consolidó en un
+-- documento existente.
+DECLARE @folioFinal NVARCHAR(20) = (SELECT Folio FROM docDocument WHERE DocumentID = @docId);
+SELECT CASE WHEN @docIdExistente IS NULL
+           THEN 'Recepción de compra (SQL puro) creada: doc=' + CAST(@docId AS VARCHAR) + ', folio=' + @folioFinal + ', origen=OC ' + CAST(@sourceOC AS VARCHAR)
+           ELSE 'Recepción de compra (SQL puro) CONSOLIDADA en documento existente: doc=' + CAST(@docId AS VARCHAR) + ', folio=' + @folioFinal + ', renglón nuevo agregado (LineNumber=' + CAST(@lineNumber AS VARCHAR) + '), origen=OC ' + CAST(@sourceOC AS VARCHAR)
+       END AS Resultado;

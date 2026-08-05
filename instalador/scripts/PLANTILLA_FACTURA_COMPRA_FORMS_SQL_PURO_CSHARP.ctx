@@ -24,6 +24,33 @@ using System.Globalization;
 // (1) no genera póliza contable (en este sandbox, ni siquiera el camino 100% ctx.erp la
 // generó -- limitación de configuración contable, no de esta plantilla); (2) el reparto de
 // PaymentAgenda usa engPaymentTermDetail, igual que la versión ctx.erp.
+//
+// Atomicidad: SÍ (desde esta versión). El batch generado en CrearFacturaSqlPuro() -- incluida
+// la agenda de pago, que antes se insertaba con ctx.NonQuery() en llamadas SEPARADAS después
+// del COMMIT del documento -- corre ahora dentro de BEGIN TRAN/COMMIT TRAN con TRY/CATCH +
+// ROLLBACK. Antes, un fallo a mitad del batch (o en la agenda de pago) podía dejar un
+// docDocument "fantasma" o una Factura sin agenda de pago.
+//
+// ⚠️ CAMBIO IMPORTANTE (docs/INVESTIGACION_XENGINE_SQL_PURO.md): este archivo es C# (no un
+// .sql suelto) -- el addon corre embebido en el mismo proceso que XEngine, así que SÍ tiene
+// acceso a ctx.erp aunque el documento se cree con INSERT directo. Antes, el batch calculaba a
+// mano SubTotal/Total/TotalTax del encabezado y docDocumentTaxSum. Eso se ELIMINÓ y se
+// reemplazó por ctx.erp.RecalcCompleto(doc) tras el COMMIT del batch -- la MISMA llamada que ya
+// usa PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx (la variante ctx.erp, validada en producción;
+// esa variante NO llama AffectStockNEW ni UpdateStatusDelivery -- la Factura no afecta
+// inventario, eso ya lo hizo la Recepción). Verificado empíricamente contra el sandbox
+// (localhost\compac) sobre Orden de Compra (mismo mecanismo, mismo XEngine): un docDocumentItem
+// insertado a mano por SQL puro queda con SubTotal/Total/TotalTax/TotalLetter correctos tras
+// RecalcDocument, sin necesidad de calcularlos en C#.
+// La agenda de pago (docDocumentPaymentAgenda con los montos reales de engPaymentTermDetail) SÍ
+// se conserva -- pero ahora, igual que RegenerarPaymentAgenda() en la variante ctx.erp, se
+// calcula LEYENDO el Total ya recalculado por el motor (después de RecalcCompleto), no con el
+// total estimado en C# antes del INSERT -- así no puede desincronizarse si el motor ajusta el
+// total por alguna regla que el cálculo manual no conocía.
+// Si ctx.erp falla, el documento YA EXISTE (INSERT ya comprometido) pero puede quedar con
+// totales sin calcular y sin agenda de pago real -- se avisa al usuario en vez de fallar en
+// silencio; no hay cálculo manual de respaldo (se decidió eliminarlo, no dejarlo como fallback,
+// porque es la fuente de los bugs reales que motivaron esta investigación).
 
 // ═══════════════════ VALIDACIÓN TEMPRANA DE LA SELECCIÓN ═══════════════════
 var idsSeleccionados = ctx.GetSelectedIds();
@@ -437,10 +464,21 @@ void CrearFacturaSqlPuro() {
         }
         double subtotalConDescuento = subtotal - descuentoTotal;
         double total = subtotalConDescuento + impuestosTotal;
-        string totalLetra = (NumeroALetras(total) + " M.N.").Replace("'", "''");
+        // subtotal/total/totalLetra YA NO se escriben en el INSERT del encabezado -- se
+        // calculan aquí solo para el ctx.Confirm en pantalla. El valor real lo pone
+        // ctx.erp.RecalcDocument después del COMMIT (ver comentario grande al inicio del
+        // archivo). La agenda de pago con montos reales tampoco se arma aquí -- se genera
+        // DESPUÉS del recálculo, leyendo el Total ya oficial desde la BD (igual que
+        // RegenerarPaymentAgenda() en la variante ctx.erp).
 
         var sb = new StringBuilder();
+        // Todo el batch corre dentro de BEGIN TRAN/COMMIT TRAN (con TRY/CATCH + ROLLBACK) --
+        // antes, un fallo a mitad de los INSERT dejaba un docDocument "fantasma", el mismo bug
+        // real encontrado en produccion de un cliente. THROW (sin argumentos, SQL Server
+        // 2012+) repropaga el error tras el ROLLBACK.
         sb.Append(@"
+BEGIN TRY
+BEGIN TRAN;
 DECLARE @doc TABLE (DocumentID INT);
 DECLARE @item TABLE (DocumentItemID INT);
 DECLARE @itemId INT;
@@ -458,7 +496,7 @@ VALUES (
     152, 5, 2, 1, " + proveedorBE + @",
     " + depotOrigen + @", 0, '', CAST(@folio AS NVARCHAR), " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @",
     3, 3, 1, " + condId + @", @ahora, 1, 1,
-    " + subtotal.ToString(ci) + @", " + subtotalConDescuento.ToString(ci) + @", " + total.ToString(ci) + @", " + impuestosTotal.ToString(ci) + @", 0, N'" + totalLetra + @"', 0, " + total.ToString(ci) + @", 3, 0,
+    0, 0, 0, 0, 0, N'PENDIENTE', 0, 0, 3, 0,
     N'" + comentarios + @"', @ahora, 0, 0
 );
 DECLARE @docId INT = (SELECT TOP 1 DocumentID FROM @doc);
@@ -467,6 +505,8 @@ INSERT INTO docDocumentExtra (DocumentID) VALUES (@docId);
 INSERT INTO docDocumentCFD (DocumentID, FinancialOperationID, Anexo20Ver) VALUES (@docId, 0, '4.0');
 INSERT INTO docDocumentTax (DocumentID, IVA_T, IVA_R, ISR_R, IEPS_T, IEPS_R, Otro, Local_T, Local_R)
 VALUES (@docId, " + impuestosTotal.ToString(ci) + @", 0, 0, 0, 0, 0, 0, 0);
+INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy)
+VALUES (@docId, @ahora, 100, 0, 1, @ahora, 0);
 ");
 
         int lineNumber = 1;
@@ -504,9 +544,15 @@ IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + pc.PID + @" 
             }
         }
 
+        // docDocumentTaxSum YA NO se inserta a mano -- ctx.erp.RecalcCompleto lo genera desde
+        // docDocumentItem después del COMMIT (ver comentario grande al inicio del archivo).
         sb.Append(@"
-INSERT INTO docDocumentTaxSum (DocumentID, TaxName1, TaxAmount1, TotalFederal, TotalLocal, TotalOtro)
-VALUES (@docId, 'Impuestos', " + impuestosTotal.ToString(ci) + @", " + impuestosTotal.ToString(ci) + @", 0, 0);
+COMMIT TRAN;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    THROW;
+END CATCH
 SELECT @docId AS DocumentID, @folio AS Folio;
 ");
 
@@ -514,33 +560,52 @@ SELECT @docId AS DocumentID, @folio AS Folio;
         if (filas.Count == 0) throw new Exception("El batch no devolvió el documento creado (revisa el SQL generado).");
         int doc = Convert.ToInt32(filas[0]["DocumentID"]);
 
-        // Agenda de pago con montos reales (misma lógica que la versión ctx.erp) --
-        // engPaymentTermDetail tiene los porcentajes/plazos reales de la condición elegida.
-        var detalle = ctx.Query("SELECT PaymentPerc, PaymentUnit, PaymentPeriod FROM engPaymentTermDetail WHERE PaymentTermID=" + condId + " ORDER BY PaymentTermDetailID");
-        if (detalle.Count > 0) {
-            int numero = 1;
-            foreach (var d in detalle) {
-                double perc = Convert.ToDouble(d["PaymentPerc"] ?? 0);
-                int unidad = Convert.ToInt32(d["PaymentUnit"] ?? 1);
-                int periodo = Convert.ToInt32(d["PaymentPeriod"] ?? 0);
-                string expresionFecha = unidad == 3 ? "DATEADD(MONTH," + periodo + ",GETDATE())"
-                                      : unidad == 2 ? "DATEADD(DAY," + (periodo * 7) + ",GETDATE())"
-                                      : "DATEADD(DAY," + periodo + ",GETDATE())";
-                double monto = total * perc / 100.0;
-                ctx.NonQuery(
-                    "INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" +
-                    doc + ", " + expresionFecha + ", " + perc.ToString(ci) + ", " + monto.ToString(ci) + ", " + numero + ", GETDATE(), " + ctx.UserID + ")");
-                numero++;
+        // ---- 3) Recálculo con XEngine (ctx.erp), fuera de la transacción SQL -- el documento
+        // ya quedó comprometido (COMMIT). Misma llamada que PLANTILLA_FACTURA_COMPRA_FORMS_
+        // CSHARP.ctx: RecalcCompleto (totales + costos). Sin AffectStockNEW/UpdateStatusDelivery
+        // -- la Factura no afecta inventario (eso ya lo hizo la Recepción de Compra origen). Si
+        // el motor falla, el documento YA EXISTE pero puede quedar con totales sin calcular y
+        // sin agenda de pago real -- se avisa al usuario en vez de fallar en silencio; no hay
+        // cálculo manual de respaldo (eliminado a propósito, ver comentario grande al inicio del
+        // archivo). ----
+        string avisoRecalc = null;
+        try {
+            ctx.erp.RecalcCompleto(doc);
+            if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("RecalcCompleto: " + ctx.erp.LastError);
+
+            // ---- Agenda de pago con montos reales, leyendo el Total YA recalculado por el
+            // motor (no el estimado en C# antes del INSERT) -- mismo patrón que
+            // RegenerarPaymentAgenda() en la variante ctx.erp: NuevoDocumento/el placeholder de
+            // arriba dejan Amount=0, y Save/RecalcCompleto NO lo corrigen solos. ----
+            double totalReal = Convert.ToDouble(ctx.Scalar("SELECT Total FROM docDocument WHERE DocumentID=" + doc) ?? 0);
+            var detalle = ctx.Query("SELECT PaymentPerc, PaymentUnit, PaymentPeriod FROM engPaymentTermDetail WHERE PaymentTermID=" + condId + " ORDER BY PaymentTermDetailID");
+            if (detalle.Count > 0) {
+                ctx.NonQuery("UPDATE docDocumentPaymentAgenda SET DeletedOn=GETDATE() WHERE DeletedOn IS NULL AND DocumentID=" + doc);
+                int numero = 1;
+                foreach (var d in detalle) {
+                    double perc = Convert.ToDouble(d["PaymentPerc"] ?? 0);
+                    int unidad = Convert.ToInt32(d["PaymentUnit"] ?? 1);
+                    int periodo = Convert.ToInt32(d["PaymentPeriod"] ?? 0);
+                    string expresionFecha = unidad == 3 ? "DATEADD(MONTH," + periodo + ",GETDATE())"
+                                          : unidad == 2 ? "DATEADD(DAY," + (periodo * 7) + ",GETDATE())"
+                                          : "DATEADD(DAY," + periodo + ",GETDATE())";
+                    double monto = totalReal * perc / 100.0;
+                    ctx.NonQuery(
+                        "INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" +
+                        doc + ", " + expresionFecha + ", " + perc.ToString(ci) + ", " + monto.ToString(ci) + ", " + numero + ", GETDATE(), " + ctx.UserID + ")");
+                    numero++;
+                }
+            } else {
+                // Sin detalle configurado: deja el placeholder (100%, Amount=0) tal cual --
+                // mismo criterio de respaldo que RegenerarPaymentAgenda() en la variante ctx.erp.
+                ctx.NonQuery("UPDATE docDocumentPaymentAgenda SET Amount=" + totalReal.ToString(ci) + " WHERE DocumentID=" + doc + " AND DeletedOn IS NULL");
             }
-        } else {
-            // Sin detalle configurado: 1 sola exhibición con el total completo (mismo
-            // criterio de respaldo que la versión ctx.erp cuando engPaymentTermDetail
-            // no tiene filas para esa condición).
-            ctx.NonQuery(
-                "INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" +
-                doc + ", GETDATE(), 100, " + total.ToString(ci) + ", 1, GETDATE(), " + ctx.UserID + ")");
+        } catch (Exception exErp) {
+            avisoRecalc = "El documento " + doc + " se creó, pero el recálculo con ctx.erp falló: " + exErp.Message +
+                "\n\nRevisa manualmente sus totales y su agenda de pago en Comercial antes de usarlo.";
         }
 
+        if (avisoRecalc != null) ctx.Msg(avisoRecalc, "Advertencia: recálculo incompleto");
         ctx.Msg("Factura de compra (SQL puro) " + doc + " creada exitosamente.", "OK");
         frm.Close();
     } catch (Exception ex) {

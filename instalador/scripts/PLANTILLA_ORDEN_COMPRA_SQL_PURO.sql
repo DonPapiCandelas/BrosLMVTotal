@@ -24,26 +24,49 @@
 -- para el 95% de los casos, usa cualquiera de las otras 4 variantes (más simples y menos
 -- riesgo de que un caso fiscal no cubierto aquí deje un documento mal calculado).
 --
--- Cómo se llenan los datos: reemplaza los valores de "PARÁMETROS" antes de correr.
+-- Atomicidad: SÍ (desde esta versión). Todo el bloque que crea cabecera + anclas satélite +
+-- partida + agenda de entrega + impuestos + kardex comprometido corre dentro de BEGIN TRAN/
+-- COMMIT TRAN con BEGIN TRY/CATCH y ROLLBACK si algo falla a medio camino -- antes, un fallo
+-- intermedio dejaba un docDocument "fantasma". Las validaciones iniciales siguen corriendo
+-- ANTES de abrir la transacción.
+--
+-- Cómo se llenan los datos (v2.77.0+): 6 de los 7 parámetros ahora se capturan con un
+-- formulario automático (token tipado {DATOS:Tabla.Columna:*}, motor v2.75.0/2.76.0) -- ya no
+-- hace falta editar este archivo a mano para lo más común (proveedor/almacén/producto/
+-- cantidad/precio/condición de pago). @cantidad y @precio se anclan a docDocumentItem.Quantity/
+-- UnitPrice (mismos tipos DECIMAL(18,4)/DECIMAL(18,2) que la partida real usa) solo para
+-- inferir el tipo de campo correcto, no para leer un valor existente. @diasEntrega SIGUE
+-- hardcodeado a propósito: no corresponde a ninguna columna real (es un número de días que se
+-- SUMA a la fecha de hoy, no un valor que se guarde tal cual en ninguna tabla) -- edítalo a
+-- mano si necesitas un plazo de entrega distinto a 15 días.
 
--- ═══════════════════ PARÁMETROS (edítalos antes de correr) ═══════════════════
-DECLARE @proveedorBE  INT = 2;
-DECLARE @almacen      INT = 1;
-DECLARE @productoID   INT = 1;
-DECLARE @cantidad     DECIMAL(18,4) = 2;
-DECLARE @precio       DECIMAL(18,2) = 80;   -- precio unitario, sin IVA
-DECLARE @diasEntrega  INT = 15;             -- fecha de entrega = hoy + N días
+-- ═══════════════════ PARÁMETROS (la mayoría se capturan con un formulario automático, v2.77.0+) ═══════════════════
+DECLARE @proveedorBE  INT = {DATOS:orgBusinessEntity.BusinessEntityID:Proveedor (BusinessEntityID):*};
+DECLARE @almacen      INT = {DATOS:orgDepot.DepotID:Almacén (DepotID):*};
+DECLARE @productoID   INT = {DATOS:orgProduct.ProductID:Producto (ProductID):*};
+DECLARE @cantidad     DECIMAL(18,4) = {DATOS:docDocumentItem.Quantity:Cantidad:*};
+DECLARE @precio       DECIMAL(18,2) = {DATOS:docDocumentItem.UnitPrice:Precio unitario (sin IVA):*};
+DECLARE @diasEntrega  INT = 15;             -- fecha de entrega = hoy + N días -- NO migrado, no corresponde a una columna real (ver nota arriba)
 -- PaymentTermID: confirmado contra profiler real de una OC nativa (4 = CRÉDITO en el
 -- catálogo de este sandbox; ver empresa_base_cp/orden_compra_compleja/profiler_analisis.md)
 -- -- a diferencia de Entrada/Salida/Solicitud, la OC SIEMPRE lleva una condición de pago
--- real, nunca 0. Ajusta este valor al PaymentTermID real de tu catálogo si usas otro.
-DECLARE @condicionPago INT = 4;
+-- real, nunca 0. El formulario pide el PaymentTermID real de tu catálogo (INT).
+DECLARE @condicionPago INT = {DATOS:docDocument.PaymentTermID:Condición de pago (PaymentTermID):*};
 
 -- ═══════════════════ VALIDACIONES MÍNIMAS ═══════════════════
 IF NOT EXISTS (SELECT 1 FROM orgBusinessEntity WHERE BusinessEntityID = @proveedorBE)
 BEGIN SELECT 'ERROR: no existe el proveedor BusinessEntityID=' + CAST(@proveedorBE AS VARCHAR) AS Resultado; RETURN; END
 IF NOT EXISTS (SELECT 1 FROM orgProduct WHERE ProductID = @productoID)
 BEGIN SELECT 'ERROR: no existe el producto ProductID=' + CAST(@productoID AS VARCHAR) AS Resultado; RETURN; END
+
+-- ═══════════════════ TRANSACCIÓN (atomicidad real) ═══════════════════
+-- Todo lo que sigue (cálculos, cabecera, anclas satélite, partida, agenda de entrega,
+-- impuestos, kardex comprometido) corre dentro de UNA sola transacción. Antes de esto, un
+-- fallo a mitad del batch dejaba un docDocument "fantasma" -- el mismo bug real que se
+-- encontró en producción de un cliente, con años de documentos incompletos acumulados. THROW
+-- (sin argumentos, SQL Server 2012+) repropaga el error original tras el ROLLBACK.
+BEGIN TRY
+BEGIN TRAN;
 
 -- ═══════════════════ CÁLCULOS (lo que RecalcCompleto/AffectStockNEW hacen solos) ═══════════════════
 DECLARE @folio INT = ISNULL((SELECT MAX(TRY_CAST(Folio AS INT)) FROM docDocument WHERE ModuleID = 183), 0) + 1;
@@ -220,4 +243,13 @@ VALUES (@docId, 'IVA 16%', @iva, @iva, 0, 0);
 INSERT INTO orgProductKardex (DateTransaction, DepotID, ProductID, DocumentID, DocumentItemID, Quantity, QuantityToBeDelivered, AmountPrice, Cancelled, ProductImportID, DepotValue, DepotValueAverage, QuantityImport)
 VALUES (@ahora, @almacen, @productoID, @docId, @itemId, 0, @cantidad, @precio, 0, 0, 0, 0, 0);
 
+COMMIT TRAN;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    THROW;
+END CATCH
+
+-- Fuera del TRY a propósito -- el documento ya quedó comprometido (COMMIT) antes de llegar
+-- aquí; un fallo leyendo este SELECT no debe interpretarse como que la transacción falló.
 SELECT 'Orden de compra (SQL puro) creada: doc=' + CAST(@docId AS VARCHAR) + ', folio=' + CAST(@folio AS VARCHAR) + ', total=$' + CAST(@total AS VARCHAR) AS Resultado;

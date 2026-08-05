@@ -1,0 +1,329 @@
+// lang: csharp
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+using System.Collections.Generic;
+using System.Linq;
+
+// PLANTILLA: Adjuntos del Documento — Forms (C#, WinForms nativo)
+//
+// Qué hace: abre una ventana modal sobre el documento SELECCIONADO en el grid nativo (usa
+// ctx.GetSelectedIds(), igual que PLANTILLA_MODIFICAR_TITULO_CSHARP.ctx -- {pID} solo existe
+// en SQL puro, ver comentario de esa plantilla). Lista, agrega, abre, elimina y edita la
+// descripción de archivos adjuntos sobre `dbo.engModuleFile` -- la tabla NATIVA de Comercial
+// Pro para esto (no una tabla propia; ver decisión abajo).
+//
+// ORIGEN: combina lo mejor de dos implementaciones reales de cliente ya analizadas en este
+// proyecto (ambas AccesoFacil/pythonnet, no BrosLMV -- aquí solo se toma el DISEÑO, la
+// implementación es C#/ctx.erp de BrosLMV desde cero):
+//   - `CargaArch` (AHMEX, entrenamiento/bacros/evidence/rtAppFunction_34.py): SÍ copia el
+//     archivo físico a una carpeta propia por usuario, SÍ controla quién puede eliminar
+//     (compara CreatedBy contra el usuario activo), SÍ maneja duplicados de nombre (_1, _2…).
+//   - `AdjuntarArch` (Business Conexión, entrenamiento/businessconexion/evidence/
+//     rtAppFunction_10.py): UI más simple (grid + 5 botones), pero NO copia el archivo (solo
+//     guarda la ruta original -- adjunto huérfano si el usuario mueve/borra el original) y NO
+//     controla quién elimina. Comparación completa en
+//     entrenamiento/businessconexion/docs/07_scripts_documentados_completo.md sección 1.
+// Esta plantilla se queda con: copia a carpeta propia (de AHMEX) + UI de 5 botones (de ambas,
+// son casi idénticas) + control de propiedad al eliminar (de AHMEX), MEJORADO con:
+//   1. Carpeta destino CONFIGURABLE (zzBrosPref, no hardcodeada como
+//      `\\192.168.101.70\CompaqDoc\...` en AHMEX o `\\10.50.0.253\Ordenes de Compra` en BC).
+//   2. Control de propiedad con override de ADMINISTRADOR (ninguna de las 2 implementaciones
+//      de cliente lo tenía -- si el dueño ya no puede actuar, alguien queda bloqueado para
+//      siempre sin este escape).
+//
+// DECISIÓN: tabla `dbo.engModuleFile` vs. tabla propia -- se usa la NATIVA.
+//   Confirmado contra el sandbox (localhost\compac / ComercialSP, INFORMATION_SCHEMA.COLUMNS):
+//   ModuleFileID (PK bigint), ModuleID, ID (=DocumentID), ItemID, FileName nvarchar(255),
+//   FilePath nvarchar(MAX), Description nvarchar(255), CreatedOn datetime2, CreatedBy bigint.
+//   Las 2 implementaciones de cliente YA la usan de forma independiente (apuntan al mismo
+//   lugar sin coordinarse entre sí) -- es la tabla que CONTPAQi reserva para esto. Usar una
+//   tabla propia obligaría a reinventar columnas que ya existen, perdería compatibilidad con
+//   cualquier vista/reporte nativo que ya lea engModuleFile, y complicaría instalaciones que
+//   YA tengan adjuntos ahí (de un botón AccesoFacil previo, por ejemplo). Único cambio de
+//   diseño sobre lo que traían ambos clientes: la columna FilePath aquí SIEMPRE apunta a la
+//   carpeta PROPIA de BrosLMV (copia), nunca a la ruta de origen que eligió el usuario.
+//
+// CARPETA DESTINO CONFIGURABLE: se resuelve con `zzBrosPref` (Usuario=0 = preferencia GLOBAL,
+// mismo patrón ya usado para SoloLectura/ExigirAprobacion por-usuario -- ver Scripting.cs
+// T2.2/T2.3), Tipo='AdjuntosCarpeta'. Si no hay fila configurada, cae a un default razonable
+// bajo Documents del usuario de Windows actual (nunca una ruta de red hardcodeada como hacían
+// los 2 clientes -- eso fue justo lo que se identificó como punto débil a externalizar, ver
+// backlog #6 de 07_scripts_documentados_completo.md). Dentro de esa carpeta base se crea una
+// subcarpeta POR USUARIO (mismo patrón que AHMEX: `<base>\<NombreUsuario>\archivo.ext`) --
+// facilita ver de un vistazo qué subió cada quien sin depender solo de la columna CreatedBy.
+//
+// CONTROL DE PROPIEDAD AL ELIMINAR: compara `engModuleFile.CreatedBy` contra el usuario ACTIVO
+// real. OJO: `ctx.UserID` (la propiedad simple) puede venir en 0 cuando el COM no lo pasa bien
+// -- por eso se usa `ctx.UserIdReal()` (ya expuesto por ScriptContext, con el mismo fallback
+// interno a `ctx.erp.UserId` que usa el propio runner para poblar el contexto de Python). Se
+// permite eliminar si: (a) CreatedBy == usuario activo, o (b) el usuario activo tiene la
+// preferencia `zzBrosPref` Tipo='AdjuntosAdmin' Valor='1' -- NO se asumió que
+// `engUser.UserGroupID=1` sea "Administradores" en toda instalación (no se pudo confirmar esa
+// convención de forma genérica), así que el rol de administrador de ESTE módulo es explícito
+// y configurable, igual que la carpeta destino, en vez de adivinarlo de una tabla nativa.
+//
+// Duplicados de nombre: mismo patrón que AHMEX -- si el nombre ya existe en la carpeta del
+// usuario, se agrega sufijo _1, _2... hasta encontrar uno libre.
+//
+// Ver MANUAL.md §10 "Ventanas WinForms: modeless" -- aquí se usa ShowDialog() (modal) porque,
+// a diferencia de las plantillas de creación de documentos, esta ventana bloquea sobre un
+// documento ya existente y no hay ningún otro control nativo con el que pueda chocar mientras
+// está abierta.
+
+// ═══════════════════ RESOLVER DOCUMENTO Y USUARIO ═══════════════════
+var ids = ctx.GetSelectedIds();
+if (ids.Count == 0) { ctx.Msg("Selecciona un documento en el grid antes de abrir sus adjuntos."); return; }
+long docId = ids[0];
+int userId = ctx.UserIdReal();
+
+var cabecera = ctx.Query(
+    "SELECT d.ModuleID, ISNULL(d.FolioPrefix,'') + ISNULL(d.Folio,'') AS Folio, " +
+    "       ISNULL(be.OfficialName,'') AS Entidad " +
+    "FROM docDocument d WITH (NOLOCK) " +
+    "LEFT JOIN vwLBSBusinessEntityList be WITH (NOLOCK) ON be.BusinessEntityID = d.BusinessEntityID " +
+    "WHERE d.DocumentID = " + docId);
+if (cabecera.Count == 0) { ctx.Msg("No se encontró el documento seleccionado (DocumentID=" + docId + ")."); return; }
+int moduleId = Convert.ToInt32(cabecera[0]["ModuleID"]);
+string folio = Convert.ToString(cabecera[0]["Folio"] ?? "");
+string entidad = Convert.ToString(cabecera[0]["Entidad"] ?? "");
+
+string NombreUsuarioActual() {
+    try {
+        var r = ctx.Query("SELECT UserName FROM engUser WHERE UserID=" + userId);
+        if (r.Count > 0 && r[0]["UserName"] != null) {
+            string n = Convert.ToString(r[0]["UserName"]).Trim();
+            foreach (char c in System.IO.Path.GetInvalidFileNameChars()) n = n.Replace(c, '_');
+            return n.Length > 0 ? n : ("Usuario_" + userId);
+        }
+    } catch { }
+    return "Usuario_" + userId;
+}
+
+bool EsAdministradorAdjuntos(int uid) {
+    try {
+        var r = ctx.Query("SELECT Valor FROM zzBrosPref WHERE Usuario=" + uid + " AND Tipo='AdjuntosAdmin'");
+        return r.Count > 0 && Convert.ToString(r[0]["Valor"]) == "1";
+    } catch { return false; }
+}
+
+// Carpeta base configurable (zzBrosPref global, Usuario=0) -- ver decisión arriba. Default si
+// nadie la configuró: subcarpeta bajo Documents del usuario de Windows que corre Comercial.
+string CarpetaBaseAdjuntos() {
+    try {
+        var r = ctx.Query("SELECT Valor FROM zzBrosPref WHERE Usuario=0 AND Tipo='AdjuntosCarpeta'");
+        if (r.Count > 0) {
+            string v = Convert.ToString(r[0]["Valor"] ?? "").Trim();
+            if (v.Length > 0) return v;
+        }
+    } catch { }
+    return System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BrosLMV_Adjuntos");
+}
+
+// ═══════════════════ HELPERS DE DATOS (engModuleFile) ═══════════════════
+List<Dictionary<string, object>> CargarArchivos() {
+    return ctx.Query(
+        "SELECT f.ModuleFileID, f.FileName, f.FilePath, ISNULL(f.Description,'') AS Description, " +
+        "       f.CreatedOn, f.CreatedBy, ISNULL(u.UserName,'Desconocido') AS UserName " +
+        "FROM dbo.engModuleFile f WITH (NOLOCK) " +
+        "LEFT JOIN engUser u WITH (NOLOCK) ON u.UserID = f.CreatedBy " +
+        "WHERE f.ModuleID=" + moduleId + " AND f.ID=" + docId + " " +
+        "ORDER BY f.ModuleFileID DESC");
+}
+
+// ═══════════════════ VENTANA ═══════════════════
+var C_HEADER_BG = Color.FromArgb(33, 47, 60);
+var C_HEADER_FG = Color.White;
+var C_SUBT_FG   = Color.Gainsboro;
+
+var frm = new Form {
+    Text = "Adjuntos del Documento",
+    Size = new Size(1100, 640),
+    StartPosition = FormStartPosition.CenterScreen,
+    BackColor = Color.White,
+    Font = new Font("Segoe UI", 9f),
+    FormBorderStyle = FormBorderStyle.Sizable
+};
+
+var header = new Panel { Location = new Point(0, 0), Size = new Size(frm.ClientSize.Width, 70), BackColor = C_HEADER_BG,
+    Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Parent = frm };
+new Label { Text = "Adjuntos del Documento", ForeColor = C_HEADER_FG, BackColor = Color.Transparent,
+    Font = new Font("Segoe UI", 15f, FontStyle.Bold), Location = new Point(16, 10), AutoSize = true, Parent = header };
+new Label { Text = "Ver / abrir  ·  agregar  ·  eliminar  ·  editar descripción", ForeColor = C_SUBT_FG,
+    BackColor = Color.Transparent, Font = new Font("Segoe UI", 9.5f), Location = new Point(18, 40), AutoSize = true, Parent = header };
+var lblMeta = new Label { ForeColor = Color.WhiteSmoke, BackColor = Color.Transparent, Font = new Font("Segoe UI", 8.5f),
+    AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(frm.ClientSize.Width - 420, 10), Parent = header };
+lblMeta.Text = "DocID: " + docId + "    Módulo: " + moduleId + "    Folio: " + (folio.Length > 0 ? folio : "-") +
+    "\nCliente/Proveedor: " + (entidad.Length > 0 ? entidad : "-");
+
+int gridTop = 78;
+var grid = new DataGridView {
+    Location = new Point(8, gridTop), Size = new Size(frm.ClientSize.Width - 16, frm.ClientSize.Height - gridTop - 70),
+    Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom,
+    AllowUserToAddRows = false, ReadOnly = false, RowHeadersVisible = false,
+    AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, Parent = frm
+};
+grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Sel", HeaderText = "Sel", Width = 40 });
+DataGridViewColumn AddCol(string name, string header, bool ro, bool vis = true, int w = -1) {
+    var c = new DataGridViewTextBoxColumn { Name = name, HeaderText = header, ReadOnly = ro, Visible = vis };
+    if (w > 0) c.Width = w;
+    grid.Columns.Add(c);
+    return c;
+}
+AddCol("FileName", "Archivo", true);
+AddCol("Description", "Descripción", false);
+AddCol("CreatedOn", "Creado", true);
+AddCol("UserName", "Usuario", true);
+AddCol("CreatedBy", "CreatorID", true, vis: false);
+AddCol("FilePath", "Ruta", true, vis: false);
+AddCol("ModuleFileID", "_id", true, vis: false, w: 1);
+
+int yb = frm.ClientSize.Height - 36;
+var btnAdd = new Button { Text = "Agregar (+)", Location = new Point(8, yb), Size = new Size(120, 26),
+    BackColor = Color.FromArgb(46, 204, 113), ForeColor = Color.White, FlatStyle = FlatStyle.Flat,
+    Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Parent = frm };
+var btnOpen = new Button { Text = "Abrir", Location = new Point(136, yb), Size = new Size(90, 26),
+    BackColor = Color.FromArgb(52, 152, 219), ForeColor = Color.White, FlatStyle = FlatStyle.Flat,
+    Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Parent = frm };
+var btnDelete = new Button { Text = "Eliminar", Location = new Point(232, yb), Size = new Size(90, 26),
+    BackColor = Color.FromArgb(231, 76, 60), ForeColor = Color.White, FlatStyle = FlatStyle.Flat,
+    Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Parent = frm };
+var btnSave = new Button { Text = "Guardar descripciones", Location = new Point(330, yb), Size = new Size(180, 26),
+    BackColor = Color.FromArgb(41, 128, 185), ForeColor = Color.White, FlatStyle = FlatStyle.Flat,
+    Anchor = AnchorStyles.Bottom | AnchorStyles.Left, Parent = frm };
+var btnExit = new Button { Text = "Salir", Location = new Point(frm.ClientSize.Width - 90, yb), Size = new Size(70, 26),
+    Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Parent = frm };
+btnExit.Click += (_, __) => frm.Close();
+
+// ═══════════════════ REFRESCAR GRID ═══════════════════
+void RefrescarGrid() {
+    grid.Rows.Clear();
+    foreach (var r in CargarArchivos()) {
+        grid.Rows.Add(false,
+            Convert.ToString(r["FileName"]), Convert.ToString(r["Description"]),
+            Convert.ToString(r["CreatedOn"]), Convert.ToString(r["UserName"]),
+            Convert.ToString(r["CreatedBy"]), Convert.ToString(r["FilePath"]),
+            Convert.ToString(r["ModuleFileID"]));
+    }
+}
+
+void AbrirFila(DataGridViewRow row) {
+    string fname = Convert.ToString(row.Cells["FileName"].Value ?? "");
+    string fpath = Convert.ToString(row.Cells["FilePath"].Value ?? "");
+    if (fpath.Length > 0 && !fpath.EndsWith("\\")) fpath += "\\";
+    string full = fpath + fname;
+    if (!System.IO.File.Exists(full)) { ctx.Msg("El archivo no existe:\n" + full, "Abrir"); return; }
+    var psi = new System.Diagnostics.ProcessStartInfo(full) { UseShellExecute = true };
+    System.Diagnostics.Process.Start(psi);
+}
+
+grid.CellDoubleClick += (_, ev) => { if (ev.RowIndex >= 0) AbrirFila(grid.Rows[ev.RowIndex]); };
+
+btnOpen.Click += (_, __) => {
+    foreach (DataGridViewRow row in grid.Rows)
+        if (Convert.ToBoolean(row.Cells["Sel"].Value ?? false)) { AbrirFila(row); return; }
+    ctx.Msg("Marca un archivo en la columna 'Sel' para abrir.");
+};
+
+// ═══════════════════ AGREGAR (copia a carpeta propia + duplicados) ═══════════════════
+btnAdd.Click += (_, __) => {
+    using (var dlg = new OpenFileDialog { Multiselect = true, Title = "Selecciona archivos para asociar" }) {
+        if (dlg.ShowDialog(frm) != DialogResult.OK) return;
+
+        string nombreUsuario = NombreUsuarioActual();
+        string carpetaUsuario = System.IO.Path.Combine(CarpetaBaseAdjuntos(), nombreUsuario);
+        try {
+            if (!System.IO.Directory.Exists(carpetaUsuario)) System.IO.Directory.CreateDirectory(carpetaUsuario);
+        } catch (Exception exDir) {
+            ctx.Msg("No se pudo crear/acceder a la carpeta de destino:\n" + carpetaUsuario + "\n" + exDir.Message, "Error de carpeta");
+            return;
+        }
+        if (!carpetaUsuario.EndsWith("\\")) carpetaUsuario += "\\";
+
+        int agregados = 0;
+        foreach (var origen in dlg.FileNames) {
+            try {
+                string nombreOrigen = System.IO.Path.GetFileName(origen);
+                string nombreFinal = nombreOrigen;
+                string destino = System.IO.Path.Combine(carpetaUsuario, nombreFinal);
+                // Duplicados: sufijo _1, _2... (mismo patrón que AHMEX/CargaArch).
+                if (System.IO.File.Exists(destino)) {
+                    string ext = System.IO.Path.GetExtension(nombreOrigen);
+                    string sinExt = System.IO.Path.GetFileNameWithoutExtension(nombreOrigen);
+                    int contador = 1;
+                    do {
+                        nombreFinal = sinExt + "_" + contador + ext;
+                        destino = System.IO.Path.Combine(carpetaUsuario, nombreFinal);
+                        contador++;
+                    } while (System.IO.File.Exists(destino));
+                }
+                System.IO.File.Copy(origen, destino);
+                ctx.NonQuery(
+                    "INSERT INTO dbo.engModuleFile (ModuleID, ID, ItemID, FileName, FilePath, Description, CreatedOn, CreatedBy) VALUES (" +
+                    moduleId + ", " + docId + ", 0, N'" + nombreFinal.Replace("'", "''") + "', N'" +
+                    carpetaUsuario.Replace("'", "''") + "', N'" + nombreOrigen.Replace("'", "''") + "', GETDATE(), " + userId + ")");
+                agregados++;
+            } catch (Exception exArch) {
+                ctx.Msg("No se pudo agregar:\n" + origen + "\n" + exArch.Message, "Agregar");
+            }
+        }
+        if (agregados > 0) {
+            RefrescarGrid();
+            ctx.Msg("Se agregaron " + agregados + " archivo(s) a:\n" + carpetaUsuario, "Agregar");
+        }
+    }
+};
+
+// ═══════════════════ ELIMINAR (control de propiedad + override admin) ═══════════════════
+btnDelete.Click += (_, __) => {
+    var idsAEliminar = new List<long>();
+    var nombresAEliminar = new List<string>();
+    bool esAdmin = EsAdministradorAdjuntos(userId);
+    foreach (DataGridViewRow row in grid.Rows) {
+        if (!Convert.ToBoolean(row.Cells["Sel"].Value ?? false)) continue;
+        int creador = Convert.ToInt32(row.Cells["CreatedBy"].Value);
+        string nombre = Convert.ToString(row.Cells["FileName"].Value ?? "");
+        if (creador != userId && !esAdmin) {
+            ctx.Msg("No puedes eliminar '" + nombre + "' porque fue subido por otro usuario (ID " + creador +
+                "). Solo quien lo subió o un administrador de adjuntos pueden eliminarlo.", "Permiso denegado");
+            return;
+        }
+        idsAEliminar.Add(Convert.ToInt64(row.Cells["ModuleFileID"].Value));
+        nombresAEliminar.Add(nombre);
+    }
+    if (idsAEliminar.Count == 0) { ctx.Msg("Marca al menos un archivo para eliminar."); return; }
+    if (!ctx.Confirm("¿Eliminar " + idsAEliminar.Count + " archivo(s) asociado(s)? (el archivo físico NO se borra del disco, solo el vínculo)")) return;
+
+    int eliminados = 0;
+    for (int i = 0; i < idsAEliminar.Count; i++) {
+        try {
+            ctx.NonQuery("DELETE FROM dbo.engModuleFile WHERE ModuleFileID=" + idsAEliminar[i]);
+            eliminados++;
+        } catch (Exception ex) {
+            ctx.Msg("No se pudo eliminar '" + nombresAEliminar[i] + "':\n" + ex.Message, "Eliminar");
+        }
+    }
+    RefrescarGrid();
+    ctx.Msg("Eliminados: " + eliminados, "Eliminar");
+};
+
+// ═══════════════════ GUARDAR DESCRIPCIONES ═══════════════════
+btnSave.Click += (_, __) => {
+    int actualizados = 0;
+    foreach (DataGridViewRow row in grid.Rows) {
+        long id = Convert.ToInt64(row.Cells["ModuleFileID"].Value);
+        string desc = Convert.ToString(row.Cells["Description"].Value ?? "");
+        try {
+            ctx.NonQuery("UPDATE dbo.engModuleFile SET Description=N'" + desc.Replace("'", "''") + "' WHERE ModuleFileID=" + id);
+            actualizados++;
+        } catch (Exception ex) {
+            ctx.Msg("No se pudo actualizar descripción (ID=" + id + "):\n" + ex.Message, "Guardar");
+        }
+    }
+    ctx.Msg("Descripciones actualizadas: " + actualizados, "Guardar");
+};
+
+// ═══════════════════ ARRANQUE ═══════════════════
+RefrescarGrid();
+frm.ShowDialog();

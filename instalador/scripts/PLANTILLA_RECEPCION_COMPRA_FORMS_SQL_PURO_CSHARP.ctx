@@ -20,6 +20,32 @@ using System.Globalization;
 // QuantityToBeDelivered queda NEGATIVO en el kardex, StatusPaidID/StatusDeliveryID=3 tras
 // simular UpdateStatusDelivery (aquí como parte del INSERT del encabezado, ya que no hay
 // ctx.erp.UpdateStatusDelivery que llamar).
+//
+// Atomicidad: SÍ (desde esta versión). El batch generado en CrearRecepcionSqlPuro() corre
+// dentro de BEGIN TRAN/COMMIT TRAN con TRY/CATCH + ROLLBACK -- antes, un fallo a mitad del
+// batch dejaba un docDocument "fantasma".
+//
+// ⚠️ CAMBIO IMPORTANTE (docs/INVESTIGACION_XENGINE_SQL_PURO.md): este archivo es C# (no un
+// .sql suelto) -- el addon corre embebido en el mismo proceso que XEngine, así que SÍ tiene
+// acceso a ctx.erp aunque el documento se cree con INSERT directo. Antes, el batch calculaba a
+// mano orgProductKardex y SubTotal/Total/TotalTax/TotalCost del encabezado. Eso se ELIMINÓ y se
+// reemplazó por ctx.erp.RecalcCompleto(doc) + ctx.erp.AffectStockNEW(doc) +
+// ctx.erp.UpdateStatusDelivery(doc) tras el COMMIT del batch -- la MISMA secuencia que ya usa
+// PLANTILLA_RECEPCION_COMPRA_FORMS_CSHARP.ctx (la variante ctx.erp, validada en producción).
+// Verificado empíricamente contra el sandbox (localhost\compac) sobre Orden de Compra (mismo
+// mecanismo, mismo XEngine, mismas tablas): un docDocumentItem insertado a mano por SQL puro
+// queda con SubTotal/Total/TotalTax/TotalLetter correctos tras RecalcDocument, y
+// AffectStockNEW genera la fila de kardex sola (idéntica a la que se insertaba a mano) sin
+// duplicarla si se llama más de una vez. Se aplica aquí el mismo diseño; a diferencia de OC, la
+// consolidación multipartida (varias OC de origen por producto, lotes, números de serie,
+// añadida en v2.70.0) NO se re-probó campo por campo en esta pasada -- si algo no cuadra con
+// lotes/series tras este cambio, ese es el punto a revisar primero.
+// Se conservan docDocumentLot/docDocumentSerialNumber (captura real del usuario -- lote/serie
+// no lo puede inventar el motor) y docDocumentDeliveryAgenda (dato de origen, no un cálculo).
+// Si ctx.erp falla, el documento YA EXISTE (INSERT ya comprometido) pero puede quedar con
+// kardex/costos/totales sin calcular -- se avisa al usuario en vez de fallar en silencio; no
+// hay cálculo manual de respaldo (se decidió eliminarlo, no dejarlo como fallback, porque es la
+// fuente de los bugs reales que motivaron esta investigación).
 
 // ═══════════════════ DATOS INICIALES ═══════════════════
 var almacenes = ctx.Query("SELECT DepotID, DepotName FROM orgDepot WHERE DeletedOn IS NULL ORDER BY DepotName");
@@ -604,7 +630,13 @@ void CrearRecepcionSqlPuro(bool nueva) {
         // COMPRA_SQL_PURO.sql: DocRecipientID=2, StatusPaidID=3, StatusDeliveryID=3,
         // PaymentTermID=0, TotalCost=subtotal porque costo=precio en Recepción). ----
         var sb = new StringBuilder();
+        // Todo el batch corre dentro de BEGIN TRAN/COMMIT TRAN (con TRY/CATCH + ROLLBACK) --
+        // antes, un fallo a mitad de los INSERT dejaba un docDocument "fantasma", el mismo bug
+        // real encontrado en produccion de un cliente. THROW (sin argumentos, SQL Server
+        // 2012+) repropaga el error tras el ROLLBACK.
         sb.Append(@"
+BEGIN TRY
+BEGIN TRAN;
 DECLARE @doc TABLE (DocumentID INT);
 DECLARE @item TABLE (DocumentItemID INT);
 DECLARE @itemId INT;
@@ -622,7 +654,7 @@ VALUES (
     184, 3, 2, 1, " + be + @",
     " + dep + @", 0, " + (primeraOcDocId > 0 ? primeraOcDocId.ToString() : "NULL") + @", '', CAST(@folio AS NVARCHAR), " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @", " + fechaSql + @",
     3, 3, 1, 0, @ahora, 1, 1,
-    " + subtotal.ToString(ci) + @", " + subtotalConDescuento.ToString(ci) + @", " + total.ToString(ci) + @", " + impuestosTotal.ToString(ci) + @", " + subtotal.ToString(ci) + @", N'" + totalLetra + @"', 0, " + total.ToString(ci) + @", 3, 3,
+    0, 0, 0, 0, 0, N'PENDIENTE', 0, 0, 3, 3,
     N'" + comentarios + @"', @ahora, 0, 0
 );
 DECLARE @docId INT = (SELECT TOP 1 DocumentID FROM @doc);
@@ -667,8 +699,6 @@ SELECT
     1, 1, 1, 1, " + fuente.SourceItemId + @", @ahora
 FROM orgProduct p WHERE p.ProductID = " + pc.PID + @";
 SET @itemId = (SELECT MAX(DocumentItemID) FROM @item);
-INSERT INTO orgProductKardex (DateTransaction, DepotID, ProductID, DocumentID, DocumentItemID, Quantity, QuantityToBeDelivered, AmountPrice, Cancelled, ProductImportID, DepotValue, DepotValueAverage, QuantityImport)
-VALUES (@ahora, " + dep + @", " + pc.PID + @", @docId, @itemId, " + qty + @", -" + qty + @", " + precio + @", 0, 0, 0, 0, 0);
 IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + pc.PID + @" AND SupplierID=" + supplierID + @")
     INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber) VALUES (" + pc.PID + @", " + supplierID + @", " + precio + @", 3, 0);
 ");
@@ -701,22 +731,42 @@ IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + pc.PID + @" 
             }
         }
 
-        if (impuestosTotal > 0) {
-            sb.Append(@"
-INSERT INTO docDocumentTaxDetail (DocumentID, DocumentItemID, TaxTypeID, TaxItemID, Amount, Retention, IVASobreIEPS, RegionalTaxID, TaxName, TaxTypeName, TaxBase, TaxPerc, TipoFactor)
-SELECT @docId, DocumentItemID, TaxTypeID, 6, ROUND(Total*(1-DiscountPerc)*TaxPerc,2), 0, 0, 0, 'Impuesto', 'Impuesto', ROUND(Total*(1-DiscountPerc),2), TaxPerc, 'Tasa'
-FROM docDocumentItem WHERE DocumentID=@docId AND TaxPerc>0;
-INSERT INTO docDocumentTaxSum (DocumentID, TaxName1, TaxAmount1, TotalFederal, TotalLocal, TotalOtro)
-VALUES (@docId, 'Impuestos', " + impuestosTotal.ToString(ci) + @", " + impuestosTotal.ToString(ci) + @", 0, 0);
-");
-        }
-
-        sb.Append("SELECT @docId AS DocumentID, @folio AS Folio;");
+        // docDocumentTaxDetail/docDocumentTaxSum YA NO se insertan a mano -- ctx.erp.
+        // RecalcCompleto los genera desde docDocumentItem después del COMMIT (ver comentario
+        // grande al inicio del archivo).
+        sb.Append(@"
+COMMIT TRAN;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    THROW;
+END CATCH
+SELECT @docId AS DocumentID, @folio AS Folio;");
 
         var filas = ctx.Query(sb.ToString());
         if (filas.Count == 0) throw new Exception("El batch no devolvió el documento creado (revisa el SQL generado).");
         int doc = Convert.ToInt32(filas[0]["DocumentID"]);
 
+        // ---- 3) Recálculo con XEngine (ctx.erp), fuera de la transacción SQL -- el documento
+        // ya quedó comprometido (COMMIT). Misma secuencia que PLANTILLA_RECEPCION_COMPRA_
+        // FORMS_CSHARP.ctx: RecalcCompleto (totales + costos) -> AffectStockNEW (mueve
+        // inventario real) -> UpdateStatusDelivery. Si el motor falla, el documento YA EXISTE
+        // pero puede quedar con kardex/costos/totales sin calcular -- se avisa al usuario en
+        // vez de fallar en silencio; no hay cálculo manual de respaldo (eliminado a propósito,
+        // ver comentario grande al inicio del archivo). ----
+        string avisoRecalc = null;
+        try {
+            ctx.erp.RecalcCompleto(doc);
+            if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("RecalcCompleto: " + ctx.erp.LastError);
+            ctx.erp.AffectStockNEW(doc);
+            if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("AffectStockNEW: " + ctx.erp.LastError);
+            try { ctx.erp.UpdateStatusDelivery(doc); } catch { }
+        } catch (Exception exErp) {
+            avisoRecalc = "El documento " + doc + " se creó, pero el recálculo con ctx.erp falló: " + exErp.Message +
+                "\n\nRevisa manualmente sus totales/kardex/costos en Comercial antes de usarlo.";
+        }
+
+        if (avisoRecalc != null) ctx.Msg(avisoRecalc, "Advertencia: recálculo incompleto");
         ctx.Msg("Recepción de compra (SQL puro) " + doc + " creada exitosamente.", "OK");
         if (nueva) { LimpiarTodo(); PrecargarFolio(); }
         else frm.Close();

@@ -365,6 +365,17 @@ namespace BrosLMV
                 CargarPlantillaArchivo("PLANTILLA_MODIFICAR_TITULO_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
 
+            // -- Adjuntos del Documento (v2.72.0): gestor de archivos adjuntos por documento
+            //    sobre engModuleFile (tabla nativa), combinando lo mejor de 2 implementaciones
+            //    reales de cliente ya analizadas (AHMEX/CargaArch: copia a carpeta propia +
+            //    control de propiedad; Business Conexión/AdjuntarArch: UI de 5 botones más
+            //    simple) -- ver comentario largo al inicio del .ctx para la comparación
+            //    completa y la decisión de diseño. Solo existe en Forms (necesita selector de
+            //    archivos, grid y botones reales; no tiene sentido como SQL puro sin UI).
+            new PlantillaDef("C#", "Adjuntos del Documento — Forms (WinForms nativo)",
+                CargarPlantillaArchivo("PLANTILLA_ADJUNTOS_DOCUMENTO_FORMS_CSHARP.ctx",
+                    "// No se encontró la plantilla.\r\n")),
+
             // -- Requisición de Compra: las 5 variantes completas (v2.56.0/v2.57.0) --
             //    mismo resultado final en Comercial, 5 formas distintas de construirlo.
             //    SQL puro validado campo por campo contra un documento nativo (caso 14 del
@@ -465,6 +476,15 @@ namespace BrosLMV
                 CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_WEBVIEW2_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
 
+            // -- Cancelar Documento: deshace lo que las plantillas SQL_PURO de arriba crean.
+            //    Cancela el documento indicado Y toda su cadena derivada (SourceDocumentID,
+            //    recursivo -- no solo un nivel) y revierte el kardex de cada uno marcando
+            //    Cancelled=1 (v2.67.0, hueco encontrado analizando un SP real de producción
+            //    -- ver entrenamiento/bacros/docs/07_sp_triggers_para_broslmv.md).
+            new PlantillaDef("SQL", "Cancelar Documento (y su cadena derivada) — SQL puro",
+                CargarPlantillaArchivo("PLANTILLA_CANCELAR_DOCUMENTO_SQL_PURO.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+
             // -- El resto del catálogo anterior que SÍ seguía siendo útil y no tenía la
             //    queja de documentación confusa -- se mantiene, solo se le puso categoría.
             new PlantillaDef("Python", "Timbrar CFDI",
@@ -490,9 +510,46 @@ namespace BrosLMV
             //    coincide exactamente con lo que espera RelayingCallbackSink.ToUiForm() en
             //    el host, y que los 7 tipos de campo (text/number/decimal/date/bool/combo/
             //    memo) mapean a un FieldType válido -- no genera código que truene.
-            new PlantillaDef("Python", "Diseñador visual de formularios (ctx.form)",
+            //    v2.78.0: agrega un 2do modo ("Datos {DATOS}") en el MISMO archivo -- navega
+            //    el esquema real de la base (tablas/columnas en vivo) para armar tokens
+            //    {DATOS:Tabla.Columna} sin escribir nombres de memoria. Ver CHANGELOG.md.
+            new PlantillaDef("Python", "Diseñador visual de formularios (ctx.form + {DATOS:Tabla.Columna})",
                 CargarPlantillaArchivo("PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+
+            // -- Autorización por monto: Comercial Pro solo ofrece autorizado sí/no (2
+            //    niveles nativos, sin límite de importe configurable por firmante).
+            //    Agrega esa capa con una tabla propia dbo.BrosAutorizaciones (UserID, Nivel,
+            //    ImporteMax) -- basado en 2 SP de producción real de un cliente (ZLCAUTODG/
+            //    ZLCAUTOOP), corrigiendo su defecto: el original hacía TOGGLE (la misma
+            //    llamada autorizaba/desautorizaba); esta plantilla separa AUTORIZAR de
+            //    REVOCAR con el parámetro @accion, nunca alterna sola.
+            new PlantillaDef("SQL", "Autorización por monto — SQL puro (INSERT directo)",
+                CargarPlantillaArchivo("PLANTILLA_AUTORIZACION_POR_MONTO_SQL_PURO.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+
+            // -- Generar Series Auto: utilidad complementaria a Recepción de Compra. Cuando
+            //    el cliente no trae sus propios números de serie para capturar en
+            //    @seriesCSV, esta plantilla se corre DESPUÉS de crear el documento y
+            //    autonumera consecutivos por producto (v2.69.0, basado en un SP de
+            //    producción real LCCREASeries -- ver
+            //    entrenamiento/bacros/docs/07_sp_triggers_para_broslmv.md). Corrige la
+            //    condición de carrera del original (cursor fila-por-fila) con un cálculo
+            //    100% set-based (ROW_NUMBER()) más un sp_getapplock exclusivo, y ancla el
+            //    máximo existente al formato exacto en vez del match laxo original.
+            //    Idempotente: correrla dos veces sobre el mismo documento no duplica series.
+            new PlantillaDef("SQL", "Generar Series Auto (post-documento) — SQL puro",
+                CargarPlantillaArchivo("PLANTILLA_GENERAR_SERIES_AUTO_SQL.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+
+            // -- Requisición → N Órdenes de Compra por proveedor: dada una Requisición ya
+            //    validada (ValidatedOn IS NOT NULL -- primera plantilla SQL_PURO que usa ese
+            //    flag nativo como precondición), genera 1 OC por cada proveedor distinto de
+            //    sus renglones, sin duplicar (v2.71.0, basado en un SP de producción real
+            //    ZLCGENERA_OC -- ver entrenamiento/bacros/docs/07_sp_triggers_para_broslmv.md).
+            new PlantillaDef("SQL", "Requisición → N Órdenes de Compra por proveedor — SQL puro",
+                CargarPlantillaArchivo("PLANTILLA_REQUISICION_A_OC_MULTIPROVEEDOR_SQL_PURO.sql",
+                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
         };
 
         private static string CargarPlantillaArchivo(string nombreArchivo, string fallback)
@@ -2602,6 +2659,25 @@ private void Guardar(bool comoNuevo)
         private void Ejecutar(bool soloSeleccion)
         {
             string codigo = soloSeleccion && _editor.SelectedText.Length > 0 ? _editor.SelectedText : _editor.Text;
+
+            // Tokens tipados {DATOS:Tabla.Columna} (v2.75.0+): si el texto trae alguno, pide
+            // un formulario ANTES de detectar lenguaje/ejecutar -- aplica a sql/python/csharp
+            // por igual, es sustitución de texto plano. Sin match, cero cambio de comportamiento.
+            var resDatos = HostClient.ResolverFormularioTokens(codigo, _ctx);
+            if (resDatos.HuboTokens)
+            {
+                if (!string.IsNullOrEmpty(resDatos.Error))
+                {
+                    MessageBox.Show(resDatos.Error, "BrosLMV — token {DATOS:...}", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                if (resDatos.Cancelado)
+                {
+                    Salida("Operación cancelada por el usuario.", AppTheme.TextMuted);
+                    return;
+                }
+                codigo = resDatos.Codigo;
+            }
 
             // Guardia de empresa: si cambió desde que se abrió la consola, el motor (XEngineLib)
             // sigue ligado a la empresa original → confirmar para no ejecutar en la equivocada.

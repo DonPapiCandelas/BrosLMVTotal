@@ -1,7 +1,20 @@
-# Caso de humo #17: valida PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql contra el sandbox. Igual que
-# el caso 14 (Requisicion SQL puro), compara CAMPO POR CAMPO contra un documento nativo de
-# referencia -- esta vez incluyendo impuestos (docDocumentTax/TaxDetail/TaxSum) y kardex
-# comprometido (orgProductKardex), que Requisicion no tiene porque su Total siempre es $0.
+# Caso de humo #29: valida PLANTILLA_ORDEN_COMPRA_FORMS_SQL_PURO_CSHARP.ctx -- especificamente
+# el cambio de v2.73.0 (docs/INVESTIGACION_XENGINE_SQL_PURO.md): el .ctx real dejo de calcular
+# a mano orgProductKardex, docDocumentTaxDetail/TaxSum y SubTotal/Total/TotalTax del
+# encabezado, y en vez de eso llama ctx.erp.RecalcCompleto(doc) + ctx.erp.AffectStockNEW(doc)
+# + ctx.erp.UpdateStatusDelivery(doc) tras el COMMIT del INSERT directo. Ninguna de las 6
+# variantes de esta plantilla tenia caso de humo.
+#
+# LIMITE HONESTO (mismo que 25_adjuntos_documento.ps1): la plantilla real es una ventana
+# WinForms modeless con buscador de proveedor/producto, impuesto y descuento por partida,
+# totales en vivo -- no automatizable headless con las herramientas de este proyecto. Este
+# caso corre un script companion (29_orden_compra_forms_sql_puro_csharp.codigo.cs) que
+# reproduce LITERALMENTE el batch de T-SQL de CrearOrdenCompraSqlPuro() para una sola partida
+# sin descuento con parametros fijos, seguido de la MISMA secuencia de recalculo con ctx.erp
+# que usa el .ctx real. El resultado se compara CAMPO POR CAMPO -- incluyendo impuestos y
+# kardex comprometido -- contra un documento nativo real (ctx.erp.NuevoDocumento/
+# AgregarArticulo/RecalcCompleto/AffectStockNEW/Save). Si el recalculo via XEngine dejara algo
+# distinto de lo que produce el camino 100% nativo, este caso lo atrapa.
 param(
     [string]$Server   = "localhost\compac",
     [string]$Database = "ComercialSP",
@@ -32,6 +45,14 @@ ELSE
     return $true
 }
 
+function Borrar-Boton([string]$appKey) {
+    sqlcmd -S $Server -E -d $Database -Q "DELETE FROM zzBrosScript WHERE AppKey='$appKey'" -W | Out-Null
+}
+
+function Exec-Q([string]$q) {
+    return (sqlcmd -S $Server -E -d $Database -h -1 -Q $q -W 2>&1 | Select-Object -First 1).Trim()
+}
+
 function Comparar-Tabla([string]$tabla, [string]$pk, [int]$docA, [int]$docB, [string[]]$ignorar) {
     $ignorarSql = ($ignorar | ForEach-Object { "'$_'" }) -join ","
     $q = @"
@@ -45,60 +66,43 @@ EXEC sp_executesql @sql;
     return [int]$n
 }
 
-# 1) Documento de REFERENCIA nativo: mismo producto/cantidad/precio que el SQL puro usa por
-#    default (productoID=1, cantidad=2, precio=80) para que el kardex/impuestos coincidan.
+# 1) Documento de referencia NATIVO (ctx.erp) -- mismo producto/cantidad/precio/impuesto que
+#    el companion Forms SQL puro usa por default (mismos valores que el caso 17 usa para la
+#    plantilla .sql, asi los 3 caminos son comparables entre si).
 $codigoNativo = @'
 // job: safe-offline
 int doc = ctx.erp.NuevoDocumento(183, 1, 2);
-ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=0, PaymentTermID=4, DateDelivery=GETDATE(), DateDocDelivery=GETDATE() WHERE DocumentID=" + doc);
-// taxTypeIdOverride=5 vía AgregarArticulo (no un UPDATE crudo despues) -- asi TaxPerc se
-// recalcula junto con TaxTypeID (Scripting.cs AgregarArticulo consulta vwLBSTaxPerc para el
-// override); un UPDATE manual de solo TaxTypeID deja TaxPerc desincronizado (en 0).
+ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=0, PaymentTermID=1, DateDelivery=GETDATE(), DateDocDelivery=GETDATE(), Comments='' WHERE DocumentID=" + doc);
 ctx.erp.AgregarArticulo(doc, 1, 2, 80, -1, 5);
 ctx.erp.RecalcCompleto(doc);
 ctx.erp.AffectStockNEW(doc);
 ctx.erp.Save(doc);
 try { ctx.erp.UpdateDocumentPaidInfo(doc); } catch {}
-// MANUAL.md #6.3: obligatorio despues de Save para un documento sin inventario (Solicitud,
-// OC) -- RecalcCompleto NO lo calcula. Sin esto StatusDeliveryID se queda en 0 en vez de 3.
 try { ctx.erp.UpdateStatusDelivery(doc); } catch {}
 return "doc=" + doc;
 '@
-if (-not (Upsert-Boton "HUMO_OC_REFERENCIA_NATIVA" "Humo 17 - referencia nativa" $codigoNativo)) { exit 1 }
-
-$salidaRef = & $RunnerExe --appkey HUMO_OC_REFERENCIA_NATIVA --bd $Database 2>&1
+if (-not (Upsert-Boton "HUMO29_REFERENCIA_NATIVA" "Humo 29 - referencia nativa" $codigoNativo)) { exit 1 }
+$salidaRef = & $RunnerExe --appkey HUMO29_REFERENCIA_NATIVA --bd $Database 2>&1
+Borrar-Boton "HUMO29_REFERENCIA_NATIVA"
 if ($LASTEXITCODE -ne 0) { Write-Host "  [ERROR] No se pudo crear el documento de referencia nativo:" -ForegroundColor Red; $salidaRef | ForEach-Object { Write-Host "    $_" }; exit 1 }
-$docNativo = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentID) FROM docDocument WHERE ModuleID=183" -W 2>&1 | Select-Object -First 1).Trim()
+$docNativo = Exec-Q "SELECT MAX(DocumentID) FROM docDocument WHERE ModuleID=183"
 
-# 2) Documento con la plantilla SQL puro real.
-# v2.77.0: 6 de los 7 parametros ahora son tokens {DATOS:Tabla.Columna:*} (formulario
-# automatico) en vez de literales hardcodeados -- el Runner headless no los resuelve, asi que
-# se sustituyen a mano por los MISMOS valores default que antes traia el archivo (proveedorBE=2,
-# almacen=1, productoID=1, cantidad=2, precio=80, condicionPago=4), simulando lo que el
-# formulario hubiera capturado -- son justo los valores que el documento de referencia nativo
-# (arriba) tambien usa, para que la comparacion campo por campo siga siendo valida.
-$codigoSqlPuro = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
-$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
-$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
-$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'
-$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:docDocumentItem\.Quantity[^}]*\}', '2'
-$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:docDocumentItem\.UnitPrice[^}]*\}', '80'
-$codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:docDocument\.PaymentTermID[^}]*\}', '4'
-$codigoSqlPuro = "-- job: safe-offline`n" + $codigoSqlPuro
-if (-not (Upsert-Boton "HUMO_OC_SQL_PURO" "Humo 17 - SQL puro" $codigoSqlPuro)) { exit 1 }
+# 2) Documento con el companion (misma logica que CrearOrdenCompraSqlPuro() del .ctx real).
+$codigoCompanion = Get-Content (Join-Path $PSScriptRoot "29_orden_compra_forms_sql_puro_csharp.codigo.cs") -Raw
+if (-not (Upsert-Boton "HUMO29_SQL_PURO_CSHARP" "Humo 29 - Forms SQL puro (companion)" $codigoCompanion)) { exit 1 }
+$salidaPuro = & $RunnerExe --appkey HUMO29_SQL_PURO_CSHARP --bd $Database 2>&1
+Borrar-Boton "HUMO29_SQL_PURO_CSHARP"
+if ($LASTEXITCODE -ne 0) { Write-Host "  [ERROR] El companion Forms SQL puro fallo:" -ForegroundColor Red; $salidaPuro | ForEach-Object { Write-Host "    $_" }; exit 1 }
+$docSqlPuro = Exec-Q "SELECT MAX(DocumentID) FROM docDocument WHERE ModuleID=183"
 
-$salidaPuro = & $RunnerExe --appkey HUMO_OC_SQL_PURO --bd $Database 2>&1
-if ($LASTEXITCODE -ne 0) { Write-Host "  [ERROR] La plantilla SQL puro fallo:" -ForegroundColor Red; $salidaPuro | ForEach-Object { Write-Host "    $_" }; exit 1 }
-$docSqlPuro = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentID) FROM docDocument WHERE ModuleID=183" -W 2>&1 | Select-Object -First 1).Trim()
-
-# 3) Comparar campo por campo (ignorando columnas que SIEMPRE difieren entre 2 documentos,
-#    y DateDelivery/DateDocDelivery -- el SQL puro usa hoy+15 dias a proposito, no GETDATE()).
+# 3) Comparar campo por campo (igual que el caso 17, incluyendo DateDelivery/DateDocDelivery
+#    -- ambos caminos usan hoy+7 dias, no GETDATE(), asi que aqui SI deben coincidir).
 $ignorarDoc = @("DocumentID","Folio","CreatedOn","DateCost","DateDocDelivery","DateDocument","DateFrom","DateTo","DateLastPayment","DateDelivery")
 $diffsDoc = Comparar-Tabla "docDocument" "DocumentID" $docNativo $docSqlPuro $ignorarDoc
-if ($diffsDoc -ne 0) { Write-Host "  [ERROR] docDocument tiene $diffsDoc diferencia(s) inesperada(s) entre nativo ($docNativo) y SQL puro ($docSqlPuro)." -ForegroundColor Red; exit 1 }
+if ($diffsDoc -ne 0) { Write-Host "  [ERROR] docDocument tiene $diffsDoc diferencia(s) inesperada(s) entre nativo ($docNativo) y Forms SQL puro ($docSqlPuro)." -ForegroundColor Red; exit 1 }
 
-$itemNativo = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentItemID) FROM docDocumentItem WHERE DocumentID=$docNativo" -W 2>&1 | Select-Object -First 1).Trim()
-$itemPuro = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentItemID) FROM docDocumentItem WHERE DocumentID=$docSqlPuro" -W 2>&1 | Select-Object -First 1).Trim()
+$itemNativo = Exec-Q "SELECT MAX(DocumentItemID) FROM docDocumentItem WHERE DocumentID=$docNativo"
+$itemPuro = Exec-Q "SELECT MAX(DocumentItemID) FROM docDocumentItem WHERE DocumentID=$docSqlPuro"
 $ignorarItem = @("DocumentID","DocumentItemID","DateItem")
 $diffsItem = Comparar-Tabla "docDocumentItem" "DocumentItemID" $itemNativo $itemPuro $ignorarItem
 if ($diffsItem -ne 0) { Write-Host "  [ERROR] docDocumentItem tiene $diffsItem diferencia(s) inesperada(s)." -ForegroundColor Red; exit 1 }
@@ -109,4 +113,5 @@ if ($diffsTaxDetail -ne 0) { Write-Host "  [ERROR] docDocumentTaxDetail tiene $d
 $diffsKardex = Comparar-Tabla "orgProductKardex" "DocumentID" $docNativo $docSqlPuro @("DocumentID","StockTransactionID","DocumentItemID","DateTransaction")
 if ($diffsKardex -ne 0) { Write-Host "  [ERROR] orgProductKardex tiene $diffsKardex diferencia(s) inesperada(s)." -ForegroundColor Red; exit 1 }
 
+Write-Host "  [OK] El recalculo via ctx.erp/XEngine (companion Forms SQL puro) coincide campo por campo con el camino 100% nativo (incluyendo impuestos y kardex)."
 exit 0
