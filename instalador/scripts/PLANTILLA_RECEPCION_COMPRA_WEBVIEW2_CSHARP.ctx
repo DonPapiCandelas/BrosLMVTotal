@@ -313,13 +313,13 @@ string html = @"
         const lotes = parseLotes(p.lotesTexto);
         const suma = lotes.reduce((s, l) => s + l.cantidad, 0);
         if (lotes.length === 0 || Math.abs(suma - p.qty) > 0.001 || lotes.some(l => !l.lote || !l.fecha)) {
-          alert('"' + p.nombre + '" requiere lotes cuya suma sea igual a la cantidad a recibir, con lote y fecha de caducidad.'); return;
+          alert('""' + p.nombre + '"" requiere lotes cuya suma sea igual a la cantidad a recibir, con lote y fecha de caducidad.'); return;
         }
       }
       if (p.useSerial) {
         const series = p.seriesTexto.replace(/\r/g, '').split('\n').map(s => s.trim()).filter(s => s.length > 0);
         if (series.length !== Math.round(p.qty)) {
-          alert('"' + p.nombre + '" requiere exactamente ' + Math.round(p.qty) + ' número(s) de serie.'); return;
+          alert('""' + p.nombre + '"" requiere exactamente ' + Math.round(p.qty) + ' número(s) de serie.'); return;
         }
       }
     }

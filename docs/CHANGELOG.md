@@ -6,6 +6,23 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.80.0] — 2026-08-05 — Corrección: comillas sin escapar rompían la plantilla Recepción de Compra WebView2 (C#)
+
+> Al abrir `PLANTILLA_RECEPCION_COMPRA_WEBVIEW2_CSHARP.ctx` en Comercial se veía una
+> cascada larga de errores de compilación (CS1002, CS1012, CS1010, CS7017, CS1525...)
+> empezando en la línea del `alert(...)` de validación de lotes. Bug preexistente, no
+> relacionado con el trabajo de tokens `{DATOS:...}` de hoy.
+
+### Corregido
+- El HTML/JS embebido vive dentro de un string verbatim de C# (`@"..."`), donde toda
+  comilla doble literal debe escribirse `""`. Dos líneas de validación de JS (mensajes de
+  `alert(...)` sobre lotes y series) tenían `'"'` sin escapar dentro del string —eso
+  cerraba el string de C# a mitad de archivo, y todo el resto (incluido el HTML de cierre
+  `</script></body></html>`) se interpretaba como código C# suelto, produciendo la cascada
+  de errores. Corregido a `'""'` en ambas líneas. Verificado registrando el script y
+  ejecutándolo headless contra el sandbox (`localhost\compac`/`ComercialSP`): compila y
+  corre sin errores `CS####`.
+
 ## [2.79.0] — 2026-08-05 — Corrige confusión doble clic en Consola: panel "REFERENCIAS → Campo" ahora ofrece el token nuevo cuando aplica
 
 > Bug de UX real reportado por el usuario: en la Consola de scripts, el panel "REFERENCIAS →
