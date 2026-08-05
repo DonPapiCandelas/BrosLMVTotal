@@ -1189,7 +1189,30 @@ namespace BrosLMV
                 }
                 string campo = item.Text;
                 if (esPython) InsertarEnEditor("ctx.fila[\"" + campo + "\"]");
-                else if (esSql) InsertarEnEditor("{DATOS:" + campo + "}");
+                else if (esSql)
+                {
+                    // El campo mostrado aquí viene del grid activo de Comercial (alias de vista,
+                    // vía ScriptContext.GetFilaActiva()) y no siempre corresponde a una columna
+                    // real de la tabla base. Se valida contra docDocument (heurística pragmática:
+                    // es la tabla base de casi todas las plantillas del catálogo) para decidir si
+                    // se ofrece el token nuevo {DATOS:Tabla.Columna} (con formulario) o, si no es
+                    // columna real, el token viejo de solo lectura {DATOS:Campo}.
+                    string dataType; int? maxLen;
+                    bool esColumnaReal;
+                    try { esColumnaReal = HostClient.ExisteColumnaReal("docDocument", campo, _ctx, out dataType, out maxLen); }
+                    catch { esColumnaReal = false; }
+
+                    if (esColumnaReal)
+                    {
+                        InsertarEnEditor("{DATOS:docDocument." + campo + ":*}");
+                        _status.Text = "Insertado como campo de formulario (docDocument." + campo + ")";
+                    }
+                    else
+                    {
+                        InsertarEnEditor("{DATOS:" + campo + "}");
+                        _status.Text = "'" + campo + "' no es una columna real de docDocument (probablemente alias de vista) -- se insertó el token de solo lectura {DATOS:...}";
+                    }
+                }
                 else InsertarEnEditor("fila[\"" + campo + "\"]");
             };
             pnlHost.Controls.Add(_lstSeleccion);

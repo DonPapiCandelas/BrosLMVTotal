@@ -6,6 +6,52 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.79.0] — 2026-08-05 — Corrige confusión doble clic en Consola: panel "REFERENCIAS → Campo" ahora ofrece el token nuevo cuando aplica
+
+> Bug de UX real reportado por el usuario: en la Consola de scripts, el panel "REFERENCIAS →
+> Tokens" (pestaña SQL, control `_lstSeleccion`) trae la leyenda "doble clic para insertar". El
+> usuario probó esto esperando que insertara el token nuevo `{DATOS:Tabla.Columna}` (que abre un
+> formulario, construido en v2.75.0-2.78.0) y se confundió porque el resultado — el token viejo
+> `{DATOS:Campo}`, sin punto, que lee de la fila seleccionada del grid — no dispara ningún
+> formulario. Causa raíz: los nombres que muestra ese panel vienen de
+> `ScriptContext.GetFilaActiva()` (`src\Scripting.cs`), que lee los `Name` del `ADORecordset` COM
+> del grid activo de Comercial (cualquier vista que sea) — pueden ser alias de vista que NO
+> corresponden 1:1 a una columna real de `docDocument`, así que insertar el token nuevo a ciegas
+> podía generar `{DATOS:docDocument.AlgoQueNoExiste}`.
+
+### Agregado
+- **`HostClient.ExisteColumnaReal(tabla, columna, ctx, out dataType, out maxLen)`** — método
+  público nuevo, extraído de la validación que ya vivía inline dentro de
+  `ResolverFormularioTokens` (consulta a `INFORMATION_SCHEMA.COLUMNS`, con la misma caché en
+  memoria `_cacheColumnasDatos` compartida entre ambos usos — cero consultas duplicadas). Permite
+  que cualquier punto del addon confirme si `Tabla.Columna` es una columna real antes de decidir
+  qué insertar.
+
+### Cambiado
+- **Doble clic en `_lstSeleccion` (panel "REFERENCIAS → Campo", pestaña SQL)** (`src\Consola.cs`):
+  ahora valida el campo del grid contra `docDocument` (heurística pragmática: es la tabla base de
+  casi todas las plantillas del catálogo) con `HostClient.ExisteColumnaReal` antes de insertar. Si
+  es columna real, inserta el token nuevo `{DATOS:docDocument.Campo:*}` (con formulario) y muestra
+  en la barra de estado "Insertado como campo de formulario (docDocument.Campo)". Si no lo es
+  (alias de vista), inserta el token viejo `{DATOS:Campo}` como antes, pero ahora explica por qué
+  en la barra de estado ("... no es una columna real de docDocument (probablemente alias de
+  vista) -- se insertó el token de solo lectura..."). Las ramas Python/C# (`ctx.fila["campo"]` /
+  `fila["campo"]`) no se tocaron — ese mecanismo de lectura del grid sigue siendo válido ahí; el
+  problema era específico de SQL puro, que no tenía ninguna UI propia para pedir Tabla.Columna.
+- `ResolverFormularioTokens` (`src\HostClient.cs`) ahora llama a `ExisteColumnaReal` en vez de
+  tener la consulta a `INFORMATION_SCHEMA.COLUMNS` duplicada inline — mismo comportamiento, sin
+  duplicación de SQL.
+
+### Validado
+- Caso de humo nuevo `33_existe_columna_real` (contra el sandbox real, vía
+  `BrosLMV.Runner.exe`): `ExisteColumnaReal("docDocument", "Title", ctx, ...)` → `true`,
+  `DataType=nvarchar`, `MaxLen=255`; `ExisteColumnaReal("docDocument", "AlgoQueNoExiste999", ctx,
+  ...)` → `false`. Los 33 casos de humo (`build\probar_humo.ps1`) pasan en verde.
+- El doble clic real sobre el `ListView` de la Consola no se pudo probar en vivo (interacción de
+  WinForms, no automatizable headless — mismo límite ya documentado en trabajos previos); se
+  verificó por inspección de código que el handler arma el string correcto en cada rama (nuevo vs
+  viejo).
+
 ## [2.78.0] — 2026-08-05 — Diseñador visual de formularios: navegador de esquema en vivo para tokens `{DATOS:Tabla.Columna}`
 
 > Extiende el diseñador visual existente (`PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py`, conectado

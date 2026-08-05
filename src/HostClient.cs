@@ -1008,6 +1008,48 @@ namespace BrosLMV
         // EjecutarSql/CtxSqlRunner); debe llamarse en el hilo de Comercial (igual que
         // ctx.EjecutarSql), no requiere UiPump porque ya estamos en ese hilo en los 3 puntos
         // de dispatch.
+        // Consulta (con caché en memoria compartida _cacheColumnasDatos) si "tabla.columna" es
+        // una columna REAL de la base de datos activa (INFORMATION_SCHEMA.COLUMNS), a diferencia
+        // de un alias de vista (ej. los que expone ScriptContext.GetFilaActiva() sobre el grid
+        // activo de Comercial, que pueden no mapear 1:1 a una columna de tabla). Extraído de
+        // ResolverFormularioTokens para reutilizarse también desde la Consola (panel de
+        // referencias, doble clic sobre "Campo") antes de decidir si ofrece el token nuevo
+        // {DATOS:Tabla.Columna} (con formulario) o el viejo {DATOS:Campo} (solo lectura del grid).
+        public static bool ExisteColumnaReal(string tabla, string columna, ScriptContext ctx, out string dataType, out int? maxLen)
+        {
+            dataType = "";
+            maxLen = null;
+            if (string.IsNullOrEmpty(tabla) || string.IsNullOrEmpty(columna)) return false;
+
+            string cacheNs = (SafeCtxCall(() => ctx?.ServidorActivo()) ?? "") + "|" + (SafeCtxCall(() => ctx?.Empresa()) ?? "");
+            string cacheKey = cacheNs + "|" + tabla + "." + columna;
+
+            if (_cacheColumnasDatos.TryGetValue(cacheKey, out var cached))
+            {
+                dataType = cached.Item1;
+                maxLen = cached.Item2;
+                return true;
+            }
+
+            try
+            {
+                string sqlInfo = "SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS " +
+                    "WHERE TABLE_NAME = N'" + tabla.Replace("'", "''") + "' AND COLUMN_NAME = N'" + columna.Replace("'", "''") + "'";
+                var filas = ctx.Query(sqlInfo);
+                if (filas == null || filas.Count == 0) return false;
+
+                dataType = Convert.ToString(filas[0].ContainsKey("DATA_TYPE") ? filas[0]["DATA_TYPE"] : null, CultureInfo.InvariantCulture) ?? "";
+                object mlObj = filas[0].ContainsKey("CHARACTER_MAXIMUM_LENGTH") ? filas[0]["CHARACTER_MAXIMUM_LENGTH"] : null;
+                maxLen = (mlObj == null || mlObj is DBNull) ? (int?)null : Convert.ToInt32(mlObj, CultureInfo.InvariantCulture);
+                _cacheColumnasDatos[cacheKey] = Tuple.Create(dataType, maxLen);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public static ResolverTokensResult ResolverFormularioTokens(string codigoOriginal, ScriptContext ctx)
         {
             var r = new ResolverTokensResult { Codigo = codigoOriginal ?? "" };
@@ -1040,44 +1082,29 @@ namespace BrosLMV
                 }
             }
 
-            string cacheNs = (SafeCtxCall(() => ctx?.ServidorActivo()) ?? "") + "|" + (SafeCtxCall(() => ctx?.Empresa()) ?? "");
             var campos = new List<FormField>();
 
             foreach (var par in orden)
             {
                 string key = par.Item1 + "." + par.Item2;
-                string cacheKey = cacheNs + "|" + key;
                 string dataType;
                 int? maxLen;
-                if (_cacheColumnasDatos.TryGetValue(cacheKey, out var cached))
+                bool existe;
+                try
                 {
-                    dataType = cached.Item1;
-                    maxLen = cached.Item2;
+                    existe = ExisteColumnaReal(par.Item1, par.Item2, ctx, out dataType, out maxLen);
                 }
-                else
+                catch (Exception ex)
                 {
-                    try
-                    {
-                        string sqlInfo = "SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS " +
-                            "WHERE TABLE_NAME = N'" + par.Item1.Replace("'", "''") + "' AND COLUMN_NAME = N'" + par.Item2.Replace("'", "''") + "'";
-                        var filas = ctx.Query(sqlInfo);
-                        if (filas == null || filas.Count == 0)
-                        {
-                            r.Error = "El token {DATOS:" + key + "} usa una tabla/columna que no existe en la base de " +
-                                      "datos activa. Revisa el nombre (sensible a como está en INFORMATION_SCHEMA.COLUMNS).";
-                            return r;
-                        }
-                        dataType = Convert.ToString(filas[0].ContainsKey("DATA_TYPE") ? filas[0]["DATA_TYPE"] : null, CultureInfo.InvariantCulture) ?? "";
-                        object mlObj = filas[0].ContainsKey("CHARACTER_MAXIMUM_LENGTH") ? filas[0]["CHARACTER_MAXIMUM_LENGTH"] : null;
-                        maxLen = (mlObj == null || mlObj is DBNull) ? (int?)null : Convert.ToInt32(mlObj, CultureInfo.InvariantCulture);
-                        _cacheColumnasDatos[cacheKey] = Tuple.Create(dataType, maxLen);
-                    }
-                    catch (Exception ex)
-                    {
-                        r.Error = "No se pudo consultar el esquema de \"" + key + "\" para el formulario del token " +
-                                  "{DATOS:...}: " + ex.Message;
-                        return r;
-                    }
+                    r.Error = "No se pudo consultar el esquema de \"" + key + "\" para el formulario del token " +
+                              "{DATOS:...}: " + ex.Message;
+                    return r;
+                }
+                if (!existe)
+                {
+                    r.Error = "El token {DATOS:" + key + "} usa una tabla/columna que no existe en la base de " +
+                              "datos activa. Revisa el nombre (sensible a como está en INFORMATION_SCHEMA.COLUMNS).";
+                    return r;
                 }
 
                 var info = porPar[key];

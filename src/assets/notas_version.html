@@ -47,6 +47,21 @@
   </header>
 
   <div class="ver">
+    <h2>2.79.0</h2>
+    <div class="date">2026-08-05 — Corrige confusión doble clic en Consola: panel "REFERENCIAS → Campo" ahora ofrece el token nuevo cuando aplica</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>En la Consola de scripts, el panel <b>"REFERENCIAS → Tokens"</b> (pestaña SQL, doble
+            clic sobre un campo) ya no siempre inserta el token viejo de solo lectura. Ahora
+            verifica si el campo es una columna real de la base y, si lo es, inserta el token
+            nuevo <code>{DATOS:docDocument.Campo:*}</code> (el que abre el formulario) — si no lo
+            es (alias de vista del grid), sigue insertando el token viejo, pero ahora explica por
+            qué en la barra de estado en vez de dejar al usuario adivinando.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
     <h2>2.78.0</h2>
     <div class="date">2026-08-05 — Diseñador visual de formularios: navegador de esquema en vivo para tokens {DATOS:Tabla.Columna}</div>
     <div class="grp add"><div class="h">Agregado</div>
