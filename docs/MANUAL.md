@@ -1436,6 +1436,74 @@ SELECT TOP 50 * FROM zzBrosAuditoria ORDER BY id DESC;
   `NuevoDocumento` ya conoce los defaults correctos. Usar SQL directo solo para los
   ajustes de perfil por módulo (UPDATE de `PaymentTermID`, `DepotIDFrom`, etc.).
 
+### ⚠️ ProgID `XengineLib.clsMain` faltante en 32 bits (despliegue de `BrosLMV.Runner`)
+Encontrado en un servidor real de un consumidor externo (**BellPeppers CRM**, ver
+`CHANGELOG.md` — entrada `BrosLMV.Runner` v0.3.0): `BrosLMV.Runner.exe` fallaba SIEMPRE con
+`ERROR al crear XEngine standalone: No se encontró "XengineLib.clsMain" registrado en este
+equipo`, aun con Comercial Pro instalado y funcionando con normalidad.
+
+- **Causa confirmada por registro:** el CLSID real (`{D5255125-CD90-48A8-BC48-762BE8531B5D}`,
+  `InprocServer32` → `XEngineLib.dll`) estaba bien registrado en la vista de 32 bits
+  (`HKLM\SOFTWARE\WOW6432Node\Classes\CLSID\...`), pero el **mapeo ProgID→CLSID**
+  (`XengineLib.clsMain`) solo existía en la vista de **64 bits**
+  (`HKLM\SOFTWARE\Classes\XengineLib.clsMain`) — la vista de 32 bits
+  (`HKLM\SOFTWARE\WOW6432Node\Classes\XengineLib.clsMain`) no existía. El Runner es un
+  proceso de 32 bits que activa XEngine por ProgID (`Type.GetTypeFromProgID`), así que la
+  búsqueda solo mira la vista de 32 bits y no lo encuentra, aunque la clase sí esté bien
+  registrada ahí.
+- **Depende del instalador de Comercial Pro**, no de nada que controle BrosLMV — puede
+  repetirse en cualquier servidor/cliente donde `XEngineLib.dll` haya quedado registrado
+  así.
+- **Auto-sanado desde v0.3.0 del Runner:** `runner\Program.cs` (`AsegurarProgIdXEngine32Bits`)
+  detecta este caso exacto (ProgID ausente en 32 bits, presente en 64 bits) y copia el mapeo
+  antes de activar XEngine — best-effort, no bloquea si no hay permisos de administrador.
+  Si el Runner sigue fallando con este mismo mensaje, el arreglo manual es:
+  ```powershell
+  New-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Classes\XengineLib.clsMain" -Force
+  New-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Classes\XengineLib.clsMain\CLSID" -Force
+  Set-ItemProperty -Path "HKLM:\SOFTWARE\WOW6432Node\Classes\XengineLib.clsMain" -Name "(default)" -Value "XengineLib.clsMain"
+  Set-ItemProperty -Path "HKLM:\SOFTWARE\WOW6432Node\Classes\XengineLib.clsMain\CLSID" -Name "(default)" -Value "{D5255125-CD90-48A8-BC48-762BE8531B5D}"
+  ```
+
+### ⚠️ NUNCA un trigger `AFTER INSERT` sobre `docDocument` (ni ninguna tabla que XEngine use para crear documentos)
+Encontrado y confirmado por un consumidor externo (**BellPeppers CRM**, ver `CHANGELOG.md`
+[2.81.0]) con una prueba controlada y reproducible: un trigger `AFTER INSERT` en
+`docDocument` que hace su propio `INSERT` en otra tabla con columna `IDENTITY` propia
+**corrompe la recuperación del ID recién insertado**.
+
+- **Con el trigger activo:** `SCOPE_IDENTITY()` (patrón estándar `INSERT ...; SELECT
+  SCOPE_IDENTITY()` en un solo batch) devolvió un ID que **no coincidía** con el ID real
+  insertado (desviado por 3 en la prueba).
+- **Con el trigger desactivado:** correcto, 2 de 2 veces.
+- No se investigó la causa raíz exacta a nivel de driver/protocolo (hipótesis: algo del
+  driver ODBC/PDO_SQLSRV con múltiples result sets cuando un trigger inserta en otra tabla
+  con `IDENTITY` propia), pero el riesgo es real y grave: **si algún mecanismo interno de
+  XEngine/BrosLMV obtiene el `DocumentID` (o cualquier PK) recién creado con este mismo
+  patrón (`INSERT` + `SCOPE_IDENTITY()`), un trigger puesto por CUALQUIER cosa** — un
+  cliente, un script de un usuario, una futura feature de BrosLMV — **puede hacer que se
+  asocien partidas al documento equivocado, silenciosamente, sin ningún error visible.**
+- **Regla:** no agregues un trigger `AFTER INSERT` (ni de ningún otro tipo que inserte en
+  una tabla con `IDENTITY` propia) sobre `docDocument` ni sobre ninguna tabla que XEngine
+  use para crear documentos. Si necesitas reaccionar a la creación de un documento, hazlo
+  **después** (polling, un job periódico, o un trigger que NO inserte en una tabla con
+  `IDENTITY` propia), nunca en el mismo INSERT.
+
+### ⚠️ Un producto con kardex corrupto puede colgar `ctx.erp` de escritura sin error ni timeout
+Encontrado por un consumidor externo (**BellPeppers CRM**, ver `CHANGELOG.md` [2.81.0]):
+un producto con historial de kardex corrupto (mezclado por INSERTs SQL crudo previos a
+usar `ctx.erp`) hizo que `ctx.erp.AgregarArticulo`/`Save` en una Recepción de Compra se
+**colgara indefinidamente, sin error ni timeout** — hubo que matar el proceso a mano. Se
+descartó que fuera la retención de impuestos o el `TaxTypeID` (probado con y sin
+retención, mismo resultado); con un producto sin ese historial corrupto, funciona
+perfecto.
+
+- **Riesgo sistémico:** cualquier script que use `ctx.erp` de escritura headless (vía
+  `BrosLMV.Runner` o el ribbon) **no tiene ningún timeout/watchdog** — un solo producto
+  con datos corruptos de un cliente real puede colgar el proceso completo sin aviso.
+- **Mejora futura (no implementada todavía):** evaluar un timeout duro alrededor de las
+  llamadas de escritura de `ctx.erp` en `BrosLMV.Runner`, para no depender de que un
+  operador mate el proceso a mano al detectar el colgado.
+
 ### Buenas prácticas
 - Probar scripts en modo solo-lectura primero (`ctx.SoloLectura`).
 - Usar `ctx.Confirm()` antes de operaciones destructivas.

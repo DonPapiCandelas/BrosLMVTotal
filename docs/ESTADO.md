@@ -39,6 +39,44 @@ el addon YA EMPACADO (`/p:Version=` dinámico) — antes estaba fija a mano en l
 el addon ya iba en 2.18.1). Si algún día hace falta compilar esos `.csproj` a mano, el `<Version>`
 fijo ahí es solo un respaldo — desactualízalo si quieres, no es la fuente de verdad.
 
+## Estás aquí (2026-08-07, v2.81.0 + `BrosLMV.Runner` v0.3.0 — 4 hallazgos desde un consumidor externo real: BellPeppers CRM)
+
+> **Nota:** este archivo llevaba desde v2.58.0 (2026-07-31) sin actualizarse pese a que
+> `CHANGELOG.md` ya iba en v2.80.0 (2026-08-05) — la "corrección en curso" que menciona la
+> entrada de auditoría más abajo (2026-07-29) sigue pendiente de completarse; esta entrada NO
+> la cierra, solo agrega lo de hoy encima. Ver `CHANGELOG.md` [2.33.0]–[2.80.0] para el
+> detalle línea por línea de todo lo que falta reflejar aquí.
+
+- **Primer consumidor externo real de `BrosLMV.Runner` en producción: BellPeppers CRM**
+  (proyecto Laravel separado, servidor `bplserver`/`100.64.240.52`), corriendo varios días
+  encolando y creando documentos reales (Entradas/Salidas de almacén, Órdenes de Compra,
+  Recepciones de Compra) vía `ctx.erp`. En el camino salieron 4 hallazgos que le pertenecen a
+  BrosLMV/XEngine en general, no solo a BellPeppers — documentados hoy:
+  1. **Bug de despliegue real, corregido:** faltaba el ProgID de 32 bits de
+     `XengineLib.clsMain` en el registro de ese servidor (`Type.GetTypeFromProgID` desde el
+     Runner de 32 bits no lo encontraba aunque la clase estuviera bien registrada). Corregido
+     a mano ahí por SSH, y ahora **auto-sanado en el propio Runner** (`AsegurarProgIdXEngine32Bits`,
+     v0.3.0) para no depender de que cada cliente lo detecte igual — ver `CHANGELOG.md`
+     (entrada `BrosLMV.Runner` v0.3.0) y `MANUAL.md` §12.
+  2. **Gotcha grave documentado (sin cambio de código):** un trigger `AFTER INSERT` sobre
+     `docDocument` corrompe `SCOPE_IDENTITY()` — riesgo real de que XEngine asocie partidas al
+     documento equivocado si algún trigger externo se agrega. Advertencia dura nueva en
+     `MANUAL.md` §12.
+  3. **Límite conocido documentado (sin cambio de código):** un producto con kardex corrupto
+     puede colgar `ctx.erp` de escritura indefinidamente, sin timeout — riesgo sistémico de
+     cualquier script de escritura headless. En `MANUAL.md` §12 como mejora futura pendiente
+     (timeout duro, no implementado todavía).
+  4. **Decisión de producto pendiente, CONFIRMADA:** `ctx.erp` de escritura headless es seguro
+     con `ComercialSP.exe` abierto y en uso real al mismo tiempo — primera evidencia real en
+     producción (no sandbox), verificada campo por campo contra documentos nativos.
+- Ver `CHANGELOG.md` [2.81.0] para el detalle completo de los 4 hallazgos.
+- **Pendiente para el usuario:** regenerar el instalador (`build\generar_instalador.ps1` +
+  `build\generar_exes.ps1`) para que el fix del ProgID de 32 bits llegue a una instalación
+  nueva del Runner — **no se corrió en esta sesión** porque mata `ComercialSP` a la fuerza y
+  hay servidores con gente usando la app real en este momento. También pendiente: probar el
+  fix específicamente contra un servidor con la falla real presente (no se pudo reproducir en
+  el sandbox de desarrollo — ver la nota de honestidad en `CHANGELOG.md`).
+
 ## Estás aquí (2026-07-31, v2.58.0 — Orden de Compra COMPLETA: 5 de 5 variantes, 19/19 en verde)
 
 > Continuación directa de la entrada de abajo. Cierra "dale a lo demás, quiero verlo
@@ -863,8 +901,12 @@ DocumentID 11556–11560 (órdenes de compra). Scripts en `/.temp_tests`: `f1_or
 
 - 🟡 **`BrosLMV.Runner` (T3.3, programador headless) — prototipo probado, sigue abierto.**
   Ver detalle completo en la entrada "Estás aquí" de arriba y en `PLAN_IMPLEMENTACION.md`
-  §T3.3. Falta: Python headless, decidir `ctx.erp`/grid sin supervisión, salida
-  Excel/PDF/SMTP, receta de Task Scheduler.
+  §T3.3. Python headless ya está (ver CHANGELOG Runner v0.2.0). **`ctx.erp`/grid sin
+  supervisión: CONFIRMADO seguro (2026-08-07)** — primer caso real en producción
+  (BellPeppers CRM, ver entrada "Estás aquí" de arriba y CHANGELOG [2.81.0]), ya no es una
+  decisión pendiente. Esta lista está desactualizada en el resto (nota de auditoría en curso
+  arriba) — falta confirmar aquí qué de "salida Excel/PDF/SMTP, receta de Task Scheduler"
+  sigue realmente pendiente.
 - ✅ **`.bros` packages** (T1.3, v2.37.0, HECHO) y ✅ **Historial de versiones** (T1.4,
   v2.40.0, HECHO) — ver CHANGELOG. Árbol de scripts rediseñado (favoritos/recientes/
   categoría manual, todo contraído) en v2.38.0-v2.39.1.

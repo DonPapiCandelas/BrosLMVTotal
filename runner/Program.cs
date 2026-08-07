@@ -36,6 +36,15 @@
 // bootstrap standalone crea un XEngine real), pero sin sesión de Comercial algunas propiedades
 // quedan vacías (ComercialRFC="", UserId=0 en las pruebas) -- ver CHANGELOG.md para el detalle
 // y la recomendación de NO habilitar escrituras de ctx.erp sin supervisión adicional todavía.
+//
+// v0.3.0: auto-sanado del ProgID de 32 bits de "XengineLib.clsMain" (bug real encontrado
+// desplegando el Runner en un servidor de un consumidor externo -- ver CHANGELOG.md y
+// MANUAL.md §12). El registro real de la clase COM (InprocServer32) puede estar correcto en
+// WOW6432Node pero el mapeo ProgID->CLSID solo existir en el hive de 64 bits (depende de cómo
+// el instalador de Comercial Pro registró XEngineLib.dll en ese equipo, no de nada que
+// controle BrosLMV) -- como el Runner es un proceso de 32 bits y activa XEngine por ProgID
+// (Type.GetTypeFromProgID), sin el mapeo en WOW6432Node la activación falla aunque la clase
+// esté perfectamente registrada. Ver AsegurarProgIdXEngine32Bits().
 
 using System;
 using System.Data.SqlClient;
@@ -44,10 +53,11 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 // Prototipo T3.3 -- aún no se distribuye con el instalador; versión propia, independiente
 // de BrosLMVClsMain.dll.
-[assembly: AssemblyVersion("0.2.0.0")]
+[assembly: AssemblyVersion("0.3.0.0")]
 [assembly: AssemblyTitle("BrosLMV.Runner - Programador headless (prototipo T3.3)")]
 
 namespace BrosLMV.Runner
@@ -251,9 +261,13 @@ namespace BrosLMV.Runner
         {
             var b = new SqlConnectionStringBuilder(connStr);
 
+            AsegurarProgIdXEngine32Bits();
+
             Type t = Type.GetTypeFromProgID("XengineLib.clsMain", throwOnError: false);
             if (t == null)
-                throw new Exception("No se encontró \"XengineLib.clsMain\" registrado en este equipo (¿Comercial/XEngine instalado?).");
+                throw new Exception("No se encontró \"XengineLib.clsMain\" registrado en este equipo (¿Comercial/XEngine instalado?). " +
+                    "Si XEngineLib.dll SÍ está instalado, revisa si falta el ProgID de 32 bits -- ver MANUAL.md §12 " +
+                    "(\"ProgID XengineLib.clsMain faltante en 32 bits\").");
             object xe = Activator.CreateInstance(t);
 
             if (!Com.SetProp(xe, "OwnedBusinessEntityID", 1))
@@ -276,6 +290,51 @@ namespace BrosLMV.Runner
                 throw new Exception("SetDataLayers falló: " + Com.LastError);
 
             return xe;
+        }
+
+        // Bug real (v0.3.0, confirmado por SSH contra el registro de un servidor real, no
+        // supuesto): el CLSID de XengineLib.clsMain estaba correctamente registrado en la vista
+        // de 32 bits (HKLM\SOFTWARE\WOW6432Node\Classes\CLSID\{D5255125-...}\InprocServer32 ->
+        // XEngineLib.dll), pero el mapeo ProgID->CLSID (HKLM\SOFTWARE\WOW6432Node\Classes\
+        // XengineLib.clsMain) SOLO existía en la vista de 64 bits (HKLM\SOFTWARE\Classes\
+        // XengineLib.clsMain). Type.GetTypeFromProgID desde un proceso de 32 bits (este Runner)
+        // busca el ProgID exclusivamente en WOW6432Node, así que fallaba con "no encontrado"
+        // aunque la clase real estuviera bien registrada. Esto depende de cómo el instalador de
+        // Comercial Pro registró XEngineLib.dll en ese equipo (no de nada que controle
+        // BrosLMV), así que puede pasarle a cualquier instalación del Runner. Nos auto-sanamos
+        // copiando el mapeo si hace falta -- best-effort: si no hay permisos de administrador
+        // para escribir en HKLM (el Runner normalmente SÍ corre elevado o como SYSTEM vía Tarea
+        // Programada, pero por si no), simplemente no hacemos nada y dejamos que el error normal
+        // de GetTypeFromProgID salga más abajo con el mensaje ampliado.
+        private static void AsegurarProgIdXEngine32Bits()
+        {
+            const string clsid = "{D5255125-CD90-48A8-BC48-762BE8531B5D}";
+            const string progIdPath64 = @"SOFTWARE\Classes\XengineLib.clsMain";
+            const string progIdPath32 = @"SOFTWARE\WOW6432Node\Classes\XengineLib.clsMain";
+            try
+            {
+                using (var yaExiste = Registry.LocalMachine.OpenSubKey(progIdPath32))
+                {
+                    if (yaExiste != null) return; // ya está bien, nada que hacer
+                }
+                using (var vista64 = Registry.LocalMachine.OpenSubKey(progIdPath64))
+                {
+                    if (vista64 == null) return; // ni siquiera está en 64 bits -- no es este bug conocido, deja que falle normal
+                }
+                using (var progId = Registry.LocalMachine.CreateSubKey(progIdPath32))
+                {
+                    if (progId == null) return;
+                    progId.SetValue("", "XengineLib.clsMain");
+                    using (var clsidKey = progId.CreateSubKey("CLSID"))
+                    {
+                        if (clsidKey != null) clsidKey.SetValue("", clsid);
+                    }
+                }
+            }
+            catch
+            {
+                // Sin permisos de admin u otro problema de registro -- no bloquear aquí.
+            }
         }
 
         private const int LineasCabeceraARevisar = 10;

@@ -6,6 +6,112 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.81.0] — 2026-08-07 (solo documentación) — 3 gotchas y 1 validación positiva, desde un consumidor externo real (BellPeppers CRM)
+
+> **Sin cambios en el binario del addon**: sigue en `AssemblyVersion 2.80.0` (no requiere
+> recompilar ni re-registrar). Los hallazgos vienen de **BellPeppers CRM** (proyecto Laravel
+> separado, servidor `bplserver`/`100.64.240.52`), que consume `BrosLMV.Runner.exe` (mismo
+> binario de este repo) como puente headless hacia XEngine para encolar y crear documentos
+> reales (Entradas/Salidas, Órdenes de Compra, Recepciones de Compra) desde hace varios días
+> en producción real, no solo prueba. En el camino se encontraron 3 riesgos/límites y se
+> confirmó 1 decisión de producto pendiente — los 4 le pertenecen a BrosLMV/XEngine en
+> general, no solo a BellPeppers, y quedan documentados aquí. El fix de código del hallazgo de
+> despliegue (ProgID de 32 bits) va en la entrada de arriba (`BrosLMV.Runner` v0.3.0).
+
+### Documentado (gotcha — ver `MANUAL.md` §12)
+- **Un trigger `AFTER INSERT` sobre `docDocument` (o cualquier tabla que XEngine use para
+  crear documentos) corrompe la recuperación del ID recién insertado.** Confirmado por
+  BellPeppers con una prueba controlada y reproducible: agregar un trigger que hace su propio
+  `INSERT` en otra tabla con columna `IDENTITY` propia hace que `SCOPE_IDENTITY()` (patrón
+  `INSERT ...; SELECT SCOPE_IDENTITY()` en un solo batch) devuelva un ID que **no coincide**
+  con el real (desviado por 3 en la prueba); sin el trigger, 2/2 corridas correctas. No se
+  investigó la causa raíz exacta a nivel de driver (podría ser el driver ODBC/PDO_SQLSRV con
+  múltiples result sets cuando el trigger inserta en otra tabla con `IDENTITY` propia), pero
+  el riesgo es real y grave: si `ctx.erp.NuevoDocumento()` (o cualquier código de
+  BrosLMV/XEngine) obtiene internamente el `DocumentID` por este mismo mecanismo, un trigger
+  puesto por CUALQUIER cosa (un cliente, un script de un usuario, una futura feature de
+  BrosLMV) podría asociar partidas al documento equivocado, silenciosamente, sin ningún error.
+  BellPeppers descartó ese diseño por esto mismo. **Advertencia dura agregada a `MANUAL.md`
+  §12** (nueva sección ⚠️): nunca agregar un trigger `AFTER INSERT` sobre `docDocument` ni
+  ninguna tabla que XEngine use para crear documentos.
+- **Un producto con historial de kardex corrupto puede colgar `ctx.erp.AgregarArticulo`/`Save`
+  indefinidamente, sin error ni timeout.** Ya conocido y documentado del lado de BellPeppers
+  (`D:\CRMBell\docs\xengine\XENGINE_SDK_STATUS.md` §4, servidor `bplserver`) para un caso
+  puntual (kardex mezclado por INSERTs SQL crudo previos a la integración; descartado que
+  fuera retención de impuestos/`TaxTypeID` — se probó con y sin retención, mismo resultado;
+  con un producto sin ese historial corrupto, funciona perfecto), pero es un riesgo sistémico
+  de cualquier script que use `ctx.erp` de escritura: **no hay ningún timeout/watchdog** si el
+  motor se cuelga por datos corruptos de un cliente real — hubo que matar el proceso a mano.
+  Registrado en `MANUAL.md` §12 como límite conocido; **mejora futura** (no en esta sesión):
+  evaluar un timeout duro en `BrosLMV.Runner`/`ctx.erp` de escritura para no depender de un
+  operador matando el proceso a mano.
+
+### Confirmado (decisión de producto — ver `ESTADO.md`)
+- **`ctx.erp` de escritura headless (vía `BrosLMV.Runner`) es seguro de usar incluso con
+  `ComercialSP.exe` abierto y en uso activo por personal real al mismo tiempo.** Varias
+  entradas de `ESTADO.md` marcaban esto como "decisión de producto pendiente". BellPeppers
+  aporta la primera evidencia real en producción (no sandbox): el Runner corrió manualmente
+  mientras dos instancias de `ComercialSP`/`ComercialSP.bin`/`ComercialSP.mgr` estaban activas,
+  sin conflicto, creando Entradas/Salidas de almacén, Órdenes de Compra (con
+  impuestos/retenciones/kardex de compromiso) y Recepciones de Compra (con
+  `DeliverDocumentItemID` cerrando el compromiso de la OC) reales, validados campo por campo
+  contra documentos nativos. Anotado en `ESTADO.md` como el primer caso real de este tipo.
+
+## `BrosLMV.Runner` v0.3.0 — auto-sanado de ProgID `XengineLib.clsMain` de 32 bits (2026-08-07), sin versión de addon
+
+> Bug de despliegue real, encontrado y confirmado (por registro de Windows, no supuesto) en
+> un consumidor externo de `BrosLMV.Runner.exe`: **BellPeppers CRM** (proyecto Laravel
+> separado, servidor `bplserver`), que usa el Runner como puente headless hacia XEngine desde
+> hace varios días en producción real. Ahí el Runner fallaba **SIEMPRE** con `ERROR al crear
+> XEngine standalone: No se encontró "XengineLib.clsMain" registrado en este equipo`, aun con
+> Comercial Pro instalado y funcionando con normalidad.
+
+### Corregido
+- **Causa raíz confirmada en ese servidor:** el CLSID de `XengineLib.clsMain`
+  (`{D5255125-CD90-48A8-BC48-762BE8531B5D}`) sí estaba bien registrado en la vista de 32 bits
+  (`HKLM\SOFTWARE\WOW6432Node\Classes\CLSID\{D5255125-...}\InprocServer32` →
+  `XEngineLib.dll`), pero el **mapeo ProgID→CLSID** (`XengineLib.clsMain`) solo existía en la
+  vista de **64 bits** (`HKLM\SOFTWARE\Classes\XengineLib.clsMain`) — la vista de 32 bits
+  (`HKLM\SOFTWARE\WOW6432Node\Classes\XengineLib.clsMain`) no existía. `BrosLMV.Runner` es un
+  proceso de 32 bits (`PlatformTarget=x86`, correcto — `XEngineLib.dll` solo tiene COM de 32
+  bits) y activa XEngine standalone por ProgID (`Type.GetTypeFromProgID("XengineLib.clsMain")`
+  en `CrearXEngineStandalone`, `runner\Program.cs`) — sin el mapeo en `WOW6432Node`, la
+  activación falla aunque la clase real esté perfectamente registrada. Depende de cómo el
+  **instalador de Comercial Pro** registró `XEngineLib.dll` en ese equipo (no de nada que
+  controle BrosLMV), así que puede repetirse en cualquier instalación del Runner en cualquier
+  servidor/cliente.
+- **`AsegurarProgIdXEngine32Bits()`** (nuevo, `runner\Program.cs`), llamado desde
+  `CrearXEngineStandalone` antes de `Type.GetTypeFromProgID`: si el ProgID de 32 bits no
+  existe pero sí existe el de 64 bits, copia el mapeo (`(default)` + subclave `CLSID`) a
+  `WOW6432Node\Classes\XengineLib.clsMain` — mismo patrón que `instalador\Instalar.ps1` (paso
+  7) ya usa para el ProgID propio (`BrosLMV.clsMain`). Es *best-effort*: envuelto en
+  `try/catch` porque escribir en `HKLM` requiere permisos de administrador (el Runner
+  normalmente corre elevado o como SYSTEM vía Tarea Programada, pero si no los tiene, no
+  bloquea nada — simplemente deja pasar y el error normal de `GetTypeFromProgID` sale más
+  abajo, ahora con un mensaje ampliado que apunta a `MANUAL.md` §12). Si el ProgID no existe en
+  ninguna de las dos vistas, no toca nada (no es este bug conocido).
+- Mensaje de error de `CrearXEngineStandalone` ampliado con la pista de `MANUAL.md` §12 cuando
+  `GetTypeFromProgID` regresa `null`.
+
+### Validado
+- Los 33 casos de `build\probar_humo.ps1` (contra el sandbox real, `localhost\compac` /
+  `ComercialSP`) siguen en verde después del cambio — incluyendo los que usan `ctx.erp`
+  (creación real de documentos vía XEngine standalone), confirmando que el auto-sanado no
+  rompe el camino existente.
+- **Nota de honestidad, no se ocultó:** en el sandbox de este repo (Windows Server 2025,
+  máquina de desarrollo) el ProgID de 32 bits de `XengineLib.clsMain` **tampoco existe** (se
+  confirmó leyendo el registro directamente) y sin embargo `CrearXEngineStandalone` funciona
+  de todas formas — es decir, esta máquina NO reproduce la falla que sí ocurrió en el servidor
+  de BellPeppers, probablemente por una diferencia de comportamiento del redirector de
+  registro WOW64 entre versiones/configuraciones de Windows que no se investigó a fondo (fuera
+  de alcance de esta sesión). El fix se deja de todas formas porque es puramente defensivo
+  (no-op cuando no hace falta, confirmado por los 33/33 casos de humo en verde) y ataja
+  exactamente la causa raíz confirmada por registro en el servidor real donde SÍ se reprodujo.
+- **Pendiente real:** no se pudo probar este fix específico contra el servidor de BellPeppers
+  (ya se corrigió ahí a mano, por SSH, antes de que existiera este fix) ni contra ningún otro
+  servidor con la falla real presente — la próxima vez que se despliegue el Runner en un
+  equipo nuevo es la oportunidad de confirmarlo end-to-end.
+
 ## [2.80.0] — 2026-08-05 — Corrección: comillas sin escapar rompían la plantilla Recepción de Compra WebView2 (C#)
 
 > Al abrir `PLANTILLA_RECEPCION_COMPRA_WEBVIEW2_CSHARP.ctx` en Comercial se veía una
