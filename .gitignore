@@ -29,6 +29,7 @@
 # (build/descargar_python.ps1) y la copia del paquete Python. Se regeneran desde
 # las fuentes en host/ y workers/; no inflar el repo con binarios.
 /instalador/host/
+/instalador/runner/
 /instalador/runtimes/
 /instalador/workers/
 /instalador/lib/

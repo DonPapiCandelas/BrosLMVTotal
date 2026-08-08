@@ -59,9 +59,18 @@ if (Test-Path (Join-Path $inst "workers")) {
 if (Test-Path (Join-Path $inst "runtimes")) {
     Copy-Item (Join-Path $inst "runtimes") (Join-Path $pl "runtimes") -Recurse -Force
 }
+if (Test-Path (Join-Path $inst "runner")) {
+    Copy-Item (Join-Path $inst "runner") (Join-Path $pl "runner") -Recurse -Force
+}
 Copy-Item (Join-Path $inst "assets\BrosLMV.ico") (Join-Path $pl "BrosLMV.ico") -Force
 $zip = Join-Path $pInst "payload.zip"; if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $pl "*") -DestinationPath $zip -Force
+
+if (-not (Test-Path (Join-Path $pl "runner\BrosLMV.Runner.exe"))) {
+    Write-Host "   ERROR: runner\BrosLMV.Runner.exe no quedo en el payload -- corre generar_instalador.ps1 primero." -ForegroundColor Red
+    exit 1
+}
+Write-Host "   payload.zip incluye runner\BrosLMV.Runner.exe." -ForegroundColor DarkGreen
 
 # La version de los .exe se toma del addon empacado (fuente de verdad unica), NO de un
 # <Version> fijo en los .csproj -- eso es lo que se desincronizo la ultima vez.

@@ -42,7 +42,7 @@ namespace BrosLMV.Empresas
             Directory.CreateDirectory(tmp);
             ExtractPayload(tmp);
 
-            foreach (var d in new[] { "bin", @"bin\x86", "host", "workers", "runtimes", "scripts", "logs", "data" })
+            foreach (var d in new[] { "bin", @"bin\x86", "host", "runner", "workers", "runtimes", "scripts", "logs", "data" })
                 Directory.CreateDirectory(Path.Combine(Base, d));
 
             string srcBin = Path.Combine(tmp, "bin");
@@ -54,6 +54,11 @@ namespace BrosLMV.Empresas
                     File.Copy(f, Path.Combine(Base, "bin", "x86", Path.GetFileName(f)), true);
 
             CopyDirectoryIfExists(Path.Combine(tmp, "host"), Path.Combine(Base, "host"), true);
+            // Runner headless (T3.3): lo invoca BellPeppers CRM y cualquier otro consumidor
+            // externo por linea de comandos (BrosLMV.Runner.exe --appkey ... --bd ... --conn
+            // ...). Antes era un paso manual fuera del instalador -- ahora viaja en el mismo
+            // payload que host/workers para que una instalacion nueva quede completa sola.
+            CopyDirectoryIfExists(Path.Combine(tmp, "runner"), Path.Combine(Base, "runner"), true);
             CopyDirectoryIfExists(Path.Combine(tmp, "workers"), Path.Combine(Base, "workers"), true);
             CopyDirectoryIfExists(Path.Combine(tmp, "runtimes"), Path.Combine(Base, "runtimes"), true);
 

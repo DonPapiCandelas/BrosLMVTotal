@@ -25,6 +25,7 @@ $hostProj = Join-Path $root "host\BrosLMV.Host"
 $out  = Join-Path $root "build\out"
 $bin  = Join-Path $root "instalador\bin"
 $hostOut = Join-Path $root "instalador\host"
+$runnerOut = Join-Path $root "instalador\runner"
 $lib  = Join-Path $root "instalador\lib"
 
 Write-Host "==================================================="
@@ -53,6 +54,11 @@ Write-Host "3) Compilando host v3.0..." -ForegroundColor Cyan
 if (Test-Path $hostOut) { Remove-Item $hostOut -Recurse -Force }
 dotnet publish (Join-Path $hostProj "BrosLMV.Host.csproj") -c Release -r win-x64 --self-contained true -o $hostOut
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR DE COMPILACION DEL HOST" -ForegroundColor Red; exit 1 }
+
+Write-Host "3b) Compilando Runner headless (T3.3 -- lo invoca BellPeppers CRM y cualquier otro consumidor externo por linea de comandos)..." -ForegroundColor Cyan
+if (Test-Path $runnerOut) { Remove-Item $runnerOut -Recurse -Force }
+dotnet build (Join-Path $root "runner\BrosLMV.Runner.csproj") -c Release -o $runnerOut
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR DE COMPILACION DEL RUNNER" -ForegroundColor Red; exit 1 }
 
 Write-Host "4) Copiando workers..." -ForegroundColor Cyan
 $workersSrc = Join-Path $root "workers"
@@ -91,6 +97,7 @@ Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $src "obj") -Recurse -Force -ErrorAction SilentlyContinue
 
 $n = (Get-ChildItem (Join-Path $bin "*.dll")).Count
+$runnerOk = Test-Path (Join-Path $runnerOut "BrosLMV.Runner.exe")
 Write-Host ""
-Write-Host "LISTO. instalador\ actualizado ($n DLLs + x86\SQLite.Interop.dll + host + $nLib lib)." -ForegroundColor Green
+Write-Host "LISTO. instalador\ actualizado ($n DLLs + x86\SQLite.Interop.dll + host + runner$(if(-not $runnerOk){' [FALTA]'}) + $nLib lib)." -ForegroundColor Green
 Write-Host "Distribuye la carpeta 'instalador' y corre Instalar.ps1 en cada equipo."

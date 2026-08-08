@@ -6,6 +6,25 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [Instalador sin cambio de versión del addon] — 2026-08-08 — `BrosLMV.Runner.exe` ahora viaja dentro del instalador
+
+> Sin cambios en el binario del addon (sigue en `AssemblyVersion 2.80.0`). Cambia el
+> **empaquetado**: `build\generar_instalador.ps1` y `build\generar_exes.ps1`.
+
+### Cambiado
+- **`BrosLMV.Runner.exe` (el puente headless hacia XEngine, T3.3) ahora se compila y se
+  incluye dentro de `payload.zip`, junto con `host\`/`workers\`.** Antes era un paso 100%
+  manual fuera del instalador (compilar `runner\BrosLMV.Runner.csproj` y copiar el resultado a
+  mano a `C:\BrosLMV\runner\` en cada servidor) — cualquier consumidor externo (como
+  BellPeppers CRM) tenía que hacerlo aparte, sin que el instalador lo supiera ni lo verificara.
+  Ahora `RuntimeInstaller.cs` lo extrae y coloca en `C:\BrosLMV\runner\` como una carpeta más
+  del runtime, igual que `host`/`workers`/`runtimes`. `generar_exes.ps1` aborta si
+  `runner\BrosLMV.Runner.exe` no quedó en el payload, para no distribuir un instalador
+  incompleto por accidente.
+- Trae de una vez el fix de `BrosLMV.Runner` v0.3.0 (auto-sanado del ProgID de XEngine de 32
+  bits, ver entrada de abajo) — cualquier instalación nueva hecha con este instalador ya lo
+  incluye sin pasos aparte.
+
 ## [2.81.0] — 2026-08-07 (solo documentación) — 3 gotchas y 1 validación positiva, desde un consumidor externo real (BellPeppers CRM)
 
 > **Sin cambios en el binario del addon**: sigue en `AssemblyVersion 2.80.0` (no requiere
