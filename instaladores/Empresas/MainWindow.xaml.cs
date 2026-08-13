@@ -241,20 +241,62 @@ SELECT db, instalado, version FROM #r ORDER BY db;";
             }
         }
 
-        // Activa/actualiza la contraseña de la Consola para UNA empresa recien provisionada.
-        // Solo se llama cuando el usuario marco la casilla y llenó ambos campos -- ver
-        // btnInstall_Click. Misma contraseña para TODAS las empresas de esta corrida (un
-        // instalador, una contraseña -- si quiere distintas por empresa, usa "Cambiar
-        // contraseña" despues, una por una).
-        void AplicarPasswordConsola(string server, string db, string user, string pass, string passwordConsola)
+        // Ya tiene contraseña activa esta empresa? (para que la UI decida si pide
+        // "contraseña actual" o no). Nunca lanza -- empresa sin la tabla (instalador viejo)
+        // o sin fila = "no tiene".
+        bool ConsolaYaTienePassword(string server, string db, string user, string pass)
         {
-            byte[] sal, hash;
-            int iteraciones;
-            ConsolaPasswordHash.Generar(passwordConsola, out sal, out hash, out iteraciones);
+            try
+            {
+                using (var cn = new SqlConnection(ConnStr(server, db, user, pass)))
+                {
+                    cn.Open();
+                    using (var cmd = cn.CreateCommand())
+                    {
+                        cmd.CommandText = "SELECT Habilitado FROM zzBrosConsolaPass WHERE Id=1";
+                        var r = cmd.ExecuteScalar();
+                        return r != null && r != DBNull.Value && Convert.ToBoolean(r);
+                    }
+                }
+            }
+            catch { return false; }
+        }
 
+        // Activa o cambia la contraseña de la Consola para UNA empresa. Si ya tenia una
+        // activa, EXIGE que "actual" verifique contra el hash guardado antes de aceptar la
+        // nueva -- si no coincide, lanza y esa empresa queda marcada como error (no se
+        // cambia nada). Misma contraseña nueva para TODAS las empresas de esta corrida.
+        void AplicarPasswordConsola(string server, string db, string user, string pass, string actual, string nueva)
+        {
             using (var cn = new SqlConnection(ConnStr(server, db, user, pass)))
             {
                 cn.Open();
+
+                byte[] salActual = null, hashActual = null;
+                int iteracionesActual = 0;
+                bool yaHabilitado = false;
+                using (var cmd = cn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT Habilitado, Sal, Hash, Iteraciones FROM zzBrosConsolaPass WHERE Id=1";
+                    using (var rd = cmd.ExecuteReader())
+                    {
+                        if (rd.Read())
+                        {
+                            yaHabilitado = Convert.ToBoolean(rd["Habilitado"]);
+                            salActual = rd["Sal"] as byte[];
+                            hashActual = rd["Hash"] as byte[];
+                            iteracionesActual = rd["Iteraciones"] == DBNull.Value ? 0 : Convert.ToInt32(rd["Iteraciones"]);
+                        }
+                    }
+                }
+
+                if (yaHabilitado && !ConsolaPasswordHash.Verificar(actual, salActual, hashActual, iteracionesActual))
+                    throw new Exception("La contraseña actual de la Consola no es correcta en " + db + ".");
+
+                byte[] sal, hash;
+                int iteraciones;
+                ConsolaPasswordHash.Generar(nueva, out sal, out hash, out iteraciones);
+
                 using (var cmd = cn.CreateCommand())
                 {
                     cmd.CommandText = @"
@@ -319,7 +361,12 @@ ELSE
             _rows.Clear();
             foreach (var e in empresas)
             {
-                e.PropertyChanged += (s, ev) => { if (ev.PropertyName == "Sel") UpdateCounts(); };
+                e.PropertyChanged += (s, ev) =>
+                {
+                    if (ev.PropertyName != "Sel") return;
+                    UpdateCounts();
+                    if (chkProtegerConsola.IsChecked == true) chkProtegerConsola_Changed(null, null);
+                };
                 _rows.Add(e);
             }
             lblConnTitle.Text = "Conectado a SQL Server";
@@ -377,18 +424,25 @@ ELSE
             if (sel.Count == 0) return;
 
             bool proteger = chkProtegerConsola.IsChecked == true;
-            string passwordConsola = pwdConsolaNueva.Password;
+            string actual = pwdConsolaActual.Password;
+            string nueva = pwdConsolaNueva.Password;
             if (proteger)
             {
-                if (string.IsNullOrEmpty(passwordConsola))
+                if (string.IsNullOrEmpty(nueva))
                 {
-                    MessageBox.Show("Escribe la contraseña de la Consola (o desmarca la casilla si no la quieres activar ahora).",
+                    MessageBox.Show("Escribe la contraseña de la Consola (o desmarca la casilla si no la quieres activar/cambiar ahora).",
                         "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
-                if (passwordConsola != pwdConsolaConfirmar.Password)
+                if (nueva != pwdConsolaConfirmar.Password)
                 {
                     MessageBox.Show("La confirmación de la contraseña de la Consola no coincide.",
+                        "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                if (pwdConsolaActual.Visibility == Visibility.Visible && string.IsNullOrEmpty(actual))
+                {
+                    MessageBox.Show("Esta empresa ya tiene contraseña -- escribe la actual para poder cambiarla.",
                         "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
@@ -402,7 +456,7 @@ ELSE
                 try
                 {
                     Provision(server, row.DB, user, pass);
-                    if (proteger) AplicarPasswordConsola(server, row.DB, user, pass, passwordConsola);
+                    if (proteger) AplicarPasswordConsola(server, row.DB, user, pass, actual, nueva);
                     row.Instalado = true; row.NecesitaActualizar = false;
                     row.VersionInstalada = _versionActualTexto;
                     row.Estado = "Instalado ahora"; row.Sel = false; ok++;
@@ -416,27 +470,31 @@ ELSE
             grid.Items.Refresh();
             UpdateCounts();
             MessageBox.Show("Provisión terminada.\n\nOK: " + ok + "\nErrores: " + err +
-                (proteger ? "\n\nContraseña de la Consola activada en las empresas instaladas ahora." : "") +
+                (proteger ? "\n\nContraseña de la Consola aplicada en las empresas instaladas ahora." : "") +
                 "\n\nReinicia CONTPAQi para ver el botón 'Consola BrosLMV'.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
+        // Al marcar la casilla: si hay EXACTAMENTE una empresa seleccionada y ya tiene
+        // contraseña, pide la actual (modo "cambiar"); en cualquier otro caso (ninguna
+        // seleccionada, varias, o no tiene todavia), solo pide la nueva (modo "activar").
         void chkProtegerConsola_Changed(object sender, RoutedEventArgs e)
         {
-            pnlPasswordConsola.IsEnabled = chkProtegerConsola.IsChecked == true;
-        }
-
-        void btnCambiarPassword_Click(object sender, RoutedEventArgs e)
-        {
-            var sel = _rows.Where(r => r.Sel).ToList();
-            if (sel.Count != 1)
+            bool activo = chkProtegerConsola.IsChecked == true;
+            pnlPasswordConsola.IsEnabled = activo;
+            if (!activo)
             {
-                MessageBox.Show(this, "Selecciona exactamente UNA empresa (casilla de la tabla) para cambiarle la contraseña de la Consola.",
-                    "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                pwdConsolaActual.Visibility = Visibility.Collapsed;
                 return;
             }
 
-            var dlg = new CambiarPasswordWindow(cbServer.Text.Trim(), sel[0].DB, txtUser.Text.Trim(), Pass()) { Owner = this };
-            dlg.ShowDialog();
+            var sel = _rows.Where(r => r.Sel).ToList();
+            bool pideActual = false;
+            if (sel.Count == 1)
+            {
+                try { pideActual = ConsolaYaTienePassword(cbServer.Text.Trim(), sel[0].DB, txtUser.Text.Trim(), Pass()); }
+                catch { pideActual = false; }
+            }
+            pwdConsolaActual.Visibility = pideActual ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 }

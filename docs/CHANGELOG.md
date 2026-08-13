@@ -6,6 +6,20 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [Instalador sin cambio de versión del addon] — 2026-08-13 — Panel de contraseña de Consola compacto
+
+> Sin cambios en el binario del addon (sigue en `AssemblyVersion 2.82.0`). Rediseño de la
+> pantalla del instalador tras feedback real: el panel de contraseña ocupaba demasiado
+> espacio (párrafo largo + botón aparte) y empujaba fuera de vista la tabla de empresas.
+
+### Corregido
+- Panel de contraseña de la Consola: una sola fila compacta (antes: tarjeta con párrafo
+  explicativo + botón "Cambiar contraseña" aparte). Detecta sola si la empresa
+  seleccionada ya tiene contraseña activa y pide la actual antes de aceptar la nueva --
+  ya no hace falta una ventana separada para cambiarla.
+- Ventana `MainWindow` con `MinHeight`/`MinWidth` para que nunca quede la tabla de
+  empresas sin espacio visible, sin importar el tamaño de pantalla.
+
 ## [2.82.0] — 2026-08-13 — Contraseña de la Consola (candado por empresa)
 
 > La Consola ahora puede pedir contraseña antes de abrir -- pensado para empresas donde
