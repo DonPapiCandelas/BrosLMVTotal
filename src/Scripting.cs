@@ -922,6 +922,34 @@ namespace BrosLMV
             catch { return false; }
         }
 
+        // ===== Contraseña de la Consola (candado a nivel EMPRESA, no por usuario) =====
+        // zzBrosConsolaPass: una sola fila (Id=1). Nunca lanza -- si la tabla no existe
+        // (empresa provisionada con un instalador viejo, antes de que existiera esta tabla),
+        // se trata como "sin contraseña configurada" y la Consola abre normal.
+        public bool BrosConsolaPasswordRequerida()
+        {
+            try
+            {
+                var r = Query("SELECT Habilitado FROM zzBrosConsolaPass WHERE Id=1");
+                return r.Count > 0 && Convert.ToBoolean(r[0]["Habilitado"]);
+            }
+            catch { return false; }
+        }
+
+        public bool BrosVerificarConsolaPassword(string intento)
+        {
+            try
+            {
+                var r = Query("SELECT Sal, Hash, Iteraciones FROM zzBrosConsolaPass WHERE Id=1 AND Habilitado=1");
+                if (r.Count == 0) return true; // sin candado activo -- no bloquear
+                byte[] sal = r[0]["Sal"] as byte[];
+                byte[] hash = r[0]["Hash"] as byte[];
+                int iteraciones = Convert.ToInt32(r[0]["Iteraciones"]);
+                return ConsolaPasswordHash.Verificar(intento, sal, hash, iteraciones);
+            }
+            catch { return true; } // fallo de la verificacion misma -- no dejar a nadie fuera por un error de red/permiso
+        }
+
         // ===== Integridad de scripts (T2.3) =====
         // HashSHA256 solo lo recalcula BrosGuardar -- un UPDATE crudo de Codigo por fuera
         // de la consola (SSMS, otro script) deja el hash viejo sin tocar, lo que hace el

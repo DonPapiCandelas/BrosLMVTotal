@@ -6,6 +6,55 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
+## [2.82.0] — 2026-08-13 — Contraseña de la Consola (candado por empresa)
+
+> La Consola ahora puede pedir contraseña antes de abrir -- pensado para empresas donde
+> varios usuarios comparten el equipo y algunos "andan de tentones" moviendo scripts sin
+> saber qué hacen. Se activa opcionalmente desde el instalador (checkbox al
+> instalar/actualizar): si se activa, escribe un hash salteado (PBKDF2-HMAC-SHA256,
+> 210,000 iteraciones -- guía OWASP 2023) en una tabla nueva, `zzBrosConsolaPass`, **nunca
+> la contraseña en claro ni cifrado reversible** (no hace falta leerla de vuelta, solo
+> compararla). Para cambiarla: correr el instalador de nuevo y usar el botón "Cambiar
+> contraseña de una empresa ya instalada..." (pide la actual + la nueva + confirmación). Si
+> se olvida, no hay forma de recuperarla -- hay que resetearla directo en SQL:
+> `UPDATE zzBrosConsolaPass SET Habilitado=0 WHERE Id=1` (o `DELETE FROM zzBrosConsolaPass`)
+> en la base de esa empresa.
+
+### Agregado
+- Tabla `zzBrosConsolaPass` (una sola fila, `Id=1` forzado por CHECK) en
+  `provision_empresa.sql`, creada/migrada automáticamente al instalar o actualizar.
+- `src/ConsolaPasswordHash.cs`: hash/verificación PBKDF2 salteado, compartido (enlazado, no
+  copiado) entre el addon y el instalador -- un solo lugar donde vive el algoritmo.
+- `src/ConsolaPasswordPromptForm.cs`: diálogo modal que bloquea la apertura de la Consola
+  hasta escribir la contraseña correcta, si la empresa activa tiene el candado prendido.
+- Instalador (`instaladores/Empresas`): casilla "Proteger la Consola con contraseña" al
+  instalar/actualizar (aplica a las empresas seleccionadas en esa corrida), y ventana nueva
+  "Cambiar contraseña de la Consola" (exige la contraseña actual antes de aceptar la nueva).
+
+## [2.81.0] — 2026-08-08 — Nueva plantilla: Vincular XML CFDI al documento (Gastos y compras)
+
+> Portado de un script real de AccesoFacil ("XML recibidos por RFC") a BrosLMV nativo.
+> El original dependía de una vista propia (`zzXMLRecibidos`) que había que crear a mano
+> en cada base nueva. Se investigó su definición real y resultó estar armada enteramente
+> sobre tablas nativas de Comercial (`docDocumentCFDiSAT`, `orgBusinessEntity`,
+> `orgBusinessEntityMainInfo`) -- esta plantilla mete esa misma lógica inline, sin
+> depender de ninguna vista externa: se puede copiar directo a cualquier empresa nueva.
+
+### Agregado
+- **`PLANTILLA_VINCULAR_XML_GASTOS_PYTHON.py`** — busca XML CFDI ya cargados en Comercial
+  sin vincular a ningún documento (`docDocumentCFDiSAT.DocumentID=0`), filtrados por el
+  RFC del proveedor del documento activo, y permite vincular uno o varios al documento en
+  curso (actualiza `docDocumentCFD`/`docDocumentCFDiSAT`, con soporte de XML principal +
+  secundarios). Pensado para el módulo de Gastos, pero no asume ningún módulo fijo — usa
+  `ctx.get_selected_ids()` para trabajar sobre cualquier documento activo.
+  Doble clic en un renglón abre un detalle completo del XML en ventana modal (fecha,
+  importes, forma/método de pago, UUID, etc.) — funcionalidad nueva que el original no
+  tenía. Sin dependencias de empresa (nombre de empresa, ruta de logo) hardcodeadas — el
+  logo es opcional y se omite si no existe; el filtro de "empresa propia" usa el
+  `OwnedBusinessEntityID` real del documento activo. La tabla auxiliar de auditoría
+  (`ZZUuidAsociados`) se autocrea si no existe, mismo patrón que
+  `PLANTILLA_AUTORIZACION_POR_MONTO_SQL_PURO.sql` con `BrosAutorizaciones`.
+
 ## [Instalador sin cambio de versión del addon] — 2026-08-08 — `BrosLMV.Runner.exe` ahora viaja dentro del instalador
 
 > Sin cambios en el binario del addon (sigue en `AssemblyVersion 2.80.0`). Cambia el

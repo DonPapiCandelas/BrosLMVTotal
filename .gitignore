@@ -4,6 +4,23 @@
 /runner/obj/
 /runner/bin/
 /build/out/
+/descargas/obj/
+/descargas/bin/
+/descargas-ui/obj/
+/descargas-ui/bin/
+/descargas-ui/config.json
+/descargas-ui/xml/
+
+# === BrosLMV.Descargas: NUNCA subir FIEL de prueba ni datos fiscales reales descargados ===
+/descargas/_pruebas_fiel/
+/descargas/FIEL_2022/
+/descargas/*.cer
+/descargas/*.key
+/descargas/*.zip
+/descargas/sobre_firmado.xml
+/descargas/xml/
+# Carpetas de UUID (CFDI extraidos a mano o por el programa) -- patron GUID a secas en la raiz.
+/descargas/????????-????-????-????-????????????*/
 *.user
 *.suo
 .vs/

@@ -1,0 +1,48 @@
+<Window x:Class="BrosLMV.DescargasUI.SolicitarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Nueva solicitud de descarga" Height="280" Width="420"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        FontFamily="Segoe UI" FontSize="13">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="⚠ Esto gasta una solicitud real de tu cupo diario del SAT."
+                   Foreground="#b45309" FontWeight="Bold" TextWrapping="Wrap" Margin="0,0,0,14"/>
+
+        <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Desde" VerticalAlignment="Center"/>
+            <DatePicker Grid.Column="1" Name="FechaDesde"/>
+        </Grid>
+
+        <Grid Grid.Row="2" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Hasta" VerticalAlignment="Center"/>
+            <DatePicker Grid.Column="1" Name="FechaHasta"/>
+        </Grid>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,4,0,0">
+            <RadioButton Name="RbRecibidos" Content="Recibidos" IsChecked="True" Margin="0,0,20,0"/>
+            <RadioButton Name="RbEmitidos" Content="Emitidos"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Cancelar" Width="90" Click="Cancelar_Click" Margin="0,0,8,0"/>
+            <Button Content="Solicitar" Width="90" Click="Solicitar_Click" Background="#2563eb" Foreground="White" Padding="6"/>
+        </StackPanel>
+    </Grid>
+</Window>

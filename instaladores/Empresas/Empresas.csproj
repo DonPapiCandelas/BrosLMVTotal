@@ -28,4 +28,10 @@
     <EmbeddedResource Include="assets\provision_empresa.sql" />
     <EmbeddedResource Include="payload.zip" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Mismo hash de contrasena que verifica el addon (src\ConsolaPasswordHash.cs), enlazado
+         (no copiado) para que instalador y addon nunca se desincronicen. -->
+    <Compile Include="..\..\src\ConsolaPasswordHash.cs" Link="ConsolaPasswordHash.cs" />
+  </ItemGroup>
 </Project>

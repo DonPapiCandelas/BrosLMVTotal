@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Interfaz de escritorio de BrosLMV.Descargas: cola de solicitudes, historial de CFDI
+    descargados, y los dos botones de accion manual (Nueva solicitud / Revisar pendientes).
+    Enlaza los mismos .cs de ..\descargas\ (Sat, Datos, Cola) en vez de duplicarlos: mismo
+    patron que runner\ usa para reusar el motor de BrosLMV sin bifurcarlo.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>BrosLMV.DescargasUI</AssemblyName>
+    <RootNamespace>BrosLMV.DescargasUI</RootNamespace>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.4" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\descargas\Sat\SatFirmaXml.cs" Link="Sat\SatFirmaXml.cs" />
+    <Compile Include="..\descargas\Sat\SatSoapClient.cs" Link="Sat\SatSoapClient.cs" />
+    <Compile Include="..\descargas\Datos\EsquemaSql.cs" Link="Datos\EsquemaSql.cs" />
+    <Compile Include="..\descargas\Datos\CfdiXmlParser.cs" Link="Datos\CfdiXmlParser.cs" />
+    <Compile Include="..\descargas\Datos\BrosSatDb.cs" Link="Datos\BrosSatDb.cs" />
+    <Compile Include="..\descargas\Cola\SolicitudWorker.cs" Link="Cola\SolicitudWorker.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\panel.html" />
+    <EmbeddedResource Include="Assets\panel.html" />
+  </ItemGroup>
+
+</Project>

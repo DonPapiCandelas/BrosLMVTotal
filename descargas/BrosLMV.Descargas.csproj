@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Fase 0 (prototipo): firma de sobres SOAP para el Servicio de Descarga Masiva de CFDI del
+    SAT, usando la FIEL del contribuyente. Todavia SIN llamadas de red al SAT: solo arma y
+    firma el XML localmente para validar que la firma queda bien formada antes de gastar
+    solicitudes reales (el SAT limita cuantas se pueden hacer por dia).
+  -->
+
+  <!--
+    A diferencia de runner\ (net48 obligado por el COM de 32 bits de XengineLib), este
+    proyecto no toca XEngine ni Comercial: es solo red y criptografia contra el SAT, asi
+    que usa .NET moderno. Importante en la practica: RSA.ImportEncryptedPkcs8PrivateKey
+    (necesario para leer el .key de la FIEL) NO existe en net48, es una API que llego hasta
+    netstandard2.1/.NET Core 3.0+, por eso net48 no es opcion aqui salvo agregando BouncyCastle.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BrosLMV.Descargas</AssemblyName>
+    <RootNamespace>BrosLMV.Descargas</RootNamespace>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- No viene incluido en el SDK de .NET 8: SignedXml/KeyInfoClause viven aqui. -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.4" />
+    <!-- BD propia (SQL Server, mismo motor que Comercial Pro: facilita cruzar reportes despues). -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+  </ItemGroup>
+
+</Project>

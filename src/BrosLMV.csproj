@@ -24,6 +24,8 @@
     <Compile Include="HostClient.cs" />
     <Compile Include="Recetas.cs" />
     <Compile Include="EstructurasDocumento.cs" />
+    <Compile Include="ConsolaPasswordHash.cs" />
+    <Compile Include="ConsolaPasswordPromptForm.cs" />
   </ItemGroup>
 
   <ItemGroup>

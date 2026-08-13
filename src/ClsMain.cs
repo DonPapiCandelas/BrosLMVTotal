@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.80.0.0")]
+[assembly: AssemblyVersion("2.82.0.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -97,7 +97,17 @@ namespace BrosLMV
                         }
                         else
                         {
-                            _consola = new BrosConsola(UserID, XEngineLib);
+                            try
+                            {
+                                _consola = new BrosConsola(UserID, XEngineLib);
+                            }
+                            catch (BrosConsola.AccesoDenegadoException)
+                            {
+                                // Contraseña incorrecta o dialogo cancelado -- la Consola nunca
+                                // llega a construirse, no hay nada que mostrar ni que cerrar.
+                                _consola = null;
+                                break;
+                            }
                             _consola.FormClosed += delegate { _consola = null; };
                             _consola.Show(); // modeless (no bloquea, no using: se auto-libera al cerrar)
                         }

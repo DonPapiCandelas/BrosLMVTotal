@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>BrosLMV Descargas</title>
+<style>
+  :root {
+    --azul: #2563eb;
+    --azul-oscuro: #1d4ed8;
+    --fondo: #f1f5f9;
+    --tarjeta: #ffffff;
+    --texto: #0f172a;
+    --texto-suave: #64748b;
+    --borde: #e2e8f0;
+    --verde: #059669;
+    --verde-bg: #ecfdf5;
+    --ambar: #b45309;
+    --ambar-bg: #fffbeb;
+    --rojo: #b91c1c;
+    --rojo-bg: #fef2f2;
+    --gris: #475569;
+    --gris-bg: #f1f5f9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: var(--fondo);
+    color: var(--texto);
+    margin: 0;
+    padding: 24px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  h1 span { color: var(--azul); }
+  .rfc-activo { color: var(--texto-suave); font-size: 13px; }
+  .acciones { display: flex; gap: 10px; margin-bottom: 22px; }
+  button {
+    background: var(--azul);
+    color: #fff;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  button:hover { background: var(--azul-oscuro); }
+  button.secundario { background: #fff; color: var(--azul); border: 1px solid var(--azul); }
+  button.secundario:hover { background: #eff6ff; }
+  section {
+    background: var(--tarjeta);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+  }
+  section h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--texto-suave);
+    margin: 0 0 14px 0;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--texto-suave); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--borde); }
+  td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
+  tr:last-child td { border-bottom: none; }
+  .vacio { color: var(--texto-suave); font-style: italic; padding: 14px 10px; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill-terminada, .pill-vigente { background: var(--verde-bg); color: var(--verde); }
+  .pill-enproceso, .pill-aceptada { background: var(--ambar-bg); color: var(--ambar); }
+  .pill-error, .pill-rechazada, .pill-cancelado { background: var(--rojo-bg); color: var(--rojo); }
+  .pill-vencida { background: var(--gris-bg); color: var(--gris); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  footer { color: var(--texto-suave); font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>BrosLMV <span>Descargas</span></h1>
+    <div class="rfc-activo">RFC activo: {{RFC}}</div>
+  </header>
+
+  <div class="acciones">
+    <button onclick="accion('nueva-solicitud')">Nueva solicitud</button>
+    <button class="secundario" onclick="accion('revisar-pendientes')">Revisar pendientes ahora</button>
+    <button class="secundario" onclick="accion('actualizar')">Actualizar</button>
+  </div>
+
+  <section>
+    <h2>Cola de solicitudes</h2>
+    <table>
+      <thead><tr><th>IdSolicitud</th><th>Tipo</th><th>Rango</th><th>Estatus</th><th class="num">CFDIs</th><th>Fecha</th></tr></thead>
+      <tbody>{{FILAS_SOLICITUDES}}</tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>CFDI descargados</h2>
+    <table>
+      <thead><tr><th>Emisor</th><th>Nombre</th><th>Tipo</th><th class="num">Total</th><th>Fecha emisión</th><th>Estatus SAT</th></tr></thead>
+      <tbody>{{FILAS_CFDI}}</tbody>
+    </table>
+  </section>
+
+  <footer>Última actualización: {{FECHA_ACTUALIZACION}}</footer>
+
+<script>
+  function accion(nombre) {
+    window.chrome.webview.postMessage(nombre);
+  }
+</script>
+</body>
+</html>

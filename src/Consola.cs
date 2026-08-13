@@ -499,6 +499,9 @@ namespace BrosLMV
             new PlantillaDef("Python", "Importar Excel → Requisición",
                 CargarPlantillaArchivo("PLANTILLA_EJEMPLO_IMPORTAR_EXCEL_PYTHON.py",
                     "# lang: python\r\n# No se encontró la plantilla.\r\n")),
+            new PlantillaDef("Python", "Vincular XML CFDI al documento (Gastos y compras)",
+                CargarPlantillaArchivo("PLANTILLA_VINCULAR_XML_GASTOS_PYTHON.py",
+                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
             new PlantillaDef("SQL", "Dashboard",
                 CargarPlantillaArchivo("PLANTILLA_EJEMPLO_SQL.sql",
                     "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
@@ -575,9 +578,24 @@ namespace BrosLMV
             return fallback;
         }
 
+        // Lanzada cuando la Consola tiene contraseña activa (zzBrosConsolaPass) y el usuario
+        // cancela o falla el dialogo -- ClsMain.cs la atrapa y NO muestra la ventana (nunca
+        // llega a existir un Form con controles, no hace falta cerrarlo despues).
+        public sealed class AccesoDenegadoException : Exception { }
+
         public BrosConsola(int userId, object xEngineLib)
         {
             _ctx = new ScriptContext(userId, xEngineLib);
+
+            // Candado de la Consola (T-nueva): a nivel EMPRESA, configurado desde el
+            // instalador. Se verifica ANTES de construir cualquier control -- si falla, se
+            // lanza y ClsMain.cs nunca llega a mostrar la ventana.
+            if (_ctx.BrosConsolaPasswordRequerida())
+            {
+                bool ok = ConsolaPasswordPromptForm.PedirYVerificar(_ctx.BrosVerificarConsolaPassword);
+                if (!ok) throw new AccesoDenegadoException();
+            }
+
             Rutas.AsegurarCarpetas();
             try { Datos.Inicializar(); } catch { }
             BuildUI();

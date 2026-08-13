@@ -77,6 +77,22 @@ CREATE TABLE dbo.zzBrosPref(
     Valor   NVARCHAR(200) NOT NULL,
     CONSTRAINT PK_zzBrosPref PRIMARY KEY (Usuario, Tipo, Valor));
 
+-- v2.82.0: contraseña de la Consola (candado a nivel de EMPRESA, no por usuario -- cualquiera
+-- que abra Comercial con esta empresa activa necesita la misma contraseña). Una sola fila
+-- (Id=1 forzado por el CHECK) con hash PBKDF2 salteado -- nunca se guarda la contraseña en
+-- claro, ni siquiera "encriptada" reversible, porque no hace falta leerla de vuelta, solo
+-- verificarla. Para resetearla a mano en SQL: DELETE FROM zzBrosConsolaPass (o UPDATE ...
+-- SET Habilitado=0) -- documentado tambien en el instalador y en MANUAL.md.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='zzBrosConsolaPass')
+CREATE TABLE dbo.zzBrosConsolaPass(
+    Id                 INT           NOT NULL PRIMARY KEY,
+    Habilitado         BIT           NOT NULL DEFAULT 0,
+    Sal                VARBINARY(32) NULL,
+    Hash               VARBINARY(64) NULL,
+    Iteraciones        INT           NULL,
+    FechaActualizacion DATETIME      NULL,
+    CONSTRAINT CK_zzBrosConsolaPass_UnaFila CHECK (Id = 1));
+
 -- ============================================================
 -- 2a) Pestaña propia "Soluciones LMV" (separada de General).
 --     INSERT adaptable: solo columnas que existan en engRibbonTab.
