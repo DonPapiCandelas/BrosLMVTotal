@@ -16,6 +16,8 @@
 
 // ConsolaPasswordPromptForm.cs -- dialogo modal que bloquea la apertura de la Consola hasta
 // que se escriba la contrasena correcta (zzBrosConsolaPass, configurada desde el instalador).
+// Reusa el mismo lenguaje visual que el resto de la Consola (AppTheme, BordeTarjeta,
+// BordeInferior, IconButton) en vez de un dialogo WinForms generico.
 
 using System;
 using System.Drawing;
@@ -35,8 +37,7 @@ namespace BrosLMV
         {
             _verificar = verificar;
             Text = "BrosLMV";
-            Width = 380;
-            Height = 210;
+            ClientSize = new Size(360, 236);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -46,54 +47,80 @@ namespace BrosLMV
             BackColor = AppTheme.BgMain;
             Font = AppTheme.FontMain;
 
+            // ---- Cabecera: mismo patron que NuevaAccionForm (panel BgChrome + borde inferior) ----
+            var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = AppTheme.BgChrome, Padding = new Padding(20, 0, 20, 0) };
+            pnlHeader.Paint += (s, e) => BrosConsola.BordeInferior(e.Graphics, pnlHeader);
             var lblTitulo = new Label
             {
                 Text = "Contraseña de la Consola",
-                Dock = DockStyle.Top,
-                Height = 30,
-                Padding = new Padding(18, 16, 18, 0),
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
                 Font = AppTheme.FontHeader,
-                ForeColor = AppTheme.TextMain
+                ForeColor = AppTheme.TextMain,
+                BackColor = Color.Transparent
+            };
+            pnlHeader.Controls.Add(lblTitulo);
+
+            // ---- Cuerpo ----
+            var pnlBody = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgMain, Padding = new Padding(20, 18, 20, 0) };
+
+            var lblCaption = new Label
+            {
+                Text = "Esta empresa requiere contraseña para abrir la Consola.",
+                Dock = DockStyle.Top,
+                Height = 20,
+                Font = AppTheme.FontSmall,
+                ForeColor = AppTheme.TextMuted
             };
 
+            // Campo con borde redondeado propio (mismo patron que la caja de busqueda del
+            // arbol de scripts): TextBox SIN borde nativo, dentro de un Panel que dibuja
+            // BordeTarjeta -- asi se ve igual de pulido que el resto de la app, no el
+            // TextBox gris con relieve por defecto de Windows.
+            var pnlCampo = new Panel { Dock = DockStyle.Top, Height = 38, Margin = new Padding(0, 10, 0, 0), BackColor = AppTheme.BgSurface, Padding = new Padding(10, 0, 10, 0) };
+            pnlCampo.Paint += (s, e) => BrosConsola.BordeTarjeta(e.Graphics, pnlCampo);
+            var espCampo = new Panel { Dock = DockStyle.Top, Height = 10, BackColor = Color.Transparent };
             _txtPassword = new TextBox
             {
-                Dock = DockStyle.Top,
-                Margin = new Padding(18, 8, 18, 0),
+                Dock = DockStyle.Fill,
+                BorderStyle = BorderStyle.None,
+                BackColor = AppTheme.BgSurface,
+                ForeColor = AppTheme.TextMain,
                 Font = AppTheme.FontMain,
                 UseSystemPasswordChar = true
             };
-            var pnlCampo = new Panel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(18, 6, 18, 0) };
-            pnlCampo.Controls.Add(_txtPassword);
+            var pnlCampoInner = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgSurface, Padding = new Padding(0, 8, 0, 0) };
+            pnlCampoInner.Controls.Add(_txtPassword);
+            pnlCampo.Controls.Add(pnlCampoInner);
 
             _lblError = new Label
             {
                 Text = "",
                 Dock = DockStyle.Top,
-                Height = 24,
-                Padding = new Padding(18, 2, 18, 0),
+                Height = 22,
+                Margin = new Padding(0, 6, 0, 0),
                 ForeColor = AppTheme.Error,
                 Font = AppTheme.FontSmall
             };
 
-            var pnlBotones = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Bottom,
-                Height = 52,
-                FlowDirection = FlowDirection.RightToLeft,
-                Padding = new Padding(18, 8, 18, 8)
-            };
-            var btnEntrar = new IconButton { Text = "Entrar", Kind = BtnKind.Primary, Accent = AppTheme.Success, Width = 100, Height = 34 };
-            btnEntrar.Click += (s, e) => Intentar();
-            var btnCancelar = new IconButton { Text = "Cancelar", Kind = BtnKind.Toolbar, Accent = Color.Empty, Width = 100, Height = 34, Margin = new Padding(0, 0, 8, 0) };
-            btnCancelar.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
-            pnlBotones.Controls.Add(btnEntrar);
-            pnlBotones.Controls.Add(btnCancelar);
+            // Orden inverso (Dock=Top apila hacia arriba -- ver nota T4.1 en otros forms de este archivo).
+            pnlBody.Controls.Add(_lblError);
+            pnlBody.Controls.Add(espCampo);
+            pnlBody.Controls.Add(pnlCampo);
+            pnlBody.Controls.Add(lblCaption);
 
-            Controls.Add(_lblError);
-            Controls.Add(pnlCampo);
-            Controls.Add(lblTitulo);
-            Controls.Add(pnlBotones);
+            // ---- Pie: botones ----
+            var pnlFooter = new Panel { Dock = DockStyle.Bottom, Height = 60, BackColor = AppTheme.BgMain, Padding = new Padding(20, 0, 20, 16) };
+            var btnEntrar = new IconButton { Text = "Entrar", Kind = BtnKind.Primary, Accent = AppTheme.Success, Dock = DockStyle.Right, Width = 110 };
+            btnEntrar.Click += (s, e) => Intentar();
+            var btnCancelar = new IconButton { Text = "Cancelar", Kind = BtnKind.Toolbar, Accent = Color.Empty, Dock = DockStyle.Right, Width = 100, Margin = new Padding(0, 0, 10, 0) };
+            btnCancelar.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
+            pnlFooter.Controls.Add(btnEntrar);
+            pnlFooter.Controls.Add(btnCancelar);
+
+            Controls.Add(pnlBody);
+            Controls.Add(pnlFooter);
+            Controls.Add(pnlHeader);
 
             AcceptButton = btnEntrar;
             CancelButton = btnCancelar;
