@@ -148,7 +148,9 @@ Write-Host "  tag: $tag   titulo: $titulo   notas: $archNotas"
 if (-not $Publicar) { Write-Host "`nSIMULACION terminada: todo en orden. Agrega -Publicar para subirlo." -ForegroundColor Cyan; exit 0 }
 
 $existe = $false
-& $gh release view $tag *> $null; if ($LASTEXITCODE -eq 0) { $existe = $true }
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'   # gh escribe "release not found" a stderr
+& $gh release view $tag 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { $existe = $true }
+$ErrorActionPreference = $eap
 $rutas = $archivos | ForEach-Object { Join-Path $root $_ }
 if ($existe) {
     Write-Host "  El release $tag ya existe: reemplazo los archivos."
