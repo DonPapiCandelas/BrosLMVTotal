@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Instalador de BrosLMV.Descargas. Mismo lenguaje visual que instaladores\Empresas (header
+    navy con logo, botones Primary/Ghost, bienvenida -> progreso) pero en net8.0-windows (no
+    net48): a diferencia del addon de Empresas, aqui no hay COM que registrar, y el payload que
+    empaqueta (CLI+UI+servicio self-contained) YA es .NET 8: usar el mismo framework deja
+    enlazar directo Datos\EsquemaSql.cs y Datos\ConfigServicio.cs sin duplicar logica ni
+    arriesgar que se desincronicen. El .exe final se publica self-contained (dotnet publish), asi
+    que en el
+    equipo del cliente no hace falta instalar el Escritorio de .NET 8 aparte, igual que el
+    instalador de Empresas no exige nada mas alla de .NET Framework 4.8 (ya viene en Windows).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>BrosLMV-Descargas-Instalador</AssemblyName>
+    <RootNamespace>BrosLMV.Descargas.Instalador</RootNamespace>
+    <Nullable>disable</Nullable>
+    <!-- Genera versión de ensamblado y de archivo; la ventana de bienvenida y el nombre del
+         instalador deben identificar inequívocamente la versión que se está aplicando. -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <NoWarn>CA1416</NoWarn>
+    <!-- Respaldo si se compila fuera del script de empaquetado. -->
+    <Version>2.1.1</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Enlazados (no copiados): mismo patron que descargas-ui, para que instalador y app
+         nunca se desincronicen en como se crea/lee la BD ni en como se guarda la config del
+         servicio. -->
+    <Compile Include="..\descargas\Datos\EsquemaSql.cs" Link="Datos\EsquemaSql.cs" />
+    <Compile Include="..\descargas\Datos\ConfigServicio.cs" Link="Datos\ConfigServicio.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="assets\logo_blanco.png" />
+    <Resource Include="assets\logo_mono.png" />
+    <Resource Include="assets\app_icon.png" />
+    <EmbeddedResource Include="payload.zip" />
+  </ItemGroup>
+
+</Project>

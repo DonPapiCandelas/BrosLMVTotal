@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrosLMV — Notas de versión</title>
+<style>
+  :root{
+    --bg:#eef3fa; --card:#ffffff; --ink:#1f2937; --muted:#667085;
+    --line:#dce3ed; --primary:#2563eb; --ok:#16a34a; --warn:#d97706; --err:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 "Segoe UI",Inter,system-ui,Arial,sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:32px 20px 64px}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  header h1{font-size:22px;margin:0}
+  header .sub{color:var(--muted);font-size:14px}
+  .logo{width:42px;height:42px;border-radius:10px;background:var(--primary);
+        color:#fff;display:flex;align-items:center;justify-content:center;
+        font-weight:700;font-size:18px}
+  .ver{background:var(--card);border:1px solid var(--line);border-radius:12px;
+       padding:18px 22px;margin:18px 0;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .ver h2{margin:0 0 2px;font-size:18px}
+  .ver .date{color:var(--muted);font-size:13px;margin-bottom:10px}
+  .ver h2 .tag{font-size:12px;font-weight:600;color:var(--primary);
+       background:#e1ebfc;border-radius:999px;padding:2px 10px;margin-left:8px;vertical-align:middle}
+  .grp{margin:10px 0 0}
+  .grp .h{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .grp.add .h{color:var(--ok)} .grp.chg .h{color:var(--primary)}
+  .grp.fix .h{color:var(--warn)} .grp.rem .h{color:var(--err)}
+  ul{margin:6px 0 0;padding-left:20px}
+  li{margin:3px 0}
+  code{background:#f1f5fb;border:1px solid var(--line);border-radius:5px;
+       padding:.5px 5px;font-family:"Cascadia Code",Consolas,monospace;font-size:13px}
+  footer{color:var(--muted);font-size:12px;text-align:center;margin-top:30px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">B</div>
+    <div>
+      <h1>BrosLMV — Notas de versión</h1>
+      <div class="sub">Consola de scripts para CONTPAQi Comercial · C# · Python · SQL</div>
+    </div>
+  </header>
+
+  <div class="ver">
+    <h2>2.90.0</h2>
+    <div class="date">2026-09-15 — Crear documentos por script conservando tipo de cambio, condición de pago y origen</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><code>ctx.erp.NuevoDocumento(...)</code> acepta ahora tipo de cambio, condición de pago,
+            moneda, título y documento origen (todos opcionales). Las llamadas anteriores siguen
+            funcionando exactamente igual.</li>
+        <li><code>ctx.erp.AgregarArticulo(...)</code> acepta ahora comentarios y la partida de
+            origen de cada renglón.</li>
+        <li><code>ctx.erp.AgregarSerie(...)</code>: asigna una serie a una partida ya creada
+            (una llamada por serie), para copiar documentos con series sin escribir SQL a mano.</li>
+      </ul>
+    </div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>Limpieza interna de código muerto en <code>NuevoDocumento</code>; sin cambios de
+            comportamiento.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.89.0</h2>
+    <div class="date">2026-09-10 — Motor PDF más robusto, Diagnóstico y botón Cotizador manual</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Pestaña “Diagnóstico”</b> en <i>Configuración de formato</i>: revisa de un vistazo
+            que todo esté en su lugar — motor HTML→PDF, WebView2, las 10 plantillas, las tablas de
+            configuración, la cuenta de correo, los módulos con formato y que los botones nativos
+            del ribbon estén sanos. Incluye un botón <b>“Reparar controles Cotizador”</b>.</li>
+        <li>El motor <b>HTML→PDF</b> ahora se cuida solo: se mata si se cuelga
+            (<code>--timeout</code>), avisa si falta el <i>WebView2 Runtime</i>, valida el HTML,
+            deja bitácora en <code>C:\BrosLMV\logs\</code> y verifica que el PDF salió bien.</li>
+      </ul>
+    </div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>El botón <b>“Cotizador”</b> dentro de un documento ahora se activa <b>módulo por
+            módulo</b>, con un interruptor en la ficha de cada módulo de <i>Configuración de
+            formato</i>. Se quitó la activación masiva (una versión previa llegó a romper el
+            guardado de documentos). El interruptor sólo usa el parámetro oficial del módulo y
+            respeta cualquier personalización que ya tengas.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.88.0</h2>
+    <div class="date">2026-09-10 — El botón “Cotizador” dentro del documento ya funciona</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Al presionar el botón “Cotizador” dentro de un documento (configurado como
+            “Cotizador personalizado”) salía el error <code>Object doesn't support this property
+            or method</code>. Ya se corrigió — el botón genera el PDF de BrosLMV como se
+            esperaba.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.87.0</h2>
+    <div class="date">2026-09-10 — Generar PDF de documentos y configurarlos, con formatos propios</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Generar documento (PDF)</b>: desde un documento abierto, un botón arma el PDF con
+            el motor de Chrome (WebView2) en vez del generador viejo de Comercial. Resuelve las
+            mismas etiquetas que un formato de Comercial. Botones de <i>Vista previa</i>,
+            <i>Generar PDF</i> y <i>Enviar por correo</i>.</li>
+        <li><b>Configuración de formato</b> (pestaña Soluciones LMV): ventana moderna para
+            elegir, por cada módulo, qué formato HTML usa BrosLMV; crear/duplicar/editar formatos;
+            la carpeta donde se guarda el PDF (admite rutas de red <code>\\SERVIDOR\...</code>);
+            el patrón del nombre del archivo con etiquetas y vista previa; y el correo por SMTP
+            propio (Outlook, Gmail o dominio propio) con plantillas de asunto y cuerpo.</li>
+        <li><b>10 formatos genéricos</b> listos (gris/azul, con código QR, pensados para que no
+            se corten los renglones entre hojas): pedido de cliente, remisión, factura, nota de
+            crédito, orden de compra, recepción de mercancía, documento de gastos (con tipo de
+            gasto por partida), entrada de almacén, traspaso y salida de almacén. Incluyen el
+            desglose de impuestos (IVA, IEPS, retenciones de IVA e ISR).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.86.0</h2>
+    <div class="date">2026-09-09 — Los botones ya pueden abrir el documento que acaban de crear</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Un botón que genere un documento (por ejemplo, convertir una Requisición en Orden
+            de Compra) ya puede abrirlo automáticamente en pantalla al terminar, sin que el
+            usuario tenga que buscarlo en la lista.</li>
+        <li>También es posible agregar un renglón a un documento que ya se había guardado antes,
+            en una ejecución aparte -- algo que antes solo se podía hacer al crear el documento
+            desde cero.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.85.0</h2>
+    <div class="date">2026-09-02 — Base para usuarios propios del Punto de Venta</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Los scripts ya pueden generar y verificar contraseñas con el mismo nivel de
+            seguridad que ya usa la contraseña de la Consola -- primer paso para que la caja del
+            Punto de Venta tenga sus propios usuarios, provisionados desde un botón dentro de
+            Comercial.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.84.0</h2>
+    <div class="date">2026-09-02 — Scripts sin supervisión ya no se cuelgan por un diálogo que nadie ve</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Un script pensado para correr solo (por ejemplo, desde una Tarea Programada, vía
+            BrosLMV.Runner) que usara "mostrar mensaje" o "confirmar" podía quedarse esperando
+            un clic que nadie iba a dar -- ahora, en ese modo, se registra en el log en vez de
+            abrir una ventana.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.83.0</h2>
+    <div class="date">2026-08-24 — La biblioteca de scripts ya no se ve vacía en empresas migradas</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Empresas migradas de otro equipo (o restauradas de un respaldo viejo) podían
+            mostrar la Consola con "0 scripts" aunque sí tuvieran guardados -- la Consola
+            ahora revisa y repara sola la tabla de scripts la primera vez que abre.</li>
+        <li>Nueva opción "Reparar biblioteca de scripts" en "Más opciones" por si hace falta
+            forzarla a mano.</li>
+      </ul>
+    </div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Al guardar un script nuevo, el diálogo ya pide también la categoría (elige una
+            existente o escribe una nueva) -- nace clasificado, sin un paso aparte después.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.82.0</h2>
+    <div class="date">2026-08-13 — Contraseña de la Consola (opcional, por empresa)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>La Consola puede pedir contraseña antes de abrir. Se activa desde el instalador
+            (una casilla al instalar o actualizar); si se olvida, se resetea directo en SQL
+            (no se guarda en texto plano, solo un hash que no se puede leer de vuelta).</li>
+        <li>Para cambiarla: correr el instalador de nuevo y usar "Cambiar contraseña de una
+            empresa ya instalada..." (pide la actual antes de aceptar la nueva).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.81.0</h2>
+    <div class="date">2026-08-08 — Nueva plantilla: Vincular XML CFDI al documento (Gastos y compras)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Busca los XML de factura que ya cargaste en Comercial pero aún no has
+            vinculado a ningún documento, y te deja asociarlos con un par de clics.
+            Doble clic en un XML muestra su detalle completo en una ventana aparte.
+            Funciona igual en cualquier empresa, sin configuración previa.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.80.0</h2>
+    <div class="date">2026-08-05 — Corrige errores de compilación al abrir Recepción de Compra WebView2 (C#)</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Dos mensajes de validación (lotes/series) dentro del HTML embebido tenían una
+            comilla sin escapar que rompía el código C# de la plantilla — ya no.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.79.0</h2>
+    <div class="date">2026-08-05 — Corrige confusión doble clic en Consola: panel "REFERENCIAS → Campo" ahora ofrece el token nuevo cuando aplica</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>En la Consola de scripts, el panel <b>"REFERENCIAS → Tokens"</b> (pestaña SQL, doble
+            clic sobre un campo) ya no siempre inserta el token viejo de solo lectura. Ahora
+            verifica si el campo es una columna real de la base y, si lo es, inserta el token
+            nuevo <code>{DATOS:docDocument.Campo:*}</code> (el que abre el formulario) — si no lo
+            es (alias de vista del grid), sigue insertando el token viejo, pero ahora explica por
+            qué en la barra de estado en vez de dejar al usuario adivinando.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.78.0</h2>
+    <div class="date">2026-08-05 — Diseñador visual de formularios: navegador de esquema en vivo para tokens {DATOS:Tabla.Columna}</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>El <b>Diseñador visual de formularios</b> tiene una pestaña nueva <b>"Datos {DATOS}"</b>
+            junto a la de siempre ("Disenar (ctx.form)", sin cambios): busca una tabla real de la
+            base (con buscador — hay ~500), ve sus columnas reales con el tipo SQL y el control que
+            le va a tocar al usuario (texto/número/decimal/fecha/checkbox/memo), marca las que
+            necesita, ponles una etiqueta y si son obligatorias, y copia un snippet listo (SQL,
+            Python o C#) con los tokens <code>{DATOS:Tabla.Columna}</code> ya armados — sin
+            escribir nombres de tabla/columna de memoria.</li>
+        <li>El catálogo de tablas/columnas se trae de la base real una sola vez al abrir la
+            ventana (comprimido, mismo mecanismo que los dashboards HTML) — toda la búsqueda y
+            selección es instantánea, sin esperas mientras se usa.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.77.0</h2>
+    <div class="date">2026-08-05 — Catálogo de plantillas SQL puro migrado a tokens tipados {DATOS:Tabla.Columna}</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>Las plantillas <code>PLANTILLA_*_SQL_PURO.sql</code> del catálogo (Requisición, Orden de
+            Compra, Recepción de Compra, Factura de Compra, Cancelar Documento, Autorización por
+            Monto, Generar Series Auto, Requisición→OC Multiproveedor) y
+            <code>PLANTILLA_MODIFICAR_TITULO_SQL.sql</code> ya no requieren editar
+            <code>DECLARE @x TIPO = valor;</code> a mano antes de correr — sus parámetros que
+            corresponden a una columna real ahora usan <code>{DATOS:Tabla.Columna:*}</code> y muestran
+            un formulario automático. Parámetros sin una columna 1:1 clara (días de entrega, lote/
+            caducidad/series, acción AUTORIZAR/REVOCAR, "quién cancela") se dejaron sin migrar a
+            propósito — ver <code>docs/CHANGELOG.md</code> para el detalle por archivo.</li>
+        <li>Resuelve la queja original: <code>PLANTILLA_MODIFICAR_TITULO_SQL.sql</code> ya muestra un
+            recuadro real para escribir el título en vez de un texto fijo hardcodeado.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.76.0</h2>
+    <div class="date">2026-08-05 — Ajuste de umbral texto/memo en los tokens {DATOS:Tabla.Columna}</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Columnas de texto con longitud fija grande (ej. <code>docDocument.Title</code>,
+            <code>nvarchar(255)</code>) ya no se muestran como campo memo (varias líneas) solo por
+            permitir más de 200 caracteres — ahora memo es exclusivo de <code>NVARCHAR(MAX)</code>/
+            <code>VARCHAR(MAX)</code>/longitud desconocida. Cualquier longitud fija se ve como texto
+            de una sola línea.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.75.0</h2>
+    <div class="date">2026-08-05 — Tokens tipados {DATOS:Tabla.Columna}: formulario automático con el tipo real de la columna</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nuevo token <code>{DATOS:Tabla.Columna}</code> (con variantes
+            <code>{DATOS:Tabla.Columna:Etiqueta}</code>, <code>{DATOS:Tabla.Columna:*}</code> obligatorio, y
+            <code>{DATOS:Tabla.Columna:Etiqueta:*}</code>) usable en cualquier script (SQL puro, Python, C#):
+            antes de ejecutar, consulta <code>INFORMATION_SCHEMA.COLUMNS</code> por el tipo real de la
+            columna, arma y muestra un formulario (texto/número/decimal/fecha/checkbox/memo según el tipo)
+            y sustituye cada token por el valor capturado, ya escapado de forma segura para SQL. Si el
+            usuario cancela, no se ejecuta nada. Si la tabla/columna no existe, se avisa con un mensaje
+            claro antes de mostrar cualquier ventana. Es DISTINTO del token viejo <code>{DATOS:Campo}</code>
+            (sin punto), que sigue funcionando igual que siempre (lee un valor de la fila seleccionada en
+            el grid de Comercial) — la presencia de un punto es lo que decide cuál de los dos aplica.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.74.0</h2>
+    <div class="date">2026-08-04 — Cobertura de pruebas: 6 casos de humo nuevos para compras (SQL puro y Forms+SQL puro)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>6 casos de humo automatizados nuevos (comparación campo por campo contra un
+            documento nativo) para las plantillas de compras que quedaron sin prueba dedicada:
+            el camino base de Recepción de Compra SQL puro, Factura de Compra SQL puro, y las
+            4 ventanas "Forms + SQL puro" (Requisición, Orden de Compra, Recepción y Factura de
+            Compra), confirmando que su recálculo con el motor de Comercial (agregado en
+            v2.73.0) produce los mismos totales, impuestos y existencias que el camino 100%
+            nativo.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.73.0</h2>
+    <div class="date">2026-08-04 — Requisición, Orden de Compra, Recepción y Factura de Compra (variante SQL puro): totales y existencias más confiables</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Las 4 ventanas "SQL puro" de Requisición, Orden de Compra, Recepción de Compra y
+            Factura de Compra ahora dejan que Comercial recalcule totales, impuestos y
+            existencias justo después de crear el documento, en vez de calcularlos a mano.
+            Esto reduce el riesgo de que un documento quede con totales o existencias
+            incorrectos por un caso especial (por ejemplo, más de un tipo de impuesto en la
+            misma compra). Si algo falla en ese recálculo, la ventana te avisa claramente para
+            que revises el documento en Comercial antes de usarlo.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.72.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: Adjuntos del Documento</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: gestor de archivos adjuntos por documento (subir, ver/
+            abrir, eliminar, editar descripción). Al subir un archivo, se guarda una copia
+            propia (no solo la ruta original) para que no se pierda si mueves o borras el
+            archivo de tu equipo. Solo quien subió un archivo, o un administrador, puede
+            eliminarlo.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.71.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: Requisición → varias Órdenes de Compra por proveedor</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: dada una Requisición ya aprobada (validada) con
+            renglones de distintos proveedores, genera automáticamente una Orden de Compra por
+            cada proveedor — nunca una sola OC mezclando proveedores. Si algún proveedor ya
+            tenía su OC generada de una corrida anterior, no la duplica.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.70.0</h2>
+    <div class="date">2026-08-04 — Recepción de Compra: consolida varias partidas de la misma OC</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>La plantilla de Recepción de Compra (SQL puro) ya no crea un documento nuevo cada
+            vez que recibes otra partida de la MISMA Orden de Compra (por ejemplo, recepciones
+            parciales en días distintos) — ahora detecta que ya existe una Recepción para esa
+            OC y le agrega el renglón nuevo al mismo documento, con los totales actualizados.
+            Si intentas recibir la misma partida dos veces por error, la plantilla lo rechaza
+            en vez de duplicar el renglón.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.69.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: autonumerar series consecutivas</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: después de crear un documento, asigna
+            automáticamente números de serie consecutivos a los renglones que aún no
+            tienen — para cuando el cliente no trae sus propios números y solo quiere que
+            se autonumeren. Correr la plantilla dos veces sobre el mismo documento es
+            seguro (no genera series repetidas).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.68.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: autorizar documentos con límite de importe</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: autoriza (o revoca) un documento solo si quien firma
+            tiene permiso configurado para aprobar hasta ese monto — Comercial de fábrica
+            solo distingue "autorizado sí/no", sin límite de importe por persona. Configuras
+            quién puede autorizar cuánto en una tabla propia, y la plantilla separa
+            claramente "autorizar" de "revocar": correr el script dos veces por accidente
+            nunca deshace una autorización real.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.67.0</h2>
+    <div class="date">2026-08-04 — Nueva plantilla: cancelar un documento y su cadena</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: cancela un documento y, automáticamente, todos los
+            documentos que se generaron a partir de él (por ejemplo, cancelar una Orden de
+            Compra cancela también la Recepción que ya se hizo de ella), y le devuelve el
+            inventario a su estado anterior en cada uno — antes no existía forma de deshacer
+            lo que las demás plantillas crean.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.66.0</h2>
+    <div class="date">2026-08-04 — Documentos "SQL puro" más seguros ante fallas</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Las 8 plantillas que crean documentos con SQL directo (Requisición, Orden de
+            Compra, Recepción y Factura de Compra, cada una en su versión de script y su
+            versión con ventana) ahora son "todo o nada": si algo falla a la mitad de
+            crear un documento, ya no queda un documento incompleto en Comercial — se
+            deshace por completo, como si nunca se hubiera intentado.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.65.0</h2>
+    <div class="date">2026-08-04 — Diseñador visual de formularios</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla en el menú: un diseñador visual donde arrastras campos
+            (texto, número, fecha, sí/no, lista, etc.), ves una vista previa real del
+            formulario, y copias el código listo para usar en tu propio script — sin
+            escribir la interfaz a mano.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.64.0</h2>
+    <div class="date">2026-08-04 — Recepción de Compra completa — catálogo de compras cerrado</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Recepción de Compra ya tiene las mismas 6 formas de crearla que las demás.
+            Con esto, Requisición, Orden de Compra, Recepción y Factura de Compra quedan
+            completas: 24 plantillas en total, cada documento con 6 formas distintas de
+            crearlo.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.63.0</h2>
+    <div class="date">2026-08-04 — Factura de Compra completa (6 formas de crearla)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Factura de Compra ya tiene las mismas 6 formas de crearla que Requisición y
+            Orden de Compra: SQL, dos en C#, dos en Python y una ventana que combina lo
+            mejor de las dos.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.62.0</h2>
+    <div class="date">2026-08-04 — Recepción de Compra y Factura de Compra (SQL puro + Forms)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Dos plantillas nuevas en el catálogo: Recepción de Compra (recibe una o varias
+            Órdenes de Compra, con lote y número de serie) y Factura de Compra (factura una
+            o varias Órdenes de Compra ya seleccionadas). Cada una con su versión SQL puro y
+            su ventana normal.</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>La plantilla anterior de Factura de Compra tenía un error real: no vinculaba
+            bien la factura con la orden de compra de origen. Ya quedó corregido.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.61.0</h2>
+    <div class="date">2026-08-04 — Orden de Compra: ventana WinForms sin ctx.erp</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Igual que la Requisición: nueva plantilla de Orden de Compra con la ventana de
+            siempre (proveedor, impuesto, descuento, totales en vivo) pero que al guardar
+            escribe con SQL directo en vez de usar las funciones de ayuda del addon.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.60.0</h2>
+    <div class="date">2026-08-04 — Requisición: ventana WinForms sin ctx.erp</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva plantilla de Requisición de Compra: la misma ventana de siempre para
+            capturar proveedor, almacén y partidas, pero que al guardar escribe con SQL
+            directo en vez de usar las funciones de ayuda del addon — para quien quiere ver
+            la ruta "SQL puro" funcionando sin editar código a mano.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.59.1</h2>
+    <div class="date">2026-08-04 — Ajuste fino a la Orden de Compra SQL puro</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Pequeño ajuste en el estatus de pago que queda al crear una Orden de Compra
+            con la plantilla SQL puro, para que coincida exactamente con el que deja
+            Comercial de forma nativa.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.59.0</h2>
+    <div class="date">2026-07-31 — Orden de Compra WebView2 completa: impuesto, descuento, totales y detalle de producto</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Las plantillas de Orden de Compra en WebView2 (C# y Python) ahora tienen
+            impuesto y descuento por partida, totales en vivo (Subtotal, Descuento,
+            Impuestos, Total y el total en letra), y el detalle del producto al hacer
+            doble clic en una partida — mismo nivel que la versión con formulario clásico.</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Varios detalles de las plantillas SQL puro (Requisición y Orden de Compra) se
+            afinaron para que coincidan aún más con lo que crea Comercial de forma nativa.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.58.0</h2>
+    <div class="date">2026-07-31 — Orden de Compra: 5 formas de crearla</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Orden de Compra ya tiene las mismas 5 plantillas que Requisición de Compra
+            (SQL, dos en C# y dos en Python).</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Las plantillas de Orden de Compra dejaban de registrar el compromiso de
+            inventario correctamente — ya quedó corregido.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.57.0</h2>
+    <div class="date">2026-07-31 — Requisición de Compra: 5 formas de crearla</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Requisición de Compra ya tiene 5 plantillas distintas para crearla (SQL, dos en
+            C# y dos en Python) — mismo resultado final, tú eliges cuál usar.</li>
+        <li>Las ventanas con interfaz HTML moderna (WebView2) ahora también están
+            disponibles para scripts en C#, no solo Python.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.56.0</h2>
+    <div class="date">2026-07-31 — Editor con colores reales por lenguaje</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>El editor de código ahora distingue comentarios de código con colores en SQL
+            (antes solo pasaba en C#/Python).</li>
+        <li>Nueva plantilla: Requisición de Compra con SQL puro, validada campo por campo
+            contra un documento creado de la forma tradicional.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.55.0</h2>
+    <div class="date">2026-07-30 — Plantillas reorganizadas por lenguaje</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>El menú de Plantillas ahora se organiza en C#/Python/SQL, con ejemplos claros
+            de extracción de datos y modificación de documentos en los 3 lenguajes.</li>
+        <li>Nueva versión de la Requisición de Compra con interfaz HTML moderna
+            (WebView2), además de la versión clásica de ventanas.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.54.0</h2>
+    <div class="date">2026-07-30 — Formularios HTML que de verdad guardan datos</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva capacidad para scripts Python: una ventana con HTML/CSS propio que puede
+            crear o guardar algo (antes solo podía mostrar información).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.53.0</h2>
+    <div class="date">2026-07-30 — "Nueva acción" con mejor cara, ejemplos, y un bug real corregido</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>El asistente "Nueva acción" ahora explica qué hace cada tipo de acción y trae
+            un botón "Llenar con este ejemplo" para ver de un clic cómo se usa.</li>
+        <li>Dos ejemplos completos, paso a paso, en el manual: "avísame el total de un
+            documento" y "crear una OC desde una Requisición".</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Guardar una acción "Crear documento a partir de otro" desde el asistente
+            siempre fallaba al ejecutarse — ya funciona.</li>
+        <li>El asistente se veía sin terminar (colores planos, texto pegado); ahora usa el
+            mismo estilo visual que el resto de la Consola.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.52.0</h2>
+    <div class="date">2026-07-30 — "Nueva acción"/"Nuevo script" de vuelta, en "Más opciones"</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul><li>"Nueva acción" y "Nuevo script" ahora viven en el menú "Más opciones".</li></ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.51.0</h2>
+    <div class="date">2026-07-30 — Barra de herramientas reorganizada</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul><li>Se agregan "Guardar como" e "Importar paquete" a la barra principal.</li></ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.50.0</h2>
+    <div class="date">2026-07-30 — Rediseño de la barra de herramientas</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul><li>Acciones secundarias se mueven a un menú, para dejar espacio a las pestañas.</li></ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.49.0</h2>
+    <div class="date">2026-07-30 — Pestañas múltiples en la Consola</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul><li>Ya puedes tener varios scripts abiertos a la vez, cada uno en su pestaña.</li></ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.48.0</h2>
+    <div class="date">2026-07-30 — Modo asistente "Nueva acción" (Wizard)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva interfaz visual (Wizard) accesible desde "Nueva acción" en la barra de herramientas de la Consola. Permite crear botones con base a una receta y llenar sus datos a través de un formulario dinámico, sin necesidad de tocar ni una sola línea de código JSON o C#.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.47.0</h2>
+    <div class="date">2026-07-30 — Motor de recetas: pasos encadenados</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Ahora un botón sin código puede contener múltiples pasos que se ejecutan en orden secuencial. Si un paso falla, se detiene la ejecución inmediatamente (nota: no se revierten los pasos anteriores).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.46.0</h2>
+    <div class="date">2026-07-30 — Receta estrella: Crear documento a partir de otro</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Motor de ejecución para la receta que permite generar documentos de manera dinámica (a través del JSON de configuración). Incluye cálculo de afectaciones e impuestos de manera automática.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.45.0</h2>
+    <div class="date">2026-07-30 — Motor de recetas: estructuras de documento</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Diccionario interno para manejar la creación de diferentes tipos de documentos en CONTPAQi sin requerir código especial por cada módulo (preparación para la receta de creación de documentos).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.44.0</h2>
+    <div class="date">2026-07-30 — Motor de recetas: primera receta sin código</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Primer paso del motor de botones sin código: ya se puede guardar un botón que
+            solo ejecuta SQL con tokens, sin escribir ni una línea de C#/Python.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.43.0</h2>
+    <div class="date">2026-07-30 — Pestaña "Tokens" en la Consola</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>La pestaña "Datos" del panel de Referencias ahora se llama "Tokens" y además de
+            los campos de la selección, muestra los 5 tokens fijos ({pID}, {pIDs},
+            {pUserID}, {pModulo}, {pEmpresa}) — doble clic los inserta correctamente según
+            si el script es SQL, C# o Python.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.42.0</h2>
+    <div class="date">2026-07-30 — Modo solo lectura forzado por usuario</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Un usuario marcado "solo lectura" (por el administrador, vía preferencia)
+            ahora queda bloqueado de verdad para crear o modificar datos — en botones del
+            ribbon, en la Consola (la casilla queda marcada y no se puede desactivar) y
+            en jobs programados.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.41.0</h2>
+    <div class="date">2026-07-30 — Auditoría por empresa + Gestor de Ribbon</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nueva pestaña "Auditoría (empresa)" en el Historial — filtra por fecha,
+            AppKey y estado, con nombre de usuario real.</li>
+        <li>Nuevo botón "Gestor de Ribbon" — crea pestañas/secciones y edita o mueve
+            botones de BrosLMV sin escribir SQL a mano.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.40.0</h2>
+    <div class="date">2026-07-29 — Historial de versiones: diff, restaurar, etiquetar</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nuevo: "Historial de versiones…" (clic derecho en un script) — ve qué cambió
+            entre la versión de hoy y cualquier versión anterior, y restaura con un clic
+            si algo salió mal.</li>
+        <li>Etiqueta versiones importantes para encontrarlas después y protegerlas de
+            borrarse.</li>
+        <li>El historial ahora muestra quién guardó cada versión (no solo un número).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.39.1</h2>
+    <div class="date">2026-07-29 — Corrección: "Plantillas" ahora sí queda contraído</div>
+  </div>
+
+  <div class="ver">
+    <h2>2.39.0</h2>
+    <div class="date">2026-07-29 — Clasifica tus scripts con categorías propias</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nuevo: "Categorizar…" (clic derecho en un script) — ponle el nombre que
+            quieras y los scripts se agrupan solos por esa categoría.</li>
+        <li>El árbol de la Consola ahora empieza siempre contraído — tú decides qué
+            desplegar.</li>
+        <li>Al exportar/importar un paquete .bros, la categoría viaja con el script.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.38.1</h2>
+    <div class="date">2026-07-29 — Árbol de scripts: favoritos y recientes</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nuevo: marcar botones como favoritos (clic derecho) y ver los últimos abiertos
+            en "Recientes".</li>
+        <li>"Plantillas" ya no se despliega solo al abrir la Consola.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.37.0</h2>
+    <div class="date">2026-07-29 — Paquetes .bros: mover un botón entre empresas</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>En la Consola, clic derecho sobre un botón → "Exportar paquete (.bros)…" —
+            empaca el script y sus archivos propios (si tiene) en un solo archivo.</li>
+        <li>Botón "Importar paquete…" en la barra de herramientas — lo instala en la
+            empresa activa, con historial y aprobación intactos.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.36.0</h2>
+    <div class="date">2026-07-29 — Auditoría central por empresa</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Cada ejecución (botón o consola) queda registrada también en la base de
+            datos de la empresa, no solo en este equipo — útil para saber quién
+            ejecutó qué, desde cualquier terminal.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.35.0</h2>
+    <div class="date">2026-07-29 — Integridad de scripts: hash y aprobación</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Cada vez que guardas un script desde la Consola, se guarda un sello
+            (hash) del código. Si alguien lo modifica por fuera de la Consola, verás
+            un aviso al ejecutar el botón.</li>
+        <li>Nueva preferencia opcional por usuario para exigir que un botón se
+            apruebe antes de poder ejecutarse desde el ribbon — con un botón
+            <b>"Aprobar"</b> nuevo en la Consola.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.34.0</h2>
+    <div class="date">2026-07-29 — ctx.dashboard(): reportes HTML sin assets por script</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>ctx.dashboard(title, data, columns=None)</b> (Python): dashboard HTML
+            completo (tabla ordenable, buscador, paginación, exportar a Excel) a partir de
+            una lista de datos — sin escribir HTML/CSS/JS y sin crear ninguna carpeta de
+            assets por script. Los datos viajan comprimidos automáticamente.</li>
+        <li>Nueva carpeta de runtime compartido <code>C:\BrosLMV\lib\</code>, instalada una
+            sola vez — cualquier reporte puede usar librerías compartidas (como la de
+            exportar a Excel) sin copiarlas por script ni por terminal.</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>El reporte de flota ya no dependía del nombre exacto de la base de
+            datos donde se creó — ahora funciona igual en cualquier empresa/cliente.</li>
+        <li>El diálogo "Abrir" de la Consola ya muestra scripts <code>.py</code> y
+            <code>.sql</code> por default (antes había que elegir "Todos" a mano).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.24.0</h2>
+    <div class="date">2026-07-11 — ctx.show_html(): ventana HTML/WebView2 embebida (Python)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>ctx.show_html(html, title, width, height, modal)</b> (Python): muestra una
+            ventana con HTML/CSS/JS renderizado por WebView2, embebida dentro de CONTPAQi —
+            sin escribir archivos ni depender del navegador externo. Primer caso real: el
+            dashboard de flota de GGV_DE_MEXICO (miles de movimientos, filtros, exportación a
+            Excel, todo dentro de una sola ventana).</li>
+        <li>Los datos que no quepan comprimidos bajo ~2MB (límite real de WebView2) se pueden
+            comprimir con gzip+base64 y descomprimir en el navegador con la API nativa
+            <code>DecompressionStream</code> — sin necesidad de ninguna librería extra.</li>
+        <li><b>PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py</b>: diseñador visual de formularios
+            no-code construido sobre ctx.show_html.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.23.0</h2>
+    <div class="date">2026-07-03 — Ejemplo Premium: Recepción de Compra y Factura de Compra</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Recepción de Compra</b> (módulo 184): transforma una o varias Órdenes de Compra
+            del mismo proveedor en una Recepción, con partidas consolidadas por producto y
+            captura de <b>lote (+ caducidad)</b> o <b>número de serie</b> según lo requiera el
+            producto.</li>
+        <li><b>Factura de Compra</b> (módulo 152): a partir de Órdenes de Compra seleccionadas en
+            el grid de Comercial, con impuesto editable por partida y desglose de importes por
+            línea. No afecta inventario; genera la póliza contable automáticamente.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.12</h2>
+    <div class="date">2026-07-03 — Fin de la saga: sin transacción SQL + Unicode al guardar/cargar scripts</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li><code>NuevoDocumento</code>/<code>AgregarArticulo</code> ya no envuelven el INSERT en
+            un <code>BEGIN TRANSACTION</code>/<code>COMMIT</code> explícito — eso era lo que
+            seguía causando "la operación no está permitida si el objeto está cerrado" al crear
+            documentos desde un botón. <b>Confirmado</b> creando una Orden de Compra real.</li>
+        <li>Guardar y cargar un script desde la Consola podía dañar acentos/emoji (se veían como
+            "?" o "♦") — ahora ambas rutas prefieren una conexión directa a la base con Unicode
+            garantizado, con respaldo automático si no está disponible.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.9</h2>
+    <div class="date">2026-07-02 — Saga completa: "busy" de XEngine + "objeto cerrado" en botones Python</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>El botón "Ejecutar" de la <b>Consola</b> corría Python de forma síncrona (bloqueaba
+            Comercial mientras la ventana seguía abierta) — ahora corre en segundo plano igual
+            que el botón del ribbon, y hay una guardia contra ejecuciones encimadas por clics
+            repetidos.</li>
+        <li><code>NuevoDocumento</code> podía fallar con "la operación no está permitida si el
+            objeto está cerrado" <b>solo como botón de ribbon</b> (nunca desde la Consola): la
+            conexión a la base de datos ligada al grid activo se puede cerrar si el grid se
+            refresca mientras una ventana interactiva sigue abierta varios minutos. Ahora se
+            prefiere una conexión de propósito general y se revalida/renueva sola si deja de
+            servir.</li>
+        <li>Los mensajes de error de <code>NuevoDocumento</code>/<code>AgregarArticulo</code>
+            ahora incluyen el detalle real del error SQL/COM, no solo un mensaje genérico.</li>
+        <li>Un botón guardado desde Plantillas podía guardar acentos/emoji como "?" — corregido
+            (lectura de archivos con codificación UTF-8 explícita).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.2</h2>
+    <div class="date">2026-07-02 — Diagnóstico: traza de llamadas Python (ctx.erp/ctx.query)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Log <code>logs\PythonErp_AAAAMMDD.txt</code> con cada llamada de un botón Python al
+            motor (antes/después + tiempo), para diagnosticar el "busy" reportado en Orden de
+            Compra si vuelve a pasar. No cambia el comportamiento de los botones.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.1</h2>
+    <div class="date">2026-07-02 — Fix: ventana de detalle de producto amontonada</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>La ventana de <b>detalle de producto</b> se veía apretada — se rediseñó con más
+            espacio, columnas etiqueta/valor y tablas más grandes.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.21.0</h2>
+    <div class="date">2026-07-02 — Totales y detalle de producto en Orden de Compra</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Apartado de <b>Totales</b> (Subtotal, Descuento, Impuestos, Total y <b>Total en letra</b>)
+            en las plantillas de Orden de Compra (C# y Python).</li>
+        <li><b>Doble clic</b> en una partida abre el <b>detalle del producto</b>: datos generales,
+            clasificaciones, existencia por almacén, listas de precios y precios por proveedor.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.20.1</h2>
+    <div class="date">2026-07-01 — Fix: impuesto, descuento y estatus de entrega en OC</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>El <b>impuesto</b> ahora sí se aplica (antes se guardaba el tipo pero no el %) —
+            corregido en el motor, beneficia también a la Requisición.</li>
+        <li>Nueva columna y campo de <b>Descuento %</b> por partida.</li>
+        <li>Ya no queda "Estatus de entrega: No Aplica" al crear la orden de compra.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.20.0</h2>
+    <div class="date">2026-07-01 — Ejemplo Premium: Orden de Compra (C# y Python)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Nuevo par de plantillas completas: <b>"Ejemplo Premium · C#/Python Orden de
+            Compra"</b> — a diferencia de la Requisición, captura <b>precio por partida</b> y
+            <b>fecha de entrega esperada</b>, con subtotal en vivo. No afecta inventario.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.19.1</h2>
+    <div class="date">2026-07-01 — Plantillas base para ventanas nuevas</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Dos <b>plantillas base</b> en el menú Plantillas: "Base · C# WinForms" y
+            "Base · Python WinForms" — ventana modeless en blanco, lista para copiar y adaptar
+            a un script nuevo, con las protecciones ya aplicadas.</li>
+        <li>Guía completa en el <b>Manual</b> (sección "Ventanas WinForms: modeless").</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.19.0</h2>
+    <div class="date">2026-07-01 — Botones modeless: minimiza y sigue trabajando en Comercial</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Las ventanas de los botones (C# y Python) ya se pueden <b>minimizar y seguir
+            trabajando en Comercial</b>, incluso con <b>varias abiertas a la vez</b>.</li>
+        <li>Los botones <b>Python ya no congelan Comercial</b> mientras su ventana está abierta.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.18.1</h2>
+    <div class="date">2026-07-01 — Diagnóstico real de errores + plantilla Python WinForms</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Los errores al ejecutar Python ya no muestran un mensaje genérico ("Se han producido
+            uno o varios errores."): ahora se ve la causa real.</li>
+        <li>Eliminado un riesgo de bloqueo en la comunicación con el host (proceso Python).</li>
+      </ul>
+    </div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Plantilla <b>"Ejemplo Premium · Python WinForms"</b>: la misma ventana de Requisición
+            de Compra que la versión C#, pero en Python puro (para quien no programa en C#).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.18.0</h2>
+    <div class="date">2026-06-29 — 4 anclas + campos universales + partida nativa completa</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>4 anclas automáticas:</b> <code>NuevoDocumento</code> ahora crea las 4 filas ancla 1:1 que todo documento nativo requiere: <code>docDocumentExt</code>, <code>docDocumentExtra</code>, <code>docDocumentCFD</code> y <code>docDocumentPaymentAgenda</code>. Antes solo creaba <code>docDocumentExt</code>.</li>
+        <li><b>Campos universales de docDocument:</b> <code>NuevoDocumento</code> ahora llena <code>MustBeSynchronized=1</code>, <code>ExportID=1</code>, <code>DateCost</code>, <code>DateDocDelivery</code>, <code>DateFrom</code>, <code>DateTo</code>, <code>DateLastPayment</code> — igual que el nativo. Ya no se necesita UPDATE posterior para estos campos.</li>
+        <li><b>Partida como el nativo:</b> <code>AgregarArticulo</code> ahora llena <code>ApplyGlobalDiscount=1</code>, <code>DeductiblePerc=1</code>, <code>IsBusinessOperation=1</code>, <code>MustBeDelivered=1</code>, <code>DateItem</code>, <code>CoefUnit=1</code>, <code>ClaveUnidad</code> y <code>ObjetoImpuesto</code> del producto.</li>
+        <li><b>API <code>ctx.erp.LastError</code>:</b> expone el último error de late-binding COM. Revisar después de operaciones críticas (<code>AffectStockNEW</code>, <code>Save</code>, <code>CancelDocument</code>, <code>Delete</code>).</li>
+        <li><b>Fix encoding Python:</b> el host ahora configura UTF-8 explícito en stdin/stdout/stderr del proceso Python. Corrige el bug Ñ→Ã.</li>
+        <li><b>MANUAL.md reescrito:</b> documentación completa de <code>ctx.erp</code> (84 métodos, fichas por función, recetas por tipo de documento, advertencias).</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Encoding UTF-8 en comunicación host↔Python (datos con acentos/Ñ ya no se corrompen).</li>
+        <li><code>Com.LastError</code> ahora captura y expone el mensaje de excepción de cada llamada COM fallida (antes se tragaba en silencio).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.17.0</h2>
+    <div class="date">2026-06-28 — Documentos más fieles al nativo (docDocumentExt + costo de entrada)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Documentos más fieles al nativo:</b> al crear un documento con
+            <code>ctx.erp.NuevoDocumento(...)</code> ahora se genera también la fila ancla en
+            <code>docDocumentExt</code> (igual que CONTPAQi nativo), necesaria para los campos
+            extra del documento.</li>
+        <li><b>Costo de entrada de inventario:</b> <code>ctx.erp.AgregarArticulo(...)</code> acepta
+            un parámetro opcional <code>costo</code>. Al indicarlo, la partida guarda su
+            <code>CostPrice</code>, para que las entradas de almacén/recepciones/traspasos costeen
+            bien (antes entraban a costo 0). Llamar antes de <code>RecalcCompleto</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.16.0</h2>
+    <div class="date">2026-06-27 — Editar registros existentes (ctx.registro)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Cargar y editar registros existentes</b> con
+            <code>ctx.registro("tabla", id)</code> en Python: carga todos los campos,
+            permite modificarlos y <code>.actualizar()</code> envía <b>solo los cambios</b>.
+            También se puede <code>.eliminar()</code> (borrado lógico).</li>
+        <li>Referencia de <code>ctx.registro</code> en el panel de la consola.</li>
+      </ul>
+    </div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li><code>.actualizar()</code> ahora detecta qué campos cambiaron y solo envía esos
+            (antes enviaba todos). Aplica tanto a registros nuevos como cargados.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.15.0</h2>
+    <div class="date">2026-06-27 — Crear documentos desde Python (y C#)</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Crear documentos</b> (cotización, pedido, orden de compra…) en pocas líneas:
+            <code>ctx.erp.NuevoDocumento(modulo, almacen, proveedor)</code> +
+            <code>ctx.erp.AgregarArticulo(doc, producto, cantidad, precio)</code> +
+            <code>ctx.erp.RecalcCompleto(doc)</code>. Funciona igual en C# y en Python.</li>
+        <li><b>Active-record genérico</b> <code>ctx.nuevo("tabla")</code> en Python: setear campos y
+            <code>.guardar()</code> (INSERT que devuelve el ID), <code>.actualizar()</code>,
+            <code>.eliminar()</code> (borrado lógico). Cimiento del futuro no-code.</li>
+      </ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Los scripts <b>C#</b> ya muestran en el panel lo que devuelven con <code>return ...;</code>
+            (antes solo decía "Ejecución terminada").</li>
+        <li>Las partidas creadas ahora guardan su <code>Total</code> (= cantidad × precio).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.14.0</h2>
+    <div class="date">2026-06-27 — Versión visible y control de versiones</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Versión visible</b> en el encabezado y la barra de estado de la consola.</li>
+        <li>Diálogo <b>Acerca de</b> (versión + fecha de compilación) y estas <b>notas de versión</b> (este archivo), que se abren en el navegador.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.13.0</h2>
+    <div class="date">2026-06-27 — Consola modeless</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>La <b>consola ya no es modal</b>: se puede <b>minimizar y seguir trabajando en Comercial</b>. Una sola instancia; si ya está abierta, se restaura y se trae al frente.</li>
+        <li>Refresca el <b>contexto actual</b> al volver a la ventana (pudo cambiar módulo/selección).</li>
+      </ul>
+    </div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li><b>Guardia de cambio de empresa</b>: la consola captura el motor al abrirse; si cambias de empresa, avisa en rojo y <b>pide confirmación antes de ejecutar</b> para no escribir en la BD equivocada.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.12.0</h2>
+    <div class="date">2026-06-27 — Python gana <code>ctx.erp</code></div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul>
+        <li>Python ya puede usar <code>ctx.erp.*</code> (existencias, folios, precios, recalcular, crear/cancelar documentos) con los mismos nombres que C#, vía relay al addon por el pipe. Sin copiar código de terceros.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.11.x</h2>
+    <div class="date">2026-06-27 — Referencias reales y verificación</div>
+    <div class="grp chg"><div class="h">Cambiado / Corregido</div>
+      <ul>
+        <li>Panel de <b>Referencias</b> fiel al API real en los 3 lenguajes (C# / Python / SQL).</li>
+        <li>Fix <code>GetPriceWithTaxes</code> (orden de argumentos) y verificación por lotes en CONTPAQi.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
+    <h2>2.10.0</h2>
+    <div class="date">Consola modo claro profesional + UX</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul>
+        <li>Rediseño de la consola (tema claro), pestañas por lenguaje y mejoras de usabilidad.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>BrosLMV — software libre (GPL-3.0). El historial completo y técnico está en <code>docs/CHANGELOG.md</code>.</footer>
+</div>
+</body>
+</html>

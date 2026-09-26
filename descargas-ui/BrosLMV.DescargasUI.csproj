@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Interfaz de escritorio de BrosLMV.Descargas. WPF nativo (mismo lenguaje visual que el
+    instalador: sidebar navy, tarjetas blancas redondeadas, azul #2D6FE0), NO WebView2: la
+    primera version (HTML embebido) se veia generica, se reemplazo por completo.
+    Enlaza los mismos .cs de ..\descargas\ (Sat, Datos, Cola) en vez de duplicarlos: mismo
+    patron que runner\ usa para reusar el motor de BrosLMV sin bifurcarlo.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <!-- Para el icono de la bandeja del sistema (NotifyIcon) al minimizar en vez de cerrar. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>BrosLMV.DescargasUI</AssemblyName>
+    <RootNamespace>BrosLMV.DescargasUI</RootNamespace>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.4" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <!-- Para consultar el estado del Servicio de Windows "BrosLMV Descargas" (AutomatizacionWindow). -->
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
+    <!-- MutexAcl.Create (candado de instancia unica visible entre procesos elevados y no elevados). -->
+    <PackageReference Include="System.Threading.AccessControl" Version="8.0.0" />
+    <!-- Exportación nativa de libros .xlsx con formato, tabla, filtros y encabezado corporativo. -->
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\descargas\Sat\SatFirmaXml.cs" Link="Sat\SatFirmaXml.cs" />
+    <Compile Include="..\descargas\Sat\SatSoapClient.cs" Link="Sat\SatSoapClient.cs" />
+    <Compile Include="..\descargas\Datos\EsquemaSql.cs" Link="Datos\EsquemaSql.cs" />
+    <Compile Include="..\descargas\Datos\CfdiXmlParser.cs" Link="Datos\CfdiXmlParser.cs" />
+    <Compile Include="..\descargas\Datos\CfdiMetadataParser.cs" Link="Datos\CfdiMetadataParser.cs" />
+    <Compile Include="..\descargas\Datos\BrosSatDb.cs" Link="Datos\BrosSatDb.cs" />
+    <Compile Include="..\descargas\Datos\ReportesSql.cs" Link="Datos\ReportesSql.cs" />
+    <Compile Include="..\descargas\Datos\DpapiHelper.cs" Link="Datos\DpapiHelper.cs" />
+    <Compile Include="..\descargas\Cola\SolicitudWorker.cs" Link="Cola\SolicitudWorker.cs" />
+    <Compile Include="..\descargas\Cola\SolicitudChunker.cs" Link="Cola\SolicitudChunker.cs" />
+    <Compile Include="..\descargas\Cola\OrganizadorArchivos.cs" Link="Cola\OrganizadorArchivos.cs" />
+    <Compile Include="..\descargas\Cola\Bitacora.cs" Link="Cola\Bitacora.cs" />
+    <Compile Include="..\descargas\Cola\ComercialSync.cs" Link="Cola\ComercialSync.cs" />
+    <Compile Include="..\descargas\Cola\ComercialImportador.cs" Link="Cola\ComercialImportador.cs" />
+    <Compile Include="..\descargas\Cola\AutoSolicitador.cs" Link="Cola\AutoSolicitador.cs" />
+    <Compile Include="..\descargas\Datos\ConfigServicio.cs" Link="Datos\ConfigServicio.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="assets\logo_blanco.png" />
+    <Resource Include="assets\logo_mono.png" />
+    <Resource Include="assets\app_icon.png" />
+  </ItemGroup>
+
+</Project>

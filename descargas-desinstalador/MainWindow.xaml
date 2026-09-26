@@ -1,0 +1,116 @@
+<Window x:Class="BrosLMV.Descargas.Desinstalador.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BrosLMV Descargas — Desinstalador" Width="560" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" Background="#F4F6F9" FontFamily="Segoe UI"
+        ResizeMode="NoResize" Icon="pack://application:,,,/assets/app_icon.png">
+  <Window.Resources>
+    <Style TargetType="Button" x:Key="Primary">
+      <Setter Property="Background" Value="#DC2626"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="22,9"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border CornerRadius="6" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="Button" x:Key="Ghost">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="Foreground" Value="#64748B"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="18,9"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border CornerRadius="6" Background="{TemplateBinding Background}" BorderBrush="#CBD5E1" BorderThickness="1" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Height="110">
+      <Border.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+          <GradientStop Color="#15324F" Offset="0"/>
+          <GradientStop Color="#0B1E33" Offset="1"/>
+        </LinearGradientBrush>
+      </Border.Background>
+      <Image Source="pack://application:,,,/assets/logo_blanco.png" Height="60" Stretch="Uniform"
+             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+
+    <StackPanel Grid.Row="1" Margin="40,22,40,0" x:Name="PanelConfirmar">
+      <TextBlock Text="Desinstalar BrosLMV.Descargas" FontSize="18" FontWeight="Bold" Foreground="#16263A"/>
+      <TextBlock Foreground="#64748B" Margin="0,7,0,14" TextWrapping="Wrap"
+                 Text="Esto detiene y quita el Servicio de Windows &quot;BrosLMV Descargas&quot;, los archivos en C:\BrosLMV\Descargas y los accesos directos. Los CFDI ya descargados en disco NO se borran (viven fuera de esa carpeta)."/>
+
+      <CheckBox x:Name="ChkBorrarBd" Content="También borrar la base de datos (irreversible: se pierden todas las empresas, la cola de solicitudes y el historial de CFDI)"
+                Margin="0,0,0,10" Checked="ChkBorrarBd_Changed" Unchecked="ChkBorrarBd_Changed"/>
+
+      <StackPanel x:Name="PanelBd" Visibility="Collapsed">
+        <Grid Margin="0,0,0,8">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="0">
+            <TextBlock Text="Servidor / instancia" Foreground="#64748B" FontSize="11"/>
+            <TextBox x:Name="TxtServidor" Padding="6,5" VerticalContentAlignment="Center" Margin="0,3,0,0" Text="localhost"/>
+          </StackPanel>
+          <StackPanel Grid.Column="2">
+            <TextBlock Text="Base de datos" Foreground="#64748B" FontSize="11"/>
+            <TextBox x:Name="TxtBaseDatos" Padding="6,5" VerticalContentAlignment="Center" Margin="0,3,0,0" Text="BrosLMV_SAT"/>
+          </StackPanel>
+        </Grid>
+        <CheckBox x:Name="ChkWindowsAuth" Content="Usar autenticación de Windows" Margin="0,0,0,8" IsChecked="True" Checked="ChkWindowsAuth_Changed" Unchecked="ChkWindowsAuth_Changed"/>
+        <Grid x:Name="PanelSqlAuth" IsEnabled="False" Opacity="0.5">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="0">
+            <TextBlock Text="Usuario SQL" Foreground="#64748B" FontSize="11"/>
+            <TextBox x:Name="TxtUsuario" Padding="6,5" VerticalContentAlignment="Center" Margin="0,3,0,0"/>
+          </StackPanel>
+          <StackPanel Grid.Column="2">
+            <TextBlock Text="Contraseña SQL" Foreground="#64748B" FontSize="11"/>
+            <PasswordBox x:Name="PwdContrasena" Padding="6,5" VerticalContentAlignment="Center" Margin="0,3,0,0"/>
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Margin="40,22,40,0" x:Name="PanelResultado" Visibility="Collapsed">
+      <TextBlock x:Name="LblTitulo" Text="Desinstalación terminada" FontSize="18" FontWeight="Bold" Foreground="#16263A"/>
+      <TextBlock x:Name="LblResumen" Foreground="#334155" Margin="0,10,0,0" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"/>
+    </StackPanel>
+
+    <Border Grid.Row="2" Background="White" BorderBrush="#E6E9EF" BorderThickness="0,1,0,0" Padding="40,16" Margin="0,20,0,0">
+      <Grid>
+        <StackPanel x:Name="PanelBotonesConfirmar" Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button Content="Cancelar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnCancelar_Click"/>
+          <Button x:Name="BtnDesinstalar" Content="Desinstalar" Style="{StaticResource Primary}" Click="BtnDesinstalar_Click"/>
+        </StackPanel>
+        <StackPanel x:Name="PanelBotonesResultado" Orientation="Horizontal" HorizontalAlignment="Right" Visibility="Collapsed">
+          <Button Content="Cerrar" Style="{StaticResource Ghost}" Click="BtnCerrar_Click"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

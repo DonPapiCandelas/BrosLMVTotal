@@ -1,0 +1,123 @@
+// BrosLMV.GenerarPDF -- boton real: toma el documento SELECCIONADO en la lista (funciona
+// perfecto via ctx.GetSelectedIds(), confirmado desde el principio de la sesion -- a diferencia
+// de intentar leer un documento abierto en edicion, que no se puede), arma un HTML con sus
+// datos reales, y lo manda a BrosLMV.HtmlToPdf.exe (motor de Chrome/WebView2) para un PDF bien
+// hecho -- en vez del generador nativo de Comercial (tecnologia vieja, motivador original de
+// todo esto).
+//
+// AppKey sugerido: "GenerarPDF" -- boton en el ribbon principal (NO dentro de un documento
+// abierto -- eso requeria "Cotizador"/Document.clsMain, reservado para la siguiente pieza:
+// insertar renglones asistidos).
+
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text;
+
+var ids = ctx.GetSelectedIds();
+if (ids == null || ids.Count == 0)
+{
+    ctx.Msg("Selecciona un documento en la lista primero.", "Generar PDF");
+    return "SIN SELECCION";
+}
+long documentId = ids[0];
+
+// ===== 1) Leer el documento por SQL (ya guardado -- no hace falta Document.clsMain aqui) =====
+var doc = ctx.Query($@"
+    SELECT d.DocumentID, d.Folio, d.Total, d.SubTotal, d.CreatedOn,
+           ISNULL(be.CommercialName, be.OfficialName) AS Cliente
+    FROM docDocument d
+    LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID
+    WHERE d.DocumentID={documentId}");
+if (doc.Count == 0) { ctx.Msg("No se encontró el documento " + documentId + ".", "Generar PDF"); return "NO ENCONTRADO"; }
+var cab = doc[0];
+
+var renglones = ctx.Query($@"
+    SELECT i.Quantity, i.UnitPrice, i.Total, ISNULL(p.ProductName, i.Description) AS Producto, p.ProductKey
+    FROM docDocumentItem i
+    LEFT JOIN orgProduct p ON p.ProductID = i.ProductID
+    WHERE i.DocumentID={documentId} AND i.DeletedOn IS NULL
+    ORDER BY i.LineNumber");
+
+// ===== 2) Armar el HTML =====
+string Esc(object v) => System.Net.WebUtility.HtmlEncode(v?.ToString() ?? "");
+
+var sb = new StringBuilder();
+sb.Append($@"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Documento {Esc(cab["Folio"])}</title>
+<style>
+  body {{ font-family: 'Segoe UI', Arial, sans-serif; color: #16263A; padding: 32px; }}
+  h1 {{ color: #2D6FE0; font-size: 20px; margin-bottom: 4px; }}
+  .sub {{ color: #64748B; margin-bottom: 24px; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+  th {{ background: #F4F6F9; text-align: left; padding: 8px 10px; font-size: 12px; color: #64748B; border-bottom: 2px solid #E2E8F0; }}
+  td {{ padding: 8px 10px; border-bottom: 1px solid #EEF1F5; font-size: 13px; }}
+  .totales {{ margin-top: 20px; text-align: right; }}
+  .totales .total {{ font-size: 20px; font-weight: bold; color: #16263A; }}
+</style></head><body>
+  <h1>Documento — Folio {Esc(cab["Folio"])}</h1>
+  <div class='sub'>Cliente/Proveedor: {Esc(cab["Cliente"])} · Fecha: {Convert.ToDateTime(cab["CreatedOn"]):dd/MM/yyyy}</div>
+  <table>
+    <tr><th>Clave</th><th>Producto</th><th>Cantidad</th><th>Precio</th><th>Total</th></tr>");
+
+foreach (var r in renglones)
+{
+    sb.Append($@"<tr><td>{Esc(r["ProductKey"])}</td><td>{Esc(r["Producto"])}</td>
+        <td>{Convert.ToDouble(r["Quantity"]):N2}</td><td>${Convert.ToDouble(r["UnitPrice"]):N2}</td>
+        <td>${Convert.ToDouble(r["Total"]):N2}</td></tr>");
+}
+
+sb.Append($@"
+  </table>
+  <div class='totales'>
+    <div>Subtotal: ${Convert.ToDouble(cab["SubTotal"]):N2}</div>
+    <div class='total'>Total: ${Convert.ToDouble(cab["Total"]):N2}</div>
+  </div>
+</body></html>");
+
+// ===== 3) Escribir HTML temporal e invocar BrosLMV.HtmlToPdf.exe =====
+string carpetaTemp = Path.Combine(Path.GetTempPath(), "BrosLMV_PDF");
+Directory.CreateDirectory(carpetaTemp);
+string rutaHtml = Path.Combine(carpetaTemp, "doc_" + documentId + ".html");
+string rutaPdf = Path.Combine(carpetaTemp, "doc_" + documentId + ".pdf");
+File.WriteAllText(rutaHtml, sb.ToString());
+
+// Ruta de la herramienta -- TODO: mover a C:\BrosLMV\ cuando exista instalador; por ahora corre
+// desde la carpeta de build donde se probo (ajustar si se mueve el binario).
+string rutaExe = @"C:\MLVTotal\htmlpdf\bin\Release\net8.0-windows\BrosLMV.HtmlToPdf.exe";
+if (!File.Exists(rutaExe))
+{
+    ctx.Msg("No se encontró BrosLMV.HtmlToPdf.exe en:\n" + rutaExe, "Generar PDF");
+    return "HERRAMIENTA NO ENCONTRADA";
+}
+
+var psi = new ProcessStartInfo
+{
+    FileName = rutaExe,
+    Arguments = $"--html \"{rutaHtml}\" --pdf \"{rutaPdf}\"",
+    UseShellExecute = false,
+    RedirectStandardOutput = true,
+    RedirectStandardError = true,
+    CreateNoWindow = true
+};
+string salida = "", error = "";
+using (var p = Process.Start(psi))
+{
+    salida = p.StandardOutput.ReadToEnd();
+    error = p.StandardError.ReadToEnd();
+    p.WaitForExit(30000);
+}
+
+if (!File.Exists(rutaPdf))
+{
+    ctx.Msg("No se generó el PDF.\n\nSalida: " + salida + "\nError: " + error, "Generar PDF");
+    return "ERROR GENERANDO PDF";
+}
+
+// ===== 4) Abrir el PDF con el visor default del sistema =====
+try { Process.Start(new ProcessStartInfo { FileName = rutaPdf, UseShellExecute = true }); }
+catch (Exception ex) { ctx.Msg("PDF generado en:\n" + rutaPdf + "\n\n(no se pudo abrir automático: " + ex.Message + ")", "Generar PDF"); }
+
+string r = "PDF generado -> " + rutaPdf;
+ctx.Log(r);
+return r;

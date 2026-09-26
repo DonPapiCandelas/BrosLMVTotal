@@ -1,0 +1,424 @@
+// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+// Copyright (C) 2026 Cristofer Candelas Garcia
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+// RelayingCallbackSink.cs — sink de callbacks que envía UiRequest al addon por el pipe (v2.18.0+).
+// Cuando Python llama ctx.msg(texto), el host lo recibe y envía UiRequest al addon, que
+// muestra un MessageBox real en el proceso de Comercial. ctx.log y ctx.progress se registran
+// en el log del host (no viajan al addon).
+
+using System.Linq;
+using BrosLMV.Host.Workers;
+using BrosLMV.Protocol;
+
+namespace BrosLMV.Host.Callbacks;
+
+public sealed class RelayingCallbackSink : IHostCallbackSink
+{
+    private readonly IAddonChannel _channel;
+    private readonly IHostCallbackSink _logFallback;
+
+    public RelayingCallbackSink(IAddonChannel channel, IHostCallbackSink? logFallback = null)
+    {
+        _channel = channel;
+        _logFallback = logFallback ?? new LoggingHostCallbackSink();
+    }
+
+    public void Message(string executionId, string text, string title)
+    {
+        try
+        {
+            var req = new UiRequest { Msg = new UiMessage { Text = text ?? "", Title = title ?? "BrosLMV" } };
+            UiResponse resp = _channel.SendUi(req);
+            if (resp.Error != null)
+                _logFallback.Message(executionId, "[UI_ERROR] " + text, resp.Error.Code + ": " + resp.Error.Message);
+        }
+        catch
+        {
+            // Si el relay falla (pipe roto, addon no conectado), caer al log.
+            _logFallback.Message(executionId, text, title);
+        }
+    }
+
+    public bool Confirm(string executionId, string text, string title)
+    {
+        try
+        {
+            var req = new UiRequest { Confirm = new UiConfirm { Text = text ?? "", Title = title ?? "Confirmar" } };
+            UiResponse resp = _channel.SendUi(req);
+            if (resp.Error != null)
+            {
+                _logFallback.Log(executionId, "ERROR", "CONFIRM: " + resp.Error.Code + ": " + resp.Error.Message);
+                return false;
+            }
+            return resp.Confirmed;
+        }
+        catch
+        {
+            // Si el relay falla, False es la respuesta segura (no confirmar a ciegas).
+            return _logFallback.Confirm(executionId, text, title);
+        }
+    }
+
+    public string SelectFile(string executionId, string title, string filter, bool save, string initialDir)
+    {
+        try
+        {
+            UiResponse resp = _channel.SendUi(new UiRequest
+            {
+                SelectFile = new UiSelectFile
+                {
+                    Title = title ?? "",
+                    Filter = filter ?? "",
+                    Save = save,
+                    InitialDir = initialDir ?? ""
+                }
+            });
+            if (resp.Error != null)
+            {
+                _logFallback.Log(executionId, "ERROR", "SELECT_FILE: " + resp.Error.Code + ": " + resp.Error.Message);
+                return "";
+            }
+            return resp.SelectedPath ?? "";
+        }
+        catch
+        {
+            return _logFallback.SelectFile(executionId, title, filter, save, initialDir);
+        }
+    }
+
+    public string SelectFolder(string executionId, string title, string initialDir)
+    {
+        try
+        {
+            UiResponse resp = _channel.SendUi(new UiRequest
+            {
+                SelectFolder = new UiSelectFolder { Title = title ?? "", InitialDir = initialDir ?? "" }
+            });
+            if (resp.Error != null)
+            {
+                _logFallback.Log(executionId, "ERROR", "SELECT_FOLDER: " + resp.Error.Code + ": " + resp.Error.Message);
+                return "";
+            }
+            return resp.SelectedPath ?? "";
+        }
+        catch
+        {
+            return _logFallback.SelectFolder(executionId, title, initialDir);
+        }
+    }
+
+    public void Log(string executionId, string level, string text) =>
+        _logFallback.Log(executionId, level, text);
+
+    public void Progress(string executionId, string text, int percent) =>
+        _logFallback.Progress(executionId, text, percent);
+
+    public Dictionary<string, object?> Form(string executionId, Dictionary<string, object?> spec)
+    {
+        try
+        {
+            UiResponse resp = _channel.SendUi(new UiRequest { Form = ToUiForm(spec) });
+            if (resp.Error != null)
+                throw new InvalidOperationException(resp.Error.Code + ": " + resp.Error.Message);
+            if (resp.FormResult == null)
+                return new Dictionary<string, object?> { ["submitted"] = false };
+
+            var values = new Dictionary<string, object?>();
+            foreach (var kv in resp.FormResult.Values)
+                values[kv.Key] = FromValue(kv.Value);
+
+            var gridRows = new List<Dictionary<string, object?>>();
+            if (resp.FormResult.GridRows != null)
+            {
+                var columnNames = resp.FormResult.GridRows.Columns.Select(c => c.Name).ToList();
+                foreach (var row in resp.FormResult.GridRows.Rows)
+                {
+                    var dict = new Dictionary<string, object?>();
+                    for (int i = 0; i < columnNames.Count && i < row.Cells.Count; i++)
+                        dict[columnNames[i]] = FromValue(row.Cells[i]);
+                    gridRows.Add(dict);
+                }
+            }
+
+            return new Dictionary<string, object?>
+            {
+                ["submitted"] = resp.FormResult.Submitted,
+                ["values"] = values,
+                ["grid_rows"] = gridRows
+            };
+        }
+        catch (Exception ex)
+        {
+            _logFallback.Log(executionId, "ERROR", "FORM: " + ex.Message);
+            return new Dictionary<string, object?> { ["submitted"] = false, ["error"] = ex.Message };
+        }
+    }
+
+    public void ShowHtml(string executionId, string html, string title, int width, int height, bool modal)
+    {
+        try
+        {
+            UiResponse resp = _channel.SendUi(new UiRequest
+            {
+                ShowHtml = new UiShowHtml
+                {
+                    Html = html ?? "",
+                    Title = title ?? "BrosLMV",
+                    Width = width,
+                    Height = height,
+                    Modal = modal
+                }
+            });
+            if (resp.Error != null)
+                _logFallback.Log(executionId, "ERROR", "SHOW_HTML: " + resp.Error.Code + ": " + resp.Error.Message);
+        }
+        catch (Exception ex)
+        {
+            _logFallback.Log(executionId, "ERROR", "SHOW_HTML: " + ex.Message);
+        }
+    }
+
+    public Dictionary<string, object?> ShowHtmlFormulario(string executionId, string html, string title, int width, int height, int timeoutMs)
+    {
+        try
+        {
+            UiResponse resp = _channel.SendUi(new UiRequest
+            {
+                ShowHtml = new UiShowHtml
+                {
+                    Html = html ?? "",
+                    Title = title ?? "BrosLMV",
+                    Width = width,
+                    Height = height,
+                    Modal = true,
+                    EsperarRespuesta = true,
+                    TimeoutMs = timeoutMs
+                }
+            });
+            if (resp.Error != null)
+                return new Dictionary<string, object?> { ["submitted"] = false, ["error"] = resp.Error.Code + ": " + resp.Error.Message };
+
+            // resp.HtmlResponse es el JSON crudo que la pagina mando via postMessage --
+            // System.Text.Json (nativo en .NET 8, sin dependencia nueva) lo convierte a
+            // Dictionary<string,object?> con el mismo criterio que Form() usa para sus
+            // propios valores (numeros como double, para no perder decimales).
+            string json = string.IsNullOrEmpty(resp.HtmlResponse) ? "{\"submitted\": false}" : resp.HtmlResponse;
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            var result = JsonElementToDict(doc.RootElement);
+            if (!result.ContainsKey("submitted")) result["submitted"] = true; // la pagina mando algo -> se interpreta como envio
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logFallback.Log(executionId, "ERROR", "SHOW_HTML_FORMULARIO: " + ex.Message);
+            return new Dictionary<string, object?> { ["submitted"] = false, ["error"] = ex.Message };
+        }
+    }
+
+    private static Dictionary<string, object?> JsonElementToDict(System.Text.Json.JsonElement el)
+    {
+        var dict = new Dictionary<string, object?>();
+        if (el.ValueKind != System.Text.Json.JsonValueKind.Object) return dict;
+        foreach (var prop in el.EnumerateObject())
+            dict[prop.Name] = JsonElementToObject(prop.Value);
+        return dict;
+    }
+
+    private static object? JsonElementToObject(System.Text.Json.JsonElement el) => el.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.String => el.GetString(),
+        System.Text.Json.JsonValueKind.Number => el.TryGetInt64(out var l) ? l : el.GetDouble(),
+        System.Text.Json.JsonValueKind.True => true,
+        System.Text.Json.JsonValueKind.False => false,
+        System.Text.Json.JsonValueKind.Null => null,
+        System.Text.Json.JsonValueKind.Object => JsonElementToDict(el),
+        System.Text.Json.JsonValueKind.Array => el.EnumerateArray().Select(JsonElementToObject).ToList(),
+        _ => null
+    };
+
+    private static UiForm ToUiForm(Dictionary<string, object?> spec)
+    {
+        var form = new UiForm
+        {
+            Title = S(spec, "title", "BrosLMV"),
+            OkLabel = S(spec, "ok_label", "Aceptar"),
+            CancelLabel = S(spec, "cancel_label", "Cancelar"),
+            Width = I(spec, "width", 720),
+            Height = I(spec, "height", 520)
+        };
+
+        if (spec.TryGetValue("fields", out var rawFields) && rawFields is List<object?> fields)
+        {
+            foreach (var raw in fields)
+            {
+                if (raw is not Dictionary<string, object?> f) continue;
+                var field = new FormField
+                {
+                    Name = S(f, "name", ""),
+                    Label = S(f, "label", S(f, "name", "")),
+                    Type = FieldTypeOf(S(f, "type", "text")),
+                    Required = B(f, "required", false),
+                    ReadOnly = B(f, "read_only", false)
+                };
+                if (f.ContainsKey("default")) field.DefaultValue = ToValue(f["default"]);
+                if (f.TryGetValue("options", out var rawOpts) && rawOpts is List<object?> opts)
+                {
+                    foreach (var rawOpt in opts)
+                    {
+                        if (rawOpt is Dictionary<string, object?> opt)
+                        {
+                            field.Options.Add(new ComboOption
+                            {
+                                Label = S(opt, "label", Convert.ToString(opt.GetValueOrDefault("value")) ?? ""),
+                                Value = ToValue(opt.GetValueOrDefault("value"))
+                            });
+                        }
+                        else
+                        {
+                            field.Options.Add(new ComboOption
+                            {
+                                Label = Convert.ToString(rawOpt) ?? "",
+                                Value = ToValue(rawOpt)
+                            });
+                        }
+                    }
+                }
+                if (!string.IsNullOrWhiteSpace(field.Name))
+                    form.Fields.Add(field);
+            }
+        }
+
+        if (spec.TryGetValue("grid", out var rawGrid) && rawGrid is Dictionary<string, object?> g)
+            form.Grid = ToFormGrid(g);
+
+        return form;
+    }
+
+    private static FormGrid ToFormGrid(Dictionary<string, object?> g)
+    {
+        var grid = new FormGrid
+        {
+            AllowAdd = B(g, "allow_add", false),
+            AllowDelete = B(g, "allow_delete", false)
+        };
+
+        var columnNames = new List<string>();
+        if (g.TryGetValue("columns", out var rawCols) && rawCols is List<object?> cols)
+        {
+            foreach (var raw in cols)
+            {
+                if (raw is not Dictionary<string, object?> c) continue;
+                var col = new GridColumn
+                {
+                    Name = S(c, "name", ""),
+                    Caption = S(c, "caption", S(c, "name", "")),
+                    Type = FieldTypeOf(S(c, "type", "text")),
+                    Width = I(c, "width", 100),
+                    Editable = B(c, "editable", false)
+                };
+                if (c.TryGetValue("options", out var rawOpts) && rawOpts is List<object?> opts)
+                {
+                    foreach (var rawOpt in opts)
+                    {
+                        if (rawOpt is Dictionary<string, object?> opt)
+                            col.Options.Add(new ComboOption
+                            {
+                                Label = S(opt, "label", Convert.ToString(opt.GetValueOrDefault("value")) ?? ""),
+                                Value = ToValue(opt.GetValueOrDefault("value"))
+                            });
+                        else
+                            col.Options.Add(new ComboOption { Label = Convert.ToString(rawOpt) ?? "", Value = ToValue(rawOpt) });
+                    }
+                }
+                if (!string.IsNullOrWhiteSpace(col.Name))
+                {
+                    grid.Columns.Add(col);
+                    columnNames.Add(col.Name);
+                }
+            }
+        }
+
+        if (g.TryGetValue("rows", out var rawRows) && rawRows is List<object?> rows)
+            grid.InitialRows = ToTable(columnNames, rows);
+
+        return grid;
+    }
+
+    private static Table ToTable(List<string> columnNames, List<object?> rows)
+    {
+        var table = new Table();
+        foreach (var name in columnNames) table.Columns.Add(new Column { Name = name });
+        foreach (var raw in rows)
+        {
+            var row = new Row();
+            var dict = raw as Dictionary<string, object?>;
+            foreach (var name in columnNames)
+                row.Cells.Add(ToValue(dict != null && dict.TryGetValue(name, out var v) ? v : null));
+            table.Rows.Add(row);
+        }
+        return table;
+    }
+
+    private static string S(Dictionary<string, object?> d, string k, string fallback) =>
+        d.TryGetValue(k, out var v) && v != null ? Convert.ToString(v) ?? fallback : fallback;
+
+    private static int I(Dictionary<string, object?> d, string k, int fallback) =>
+        d.TryGetValue(k, out var v) && int.TryParse(Convert.ToString(v), out int i) ? i : fallback;
+
+    private static bool B(Dictionary<string, object?> d, string k, bool fallback) =>
+        d.TryGetValue(k, out var v) && bool.TryParse(Convert.ToString(v), out bool b) ? b : fallback;
+
+    private static FieldType FieldTypeOf(string type) => (type ?? "").ToLowerInvariant() switch
+    {
+        "number" => FieldType.FtNumber,
+        "int" => FieldType.FtNumber,
+        "decimal" => FieldType.FtDecimal,
+        "date" => FieldType.FtDate,
+        "bool" => FieldType.FtBool,
+        "checkbox" => FieldType.FtBool,
+        "combo" => FieldType.FtCombo,
+        "select" => FieldType.FtCombo,
+        "memo" => FieldType.FtMemo,
+        "textarea" => FieldType.FtMemo,
+        _ => FieldType.FtText
+    };
+
+    private static Value ToValue(object? v)
+    {
+        if (v == null) return new Value();
+        if (v is bool b) return new Value { BoolValue = b };
+        if (v is int i) return new Value { Int32Value = i };
+        if (v is long l) return new Value { Int64Value = l };
+        if (v is decimal m) return new Value { DecimalValue = m.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+        if (v is double d) return new Value { DoubleValue = d };
+        if (v is float f) return new Value { DoubleValue = f };
+        return new Value { StringValue = Convert.ToString(v) ?? "" };
+    }
+
+    private static object? FromValue(Value v) => v.KindCase switch
+    {
+        Value.KindOneofCase.None => null,
+        Value.KindOneofCase.BoolValue => v.BoolValue,
+        Value.KindOneofCase.Int32Value => v.Int32Value,
+        Value.KindOneofCase.Int64Value => v.Int64Value,
+        Value.KindOneofCase.DecimalValue => decimal.TryParse(v.DecimalValue, out var m) ? m : v.DecimalValue,
+        Value.KindOneofCase.DoubleValue => v.DoubleValue,
+        Value.KindOneofCase.StringValue => v.StringValue,
+        Value.KindOneofCase.DateValue => v.DateValue,
+        Value.KindOneofCase.DatetimeValue => v.DatetimeValue,
+        _ => v.ToString()
+    };
+}

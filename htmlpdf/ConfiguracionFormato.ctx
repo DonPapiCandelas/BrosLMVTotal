@@ -1,0 +1,885 @@
+#r "C:\BrosLMV\bin\Microsoft.Web.WebView2.Core.dll"
+#r "C:\BrosLMV\bin\Microsoft.Web.WebView2.WinForms.dll"
+// BrosLMV.ConfiguracionFormato -- boton "Configuracion de formato" (pestana Soluciones LMV).
+// UI moderna en WebView2 (HTML/CSS/JS). C# = acceso a datos; JS <-> C# por postMessage.
+//
+// Sistema PROPIO de BrosLMV, independiente del de Comercial.
+//   Formatos y PDF: por modulo -> formato HTML (crear/duplicar/editar/quitar), plantilla de
+//                   correo, carpeta destino (acepta \\SERVIDOR\...), patron de nombre con
+//                   [Etiquetas] y vista previa, personalizar vs usar General.
+//   Correo: cuenta SMTP propia (Outlook/Gmail/dominio) + plantillas de asunto/cuerpo HTML.
+//
+// Tablas por empresa: zzBrosFormatoConfig, zzBrosCorreoConfig, zzBrosPlantillaCorreo.
+// Empresa de pruebas: Distribuciones_Candelas.
+
+using System.Linq;
+using System.IO;
+using System.Text;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Windows.Forms;
+using System.Net;
+using System.Net.Mail;
+using Microsoft.Web.WebView2.WinForms;
+using Microsoft.Web.WebView2.Core;
+
+int owned = ctx.erp.OwnedBusinessEntityId;
+int userId = ctx.UserID;
+var ser = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = 64 * 1024 * 1024 };
+
+// ===================== esquema =====================
+ctx.NonQuery(@"
+IF OBJECT_ID('dbo.zzBrosFormatoConfig') IS NULL
+CREATE TABLE dbo.zzBrosFormatoConfig(
+    FormatoConfigID INT IDENTITY(1,1) PRIMARY KEY, OwnedBusinessEntityID BIGINT NOT NULL, ModuleID INT NOT NULL,
+    PrintFormatID BIGINT NULL, PlantillaCorreoID BIGINT NULL, PdfPersonalizado BIT NOT NULL DEFAULT 0,
+    RutaPdf NVARCHAR(400) NULL, PreguntarRuta BIT NOT NULL DEFAULT 0, AbrirTrasGenerar BIT NOT NULL DEFAULT 1,
+    PatronNombre NVARCHAR(200) NULL, ModificadoOn DATETIME NULL, ModificadoBy INT NULL);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_zzBrosFormatoConfig')
+CREATE UNIQUE INDEX UX_zzBrosFormatoConfig ON dbo.zzBrosFormatoConfig(OwnedBusinessEntityID, ModuleID);
+IF COL_LENGTH('dbo.zzBrosFormatoConfig','PlantillaCorreoID') IS NULL ALTER TABLE dbo.zzBrosFormatoConfig ADD PlantillaCorreoID BIGINT NULL;
+IF COL_LENGTH('dbo.zzBrosFormatoConfig','PdfPersonalizado') IS NULL ALTER TABLE dbo.zzBrosFormatoConfig ADD PdfPersonalizado BIT NOT NULL DEFAULT 0;
+
+IF OBJECT_ID('dbo.zzBrosCorreoConfig') IS NULL
+CREATE TABLE dbo.zzBrosCorreoConfig(
+    CorreoConfigID INT IDENTITY(1,1) PRIMARY KEY, OwnedBusinessEntityID BIGINT NOT NULL,
+    Proveedor NVARCHAR(20) NOT NULL DEFAULT 'Otro', SmtpHost NVARCHAR(200) NOT NULL DEFAULT '',
+    SmtpPort INT NOT NULL DEFAULT 587, SmtpSsl BIT NOT NULL DEFAULT 1, Usuario NVARCHAR(200) NOT NULL DEFAULT '',
+    ClaveCifrada NVARCHAR(500) NULL, Remitente NVARCHAR(200) NOT NULL DEFAULT '', RemitenteNombre NVARCHAR(200) NULL,
+    ModificadoOn DATETIME NULL, ModificadoBy INT NULL);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_zzBrosCorreoConfig')
+CREATE UNIQUE INDEX UX_zzBrosCorreoConfig ON dbo.zzBrosCorreoConfig(OwnedBusinessEntityID);
+
+IF OBJECT_ID('dbo.zzBrosPlantillaCorreo') IS NULL
+CREATE TABLE dbo.zzBrosPlantillaCorreo(
+    PlantillaCorreoID INT IDENTITY(1,1) PRIMARY KEY, OwnedBusinessEntityID BIGINT NOT NULL, Nombre NVARCHAR(120) NOT NULL,
+    Asunto NVARCHAR(300) NULL, CuerpoHtml NVARCHAR(MAX) NULL, CC NVARCHAR(400) NULL, BCC NVARCHAR(400) NULL,
+    DeletedOn DATETIME NULL, ModificadoOn DATETIME NULL, ModificadoBy INT NULL);");
+ctx.NonQuery("IF NOT EXISTS (SELECT 1 FROM zzBrosFormatoConfig WHERE OwnedBusinessEntityID=" + owned + " AND ModuleID=0) " +
+  "INSERT INTO zzBrosFormatoConfig (OwnedBusinessEntityID,ModuleID,PdfPersonalizado,PreguntarRuta,AbrirTrasGenerar,PatronNombre) VALUES (" + owned + ",0,1,0,1,N'[Serie][Folio] - [Documento]')");
+ctx.NonQuery("IF NOT EXISTS (SELECT 1 FROM zzBrosCorreoConfig WHERE OwnedBusinessEntityID=" + owned + ") INSERT INTO zzBrosCorreoConfig (OwnedBusinessEntityID) VALUES (" + owned + ")");
+
+// ===================== helpers de datos =====================
+string[] CAMPOS = new[] { "Serie","Folio","Documento","Modulo","FechaDocumento","ReceptorRazonSocial","EmisorRazonSocial","Format(Total,#,##0.00)","Moneda","CondicionPago","SalesRep","Comments","Uuid" };
+string iconDir = new[] { @"C:\Program Files (x86)\Compac\ComercialSP\Icons", @"C:\Program Files\Compac\ComercialSP\Icons" }.FirstOrDefault(Directory.Exists);
+var iconCache = new Dictionary<string,string>();
+Func<string,string> iconB64 = (name) =>
+{
+    if (string.IsNullOrEmpty(name) || iconDir == null) return "";
+    if (iconCache.ContainsKey(name)) return iconCache[name];
+    string r = "";
+    try { string p = Path.Combine(iconDir, name);
+        if (File.Exists(p)) using (var ic = new Icon(p, 16, 16)) using (var bmp = ic.ToBitmap()) using (var ms = new MemoryStream())
+        { bmp.Save(ms, ImageFormat.Png); r = "data:image/png;base64," + Convert.ToBase64String(ms.ToArray()); }
+    } catch { }
+    iconCache[name] = r; return r;
+};
+Func<string> carpetaFormatos = () =>
+{
+    try { var a = ctx.Query("SELECT TOP 1 FileName FROM engModulePrintFormat WHERE ISNULL(FileName,'')<>'' AND CHARINDEX('\\',FileName)>0");
+        if (a.Count > 0) { var d = Path.GetDirectoryName(Convert.ToString(a[0]["FileName"])); if (Directory.Exists(d)) return d; } } catch { }
+    foreach (var d in new[] { @"C:\Compac\ComercialSP\Formatos", @"C:\Program Files (x86)\Compac\ComercialSP\Formatos" }) if (Directory.Exists(d)) return d;
+    return @"C:\Compac\ComercialSP\Formatos";
+};
+string PLANTILLA_HTML =
+"<html><head><meta charset=\"utf-8\"><style>body{font-family:'Segoe UI',Arial,sans-serif;color:#16263A;font-size:12px;margin:24px}" +
+"h1{color:#2D6FE0;font-size:20px;margin:0 0 2px}.muted{color:#64748B}table{width:100%;border-collapse:collapse;margin-top:14px}" +
+"th{background:#F4F6F9;text-align:left;padding:6px 8px;border-bottom:2px solid #E2E8F0;font-size:11px;color:#64748B}" +
+"td{padding:6px 8px;border-bottom:1px solid #EEF1F5}.r{text-align:right}.tot{margin-top:14px;text-align:right}.tot b{font-size:16px}</style></head><body>" +
+"<h1>[Documento] [Serie][Folio]</h1><div class=\"muted\">[FechaDocumento] &middot; [ReceptorRazonSocial]</div>" +
+"<table><thead><tr><th>Cant.</th><th>Unidad</th><th>Clave</th><th>Descripcion</th><th class=\"r\">P. unit.</th><th class=\"r\">Importe</th></tr></thead><tbody>" +
+"<DETAIL><tr><td>[Cantidad]</td><td>[UnidadDeMedida]</td><td>[ClaveProdServ]</td><td>[Descripcion] <i>[ComentarioLinea]</i></td>" +
+"<td class=\"r\">[Format(ValorUnitario,#,##0.00)]</td><td class=\"r\">[Format(Importe,#,##0.00)]</td></tr></DETAIL></tbody></table>" +
+"<div class=\"tot\">Subtotal: [Format(SubTotal,#,##0.00)]<br>IVA: [Format(TotalImpuestosTrasladados,#,##0.00)]<br>" +
+"<b>Total: [Format(Total,#,##0.00)]</b><br><span class=\"muted\">[CantidadConLetra]</span></div></body></html>";
+
+object o(params object[] kv) { var d = new Dictionary<string,object>(); for (int i = 0; i + 1 < kv.Length; i += 2) d[(string)kv[i]] = kv[i + 1]; return d; }
+string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v);
+bool B(object v) => v != null && !(v is DBNull) && Convert.ToBoolean(v);
+long L(object v) => v == null || v is DBNull ? 0 : Convert.ToInt64(v);
+
+Func<int, object> cfgModulo = (mid) =>
+{
+    var g = ctx.Query("SELECT RutaPdf,PreguntarRuta,AbrirTrasGenerar,PatronNombre FROM zzBrosFormatoConfig WHERE OwnedBusinessEntityID=" + owned + " AND ModuleID=0")[0];
+    if (mid == 0)
+        return o("moduleId", 0, "nombre", "General (por defecto)",
+                 "ruta", S(g["RutaPdf"]), "patron", S(g["PatronNombre"]),
+                 "preguntar", B(g["PreguntarRuta"]), "abrir", B(g["AbrirTrasGenerar"]),
+                 "formatos", new object[0], "printFormatId", 0, "plantillaId", 0, "personalizado", true, "archivo", "", "esDefaultComercial", false);
+    var mrow = ctx.Query("SELECT ModuleName FROM engModule WHERE ModuleID=" + mid);
+    string mnom = mrow.Count > 0 ? S(mrow[0]["ModuleName"]) : ("Modulo " + mid);
+    var fmts = ctx.Query("SELECT PrintFormatID,FormatName,FormatIsDefault,FileName FROM engModulePrintFormat WHERE ModuleID=" + mid + " AND ISNULL(FileName,'')<>'' ORDER BY FormatIsDefault DESC,FormatName")
+        .Select(f => (object)o("id", L(f["PrintFormatID"]), "nombre", S(f["FormatName"]), "def", B(f["FormatIsDefault"]), "archivo", S(f["FileName"]))).ToArray();
+    var c = ctx.Query("SELECT PrintFormatID,PlantillaCorreoID,PdfPersonalizado,RutaPdf,PreguntarRuta,AbrirTrasGenerar,PatronNombre FROM zzBrosFormatoConfig WHERE OwnedBusinessEntityID=" + owned + " AND ModuleID=" + mid);
+    long pf = 0, pl = 0; bool pers = false; string ruta = S(g["RutaPdf"]), pat = S(g["PatronNombre"]); bool preg = B(g["PreguntarRuta"]), abr = B(g["AbrirTrasGenerar"]);
+    if (c.Count > 0) { var r = c[0];
+        pf = L(r["PrintFormatID"]); pl = L(r["PlantillaCorreoID"]); pers = B(r["PdfPersonalizado"]);
+        if (pers) { ruta = S(r["RutaPdf"]); preg = B(r["PreguntarRuta"]); abr = B(r["AbrirTrasGenerar"]); if (!string.IsNullOrWhiteSpace(S(r["PatronNombre"]))) pat = S(r["PatronNombre"]); }
+    }
+    if (pf == 0 && fmts.Length > 0) pf = L(((Dictionary<string,object>)fmts[0])["id"]);
+    string arch = ""; bool esDef = false;
+    var fsel = fmts.Cast<Dictionary<string,object>>().FirstOrDefault(x => L(x["id"]) == pf);
+    if (fsel != null) { arch = S(fsel["archivo"]); esDef = B(fsel["def"]); }
+    // Estado del boton "Cotizador" DE ESTE MODULO (parametro nativo CreateDocQuotationDLLFunction).
+    // nativo = vacio | broslmv = 'BrosLMV.Cotizador' | otro = personalizacion ajena (no la tocamos)
+    string cotVal = S(ctx.Scalar("SELECT TOP 1 Value FROM engModuleParameter WHERE ModuleID=" + mid + " AND ParameterKey='CreateDocQuotationDLLFunction'"));
+    string cotEstado = string.IsNullOrWhiteSpace(cotVal) ? "nativo" : (cotVal == "BrosLMV.Cotizador" ? "broslmv" : "otro");
+    return o("moduleId", mid, "nombre", mnom, "ruta", ruta, "patron", pat, "preguntar", preg, "abrir", abr,
+             "formatos", fmts, "printFormatId", pf, "plantillaId", pl, "personalizado", pers, "archivo", arch, "esDefaultComercial", esDef,
+             "cotEstado", cotEstado, "cotValor", cotVal);
+};
+
+Func<object> cargarTodo = () =>
+{
+    var mods = ctx.Query(
+      "SELECT m.ModuleID, m.ModuleName, ISNULL(m.Icon,'') AS Icono, ISNULL(p.ModuleName,'Otros') AS Area " +
+      "FROM engModule m LEFT JOIN engModule p ON p.ModuleID=m.ParentModuleID " +
+      "WHERE m.ModuleTypeID=2 AND m.DeletedOn IS NULL AND m.DLL LIKE '%Document%' ORDER BY Area, m.ModuleName, m.ModuleID");
+    var areas = mods.GroupBy(m => S(m["Area"])).Select(g => (object)o(
+        "area", g.Key,
+        "modulos", g.Select(m => (object)o("id", L(m["ModuleID"]), "nombre", S(m["ModuleName"]), "icono", iconB64(S(m["Icono"])))).ToArray()
+    )).ToArray();
+    var pls = ctx.Query("SELECT PlantillaCorreoID,Nombre FROM zzBrosPlantillaCorreo WHERE OwnedBusinessEntityID=" + owned + " AND DeletedOn IS NULL ORDER BY Nombre")
+        .Select(p => (object)o("id", L(p["PlantillaCorreoID"]), "nombre", S(p["Nombre"]))).ToArray();
+    var sm = ctx.Query("SELECT * FROM zzBrosCorreoConfig WHERE OwnedBusinessEntityID=" + owned)[0];
+    return o("campos", CAMPOS, "areas", areas, "plantillas", pls, "general", cfgModulo(0),
+        "smtp", o("proveedor", S(sm["Proveedor"]), "host", S(sm["SmtpHost"]), "port", Convert.ToInt32(sm["SmtpPort"]),
+                  "ssl", B(sm["SmtpSsl"]), "usuario", S(sm["Usuario"]), "remitente", S(sm["Remitente"]),
+                  "remitenteNombre", S(sm["RemitenteNombre"]), "tieneClave", !(sm["ClaveCifrada"] is DBNull) && sm["ClaveCifrada"] != null));
+};
+
+Func<int, object> plantillaDet = (id) =>
+{
+    var r = ctx.Query("SELECT Nombre,Asunto,CuerpoHtml,CC,BCC FROM zzBrosPlantillaCorreo WHERE PlantillaCorreoID=" + id);
+    if (r.Count == 0) return o("id", id, "nombre", "", "asunto", "", "cuerpo", "", "cc", "", "bcc", "");
+    return o("id", id, "nombre", S(r[0]["Nombre"]), "asunto", S(r[0]["Asunto"]), "cuerpo", S(r[0]["CuerpoHtml"]), "cc", S(r[0]["CC"]), "bcc", S(r[0]["BCC"]));
+};
+
+Func<int, string, string> previewNombre = (mid, pat) =>
+{
+    var d = ctx.Query("SELECT TOP 1 ISNULL(FolioPrefix,'') AS Serie, ISNULL(CAST(Folio AS NVARCHAR(30)),'0001') AS Folio, DateDocument, " +
+                      "(SELECT ModuleName FROM engModule WHERE ModuleID=" + (mid == 0 ? 183 : mid) + ") AS Doc " +
+                      "FROM docDocument WHERE ModuleID=" + (mid == 0 ? 183 : mid) + " AND DeletedOn IS NULL ORDER BY DocumentID DESC");
+    string se = "OC", fo = "0001", doc = "Orden de Compra"; DateTime fe = DateTime.Today;
+    if (d.Count > 0) { se = S(d[0]["Serie"]); fo = S(d[0]["Folio"]); doc = S(d[0]["Doc"]); fe = Convert.ToDateTime(d[0]["DateDocument"]); }
+    string res = (pat ?? "").Replace("[Serie]", se).Replace("[Folio]", fo).Replace("[Documento]", doc).Replace("[Modulo]", doc)
+        .Replace("[FechaDocumento]", fe.ToString("dd-MM-yyyy"));
+    res = System.Text.RegularExpressions.Regex.Replace(res, @"\[[^\]]+\]", "");
+    foreach (char ch in Path.GetInvalidFileNameChars()) res = res.Replace(ch, '_');
+    res = res.Trim();
+    return (res.Length == 0 ? "(vacio)" : res) + ".pdf";
+};
+
+// ===================== ventana + WebView2 =====================
+string HTML = INTERFAZ_HTML();
+var frm = new Form { Text = "BrosLMV  ·  Configuración de formato", Width = 1060, Height = 740,
+    StartPosition = FormStartPosition.CenterScreen, MinimumSize = new Size(920, 600), BackColor = Color.White };
+var wv = new WebView2 { Dock = DockStyle.Fill };
+frm.Controls.Add(wv);
+
+Action<object> responder = (obj) => {
+    try { wv.CoreWebView2.PostWebMessageAsJson(ser.Serialize(obj)); } catch { }
+};
+
+frm.Load += async (s, e) =>
+{
+    try
+    {
+        string perfil = Path.Combine(Path.GetTempPath(), "BrosLMV_CfgFmt_" + Guid.NewGuid().ToString("N"));
+        frm.FormClosed += (s3, e3) => { try { Directory.Delete(perfil, true); } catch { } };
+        var env = await CoreWebView2Environment.CreateAsync(null, perfil, new CoreWebView2EnvironmentOptions());
+        await wv.EnsureCoreWebView2Async(env);
+        wv.CoreWebView2.Settings.AreDevToolsEnabled = false;
+        wv.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+
+        wv.CoreWebView2.WebMessageReceived += (s2, e2) =>
+        {
+            Dictionary<string, object> m;
+            try
+            {
+                string raw;
+                try { raw = e2.TryGetWebMessageAsString(); } catch { raw = e2.WebMessageAsJson; }
+                m = ser.Deserialize<Dictionary<string, object>>(raw);
+            }
+            catch { return; }
+            if (m == null) return;
+            string reqId = S(m.ContainsKey("reqId") ? m["reqId"] : "");
+            string action = S(m.ContainsKey("action") ? m["action"] : "");
+            Dictionary<string, object> p = m.ContainsKey("payload") && m["payload"] is Dictionary<string, object>
+                ? (Dictionary<string, object>)m["payload"] : new Dictionary<string, object>();
+            object data = null; string err = null;
+            try
+            {
+                if (action == "cargarTodo") data = cargarTodo();
+                else if (action == "cargarModulo") data = cfgModulo(Convert.ToInt32(p["id"]));
+                else if (action == "preview") data = o("nombre", previewNombre(Convert.ToInt32(p["id"]), S(p["patron"])));
+                else if (action == "elegirCarpeta")
+                {
+                    using (var d = new FolderBrowserDialog { ShowNewFolderButton = true, Description = "Carpeta destino de los PDF (puede ser de red)" })
+                        data = o("ruta", d.ShowDialog() == DialogResult.OK ? d.SelectedPath : null);
+                }
+                else if (action == "editarHtml")
+                {
+                    var a = S(ctx.Scalar("SELECT FileName FROM engModulePrintFormat WHERE PrintFormatID=" + Convert.ToInt64(p["formatId"])));
+                    if (File.Exists(a)) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = a, UseShellExecute = true });
+                    else err = "No existe el archivo:\n" + a;
+                    data = o("ok", err == null);
+                }
+                else if (action == "abrirAyudaAppPassword")
+                {
+                    string u = S(p["prov"]) == "Gmail" ? "https://support.google.com/accounts/answer/185833"
+                             : S(p["prov"]) == "Outlook" ? "https://support.microsoft.com/es-es/account-billing/usar-contrase%C3%B1as-de-aplicaci%C3%B3n-5896ed9b-4263-e681-128a-a6f2979a7944"
+                             : "https://support.google.com/accounts/answer/185833";
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = u, UseShellExecute = true });
+                    data = o("ok", true);
+                }
+                else if (action == "guardarGeneral")
+                {
+                    using (var cn = ctx.OpenConn()) using (var cmd = cn.CreateCommand())
+                    {
+                        cmd.CommandText = "UPDATE zzBrosFormatoConfig SET RutaPdf=@r,PreguntarRuta=@p,AbrirTrasGenerar=@a,PatronNombre=@n,ModificadoOn=GETDATE(),ModificadoBy=@by WHERE OwnedBusinessEntityID=@o AND ModuleID=0";
+                        cmd.Parameters.AddWithValue("@r", (object)S(p["ruta"]) ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@p", B(p["preguntar"]) ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@a", B(p["abrir"]) ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@n", (object)S(p["patron"]) ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@by", userId); cmd.Parameters.AddWithValue("@o", owned);
+                        cmd.ExecuteNonQuery();
+                    }
+                    data = o("ok", true);
+                }
+                else if (action == "guardarModulo")
+                {
+                    int mid = Convert.ToInt32(p["id"]);
+                    long fmt = Convert.ToInt64(p["printFormatId"]); long pl = Convert.ToInt64(p["plantillaId"]);
+                    bool pers = B(p["personalizado"]);
+                    using (var cn = ctx.OpenConn()) using (var cmd = cn.CreateCommand())
+                    {
+                        cmd.Parameters.AddWithValue("@fmt", fmt != 0 ? (object)fmt : DBNull.Value);
+                        cmd.Parameters.AddWithValue("@pl", pl != 0 ? (object)pl : DBNull.Value);
+                        cmd.Parameters.AddWithValue("@pers", pers ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@r", (object)S(p["ruta"]) ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@pr", B(p["preguntar"]) ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@ab", B(p["abrir"]) ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@n", (object)S(p["patron"]) ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@by", userId); cmd.Parameters.AddWithValue("@o", owned); cmd.Parameters.AddWithValue("@m", mid);
+                        cmd.CommandText =
+                          "MERGE zzBrosFormatoConfig AS t USING (SELECT @o o,@m m) s ON t.OwnedBusinessEntityID=s.o AND t.ModuleID=s.m " +
+                          "WHEN MATCHED THEN UPDATE SET PrintFormatID=@fmt,PlantillaCorreoID=@pl,PdfPersonalizado=@pers,RutaPdf=@r,PreguntarRuta=@pr,AbrirTrasGenerar=@ab,PatronNombre=@n,ModificadoOn=GETDATE(),ModificadoBy=@by " +
+                          "WHEN NOT MATCHED THEN INSERT (OwnedBusinessEntityID,ModuleID,PrintFormatID,PlantillaCorreoID,PdfPersonalizado,RutaPdf,PreguntarRuta,AbrirTrasGenerar,PatronNombre) VALUES (@o,@m,@fmt,@pl,@pers,@r,@pr,@ab,@n);";
+                        cmd.ExecuteNonQuery();
+                    }
+                    if (B(p["defComercial"]) && fmt != 0)
+                    {
+                        ctx.NonQuery("UPDATE engModulePrintFormat SET FormatIsDefault=0 WHERE ModuleID=" + mid);
+                        ctx.NonQuery("UPDATE engModulePrintFormat SET FormatIsDefault=1 WHERE PrintFormatID=" + fmt);
+                    }
+                    data = cfgModulo(mid);
+                }
+                else if (action == "nuevoFormato")
+                {
+                    int mid = Convert.ToInt32(p["id"]); string nom = S(p["nombre"]); string modo = S(p["modo"]);
+                    string dir = carpetaFormatos();
+                    string baseN = System.Text.RegularExpressions.Regex.Replace("BrosLMV_" + nom + "_" + DateTime.Now.ToString("yyyyMMddHHmmss"), @"[^A-Za-z0-9_\-]", "");
+                    string ruta = Path.Combine(dir, baseN + ".html");
+                    string contenido = null;
+                    if (modo == "importar")
+                    {
+                        using (var ofd = new OpenFileDialog { Filter = "HTML (*.htm;*.html)|*.htm;*.html" })
+                        { if (ofd.ShowDialog() != DialogResult.OK) { responder(o("reqId", reqId, "ok", false, "cancel", true)); return; } contenido = File.ReadAllText(ofd.FileName); }
+                    }
+                    else if (modo == "plantilla") contenido = PLANTILLA_HTML;
+                    if (contenido != null) File.WriteAllText(ruta, contenido, new UTF8Encoding(false));
+                    else
+                    {
+                        var src = S(ctx.Scalar("SELECT FileName FROM engModulePrintFormat WHERE PrintFormatID=" + Convert.ToInt64(p["origenFormatId"])));
+                        if (!string.IsNullOrEmpty(src) && File.Exists(src)) File.Copy(src, ruta, true); else File.WriteAllText(ruta, PLANTILLA_HTML, new UTF8Encoding(false));
+                    }
+                    long nid;
+                    using (var cn = ctx.OpenConn()) using (var cmd = cn.CreateCommand())
+                    {
+                        cmd.CommandText = "INSERT INTO engModulePrintFormat (ModuleID,PrintFormatTypeID,FormatName,FileName,FormatIsDefault,FontName,FontSize,FontSizeDetails,MarginLeft,MarginTop,Units,LinesPerPage,CFDI) " +
+                          "OUTPUT INSERTED.PrintFormatID VALUES (@m,1,@n,@f,0,N'',0,0,0,0,0,0,0)";
+                        cmd.Parameters.AddWithValue("@m", mid); cmd.Parameters.AddWithValue("@n", nom); cmd.Parameters.AddWithValue("@f", ruta);
+                        nid = Convert.ToInt64(cmd.ExecuteScalar());
+                    }
+                    data = o("nuevo", nid, "cfg", cfgModulo(mid));
+                }
+                else if (action == "quitarFormato")
+                {
+                    long fid = Convert.ToInt64(p["formatId"]); int mid = Convert.ToInt32(p["id"]);
+                    if (Convert.ToInt32(ctx.Scalar("SELECT ISNULL(FormatIsDefault,0) FROM engModulePrintFormat WHERE PrintFormatID=" + fid)) == 1)
+                        err = "Es el predeterminado de Comercial. Cambia primero el predeterminado.";
+                    else { ctx.NonQuery("DELETE FROM engModulePrintFormat WHERE PrintFormatID=" + fid);
+                        ctx.NonQuery("UPDATE zzBrosFormatoConfig SET PrintFormatID=NULL WHERE OwnedBusinessEntityID=" + owned + " AND PrintFormatID=" + fid); }
+                    data = err == null ? cfgModulo(mid) : null;
+                }
+                else if (action == "guardarSmtp")
+                {
+                    using (var cn = ctx.OpenConn()) using (var cmd = cn.CreateCommand())
+                    {
+                        string setC = "";
+                        cmd.Parameters.AddWithValue("@prov", S(p["proveedor"]) == "" ? "Otro" : S(p["proveedor"]));
+                        cmd.Parameters.AddWithValue("@host", S(p["host"])); cmd.Parameters.AddWithValue("@port", Convert.ToInt32(p["port"]));
+                        cmd.Parameters.AddWithValue("@ssl", B(p["ssl"]) ? 1 : 0); cmd.Parameters.AddWithValue("@user", S(p["usuario"]));
+                        cmd.Parameters.AddWithValue("@rem", S(p["remitente"])); cmd.Parameters.AddWithValue("@remn", (object)S(p["remitenteNombre"]) ?? DBNull.Value);
+                        string cl = S(p["clave"]);
+                        if (!string.IsNullOrEmpty(cl)) { setC = ",ClaveCifrada=@cl"; cmd.Parameters.AddWithValue("@cl", ctx.erp.EncryptString(cl)); }
+                        cmd.Parameters.AddWithValue("@by", userId); cmd.Parameters.AddWithValue("@o", owned);
+                        cmd.CommandText = "UPDATE zzBrosCorreoConfig SET Proveedor=@prov,SmtpHost=@host,SmtpPort=@port,SmtpSsl=@ssl,Usuario=@user,Remitente=@rem,RemitenteNombre=@remn" + setC + ",ModificadoOn=GETDATE(),ModificadoBy=@by WHERE OwnedBusinessEntityID=@o";
+                        cmd.ExecuteNonQuery();
+                    }
+                    data = o("ok", true);
+                }
+                else if (action == "probarCorreo")
+                {
+                    var sm = ctx.Query("SELECT * FROM zzBrosCorreoConfig WHERE OwnedBusinessEntityID=" + owned)[0];
+                    string clave = S(p["clave"]);
+                    if (string.IsNullOrEmpty(clave) && !(sm["ClaveCifrada"] is DBNull) && sm["ClaveCifrada"] != null)
+                        try { clave = ctx.erp.DecryptString(S(sm["ClaveCifrada"])); } catch { }
+                    using (var msg = new MailMessage())
+                    {
+                        string rem = S(p["remitente"]); string usr = S(p["usuario"]);
+                        msg.From = new MailAddress(string.IsNullOrWhiteSpace(rem) ? usr : rem, string.IsNullOrWhiteSpace(S(p["remitenteNombre"])) ? null : S(p["remitenteNombre"]));
+                        foreach (var d in S(p["destino"]).Split(';', ',')) if (d.Trim().Length > 0) msg.To.Add(d.Trim());
+                        msg.Subject = "Prueba BrosLMV - configuracion de correo";
+                        msg.Body = "<p>Correo de prueba enviado desde <b>BrosLMV &middot; Configuración de formato</b>.</p>";
+                        msg.IsBodyHtml = true;
+                        using (var cli = new SmtpClient(S(p["host"]), Convert.ToInt32(p["port"])))
+                        { cli.EnableSsl = B(p["ssl"]); cli.Credentials = new NetworkCredential(usr, clave); cli.Send(msg); }
+                    }
+                    data = o("ok", true);
+                }
+                else if (action == "cargarPlantilla") data = plantillaDet(Convert.ToInt32(p["id"]));
+                else if (action == "nuevaPlantilla")
+                {
+                    long nid;
+                    using (var cn = ctx.OpenConn()) using (var cmd = cn.CreateCommand())
+                    {
+                        cmd.CommandText = "INSERT INTO zzBrosPlantillaCorreo (OwnedBusinessEntityID,Nombre,Asunto,CuerpoHtml,CC,BCC) OUTPUT INSERTED.PlantillaCorreoID VALUES (@o,@n,N'',N'',N'',N'')";
+                        cmd.Parameters.AddWithValue("@o", owned); cmd.Parameters.AddWithValue("@n", S(p["nombre"]));
+                        nid = Convert.ToInt64(cmd.ExecuteScalar());
+                    }
+                    data = o("nuevo", nid);
+                }
+                else if (action == "guardarPlantilla")
+                {
+                    using (var cn = ctx.OpenConn()) using (var cmd = cn.CreateCommand())
+                    {
+                        cmd.CommandText = "UPDATE zzBrosPlantillaCorreo SET Nombre=@n,Asunto=@s,CuerpoHtml=@b,CC=@cc,BCC=@bcc,ModificadoOn=GETDATE(),ModificadoBy=@by WHERE PlantillaCorreoID=@id";
+                        cmd.Parameters.AddWithValue("@n", S(p["nombre"])); cmd.Parameters.AddWithValue("@s", S(p["asunto"]));
+                        cmd.Parameters.AddWithValue("@b", S(p["cuerpo"])); cmd.Parameters.AddWithValue("@cc", S(p["cc"]));
+                        cmd.Parameters.AddWithValue("@bcc", S(p["bcc"])); cmd.Parameters.AddWithValue("@by", userId);
+                        cmd.Parameters.AddWithValue("@id", Convert.ToInt64(p["id"]));
+                        cmd.ExecuteNonQuery();
+                    }
+                    data = o("ok", true);
+                }
+                else if (action == "eliminarPlantilla")
+                {
+                    ctx.NonQuery("UPDATE zzBrosPlantillaCorreo SET DeletedOn=GETDATE() WHERE PlantillaCorreoID=" + Convert.ToInt64(p["id"]));
+                    ctx.NonQuery("UPDATE zzBrosFormatoConfig SET PlantillaCorreoID=NULL WHERE OwnedBusinessEntityID=" + owned + " AND PlantillaCorreoID=" + Convert.ToInt64(p["id"]));
+                    data = o("ok", true);
+                }
+                else if (action == "cotizadorModulo")
+                {
+                    // Activa/desactiva el boton "Cotizador" de UN SOLO modulo, via el parametro
+                    // nativo CreateDocQuotationDLLFunction. NUNCA toca engRibbonControl.
+                    int mid = Convert.ToInt32(p["id"]);
+                    bool on = B(p["on"]);
+                    string actual = S(ctx.Scalar("SELECT TOP 1 Value FROM engModuleParameter WHERE ModuleID=" + mid + " AND ParameterKey='CreateDocQuotationDLLFunction'"));
+                    if (!string.IsNullOrWhiteSpace(actual) && actual != "BrosLMV.Cotizador")
+                    { err = "Ese modulo ya tiene un Cotizador personalizado (\"" + actual + "\"). No lo piso."; }
+                    else
+                    {
+                        using (var cn = ctx.OpenConn()) using (var cmd = cn.CreateCommand())
+                        {
+                            cmd.CommandText = "UPDATE engModuleParameter SET Value=@v WHERE ModuleID=@m AND ParameterKey='CreateDocQuotationDLLFunction'";
+                            cmd.Parameters.AddWithValue("@v", on ? "BrosLMV.Cotizador" : "");
+                            cmd.Parameters.AddWithValue("@m", mid);
+                            cmd.ExecuteNonQuery();
+                        }
+                        data = cfgModulo(mid);
+                    }
+                }
+                else if (action == "repararCotizador")
+                {
+                    // Red de seguridad: una version vieja de este boton secuestraba los controles
+                    // NATIVOS "Cotizador" (ControlExecute 'BrosLMV.Cotizador' en vez de
+                    // 'CreateDocQuotation'), lo que rompia el guardado de documentos (error 438).
+                    int reparados = ctx.NonQuery(
+                        "UPDATE engRibbonControl SET ControlExecute='CreateDocQuotation' " +
+                        "WHERE ControlCaption='Cotizador' AND ControlExecute='BrosLMV.Cotizador'");
+                    data = o("reparados", reparados);
+                }
+                else if (action == "diagnostico")
+                {
+                    var chk = new System.Collections.Generic.List<object>();
+                    Action<string, bool, string> add = (nombre, ok2, det) => chk.Add(o("nombre", nombre, "ok", ok2, "detalle", det));
+
+                    // exe
+                    string exe = new[] { @"C:\BrosLMV\htmlpdf\BrosLMV.HtmlToPdf.exe", @"C:\MLVTotal\htmlpdf\bin\Release\net8.0-windows\BrosLMV.HtmlToPdf.exe" }.FirstOrDefault(File.Exists);
+                    add("Motor HTML->PDF (BrosLMV.HtmlToPdf.exe)", exe != null, exe ?? "no se encontro en C:\\BrosLMV\\htmlpdf\\");
+
+                    // WebView2 loader / runtime
+                    bool wv = File.Exists(@"C:\BrosLMV\bin\WebView2Loader.dll") || File.Exists(@"C:\BrosLMV\htmlpdf\runtimes\win-x64\native\WebView2Loader.dll");
+                    add("WebView2 (loader presente)", wv, wv ? "ok" : "puede faltar el WebView2 Runtime en el equipo");
+
+                    // plantillas
+                    int nFmt = 0; try { nFmt = Directory.GetFiles(@"C:\BrosLMV\formatos", "*.html").Length; } catch { }
+                    add("Plantillas BrosLMV en C:\\BrosLMV\\formatos", nFmt >= 10, nFmt + " archivo(s)");
+
+                    // tablas de config
+                    int t1 = Convert.ToInt32(ctx.Scalar("SELECT COUNT(*) FROM sys.tables WHERE name IN ('zzBrosFormatoConfig','zzBrosCorreoConfig','zzBrosPlantillaCorreo')"));
+                    add("Tablas de configuracion (zzBros*)", t1 == 3, t1 + " de 3");
+
+                    // SMTP
+                    var sm = ctx.Query("SELECT SmtpHost FROM zzBrosCorreoConfig WHERE OwnedBusinessEntityID=" + owned);
+                    bool smtpOk = sm.Count > 0 && !string.IsNullOrWhiteSpace(S(sm[0]["SmtpHost"]));
+                    add("Cuenta de correo (SMTP) configurada", smtpOk, smtpOk ? S(sm[0]["SmtpHost"]) : "sin configurar (opcional)");
+
+                    // formatos asignados por modulo
+                    int asign = Convert.ToInt32(ctx.Scalar("SELECT COUNT(*) FROM zzBrosFormatoConfig WHERE OwnedBusinessEntityID=" + owned + " AND ModuleID<>0 AND PrintFormatID IS NOT NULL"));
+                    add("Modulos con formato asignado", asign > 0, asign + " modulo(s)");
+
+                    // botones Cotizador
+                    int cotBros = Convert.ToInt32(ctx.Scalar("SELECT COUNT(*) FROM engModuleParameter WHERE ParameterKey='CreateDocQuotationDLLFunction' AND Value='BrosLMV.Cotizador'"));
+                    int ribbonRoto = Convert.ToInt32(ctx.Scalar("SELECT COUNT(*) FROM engRibbonControl WHERE ControlCaption='Cotizador' AND ControlExecute='BrosLMV.Cotizador'"));
+                    add("Boton Cotizador (parametro de modulo)", cotBros > 0, cotBros + " modulo(s) enganchado(s)");
+                    add("Controles Cotizador nativos SANOS", ribbonRoto == 0, ribbonRoto == 0 ? "ok" : ribbonRoto + " control(es) secuestrado(s) -> usa \"Reparar\"");
+
+                    // scripts en zzBrosScript
+                    int sc = Convert.ToInt32(ctx.Scalar("SELECT COUNT(*) FROM zzBrosScript WHERE AppKey IN ('Cotizador','ConfiguracionFormato') AND Activo=1"));
+                    add("Scripts BrosLMV en zzBrosScript", sc == 2, sc + " de 2");
+
+                    data = o("checks", chk);
+                }
+                else if (action == "instalarFormatos")
+                {
+                    Action<string, string> mkRef = (k, sql) =>
+                    {
+                        if (Convert.ToInt32(ctx.Scalar("SELECT COUNT(*) FROM engAddendaFieldRef WHERE FieldRefKey=N'" + k + "' AND DeletedOn IS NULL")) > 0) return;
+                        using (var cn = ctx.OpenConn()) using (var cm = cn.CreateCommand())
+                        {
+                            cm.CommandText = "INSERT INTO engAddendaFieldRef (FieldRefKey,SQL,Description,Custom,CreatedOn,CreatedBy) VALUES (@k,@s,@d,1,GETDATE(),@by)";
+                            cm.Parameters.AddWithValue("@k", k); cm.Parameters.AddWithValue("@s", sql);
+                            cm.Parameters.AddWithValue("@d", "BrosLMV: " + k); cm.Parameters.AddWithValue("@by", userId);
+                            cm.ExecuteNonQuery();
+                        }
+                    };
+                    mkRef("PorcentajeDescuentoLinea", "SELECT CAST(ROUND(ISNULL(DiscountPerc,0)*100,2) AS NVARCHAR(20)) FROM docDocumentItem WHERE DocumentItemID={DocumentItemID}");
+                    mkRef("PorcentajeIVALinea", "SELECT CAST(CAST(ROUND(ISNULL(TaxPerc,0)*100,0) AS INT) AS NVARCHAR(20)) FROM docDocumentItem WHERE DocumentItemID={DocumentItemID}");
+                    mkRef("TipoGastoLinea", "SELECT LTRIM(RTRIM(ISNULL(e.CategoryName,'') + CASE WHEN ISNULL(e.ItemName,'')='' THEN '' ELSE ' / ' + e.ItemName END)) FROM docDocumentItem i LEFT JOIN engRefExpense e ON e.ExpenseID=i.ExpenseTypeID WHERE i.DocumentItemID={DocumentItemID}");
+
+                    string srcDir = new[] { @"C:\BrosLMV\formatos", @"C:\MLVTotal\htmlpdf\formatos" }.FirstOrDefault(Directory.Exists);
+                    if (srcDir == null) { err = "No encontré las plantillas (C:\\BrosLMV\\formatos)."; }
+                    else
+                    {
+                        string dstDir = carpetaFormatos();
+                        var mapa = new string[][] {
+                            new[]{ "PedidoCliente_BrosLMV.html","Pedido de cliente - BrosLMV","967","Pedido%" },
+                            new[]{ "Remision_BrosLMV.html","Remisión - BrosLMV","157","%Remisi%" },
+                            new[]{ "FacturaCliente_BrosLMV.html","Factura - BrosLMV","21","Factura%Cliente%" },
+                            new[]{ "NotaCreditoCliente_BrosLMV.html","Nota de crédito - BrosLMV","142","Nota%Cliente%" },
+                            new[]{ "OrdenCompra_BrosLMV.html","Orden de compra - BrosLMV","183","%rdenes de Compra%" },
+                            new[]{ "RecepcionMercancia_BrosLMV.html","Recepción de mercancía - BrosLMV","184","Recepci%Compra%" },
+                            new[]{ "Gastos_BrosLMV.html","Documento de gastos - BrosLMV","242","Gastos" },
+                            new[]{ "EntradaAlmacen_BrosLMV.html","Entrada de almacén - BrosLMV","202","Entrada de Almac%" },
+                            new[]{ "Traspaso_BrosLMV.html","Traspaso - BrosLMV","204","Movimiento Entre Almac%" },
+                            new[]{ "SalidaAlmacen_BrosLMV.html","Salida de almacén - BrosLMV","203","Salida de Almac%" },
+                        };
+                        int n = 0;
+                        foreach (var it in mapa)
+                        {
+                            string src = Path.Combine(srcDir, it[0]); if (!File.Exists(src)) continue;
+                            var mm = ctx.Query("SELECT TOP 1 ModuleID FROM engModule WHERE ModuleTypeID=2 AND DeletedOn IS NULL AND DLL LIKE '%Document%' " +
+                                "AND (ModuleID=" + it[2] + " OR ModuleName LIKE N'" + it[3].Replace("'", "''") + "') ORDER BY CASE WHEN ModuleID=" + it[2] + " THEN 0 ELSE 1 END");
+                            if (mm.Count == 0) continue;
+                            int mid = Convert.ToInt32(mm[0]["ModuleID"]);
+                            string dst = Path.Combine(dstDir, it[0]);
+                            try { File.Copy(src, dst, true); } catch { }
+                            long fid;
+                            var ex = ctx.Query("SELECT PrintFormatID FROM engModulePrintFormat WHERE ModuleID=" + mid + " AND FileName=N'" + dst.Replace("'", "''") + "'");
+                            if (ex.Count > 0) fid = Convert.ToInt64(ex[0]["PrintFormatID"]);
+                            else using (var cn = ctx.OpenConn()) using (var cm = cn.CreateCommand())
+                            {
+                                cm.CommandText = "INSERT INTO engModulePrintFormat (ModuleID,PrintFormatTypeID,FormatName,FileName,FormatIsDefault,FontName,FontSize,FontSizeDetails,MarginLeft,MarginTop,Units,LinesPerPage,CFDI) " +
+                                  "OUTPUT INSERTED.PrintFormatID VALUES (@m,1,@n,@f,0,N'',0,0,0,0,0,0,0)";
+                                cm.Parameters.AddWithValue("@m", mid); cm.Parameters.AddWithValue("@n", it[1]); cm.Parameters.AddWithValue("@f", dst);
+                                fid = Convert.ToInt64(cm.ExecuteScalar());
+                            }
+                            ctx.NonQuery("MERGE zzBrosFormatoConfig AS t USING (SELECT " + owned + " o," + mid + " m) s ON t.OwnedBusinessEntityID=s.o AND t.ModuleID=s.m " +
+                                "WHEN MATCHED THEN UPDATE SET PrintFormatID=" + fid + " " +
+                                "WHEN NOT MATCHED THEN INSERT (OwnedBusinessEntityID,ModuleID,PrintFormatID,PreguntarRuta,AbrirTrasGenerar) VALUES (" + owned + "," + mid + "," + fid + ",0,1);");
+                            n++;
+                        }
+                        data = o("instalados", n);
+                    }
+                }
+                else err = "Accion desconocida: " + action;
+            }
+            catch (Exception ex) { err = ex.InnerException != null ? ex.InnerException.Message : ex.Message; }
+            responder(o("reqId", reqId, "ok", err == null, "error", err, "data", data));
+        };
+
+        wv.CoreWebView2.NavigateToString(HTML);
+    }
+    catch (Exception ex) { ctx.Msg("No se pudo iniciar la ventana:\n" + ex.Message, "Configuración de formato"); frm.Close(); }
+};
+
+frm.ShowDialog();
+return "OK";
+
+// ============================================================ UI (HTML/CSS/JS)
+string INTERFAZ_HTML()
+{
+    return @"<!doctype html><html lang='es'><head><meta charset='utf-8'>
+<style>
+:root{
+  --accent:#2D6FE0; --accent-d:#1f56b8; --ink:#16263A; --muted:#64748B;
+  --bg:#F4F6FA; --card:#FFFFFF; --line:#E5E9F0; --line-2:#EEF1F6; --ok:#16A34A; --bad:#DC2626;
+  --shadow:0 1px 2px rgba(16,38,58,.06), 0 6px 20px rgba(16,38,58,.07);
+}
+*{box-sizing:border-box} html,body{height:100%}
+[hidden]{display:none!important}
+body{margin:0;font:13px/1.5 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+.app{display:flex;flex-direction:column;height:100vh}
+header{padding:16px 22px 10px;background:var(--card);border-bottom:1px solid var(--line)}
+header h1{margin:0;font-size:16px;font-weight:650;letter-spacing:.2px}
+header p{margin:2px 0 0;color:var(--muted);font-size:12px}
+.tabs{display:flex;gap:6px;padding:10px 22px 0;background:var(--card);border-bottom:1px solid var(--line)}
+.tab{appearance:none;border:0;background:transparent;padding:9px 14px;border-radius:8px 8px 0 0;font:inherit;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+main{flex:1;min-height:0;overflow:auto;padding:18px 22px}
+.grid{display:grid;grid-template-columns:290px 1fr;gap:18px;align-items:start}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.side{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;position:sticky;top:0}
+.side .search{padding:10px;border-bottom:1px solid var(--line-2)}
+.side input{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit}
+.side .list{max-height:calc(100vh - 210px);overflow:auto;padding:6px}
+.area{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);padding:12px 10px 4px}
+.item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--ink)}
+.item:hover{background:var(--line-2)}
+.item.sel{background:#EAF1FE;color:var(--accent-d);font-weight:600}
+.item img{width:16px;height:16px;flex:0 0 16px}
+.item .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 8px;margin:0 4px}
+.item.gen{font-weight:650}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
+.card h2{margin:0 0 4px;font-size:14px;font-weight:650}
+.card .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+.row{margin-bottom:14px}
+label.lbl{display:block;font-weight:600;margin-bottom:6px;font-size:12px}
+input[type=text],select,textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit;color:var(--ink);background:#fff}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(45,111,224,.12)}
+textarea{min-height:130px;resize:vertical;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.inline > *{flex:0 0 auto}
+.grow{flex:1 1 auto;min-width:120px}
+button.btn{appearance:none;border:1px solid var(--line);background:#fff;border-radius:9px;padding:9px 13px;font:inherit;font-weight:600;cursor:pointer;color:var(--ink)}
+button.btn:hover{background:var(--line-2)}
+button.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.btn.primary:hover{background:var(--accent-d)}
+button.btn.ghost{border-color:transparent;color:var(--accent)}
+button.btn.sm{padding:6px 10px;font-size:12px}
+.hint{color:var(--muted);font-size:11.5px;margin-top:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 10px;font-size:11.5px;cursor:pointer;color:var(--muted)}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.prev{margin-top:8px;font-size:12px;color:var(--accent);font-style:italic}
+.sw{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;margin:8px 0}
+.sw input{display:none}
+.sw .track{width:38px;height:22px;border-radius:999px;background:#CBD5E1;position:relative;transition:.15s;flex:0 0 38px}
+.sw .track::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw input:checked + .track{background:var(--accent)}
+.sw input:checked + .track::after{transform:translateX(16px)}
+.disabled{opacity:.5;pointer-events:none}
+.foot{position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 40%);padding-top:12px;display:flex;gap:10px;align-items:center}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:12.5px;opacity:0;transition:.2s;pointer-events:none;z-index:9}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.bad{background:var(--bad)} .toast.ok{background:var(--ok)}
+.split2{display:grid;grid-template-columns:200px 1fr;gap:16px}
+.tpl-list{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tpl-list .t{padding:9px 11px;border-bottom:1px solid var(--line-2);cursor:pointer}
+.tpl-list .t:last-child{border-bottom:0}
+.tpl-list .t:hover{background:var(--line-2)}
+.tpl-list .t.sel{background:#EAF1FE;color:var(--accent-d);font-weight:600}
+.muted{color:var(--muted)}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--muted);word-break:break-all}
+</style></head>
+<body><div class='app'>
+  <header><h1>Configuración de formato</h1><p>Cómo BrosLMV genera y envía los documentos en PDF.</p></header>
+  <div class='tabs'>
+    <button class='tab active' data-tab='fmt'>Formatos y PDF</button>
+    <button class='tab' data-tab='mail'>Correo</button>
+    <button class='tab' data-tab='diag'>Diagnóstico</button>
+  </div>
+  <main>
+    <div id='view-fmt' class='grid'>
+      <aside class='side'>
+        <div class='search'><input id='q' placeholder='Buscar módulo…'>
+          <button class='btn sm' style='margin-top:8px;width:100%' onclick='instalarFormatos()'>⬇ Instalar formatos BrosLMV</button></div>
+        <div class='list' id='mods'></div>
+      </aside>
+      <section id='detail'></section>
+    </div>
+    <div id='view-mail' hidden></div>
+    <div id='view-diag' hidden></div>
+  </main>
+</div>
+<div id='toast' class='toast'></div>
+<script>
+const bus={}; let _rid=0;
+function call(action,payload){return new Promise((res,rej)=>{const reqId='r'+(++_rid);bus[reqId]={res,rej};
+  window.chrome.webview.postMessage(JSON.stringify({reqId,action,payload:payload||{}}));});}
+window.chrome.webview.addEventListener('message',e=>{const m=e.data;const h=bus[m.reqId];if(!h)return;delete bus[m.reqId];
+  if(m.ok)h.res(m.data);else h.rej(new Error(m.error||'error'));});
+function toast(msg,kind){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(kind||'');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.className='toast',2200);}
+const esc=s=>(s==null?'':String(s)).replace(/[&<>""']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','""':'&quot;',""'"":'&#39;'}[c]));
+function insAt(el,txt){const a=el.selectionStart||0,b=el.selectionEnd||0;el.value=el.value.slice(0,a)+txt+el.value.slice(b);
+  el.selectionStart=el.selectionEnd=a+txt.length;el.focus();el.dispatchEvent(new Event('input'));}
+
+let DATA=null, sel=0;
+
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
+  document.getElementById('view-fmt').hidden = t.dataset.tab!=='fmt';
+  document.getElementById('view-mail').hidden = t.dataset.tab!=='mail';
+  document.getElementById('view-diag').hidden = t.dataset.tab!=='diag';
+  if(t.dataset.tab==='mail') renderMail();
+  if(t.dataset.tab==='diag') renderDiag();
+});
+document.getElementById('q').oninput=e=>renderList(e.target.value.toLowerCase());
+
+function renderList(f){f=f||'';const box=document.getElementById('mods');let h='';
+  h+=`<div class='item gen ${sel===0?'sel':''}' onclick='pick(0)'><span class='dot'></span>General (por defecto)</div>`;
+  DATA.areas.forEach(a=>{const ms=a.modulos.filter(m=>!f||m.nombre.toLowerCase().includes(f));if(!ms.length)return;
+    h+=`<div class='area'>${esc(a.area)}</div>`;
+    ms.forEach(m=>{h+=`<div class='item ${sel===m.id?'sel':''}' onclick='pick(${m.id})'>`+
+      (m.icono?`<img src='${m.icono}'>`:`<span class='dot'></span>`)+esc(m.nombre)+`</div>`;});});
+  box.innerHTML=h;}
+
+async function pick(id){sel=id;renderList(document.getElementById('q').value.toLowerCase());
+  const c=await call('cargarModulo',{id});renderDetail(c);}
+
+function swHtml(id,txt,on){return `<label class='sw'><input type='checkbox' id='${id}' ${on?'checked':''}><span class='track'></span><span>${esc(txt)}</span></label>`;}
+function chipsHtml(target){return `<div class='chips'>`+DATA.campos.map(c=>`<span class='chip' data-t='${esc(c)}' data-target='${target}'>${esc(c)}</span>`).join('')+`</div>`;}
+
+function pdfBlock(c,idp){ // idp: prefijo de ids
+  return `
+   <div class='row'><label class='lbl'>Carpeta destino</label>
+     <div class='inline'><input type='text' class='grow' id='${idp}ruta' value='${esc(c.ruta)}'>
+       <button class='btn' onclick='elegirCarpeta(""${idp}"")'>Examinar…</button></div>
+     <div class='hint'>Servidor-cliente: usa una ruta de red visible para todos, p.ej. <b>\\SERVIDOR\PDF\Compras</b> (no <b>C:\…</b>).</div>
+   </div>
+   <div class='row'><label class='lbl'>Nombre del archivo</label>
+     <input type='text' id='${idp}patron' value='${esc(c.patron)}'>
+     ${chipsHtml(idp+'patron')}
+     <div class='prev' id='${idp}prev'>Ejemplo: …</div>
+   </div>
+   ${swHtml(idp+'preg','Preguntar la ruta cada vez',c.preguntar)}
+   ${swHtml(idp+'abrir','Abrir el PDF al generarlo',c.abrir)}`;
+}
+
+function renderDetail(c){
+  const d=document.getElementById('detail');
+  if(c.moduleId===0){
+    d.innerHTML=`
+     <div class='card'>
+       <h2>General (por defecto)</h2>
+       <div class='sub'>Se aplica a los módulos que no tengan configuración propia.</div>
+       ${pdfBlock(c,'g_')}
+     </div>
+     <div class='foot'><button class='btn primary' onclick='guardarGeneral()'>Guardar</button></div>`;
+    wireChips(); bindPreview('g_',0); return;
+  }
+  const opts=c.formatos.map(f=>`<option value='${f.id}' ${f.id===c.printFormatId?'selected':''}>${esc(f.nombre)}${f.def?'  ·  default Comercial':''}</option>`).join('')
+    || `<option value='0'>(sin formato)</option>`;
+  const plopts=`<option value='0'>(ninguna)</option>`+DATA.plantillas.map(p=>`<option value='${p.id}' ${p.id===c.plantillaId?'selected':''}>${esc(p.nombre)}</option>`).join('');
+  d.innerHTML=`
+   <div class='card'>
+     <h2>${esc(c.nombre)}</h2><div class='sub'>Módulo ${c.moduleId}</div>
+     <div class='row'><label class='lbl'>Formato HTML que usará BrosLMV</label>
+       <select id='fmt'>${opts}</select>
+       <div class='inline' style='margin-top:8px'>
+         <button class='btn sm' onclick='nuevoFormato()'>Nuevo…</button>
+         <button class='btn sm' onclick='nuevoFormato(""dup"")'>Duplicar</button>
+         <button class='btn sm' onclick='editarHtml()'>Editar HTML</button>
+         <button class='btn sm' onclick='quitarFormato()'>Quitar</button>
+       </div>
+       <div class='mono' id='fmtArch' style='margin-top:8px'>${esc(c.archivo)}</div>
+       ${swHtml('defcom','Usar también como predeterminado de Comercial (impresión nativa)',c.esDefaultComercial)}
+     </div>
+     <div class='row'><label class='lbl'>Plantilla de correo para este módulo</label>
+       <select id='pl'>${plopts}</select>
+     </div>
+   </div>
+   <div class='card'>
+     <h2>Botón “Cotizador” del documento</h2>
+     <div class='sub'>El botón que ya aparece dentro de cada documento de este módulo puede generar el PDF de BrosLMV. Usa el parámetro nativo — no toca el ribbon. Reinicia Comercial tras el cambio.</div>
+     ${c.cotEstado==='otro'
+       ? `<div class='hint'>Este módulo ya tiene un Cotizador personalizado: <code>${esc(c.cotValor)}</code>. No se toca.</div>`
+       : swHtml('coton','Usar el Cotizador de BrosLMV en este módulo', c.cotEstado==='broslmv')}
+   </div>
+   <div class='card'>
+     <h2>PDF</h2>
+     ${swHtml('pers','Personalizar la carpeta y el nombre para este módulo (si no, usa la General)',c.personalizado)}
+     <div id='pdfwrap' class='${c.personalizado?'':'disabled'}'>${pdfBlock(c,'m_')}</div>
+   </div>
+   <div class='foot'><button class='btn primary' onclick='guardarModulo()'>Guardar</button>
+     <span class='muted'>Los cambios aplican al botón “Generar documento (PDF)”.</span></div>`;
+  document.getElementById('pers').onchange=ev=>document.getElementById('pdfwrap').classList.toggle('disabled',!ev.target.checked);
+  const cot=document.getElementById('coton');
+  if(cot) cot.onchange=async ev=>{
+    try{const r=await call('cotizadorModulo',{id:c.moduleId,on:ev.target.checked});
+      renderDetail(r); toast((ev.target.checked?'Cotizador activado':'Cotizador desactivado')+' — reinicia Comercial','ok');}
+    catch(e){ev.target.checked=!ev.target.checked; toast(e.message,'bad');}};
+  document.getElementById('fmt').onchange=async ev=>{
+    const f=c.formatos.find(x=>x.id==ev.target.value); document.getElementById('fmtArch').textContent=f?f.archivo:'';};
+  wireChips(); bindPreview('m_',c.moduleId);
+}
+function wireChips(){document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{
+  const el=document.getElementById(ch.dataset.target); if(el) insAt(el,'['+ch.dataset.t+']');});}
+function bindPreview(idp,mid){const el=document.getElementById(idp+'patron');if(!el)return;
+  const upd=async()=>{try{const r=await call('preview',{id:mid,patron:el.value});
+    document.getElementById(idp+'prev').textContent='Ejemplo:  '+r.nombre;}catch(e){}};
+  el.oninput=upd; upd();}
+
+async function elegirCarpeta(idp){const r=await call('elegirCarpeta',{});if(r&&r.ruta)document.getElementById(idp+'ruta').value=r.ruta;}
+async function guardarGeneral(){
+  await call('guardarGeneral',{ruta:val('g_ruta'),patron:val('g_patron'),preguntar:chk('g_preg'),abrir:chk('g_abrir')});
+  toast('Configuración general guardada','ok');}
+async function guardarModulo(){
+  const c=await call('guardarModulo',{id:sel,printFormatId:+val('fmt'),plantillaId:+val('pl'),
+    personalizado:chk('pers'),defComercial:chk('defcom'),
+    ruta:val('m_ruta'),patron:val('m_patron'),preguntar:chk('m_preg'),abrir:chk('m_abrir')});
+  DATA=await call('cargarTodo'); renderList(document.getElementById('q').value.toLowerCase()); renderDetail(c); toast('Guardado','ok');}
+async function editarHtml(){const id=+val('fmt');if(!id){toast('No hay archivo','bad');return;}await call('editarHtml',{formatId:id});}
+async function quitarFormato(){const id=+val('fmt');if(!id)return;
+  if(!confirm('¿Quitar este formato? (No borra el archivo .html)'))return;
+  try{const c=await call('quitarFormato',{id:sel,formatId:id});renderDetail(c);toast('Formato quitado','ok');}
+  catch(e){toast(e.message,'bad');}}
+async function nuevoFormato(dup){
+  const nombre=prompt('Nombre del nuevo formato:', (DATA.areas.flatMap(a=>a.modulos).find(m=>m.id===sel)||{}).nombre+' - BrosLMV');
+  if(!nombre)return; let modo='dup', origen=+val('fmt');
+  if(!dup){const q=prompt('Base:  1 = Copiar el seleccionado    2 = Importar un .html    3 = Plantilla BrosLMV','1');
+    if(q===null)return; modo = q.trim()==='2'?'importar': q.trim()==='3'?'plantilla':'dup';}
+  try{const r=await call('nuevoFormato',{id:sel,nombre,modo,origenFormatId:origen});
+    if(r&&r.cancel){return;} renderDetail(r.cfg);
+    const s=document.getElementById('fmt'); if(s) s.value=r.nuevo; document.getElementById('fmt').dispatchEvent(new Event('change'));
+    toast('Formato creado — usa “Editar HTML” para ajustarlo','ok');}
+  catch(e){toast(e.message,'bad');}}
+// -------- Diagnóstico --------
+async function renderDiag(){
+  const v=document.getElementById('view-diag');
+  v.innerHTML=`<div class='card' style='max-width:860px'><h2>Diagnóstico</h2>
+    <div class='sub'>Comprobación del estado de BrosLMV en esta empresa.</div>
+    <div id='diaglist' class='mono'>Ejecutando…</div>
+    <div class='inline' style='margin-top:12px'>
+      <button class='btn' onclick='renderDiag()'>Volver a comprobar</button>
+      <button class='btn' onclick='repararCotizador()'>Reparar controles Cotizador</button>
+    </div></div>`;
+  try{
+    const r=await call('diagnostico',{});
+    const rows=(r.checks||[]).map(c=>
+      `<div class='row' style='display:flex;gap:8px;align-items:flex-start'>
+         <span style='color:${c.ok?'#2f9e44':'#e03131'};font-weight:700'>${c.ok?'✓':'✗'}</span>
+         <span><b>${esc(c.nombre)}</b>${c.detalle?` — ${esc(c.detalle)}`:''}</span>
+       </div>`).join('');
+    document.getElementById('diaglist').innerHTML=rows||'(sin comprobaciones)';
+  }catch(e){document.getElementById('diaglist').textContent='Error: '+e.message;}
+}
+async function repararCotizador(){
+  if(!confirm('Devuelve al ribbon nativo cualquier control “Cotizador” que haya quedado apuntando a BrosLMV.Cotizador.\n\nNo toca los parámetros de módulo. ¿Continuar?'))return;
+  try{const r=await call('repararCotizador',{});
+    toast((r&&r.reparados||0)+' control(es) reparado(s) — reinicia Comercial', r&&r.reparados?'ok':'');
+    renderDiag();}
+  catch(e){toast(e.message,'bad');}}
+async function instalarFormatos(){
+  if(!confirm('Instala 10 plantillas genéricas de BrosLMV (gris/azul, con QR) y las asigna a sus módulos. ¿Continuar?'))return;
+  try{const r=await call('instalarFormatos',{});
+    DATA=await call('cargarTodo'); renderList(document.getElementById('q').value.toLowerCase());
+    if(sel) pick(sel); else renderDetail(DATA.general);
+    toast('Instaladas '+(r&&r.instalados||0)+' plantillas','ok');}
+  catch(e){toast(e.message,'bad');}}
+const val=id=>{const e=document.getElementById(id);return e?e.value:'';};
+const chk=id=>{const e=document.getElementById(id);return !!(e&&e.checked);};
+
+// -------- Correo --------
+let plSel=0;
+async function renderMail(){
+  const s=DATA.smtp;
+  const presets={Outlook:['smtp-mail.outlook.com',587,true],Gmail:['smtp.gmail.com',587,true]};
+  document.getElementById('view-mail').innerHTML=`
+   <div class='card' style='max-width:860px'>
+     <h2>Cuenta de envío (SMTP propio)</h2>
+     <div class='sub'>Independiente de Comercial. Sirve para Outlook, Gmail o el correo de tu dominio.</div>
+     <div class='row inline'>
+       <div><label class='lbl'>Proveedor</label>
+         <select id='prov'>${['Outlook','Gmail','Otro'].map(p=>`<option ${p===s.proveedor?'selected':''}>${p}</option>`).join('')}</select></div>
+       <div class='grow'><label class='lbl'>Servidor SMTP</label><input type='text' id='host' value='${esc(s.host)}'></div>
+       <div><label class='lbl'>Puerto</label><input type='text' id='port' value='${s.port}' style='width:80px'></div>
+       <div style='padding-top:24px'>${swHtml('ssl','SSL/TLS',s.ssl)}</div>
+     </div>
+     <div class='row inline'>
+       <div class='grow'><label class='lbl'>Usuario</label><input type='text' id='usr' value='${esc(s.usuario)}'></div>
+       <div class='grow'><label class='lbl'>Contraseña</label><input type='text' id='pwd' placeholder='${s.tieneClave?'•••••• (guardada, deja vacío para conservarla)':'contraseña de aplicación'}'></div>
+     </div>
+     <div class='hint'>Gmail / Outlook con verificación en 2 pasos: activa 2FA y crea una <b>contraseña de aplicación</b>, pégala aquí.
+       <a href='#' onclick='call(""abrirAyudaAppPassword"",{prov:document.getElementById(""prov"").value});return false'>¿Cómo la obtengo?</a>
+       &nbsp;·&nbsp; El inicio de sesión con permiso del navegador (OAuth) llegará en una versión próxima.</div>
+     <div class='row inline'>
+       <div class='grow'><label class='lbl'>Remitente (De)</label><input type='text' id='rem' value='${esc(s.remitente)}'></div>
+       <div class='grow'><label class='lbl'>Nombre</label><input type='text' id='remn' value='${esc(s.remitenteNombre)}'></div>
+     </div>
+     <div class='inline'><button class='btn primary' onclick='guardarSmtp()'>Guardar cuenta</button>
+       <button class='btn' onclick='probarCorreo()'>Enviar prueba</button></div>
+   </div>
+   <div class='card' style='max-width:860px'>
+     <h2>Plantillas de correo</h2>
+     <div class='sub'>Asunto y cuerpo HTML con [Etiquetas]. Se resuelven al enviar desde un documento.</div>
+     <div class='split2'>
+       <div>
+         <div class='tpl-list' id='tpls'></div>
+         <button class='btn sm' style='margin-top:8px' onclick='nuevaPlantilla()'>Nueva</button>
+         <button class='btn sm' style='margin-top:8px' onclick='eliminarPlantilla()'>Eliminar</button>
+       </div>
+       <div>
+         <div class='row'><label class='lbl'>Nombre</label><input type='text' id='t_nom'></div>
+         <div class='row'><label class='lbl'>Asunto</label><input type='text' id='t_asu'></div>
+         <div class='row inline'>
+           <div class='grow'><label class='lbl'>CC</label><input type='text' id='t_cc'></div>
+           <div class='grow'><label class='lbl'>BCC</label><input type='text' id='t_bcc'></div>
+         </div>
+         <div class='row'><label class='lbl'>Cuerpo (HTML)</label><textarea id='t_cue'></textarea>${chipsHtml('t_cue')}</div>
+         <button class='btn primary' onclick='guardarPlantilla()'>Guardar plantilla</button>
+       </div>
+     </div>
+   </div>`;
+  document.getElementById('prov').onchange=e=>{const p=presets[e.target.value];if(p){document.getElementById('host').value=p[0];
+    document.getElementById('port').value=p[1];document.getElementById('ssl').checked=p[2];}};
+  wireChips(); renderTpls();
+}
+function renderTpls(){const b=document.getElementById('tpls');
+  b.innerHTML=DATA.plantillas.map(p=>`<div class='t ${p.id===plSel?'sel':''}' onclick='pickTpl(${p.id})'>${esc(p.nombre)}</div>`).join('')
+    || `<div class='t muted'>sin plantillas</div>`;}
+async function pickTpl(id){plSel=id;renderTpls();const t=await call('cargarPlantilla',{id});
+  t_nom.value=t.nombre;t_asu.value=t.asunto;t_cc.value=t.cc;t_bcc.value=t.bcc;t_cue.value=t.cuerpo;}
+async function guardarSmtp(){await call('guardarSmtp',{proveedor:val('prov'),host:val('host'),port:+val('port'),ssl:chk('ssl'),
+  usuario:val('usr'),clave:val('pwd'),remitente:val('rem'),remitenteNombre:val('remn')});
+  DATA=await call('cargarTodo'); toast('Cuenta guardada','ok');}
+async function probarCorreo(){const to=prompt('Enviar prueba a:',val('usr'));if(!to)return;
+  try{await call('probarCorreo',{destino:to,host:val('host'),port:+val('port'),ssl:chk('ssl'),usuario:val('usr'),clave:val('pwd'),
+    remitente:val('rem'),remitenteNombre:val('remn')});toast('Correo de prueba enviado','ok');}
+  catch(e){toast('No se pudo enviar: '+e.message,'bad');}}
+async function nuevaPlantilla(){const n=prompt('Nombre de la plantilla:','Nueva plantilla');if(!n)return;
+  const r=await call('nuevaPlantilla',{nombre:n});DATA=await call('cargarTodo');plSel=r.nuevo;renderTpls();pickTpl(r.nuevo);}
+async function guardarPlantilla(){if(!plSel){toast('Selecciona o crea una plantilla','bad');return;}
+  await call('guardarPlantilla',{id:plSel,nombre:val('t_nom'),asunto:val('t_asu'),cuerpo:val('t_cue'),cc:val('t_cc'),bcc:val('t_bcc')});
+  DATA=await call('cargarTodo');renderTpls();toast('Plantilla guardada','ok');}
+async function eliminarPlantilla(){if(!plSel)return;if(!confirm('¿Eliminar esta plantilla?'))return;
+  await call('eliminarPlantilla',{id:plSel});plSel=0;DATA=await call('cargarTodo');renderTpls();
+  ['t_nom','t_asu','t_cc','t_bcc','t_cue'].forEach(i=>document.getElementById(i).value='');toast('Plantilla eliminada','ok');}
+
+(async function(){DATA=await call('cargarTodo');renderList('');renderDetail(DATA.general);})();
+</script></body></html>";
+}

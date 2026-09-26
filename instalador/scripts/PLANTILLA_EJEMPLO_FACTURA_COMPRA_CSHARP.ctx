@@ -1,0 +1,614 @@
+// lang: csharp
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+using System.Collections.Generic;
+using System.Linq;
+
+// PLANTILLA_EJEMPLO_FACTURA_COMPRA_CSHARP.ctx
+// Ejemplo comunitario completo: transforma una o varias Órdenes de Compra SELECCIONADAS EN EL
+// GRID de Comercial (módulo 183) en una Factura de Compra (módulo 152).
+//
+// A diferencia de Recepción de Compra (que arranca con un buscador de proveedor DENTRO de la
+// ventana), aquí el origen es ctx.GetSelectedIds(): el usuario ya seleccionó 1+ filas en la
+// lista nativa de Órdenes de Compra (Ctrl+clic) ANTES de darle a este botón.
+//
+// Perfil de encabezado verificado contra una base de datos real:
+// - ModuleID=152, DocumentTypeID=5, DocRecipientID=2.
+// - Perfil de encabezado: DepotIDFrom=0, StatusDeliveryID=0 (a diferencia de OC=3), Campaign/
+//   CostCenter/Project=NULL.
+// - TaxTypeID/TaxPerc se fijan POR PARTIDA (la FC no siempre hereda el impuesto del producto).
+// - NO afecta inventario -> SIN AffectStockNEW (a diferencia de Recepción).
+// - Contabilidad (accPoliza/accPolizaTransaccion) la genera Save() SOLO -- no hay que tocarla.
+// - PaymentAgenda: NuevoDocumento crea un placeholder Amount=0 que Save() no corrige bien
+//   (usa el caché interno de XEngine, no la BD) -- hay que regenerarlo A MANO después de Save
+//   con los porcentajes reales de engPaymentTermDetail. Ver RegenerarPaymentAgenda() abajo.
+//
+// N Órdenes de Compra -> 1 Factura: igual que en Recepción de Compra, el vínculo real se hace
+// por PARTIDA (docDocumentItem.SourceDocumentItemID -> DocumentItemID de la OC), no por un solo
+// campo de encabezado -- así "cuánto ya se facturó" de cada OC se calcula bien aunque una
+// factura mezcle partidas de varias OC. Cálculo PROPIO (no hay vista nativa equivalente a
+// vwLBSProductsToDeliver para facturación -- ver MANUAL.md #12).
+//
+// Regla de fidelidad: NO copia nada de terceros -- basado en la captura real del laboratorio y
+// el esquema (ingeniería inversa propia).
+
+// ═══════════════════ DATOS INICIALES ═══════════════════
+var idsSeleccionados = ctx.GetSelectedIds();
+var condiciones = ctx.Query("SELECT PaymentTermID, PaymentTermName FROM vwLBSPaymentTermList WHERE Buys=1 AND Deleted=0 ORDER BY PaymentTermID");
+var impuestos = ctx.Query(@"
+    SELECT t.TaxTypeID, t.TaxTypeName, ISNULL(tp.IVA_Perc,0) AS IVA_Perc
+    FROM vwLBSTaxType t LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = t.TaxTypeID
+    ORDER BY t.TaxTypeName");
+
+var partidasAFacturar = new List<PartidaConsolidada>();
+var taxPercByType = new Dictionary<int, double>();
+int proveedorBE = 0;
+string proveedorNombre = "", proveedorRfc = "";
+int depotOrigen = 1;
+
+// ═══════════════════ COLORES / FUENTES ═══════════════════
+var C_BG      = Color.FromArgb(241, 245, 249);
+var C_BORDER  = Color.FromArgb(203, 213, 225);
+var C_PRIMARY = Color.FromArgb(180, 83, 9);    // naranja: distingue de OC (azul) y RC (verde)
+var C_DANGER  = Color.FromArgb(239, 68, 68);
+var C_TEXT    = Color.FromArgb(30, 41, 59);
+var C_MUTED   = Color.FromArgb(100, 116, 139);
+var C_PANEL   = Color.White;
+var C_HEADER  = Color.FromArgb(248, 250, 252);
+var C_BLUE_SEL= Color.FromArgb(255, 237, 213);
+var C_RIBBON    = Color.FromArgb(51, 65, 85);
+var C_RIBBON_TX = Color.FromArgb(226, 232, 240);
+var C_RIBBON_MU = Color.FromArgb(148, 163, 184);
+
+var F_TAB     = new Font("Segoe UI", 10f, FontStyle.Bold);
+var F_H2      = new Font("Segoe UI", 9f, FontStyle.Bold);
+var F_BODY    = new Font("Segoe UI", 9f);
+var F_SM      = new Font("Segoe UI", 8.5f);
+var F_ICON    = new Font("Segoe UI Emoji", 20f);
+var F_ICON_SM = new Font("Segoe UI Emoji", 10f);
+
+// ═══════════════════ VALIDACIÓN TEMPRANA DE LA SELECCIÓN ═══════════════════
+if (idsSeleccionados == null || idsSeleccionados.Count == 0) {
+    ctx.Msg("Selecciona una o varias Órdenes de Compra en la lista (Ctrl+clic) antes de usar este botón.", "Sin selección");
+    return;
+}
+
+List<Dictionary<string, object>> ocsSeleccionadas;
+try {
+    ocsSeleccionadas = ctx.Query(
+        "SELECT d.DocumentID, d.BusinessEntityID, d.DepotID, d.FolioPrefix, d.Folio, be.OfficialName, " +
+        "ISNULL(m.OfficialNumber,'') AS RFC " +
+        "FROM docDocument d " +
+        "INNER JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID " +
+        "LEFT JOIN orgBusinessEntityMainInfo m ON m.BusinessEntityID = be.BusinessEntityID " +
+        "WHERE d.DocumentID IN (" + ctx.JoinIds(idsSeleccionados) + ") AND d.ModuleID = 183 " +
+        "  AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL");
+} catch (Exception ex) {
+    ctx.Msg("Error al leer la selección: " + ex.Message, "Error");
+    return;
+}
+if (ocsSeleccionadas.Count == 0) {
+    ctx.Msg("Ninguna de las filas seleccionadas es una Orden de Compra activa (módulo 183).", "Selección inválida");
+    return;
+}
+var proveedoresDistintos = ocsSeleccionadas.Select(r => Convert.ToInt32(r["BusinessEntityID"])).Distinct().ToList();
+if (proveedoresDistintos.Count > 1) {
+    ctx.Msg("Las Órdenes de Compra seleccionadas son de proveedores distintos. Selecciona Órdenes de Compra de UN SOLO proveedor a la vez.", "Selección inválida");
+    return;
+}
+proveedorBE = proveedoresDistintos[0];
+proveedorNombre = Convert.ToString(ocsSeleccionadas[0]["OfficialName"]);
+proveedorRfc = Convert.ToString(ocsSeleccionadas[0]["RFC"]);
+depotOrigen = Convert.ToInt32(ocsSeleccionadas[0]["DepotID"] ?? 1);
+string ocsResumenTexto = string.Join(", ", ocsSeleccionadas.Select(r => Convert.ToString(r["FolioPrefix"]) + Convert.ToString(r["Folio"])));
+
+// ═══════════════════ VENTANA ═══════════════════
+var frm = new Form {
+    Text = "Nueva Factura de Compra",
+    Size = new Size(1200, 860),
+    StartPosition = FormStartPosition.CenterScreen,
+    BackColor = C_BG,
+    KeyPreview = true
+};
+
+// ═══════════════════ CINTA SUPERIOR (RIBBON) ═══════════════════
+var ribbon = new Panel { Location = new Point(10, 10), Size = new Size(1160, 96), BackColor = C_RIBBON, Parent = frm };
+new Label { Text = "Principal", Font = F_TAB, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 4), AutoSize = true, Parent = ribbon };
+
+int currentX = 12;
+var toolButtons = new Dictionary<string, Panel>();
+Panel AddToolbarBtn(string key, string icon, string text, Color? iconColor = null) {
+    var p = new Panel { Location = new Point(currentX, 24), Size = new Size(78, 66), BackColor = C_RIBBON, Cursor = Cursors.Hand, Parent = ribbon };
+    var lblIcon = new Label { Text = icon, Font = F_ICON, ForeColor = iconColor ?? C_RIBBON_TX, AutoSize = false, Size = new Size(78, 34), TextAlign = ContentAlignment.MiddleCenter, BackColor = C_RIBBON, Parent = p };
+    var lblTxt  = new Label { Text = text, Font = new Font("Segoe UI", 8f), ForeColor = C_RIBBON_TX, AutoSize = false, Size = new Size(78, 30), Location = new Point(0, 34), TextAlign = ContentAlignment.TopCenter, BackColor = C_RIBBON, Parent = p };
+    p.MouseEnter += (_, __) => { p.BackColor = Color.FromArgb(71, 85, 105); lblIcon.BackColor = p.BackColor; lblTxt.BackColor = p.BackColor; };
+    p.MouseLeave += (_, __) => { p.BackColor = C_RIBBON; lblIcon.BackColor = C_RIBBON; lblTxt.BackColor = C_RIBBON; };
+    toolButtons[key] = p;
+    currentX += 80;
+    return p;
+}
+void AddSep() { new Panel { Location = new Point(currentX, 28), Size = new Size(1, 58), BackColor = C_RIBBON_MU, Parent = ribbon }; currentX += 12; }
+
+AddToolbarBtn("guardar",  "💾", "Guardar\nF5",       Color.FromArgb(96, 165, 250));
+AddToolbarBtn("cancelar", "❌", "Cancelar\nEsc",      Color.FromArgb(248, 113, 113));
+AddSep();
+AddToolbarBtn("limpiar",  "🧹", "Limpiar\ncampos");
+
+var infoPnl = new Panel { Location = new Point(700, 8), Size = new Size(452, 80), BackColor = C_RIBBON, Parent = ribbon };
+infoPnl.Paint += (_, ev) => ev.Graphics.DrawRectangle(new Pen(C_RIBBON_MU), 0, 6, infoPnl.Width - 1, infoPnl.Height - 10);
+new Label { Text = "Información del documento", Font = new Font("Segoe UI", 8f), ForeColor = C_RIBBON_MU, BackColor = C_RIBBON, Location = new Point(8, 0), AutoSize = true, Parent = infoPnl };
+
+new Label { Text = "Fecha:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 24), AutoSize = true, Parent = infoPnl };
+var dtFecha = new DateTimePicker { Location = new Point(60, 21), Size = new Size(100, 23), Format = DateTimePickerFormat.Short, Font = F_BODY, Parent = infoPnl };
+
+new Label { Text = "Serie:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(172, 24), AutoSize = true, Parent = infoPnl };
+var txtSerie = new TextBox { Location = new Point(212, 21), Size = new Size(90, 23), Font = F_BODY, Parent = infoPnl };
+
+new Label { Text = "Folio:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 52), AutoSize = true, Parent = infoPnl };
+var txtFolio = new TextBox { Location = new Point(60, 49), Size = new Size(100, 23), Font = F_BODY, Parent = infoPnl };
+new Label { Text = "(consecutivo)", Font = F_SM, ForeColor = C_RIBBON_MU, BackColor = C_RIBBON, Location = new Point(172, 52), AutoSize = true, Parent = infoPnl };
+
+new Label { Text = "Cond. pago:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(312, 24), AutoSize = true, Parent = infoPnl };
+var cboCond = new ComboBox { Location = new Point(312, 45), Size = new Size(130, 23), Font = F_BODY, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, Parent = infoPnl };
+foreach (var c in condiciones)
+    cboCond.Items.Add(new Opt(Convert.ToString(c["PaymentTermName"]), Convert.ToInt32(c["PaymentTermID"])));
+
+// ═══════════════════ HELPERS DE GRUPO ═══════════════════
+Panel CreateGroup(string title, int x, int y, int w, int h, Control parent) {
+    var p = new Panel { Location = new Point(x, y), Size = new Size(w, h), BackColor = C_PANEL, Parent = parent };
+    p.Paint += (s, e) => {
+        var g = e.Graphics;
+        g.DrawRectangle(new Pen(C_BORDER), 0, 0, w - 1, h - 1);
+        g.FillRectangle(new SolidBrush(C_HEADER), 1, 1, w - 2, 28);
+        g.DrawLine(new Pen(C_BORDER), 0, 29, w, 29);
+        g.DrawString(title, F_H2, new SolidBrush(C_TEXT), new PointF(10, 5));
+    };
+    return p;
+}
+Label Lbl(string txt, int x, int y, Control p) {
+    return new Label { Text = txt, Location = new Point(x, y), Font = F_BODY, AutoSize = true, Parent = p };
+}
+void SelectByVal(ComboBox cbo, int val) {
+    for (int i = 0; i < cbo.Items.Count; i++)
+        if ((cbo.Items[i] as Opt)?.Val == val) { cbo.SelectedIndex = i; return; }
+    if (cbo.Items.Count > 0) cbo.SelectedIndex = 0;
+}
+SelectByVal(cboCond, 4); // 50%-50% por defecto, igual que la captura real
+
+int topY = 116;
+
+// ═══════════════════ 1. PROVEEDOR Y ÓRDENES ORIGEN ═══════════════════
+var grpProv = CreateGroup("1. Proveedor y Órdenes de Compra origen", 10, topY, 1160, 70, frm);
+Lbl("Proveedor:", 15, 38, grpProv);
+var lblProv = new TextBox { Text = proveedorNombre, Location = new Point(85, 36), Size = new Size(320, 23), ReadOnly = true, Font = F_BODY, Parent = grpProv };
+Lbl("RFC:", 420, 38, grpProv);
+var lblRfc = new TextBox { Text = proveedorRfc, Location = new Point(455, 36), Size = new Size(150, 23), ReadOnly = true, Font = F_BODY, ForeColor = C_MUTED, Parent = grpProv };
+Lbl("Órdenes:", 620, 38, grpProv);
+var lblOcs = new TextBox { Text = ocsResumenTexto, Location = new Point(680, 36), Size = new Size(460, 23), ReadOnly = true, Font = F_BODY, Parent = grpProv };
+
+topY += 80;
+
+// ═══════════════════ 2. PARTIDAS A FACTURAR ═══════════════════
+var grpPart = CreateGroup("2. Partidas a facturar (marca las que quieras enviar a esta factura)", 10, topY, 1160, 320, frm);
+var grid = new DataGridView {
+    Location = new Point(15, 35), Size = new Size(1130, 275), BackgroundColor = C_PANEL, BorderStyle = BorderStyle.FixedSingle,
+    ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None, EnableHeadersVisualStyles = false,
+    RowHeadersVisible = false, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
+    SelectionMode = DataGridViewSelectionMode.CellSelect, MultiSelect = false, GridColor = C_BORDER, Parent = grpPart
+};
+grid.ColumnHeadersDefaultCellStyle.BackColor = C_HEADER;
+grid.ColumnHeadersDefaultCellStyle.ForeColor = C_TEXT;
+grid.ColumnHeadersDefaultCellStyle.Font = F_H2;
+grid.ColumnHeadersHeight = 28;
+
+DataGridViewColumn Col(string name, string header, int width, bool readOnly, DataGridViewContentAlignment align = DataGridViewContentAlignment.MiddleLeft, string fmt = null, bool chk = false, bool combo = false, object[] comboItems = null) {
+    DataGridViewColumn c;
+    if (chk) c = new DataGridViewCheckBoxColumn { Name = name, HeaderText = header, Width = width };
+    else if (combo) {
+        var cc = new DataGridViewComboBoxColumn { Name = name, HeaderText = header, Width = width, FlatStyle = FlatStyle.Flat, DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton };
+        if (comboItems != null) cc.Items.AddRange(comboItems);
+        c = cc;
+    } else c = new DataGridViewTextBoxColumn { Name = name, HeaderText = header, Width = width, ReadOnly = readOnly };
+    if (!chk && !combo) { c.DefaultCellStyle.Alignment = align; if (fmt != null) c.DefaultCellStyle.Format = fmt; }
+    grid.Columns.Add(c);
+    return c;
+}
+var impuestoOpts = impuestos.Select(t => (object)new Opt(Convert.ToString(t["TaxTypeName"]), Convert.ToInt32(t["TaxTypeID"]))).ToArray();
+foreach (var t in impuestos) taxPercByType[Convert.ToInt32(t["TaxTypeID"])] = Convert.ToDouble(t["IVA_Perc"] ?? 0);
+
+Col("Incluir", "", 40, false, chk: true);
+Col("PID", "PID", 0, true).Visible = false;
+Col("OcFolio", "ORDEN(ES)", 110, true);
+Col("Key", "CLAVE", 85, true);
+var cDesc = Col("Desc", "DESCRIPCIÓN", 170, true);
+cDesc.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+Col("Unit", "U.M.", 50, true);
+Col("Pendiente", "PENDIENTE", 75, true, DataGridViewContentAlignment.MiddleRight, "N2");
+Col("Cantidad", "CANT. A FACTURAR", 100, false, DataGridViewContentAlignment.MiddleRight, "N2");
+Col("Precio", "PRECIO UNIT.", 90, false, DataGridViewContentAlignment.MiddleRight, "N2");
+Col("Impuesto", "IMPUESTO", 110, false, combo: true, comboItems: impuestoOpts);
+Col("DescPerc", "DESC. %", 65, false, DataGridViewContentAlignment.MiddleRight, "N2");
+Col("Importe", "IMPORTE", 90, true, DataGridViewContentAlignment.MiddleRight, "N2");
+Col("ImpuestoMonto", "IMPUESTO $", 90, true, DataGridViewContentAlignment.MiddleRight, "N2");
+Col("TotalLinea", "TOTAL", 95, true, DataGridViewContentAlignment.MiddleRight, "N2");
+grid.DefaultCellStyle.SelectionBackColor = C_BLUE_SEL;
+grid.DefaultCellStyle.SelectionForeColor = C_TEXT;
+
+var lblPartVacio = new Label { Text = "Cargando partidas pendientes de facturar…", Font = F_BODY, ForeColor = C_MUTED, AutoSize = true, Location = new Point(400, 120), Parent = grpPart };
+
+topY += 330;
+
+// ═══════════════════ 3. COMENTARIOS ═══════════════════
+var grpObs = CreateGroup("3. Comentarios del Documento", 10, topY, 1160, 60, frm);
+var txtObs = new TextBox { Multiline = true, Location = new Point(15, 30), Size = new Size(1130, 22), Font = F_BODY, ScrollBars = ScrollBars.Vertical, Parent = grpObs };
+
+topY += 70;
+
+// ═══════════════════ 4. TOTALES ═══════════════════
+var grpTotales = CreateGroup("4. Totales", 10, topY, 1160, 90, frm);
+Lbl("Subtotal:", 15, 38, grpTotales);
+var lblTSubtotal = new Label { Text = "$0.00", Font = F_BODY, AutoSize = false, Size = new Size(150, 20), TextAlign = ContentAlignment.MiddleRight, Location = new Point(95, 36), Parent = grpTotales };
+Lbl("Descuento:", 270, 38, grpTotales);
+var lblTDescuento = new Label { Text = "-$0.00", Font = F_BODY, ForeColor = C_DANGER, AutoSize = false, Size = new Size(150, 20), TextAlign = ContentAlignment.MiddleRight, Location = new Point(355, 36), Parent = grpTotales };
+Lbl("Impuestos:", 525, 38, grpTotales);
+var lblTImpuestos = new Label { Text = "$0.00", Font = F_BODY, AutoSize = false, Size = new Size(150, 20), TextAlign = ContentAlignment.MiddleRight, Location = new Point(605, 36), Parent = grpTotales };
+var lblTotalCap = new Label { Text = "TOTAL:", Font = F_H2, AutoSize = true, Location = new Point(830, 35), Parent = grpTotales };
+var lblTTotal = new Label { Text = "$0.00", Font = new Font("Segoe UI", 13f, FontStyle.Bold), ForeColor = C_PRIMARY, AutoSize = false, Size = new Size(190, 26), TextAlign = ContentAlignment.MiddleRight, Location = new Point(905, 32), Parent = grpTotales };
+Lbl("Son:", 15, 66, grpTotales);
+var lblTotalLetra = new Label { Text = "SON: CERO PESOS 00/100 M.N.", Font = new Font("Segoe UI", 8.5f, FontStyle.Italic), ForeColor = C_MUTED, AutoSize = true, Location = new Point(55, 67), Parent = grpTotales };
+
+topY += 100;
+
+// ═══════════════════ 5. FOOTER ═══════════════════
+var footerY = frm.ClientSize.Height - 44;
+var pnlFooter = new Panel { Location = new Point(0, footerY), Size = new Size(1200, 44), BackColor = C_PANEL, Parent = frm };
+pnlFooter.Paint += (s, e) => e.Graphics.DrawLine(new Pen(C_BORDER), 0, 0, 1200, 0);
+Lbl("Elaboró:", 20, 13, pnlFooter);
+string elaboro = ""; try { elaboro = ctx.erp.UserName; } catch { }
+new TextBox { Text = elaboro, Location = new Point(80, 11), Size = new Size(200, 23), ReadOnly = true, Font = F_BODY, Parent = pnlFooter };
+new Label { Text = "Mod. 152  Factura de Compra  ·  no afecta inventario  ·  genera póliza contable  ·  Usa 💾 Guardar (F5).", Location = new Point(300, 13), AutoSize = true, Font = F_BODY, ForeColor = C_MUTED, Parent = pnlFooter };
+
+// ═══════════════════ NÚMERO A LETRAS ═══════════════════
+string[] UNIDADES = { "", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ",
+    "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE" };
+string[] DECENAS = { "", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA" };
+string[] VEINTI = { "VEINTIUNO", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO", "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE" };
+string[] CENTENAS = { "", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS",
+    "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS" };
+string Centenas_(int n) {
+    if (n == 0) return "";
+    if (n == 100) return "CIEN";
+    string s = "";
+    int c = n / 100, r = n % 100;
+    if (c > 0) s += CENTENAS[c] + " ";
+    if (r > 0) {
+        if (r <= 20) s += UNIDADES[r];
+        else {
+            int d = r / 10, u = r % 10;
+            if (d == 2 && u > 0) s += VEINTI[u - 1];
+            else { s += DECENAS[d]; if (u > 0) s += " Y " + UNIDADES[u]; }
+        }
+    }
+    return s.Trim();
+}
+string EnLetras(long n) {
+    if (n == 0) return "CERO";
+    string resultado = "";
+    long millones = n / 1000000; n %= 1000000;
+    long miles = n / 1000; n %= 1000;
+    long resto = n;
+    if (millones > 0) resultado += (millones == 1 ? "UN MILLÓN " : Centenas_((int)millones) + " MILLONES ");
+    if (miles > 0) resultado += (miles == 1 ? "MIL " : Centenas_((int)miles) + " MIL ");
+    if (resto > 0) resultado += Centenas_((int)resto);
+    resultado = resultado.Trim();
+    if (resultado.EndsWith("UNO")) resultado = resultado.Substring(0, resultado.Length - 3) + "UN";
+    return resultado;
+}
+string NumeroALetras(double valor) {
+    if (valor < 0) valor = 0;
+    long entero = (long)Math.Floor(valor);
+    int centavos = (int)Math.Round((valor - entero) * 100);
+    return EnLetras(entero) + " PESOS " + centavos.ToString("00") + "/100";
+}
+
+// ═══════════════════ LÓGICA CORE ═══════════════════
+void PrecargarFolio() {
+    try {
+        string pre = ctx.erp.GetFolioPrefix(152, depotOrigen);
+        string fol = ctx.erp.GetNextFolio(152, pre, depotOrigen);
+        txtSerie.Text = pre ?? "";
+        txtFolio.Text = fol ?? "";
+    } catch { txtSerie.Text = "FC"; txtFolio.Text = ""; }
+}
+
+// Cálculo PROPIO de "cuánto de esta partida de OC ya se facturó" -- igual que en Recepción de
+// Compra pero usando docDocumentItem.SourceDocumentItemID (el campo que copia el nativo al
+// transformar OC->FC), contra facturas de compra (ModuleID=152) ya guardadas. Consolida por
+// producto entre las OC seleccionadas, igual que en Recepción.
+void CargarPartidasPendientes() {
+    List<Dictionary<string, object>> rows;
+    try {
+        rows = ctx.Query(
+            "SELECT d.DocumentID, d.FolioPrefix, d.Folio, " +
+            "i.DocumentItemID, i.ProductID, ISNULL(p.ProductKey, i.ProductKey) AS ProductKey, " +
+            "ISNULL(p.ProductName, i.Description) AS ProductName, i.Unit, i.TaxTypeID, i.TaxPerc, " +
+            "i.UnitPrice, i.DiscountPerc, i.Quantity AS Ordenado, " +
+            "ISNULL((SELECT SUM(fi.Quantity) FROM docDocumentItem fi " +
+            "        INNER JOIN docDocument fd ON fd.DocumentID = fi.DocumentID " +
+            "        WHERE fi.SourceDocumentItemID = i.DocumentItemID AND fi.DeletedOn IS NULL " +
+            "          AND fd.DeletedOn IS NULL AND fd.CancelledOn IS NULL), 0) AS YaFacturado " +
+            "FROM docDocumentItem i " +
+            "INNER JOIN docDocument d ON d.DocumentID = i.DocumentID " +
+            "LEFT JOIN orgProduct p ON p.ProductID = i.ProductID " +
+            "WHERE d.DocumentID IN (" + ctx.JoinIds(idsSeleccionados) + ") " +
+            "  AND i.DeletedOn IS NULL AND i.ProductID > 0 " +
+            "ORDER BY d.DocumentID, i.LineNumber");
+    } catch (Exception ex) {
+        ctx.Msg("Error al calcular pendientes de facturar: " + ex.Message, "Error");
+        return;
+    }
+
+    var porProducto = new Dictionary<int, PartidaConsolidada>();
+    var ocFolioPorId = ocsSeleccionadas.ToDictionary(
+        r => Convert.ToInt32(r["DocumentID"]),
+        r => Convert.ToString(r["FolioPrefix"]) + Convert.ToString(r["Folio"]));
+
+    foreach (var r in rows) {
+        double ordenado = Convert.ToDouble(r["Ordenado"] ?? 0);
+        double yaFacturado = Convert.ToDouble(r["YaFacturado"] ?? 0);
+        double pendiente = ordenado - yaFacturado;
+        if (pendiente <= 0.0001) continue; // ya se facturó completo esta partida
+
+        int pid = Convert.ToInt32(r["ProductID"]);
+        int docId = Convert.ToInt32(r["DocumentID"]);
+        var fuenteItem = new Item {
+            PID = pid,
+            SourceItemId = Convert.ToInt32(r["DocumentItemID"]),
+            OcFolio = ocFolioPorId.ContainsKey(docId) ? ocFolioPorId[docId] : ("Doc " + docId),
+            Key = Convert.ToString(r["ProductKey"]),
+            Desc = Convert.ToString(r["ProductName"]),
+            Unit = Convert.ToString(r["Unit"]),
+            TaxTypeId = Convert.ToInt32(r["TaxTypeID"] ?? 0),
+            TaxPerc = Convert.ToDouble(r["TaxPerc"] ?? 0),
+            Precio = Convert.ToDouble(r["UnitPrice"] ?? 0),
+            DescuentoPerc = Convert.ToDouble(r["DiscountPerc"] ?? 0),
+            Pendiente = pendiente
+        };
+
+        if (!porProducto.TryGetValue(pid, out var pc)) {
+            pc = new PartidaConsolidada {
+                PID = pid, Key = fuenteItem.Key, Desc = fuenteItem.Desc, Unit = fuenteItem.Unit,
+                TaxTypeId = fuenteItem.TaxTypeId, TaxPerc = fuenteItem.TaxPerc, Precio = fuenteItem.Precio,
+                DescuentoPerc = fuenteItem.DescuentoPerc
+            };
+            porProducto[pid] = pc;
+        }
+        pc.Fuentes.Add(fuenteItem);
+    }
+
+    partidasAFacturar.Clear();
+    foreach (var pc in porProducto.Values) {
+        pc.Pendiente = pc.Fuentes.Sum(f => f.Pendiente);
+        pc.Qty = pc.Pendiente;
+        pc.OcsResumen = string.Join(", ", pc.Fuentes.Select(f => f.OcFolio).Distinct());
+        partidasAFacturar.Add(pc);
+    }
+    RefreshGrid();
+}
+
+void RefreshGrid() {
+    grid.Rows.Clear();
+    double subtotal = 0, descuentoTotal = 0, impuestosTotal = 0;
+    foreach (var it in partidasAFacturar) {
+        double importe = it.Qty * it.Precio;
+        double descMonto = importe * it.DescuentoPerc;
+        double neto = importe - descMonto;
+        double impMonto = neto * it.TaxPerc;
+        double totalLinea = neto + impMonto;
+        subtotal += importe; descuentoTotal += descMonto; impuestosTotal += impMonto;
+
+        int i = grid.Rows.Add(true, it.PID, it.OcsResumen, it.Key, it.Desc, it.Unit, it.Pendiente, it.Qty,
+            it.Precio, null, it.DescuentoPerc * 100, importe, impMonto, totalLinea);
+        var impOpt = (grid.Columns["Impuesto"] as DataGridViewComboBoxColumn)?.Items.Cast<Opt>().FirstOrDefault(o => o.Val == it.TaxTypeId);
+        grid.Rows[i].Cells["Impuesto"].Value = impOpt;
+    }
+    lblPartVacio.Visible = partidasAFacturar.Count == 0;
+    lblPartVacio.Text = "No hay partidas pendientes de facturar en las Órdenes de Compra seleccionadas.";
+
+    double granTotal = subtotal - descuentoTotal + impuestosTotal;
+    lblTSubtotal.Text = "$" + subtotal.ToString("N2");
+    lblTDescuento.Text = "-$" + descuentoTotal.ToString("N2");
+    lblTImpuestos.Text = "$" + impuestosTotal.ToString("N2");
+    lblTTotal.Text = "$" + granTotal.ToString("N2");
+    lblTotalLetra.Text = "SON: " + NumeroALetras(granTotal) + " M.N.";
+}
+
+// Regenera la agenda de pago con los MONTOS REALES según la condición de pago elegida.
+// OJO (hallazgo del laboratorio, EXP-DOC-factura_compra_001): NuevoDocumento crea un
+// PaymentAgenda placeholder (Amount=0) que Save() no corrige -- Save regenera desde el caché
+// interno de XEngine, no desde la BD, así que queda con montos inválidos si no se hace esto.
+void RegenerarPaymentAgenda(int doc, int paymentTermId) {
+    double total = Convert.ToDouble(ctx.Scalar("SELECT Total FROM docDocument WHERE DocumentID=" + doc) ?? 0);
+    var detalle = ctx.Query("SELECT PaymentPerc, PaymentUnit, PaymentPeriod FROM engPaymentTermDetail WHERE PaymentTermID=" + paymentTermId + " ORDER BY PaymentTermDetailID");
+    if (detalle.Count == 0) return; // condición sin detalle configurado: se deja el placeholder tal cual
+
+    ctx.NonQuery("UPDATE docDocumentPaymentAgenda SET DeletedOn=GETDATE() WHERE DeletedOn IS NULL AND DocumentID=" + doc);
+    int numero = 1;
+    foreach (var d in detalle) {
+        double perc = Convert.ToDouble(d["PaymentPerc"] ?? 0);
+        int unidad = Convert.ToInt32(d["PaymentUnit"] ?? 1);
+        int periodo = Convert.ToInt32(d["PaymentPeriod"] ?? 0);
+        // PaymentUnit visto en captura real: 1=días/inmediato, 2=semanas, 3=meses.
+        string expresionFecha = unidad == 3 ? "DATEADD(MONTH," + periodo + ",GETDATE())"
+                              : unidad == 2 ? "DATEADD(DAY," + (periodo * 7) + ",GETDATE())"
+                              : "DATEADD(DAY," + periodo + ",GETDATE())";
+        double monto = total * perc / 100.0;
+        ctx.NonQuery(
+            "INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" +
+            doc + ", " + expresionFecha + ", " + perc.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", " +
+            monto.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", " + numero + ", GETDATE(), " + ctx.UserID + ")");
+        numero++;
+    }
+}
+
+void LimpiarTodo() {
+    foreach (var it in partidasAFacturar) it.Qty = it.Pendiente;
+    RefreshGrid();
+    txtObs.Clear();
+}
+
+// ═══════════════════ CREAR EN CONTPAQi ═══════════════════
+void CrearFactura() {
+    if (partidasAFacturar.Count == 0 || partidasAFacturar.All(p => p.Qty <= 0)) {
+        ctx.Msg("Marca al menos una partida con cantidad a facturar mayor a 0."); return;
+    }
+    foreach (var it in partidasAFacturar) {
+        if (it.Qty > it.Pendiente + 0.0001) {
+            ctx.Msg("La cantidad a facturar de \"" + it.Desc + "\" (" + it.Qty.ToString("N2") + ") no puede ser mayor a lo pendiente (" + it.Pendiente.ToString("N2") + ").", "Cantidad inválida");
+            return;
+        }
+    }
+    var condSel = cboCond.SelectedItem as Opt;
+    int condId = condSel?.Val ?? 1;
+
+    if (!ctx.Confirm("¿Crear factura de compra con " + partidasAFacturar.Count(p => p.Qty > 0) + " partida(s)?")) return;
+
+    frm.Cursor = Cursors.WaitCursor;
+    var btnG = toolButtons["guardar"]; btnG.Enabled = false;
+    try {
+        int doc = ctx.erp.NuevoDocumento(152, depotOrigen, proveedorBE); // 152 = Factura de Compra
+        if (doc <= 0 || !string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("NuevoDocumento: " + ctx.erp.LastError);
+
+        // Perfil de encabezado confirmado en EXP-DOC-factura_compra_001: DepotIDFrom=0,
+        // StatusDeliveryID=0 (NO 3 como la OC), Campaign/CostCenter/Project=NULL.
+        string folioManual = (txtFolio.Text ?? "").Trim();
+        ctx.NonQuery(
+            "UPDATE docDocument SET DepotIDFrom=0, UserID=0, PaymentTermID=" + condId + ", StatusDeliveryID=0, " +
+            "CampaignID=NULL, CostCenterID=NULL, ProjectID=NULL, " +
+            "DateDocument='" + dtFecha.Value.ToString("yyyyMMdd") + "', DateDelivery=GETDATE(), " +
+            "Comments='" + txtObs.Text.Replace("'", "''") + "'" +
+            (folioManual.Length > 0 ? ", Folio=N'" + folioManual.Replace("'", "''") + "'" : "") +
+            " WHERE DocumentID=" + doc);
+
+        // Reparte la cantidad consolidada entre sus OC de origen (la más antigua primero) para
+        // que cada partida lleve el SourceDocumentItemID correcto de SU partida de OC.
+        foreach (var pc in partidasAFacturar.Where(p => p.Qty > 0)) {
+            double restante = pc.Qty;
+            foreach (var fuente in pc.Fuentes) {
+                if (restante <= 0.0001) break;
+                double aFacturarDeEsta = Math.Min(restante, fuente.Pendiente);
+                if (aFacturarDeEsta <= 0.0001) continue;
+
+                int itemId = ctx.erp.AgregarArticulo(doc, pc.PID, aFacturarDeEsta, pc.Precio, -1, pc.TaxTypeId, pc.DescuentoPerc,
+                    fuente.SourceItemId);
+                if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("AgregarArticulo: " + ctx.erp.LastError);
+
+                restante -= aFacturarDeEsta;
+            }
+        }
+
+        // Relación producto-proveedor (igual que OC/RC).
+        long supplierID = Convert.ToInt64(ctx.Scalar("SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + proveedorBE));
+        foreach (var pid in partidasAFacturar.Where(p => p.Qty > 0).Select(p => p.PID).Distinct())
+            ctx.NonQuery(
+                "IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + pid + " AND SupplierID=" + supplierID + ") " +
+                "INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber) VALUES (" + pid + ", " + supplierID + ", 0, 3, 0)");
+
+        ctx.erp.RecalcCompleto(doc);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("RecalcCompleto: " + ctx.erp.LastError);
+        // Factura de Compra NO afecta inventario -- SIN AffectStockNEW (a diferencia de Recepción).
+        ctx.erp.Save(doc);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("Save: " + ctx.erp.LastError);
+        // Save() ya generó la póliza contable (accPoliza/accPolizaTransaccion) automáticamente
+        // -- no hace falta tocarla. Pero el PaymentAgenda SÍ necesita regenerarse a mano.
+        try { RegenerarPaymentAgenda(doc, condId); } catch (Exception exPA) { ctx.Msg("La factura se creó, pero no se pudo regenerar la agenda de pago: " + exPA.Message, "Aviso"); }
+        try { ctx.erp.RefreshGrid(); } catch { }
+
+        ctx.Msg("Factura de compra " + doc + " creada exitosamente.", "OK");
+        frm.Close();
+    } catch (Exception ex) {
+        ctx.Msg(ex.Message, "Error");
+    } finally {
+        frm.Cursor = Cursors.Default;
+        toolButtons["guardar"].Enabled = true;
+    }
+}
+
+// ═══════════════════ EVENTOS ═══════════════════
+void WireTool(string key, Action a) {
+    var host = toolButtons[key];
+    EventHandler h = (_, __) => { try { a(); } catch (Exception ex) { ctx.Msg(ex.Message, "Error"); } };
+    host.Click += h;
+    foreach (Control ch in host.Controls) ch.Click += h;
+}
+WireTool("guardar",  () => CrearFactura());
+WireTool("cancelar", () => frm.Close());
+WireTool("limpiar",  () => { if (ctx.Confirm("¿Restablecer las cantidades a lo pendiente y limpiar comentarios?")) LimpiarTodo(); });
+
+// OJO (bug real, encontrado en Recepción de Compra): refrescar el grid DENTRO del mismo evento
+// de checkbox/combo puede lanzar una excepción reentrante de WinForms. Se difiere con
+// BeginInvoke -- ver MANUAL.md #11.
+grid.CellEndEdit += (_, ev) => {
+    if (ev.RowIndex < 0 || ev.RowIndex >= partidasAFacturar.Count) return;
+    var it = partidasAFacturar[ev.RowIndex];
+    string col = grid.Columns[ev.ColumnIndex].Name;
+    try {
+        if (col == "Cantidad") it.Qty = Convert.ToDouble(grid.Rows[ev.RowIndex].Cells["Cantidad"].Value ?? it.Qty);
+        else if (col == "Precio") it.Precio = Convert.ToDouble(grid.Rows[ev.RowIndex].Cells["Precio"].Value ?? it.Precio);
+        else if (col == "DescPerc") it.DescuentoPerc = Convert.ToDouble(grid.Rows[ev.RowIndex].Cells["DescPerc"].Value ?? it.DescuentoPerc * 100) / 100.0;
+        else if (col == "Impuesto") {
+            var opt = grid.Rows[ev.RowIndex].Cells["Impuesto"].Value as Opt;
+            if (opt != null) { it.TaxTypeId = opt.Val; it.TaxPerc = taxPercByType.ContainsKey(opt.Val) ? taxPercByType[opt.Val] : 0; }
+        }
+    } catch { }
+    if (it.Qty < 0) it.Qty = 0;
+    if (it.Qty > it.Pendiente) it.Qty = it.Pendiente;
+    if (it.DescuentoPerc < 0) it.DescuentoPerc = 0;
+    if (it.DescuentoPerc > 1) it.DescuentoPerc = 1;
+    grid.BeginInvoke((Action)(() => RefreshGrid()));
+};
+grid.CellContentClick += (_, ev) => {
+    if (ev.RowIndex < 0 || ev.RowIndex >= partidasAFacturar.Count) return;
+    if (grid.Columns[ev.ColumnIndex].Name != "Incluir") return;
+    grid.BeginInvoke((Action)(() => {
+        grid.EndEdit();
+        if (ev.RowIndex >= partidasAFacturar.Count) return;
+        var it = partidasAFacturar[ev.RowIndex];
+        bool marcado = Convert.ToBoolean(grid.Rows[ev.RowIndex].Cells["Incluir"].Value ?? true);
+        it.Qty = marcado ? (it.Qty <= 0 ? it.Pendiente : it.Qty) : 0;
+        RefreshGrid();
+    }));
+};
+
+frm.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.F5) { CrearFactura(); ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Escape) { frm.Close(); ev.Handled = true; }
+};
+
+// ═══════════════════ CLASES ═══════════════════
+class Opt {
+    public string Txt; public int Val;
+    public Opt(string t, int v) { Txt = t; Val = v; }
+    public override string ToString() => Txt;
+}
+// Una partida PENDIENTE de UNA sola Orden de Compra (antes de consolidar por producto).
+class Item {
+    public int PID; public int SourceItemId; public string OcFolio;
+    public string Key; public string Desc; public string Unit;
+    public int TaxTypeId; public double TaxPerc; public double Precio; public double DescuentoPerc;
+    public double Pendiente;
+}
+// Una fila del grid "Partidas a facturar": un producto, posiblemente sumado de VARIAS OC.
+class PartidaConsolidada {
+    public int PID; public string Key; public string Desc; public string Unit;
+    public int TaxTypeId; public double TaxPerc; public double Precio; public double DescuentoPerc;
+    public double Pendiente; public double Qty;
+    public string OcsResumen;
+    public List<Item> Fuentes = new List<Item>();
+}
+
+// ═══════════════════ ARRANQUE: MODELESS ═══════════════════
+PrecargarFolio();
+CargarPartidasPendientes();
+frm.Show();

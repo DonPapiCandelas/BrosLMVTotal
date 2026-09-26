@@ -1,0 +1,434 @@
+// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+// Copyright (C) 2026 Cristofer Candelas Garcia
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+// ClsMain.cs
+// COM server que XEngine (CONTPAQi Comercial) instancia via ProgID "BrosLMV.clsMain".
+// Se ejecuta de forma autonoma, en proceso, sin servicios de licencia externos.
+//
+// XEngine: lee ControlExecute "BrosLMV.<AppKey>" -> CreateObject("BrosLMV.clsMain")
+//          -> setea XEngineLib/UserID -> llama ExecuteFunction("<AppKey>").
+
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using System.Windows.Forms;
+
+[assembly: AssemblyVersion("2.90.0.0")]
+[assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
+
+namespace BrosLMV
+{
+    // GUID fijo: el registro COM no cambia entre recompilaciones.
+    [Guid("E593D5A9-4BAA-4618-A5BB-F7E1F9B0359E")]
+    [ClassInterface(ClassInterfaceType.AutoDual)]
+    [ProgId("BrosLMV.clsMain")]
+    [ComVisible(true)]
+    public class clsMain
+    {
+        // Resolutor de ensamblados: cuando el CLR no encuentre una DLL (Roslyn o sus
+        // dependencias), la cargamos desde la carpeta de NUESTRA DLL ignorando version.
+        // Asi evitamos binding redirects en ComercialSP.exe.config.
+        static clsMain()
+        {
+            try
+            {
+                AppDomain.CurrentDomain.AssemblyResolve += delegate (object s, ResolveEventArgs e)
+                {
+                    try
+                    {
+                        string dir    = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                        string simple = new AssemblyName(e.Name).Name;
+                        string path   = Path.Combine(dir, simple + ".dll");
+                        return File.Exists(path) ? Assembly.LoadFrom(path) : null;
+                    }
+                    catch { return null; }
+                };
+            }
+            catch { }
+        }
+
+        // Consola modeless: una sola instancia viva, compartida entre invocaciones del COM.
+        private static BrosConsola _consola;
+
+        // Propiedades que XEngine puede setear antes de ExecuteFunction.
+        public object XEngineLib       { get; set; } // motor de CONTPAQi (clave)
+        public int    ModuleID         { get; set; }
+        public int    UserID           { get; set; }
+        public int    BusinessEntityID { get; set; }
+        public object IDs              { get; set; } // normalmente null
+        public bool   MustRefreshList  { get; set; }
+
+        // Punto de entrada que invoca XEngine. 'appKey' = texto despues del 1er punto.
+        public void ExecuteFunction(string appKey)
+        {
+            try
+            {
+                Rutas.AsegurarCarpetas();
+                Com.DiagLog("ExecuteFunction: appKey=" + appKey + " UserID=" + UserID + " ModuleID=" + ModuleID +
+                    " proceso=" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + " pid=" + System.Diagnostics.Process.GetCurrentProcess().Id);
+                UiPump.Asegurar(); // deja lista la bomba de marshaling para botones Python
+                switch (appKey)
+                {
+                    case "CONSOLA":
+                        // Abre la consola de scripts MODELESS: se puede minimizar y seguir
+                        // trabajando en Comercial. Una sola instancia; si ya está abierta,
+                        // se restaura y se trae al frente.
+                        if (_consola != null && !_consola.IsDisposed)
+                        {
+                            if (_consola.WindowState == FormWindowState.Minimized)
+                                _consola.WindowState = FormWindowState.Normal;
+                            _consola.Activate();
+                            _consola.BringToFront();
+                        }
+                        else
+                        {
+                            try
+                            {
+                                _consola = new BrosConsola(UserID, XEngineLib);
+                            }
+                            catch (BrosConsola.AccesoDenegadoException)
+                            {
+                                // Contraseña incorrecta o dialogo cancelado -- la Consola nunca
+                                // llega a construirse, no hay nada que mostrar ni que cerrar.
+                                _consola = null;
+                                break;
+                            }
+                            _consola.FormClosed += delegate { _consola = null; };
+                            _consola.Show(); // modeless (no bloquea, no using: se auto-libera al cerrar)
+                        }
+                        break;
+
+                    case "PRUEBA":
+                        MessageBox.Show(
+                            "BrosLMV OK.\nModuleID=" + ModuleID + "  UserID=" + UserID,
+                            "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        break;
+
+                    default:
+                        // Cualquier otro AppKey -> ejecuta scripts\<AppKey>.csx (sin recompilar).
+                        EjecutarScript(appKey);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Error en BrosLMV.ExecuteFunction(" + appKey + "):\n\n" + ex,
+                    "BrosLMV - Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // Hook del botón "Cotizador" dentro de un documento: CONTPAQi Comercial lo invoca cuando
+        // el parámetro de módulo "Cotizador personalizado (DLL.Function)"
+        // (engModuleParameter.ParameterKey='CreateDocQuotationDLLFunction') vale "BrosLMV.Cotizador".
+        // A diferencia del ribbon (que llama ExecuteFunction("<AppKey>")), aquí Comercial invoca
+        // el MÉTODO por su nombre -> tiene que existir en la clase COM. El argumento opcional es
+        // por si la versión de Comercial pasa el documento; no lo necesitamos (el script lo
+        // resuelve con ctx.ObtenerIdDeVentanaActiva()).
+        public void Cotizador(
+            [System.Runtime.InteropServices.Optional] object arg1,
+            [System.Runtime.InteropServices.Optional] object arg2)
+        {
+            ExecuteFunction("Cotizador");
+        }
+
+        // Algunas versiones de CONTPAQi Comercial, para el mismo parametro
+        // "CreateDocQuotationDLLFunction", en vez de partir el valor en "DLL.Funcion" y llamar
+        // ExecuteFunction("Cotizador"), llaman el metodo "CreateQuoteProducts" sobre el objeto
+        // COM (visto en el cliente: error 438 "Object doesn't support this property or method"
+        // porque el metodo no existia). Se expone como alias del mismo hook.
+        public void CreateQuoteProducts(
+            [System.Runtime.InteropServices.Optional] object arg1,
+            [System.Runtime.InteropServices.Optional] object arg2,
+            [System.Runtime.InteropServices.Optional] object arg3)
+        {
+            ExecuteFunction("Cotizador");
+        }
+
+        private void EjecutarScript(string appKey)
+        {
+            var ctx = new ScriptContext(UserID, XEngineLib);
+            // T2.2: si el usuario tiene la preferencia SoloLectura en zzBrosPref, se fuerza
+            // aqui mismo -- ni el ribbon ni ningun boton pueden saltarsela (a diferencia de
+            // la Consola, que ademas deshabilita el checkbox para que no parezca opcional).
+            if (ctx.BrosSoloLecturaForzada()) ctx.SoloLectura = true;
+            string emp = SafeEmpresa(ctx);
+
+            // 1) Buscar el script en SQL (zzBrosScript de la empresa activa). Asi se
+            //    comparte entre todas las terminales de esa empresa.
+            string codigo = null;
+            try { if (ctx.BrosScriptsDisponible()) codigo = ctx.BrosCargar(appKey); } catch { }
+
+            // 1b) Eventos nativos de Comercial (p. ej. Propiedades > Avanzado > Evento=Guardar
+            //     con Funcion="BrosLMV.<Script>_[DocumentID]") sustituyen el token como texto
+            //     ANTES de invocar, asi que el AppKey llega literal como "<Script>_12345". Si no
+            //     hubo match exacto, se intenta con el nombre base + se expone el numero a ctx.
+            if (string.IsNullOrEmpty(codigo))
+            {
+                var mEvento = Regex.Match(appKey, @"^(.+)_(\d+)$");
+                if (mEvento.Success)
+                {
+                    string baseKey = mEvento.Groups[1].Value;
+                    try { if (ctx.BrosScriptsDisponible()) codigo = ctx.BrosCargar(baseKey); } catch { }
+                    if (!string.IsNullOrEmpty(codigo))
+                    {
+                        appKey = baseKey; // para el resto del flujo (lookup de archivo, auditoria, etc.)
+                        ctx.EventoId = long.Parse(mEvento.Groups[2].Value);
+                    }
+                }
+            }
+
+            // 1c) Integridad (T2.3, v2.35.0): solo aplica a scripts que vinieron de
+            //     zzBrosScript (los de archivo no tienen hash que comparar). Best-effort
+            //     total -- BrosVerificarIntegridad() nunca lanza; si regresa null (empresa
+            //     vieja, sin permiso), simplemente no hay nada que verificar y se sigue igual
+            //     que siempre.
+            if (!string.IsNullOrEmpty(codigo))
+            {
+                var integridad = ctx.BrosVerificarIntegridad(appKey, codigo);
+                if (integridad != null)
+                {
+                    if (integridad.ExigeAprobacion && !integridad.EstaAprobado)
+                    {
+                        MessageBox.Show(
+                            "El botón \"" + appKey + "\" requiere aprobación antes de ejecutarse " +
+                            "(preferencia \"ExigirAprobacion\" activa para tu usuario).\n\n" +
+                            "Ábrelo en la Consola BrosLMV y apruébalo.",
+                            "BrosLMV — Requiere aprobación", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    if (integridad.TieneHash && !integridad.Coincide)
+                    {
+                        // Primera version: solo avisa, no bloquea -- el script sigue corriendo
+                        // despues de que el usuario confirma que lo sabe. Best-effort, nunca
+                        // debe tronar ni bloquear la ejecucion por fallar este registro.
+                        try
+                        {
+                            Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
+                                "integridad", 0, 0, "ADVERTENCIA",
+                                "Hash de Codigo no coincide con HashSHA256 guardado -- modificado por fuera de la Consola.",
+                                ctx);
+                        }
+                        catch { }
+                        MessageBox.Show(
+                            "El botón \"" + appKey + "\" fue modificado por fuera de la Consola BrosLMV " +
+                            "(el código no coincide con la última vez que se guardó desde ahí).\n\n" +
+                            "Va a ejecutarse igual. Si no reconoces este cambio, avisa al responsable.",
+                            "BrosLMV — Integridad", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                }
+            }
+
+            // 2) Compatibilidad: si no esta en SQL, buscar archivo (empresa y luego raiz).
+            //    .py = Python (host v3.0); .ctx/.csx = C# (Roslyn, en proceso).
+            bool esPython = false, esSql = false;
+            if (string.IsNullOrEmpty(codigo))
+            {
+                foreach (var dir in new[] { Rutas.ScriptsDe(emp), Rutas.Scripts })
+                {
+                    foreach (var ext in new[] { ".py", ".sql", ".ctx", ".csx" })
+                    {
+                        string p = Path.Combine(dir, appKey + ext);
+                        if (File.Exists(p))
+                        {
+                            try { codigo = File.ReadAllText(p); } catch { }
+                            esPython = (ext == ".py");
+                            esSql = (ext == ".sql");
+                            break;
+                        }
+                    }
+                    if (!string.IsNullOrEmpty(codigo)) break;
+                }
+            }
+
+            // Scripts en SQL (zzBrosScript) declaran su lenguaje con un marcador en la 1a linea.
+            bool esReceta = false;
+            if (!esPython && !esSql && !string.IsNullOrEmpty(codigo))
+            {
+                esPython = HostClient.EsPython(codigo);
+                if (!esPython) esSql = HostClient.EsSql(codigo);
+                if (!esPython && !esSql) esReceta = HostClient.EsReceta(codigo);
+            }
+
+            if (string.IsNullOrEmpty(codigo))
+            {
+                MessageBox.Show(
+                    "AppKey desconocido: " + appKey + "\n\nNo esta en zzBrosScript de \"" + emp +
+                    "\" ni como archivo.",
+                    "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Tokens tipados {DATOS:Tabla.Columna} (v2.75.0+): si el texto trae alguno, pide
+            // un formulario ANTES de ejecutar -- aplica a sql/python/csharp por igual (es
+            // sustitución de texto plano sobre "codigo", antes de que cada runner lo vea).
+            // Sin match, cero cambio de comportamiento (ningún script del catálogo actual
+            // usa punto dentro de {DATOS:...}).
+            var resDatos = HostClient.ResolverFormularioTokens(codigo, ctx);
+            if (resDatos.HuboTokens)
+            {
+                if (!string.IsNullOrEmpty(resDatos.Error))
+                {
+                    MessageBox.Show(resDatos.Error, "BrosLMV — token {DATOS:...}", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                if (resDatos.Cancelado) return; // cancelado por el usuario: sin mensaje de error, no se ejecuta nada.
+                codigo = resDatos.Codigo;
+            }
+
+            if (esPython) { EjecutarPython(appKey, codigo, ctx, emp); return; }
+            if (esSql)    { EjecutarSql(appKey, codigo, ctx, emp); return; }
+            if (esReceta) { EjecutarReceta(appKey, codigo, ctx, emp); return; }
+
+            // --- Script C# (Roslyn, en proceso) ---
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string res = ScriptRunner.Ejecutar(codigo, ctx);
+            sw.Stop();
+            try
+            {
+                Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
+                    "boton", sw.ElapsedMilliseconds, ctx.FilasAfectadas,
+                    res == "" ? "OK" : "ERROR", res, ctx);
+            }
+            catch { }
+            if (res != "")
+                MessageBox.Show(res, "Error en script " + appKey,
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        // --- Script Python (host v3.0, fuera de proceso) ---
+        private void EjecutarPython(string appKey, string codigo, ScriptContext ctx, string emp)
+        {
+            // Evita lanzar el mismo botón dos veces mientras la primera ejecución sigue en
+            // curso (doble clic / impaciencia) -- cada ejecución superpuesta compite por el
+            // mismo hilo de Comercial vía UiPump y puede disparar el "busy" nativo de Windows.
+            if (!GuardiaEjecucion.TryEntrar(appKey))
+            {
+                MessageBox.Show("\"" + appKey + "\" ya se está ejecutando. Espera a que termine antes de volver a hacer clic.",
+                    "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Congelar el contexto del botón AQUI, en el hilo de Comercial (rápido, sin
+            // I/O): igual que antes, el script ve el módulo/selección del momento del clic.
+            var hctx = new HostClient.Contexto
+            {
+                AppKey      = appKey,
+                Empresa     = emp,
+                Servidor    = ctx.ServidorActivo(),
+                BaseDatos   = emp,                 // la BD activa; el host la usa para el SQL
+                UserId      = ctx.UserIdReal(),    // UserID del COM viene 0; el real está en ctx.erp
+                ModuleId    = ctx.ModuloActivo(),
+                Language    = "python",
+                SelectedIds = ctx.GetSelectedIds().ToArray(),
+                FilaActiva  = ctx.GetFilaActiva(),
+            };
+            int timeoutMs = HostClient.TimeoutMsFromHeader(codigo);
+
+            // A partir de aquí, TODO corre en segundo plano: Comercial no se queda
+            // esperando bloqueado (así una ventana Python interactiva -crear un
+            // documento, etc.- no congela Comercial ni impide abrir otros botones).
+            // Las llamadas reales a ctx.query/ctx.erp (dentro de CtxSqlRunner/CtxErpRunner)
+            // se remiten de vuelta al hilo de Comercial vía UiPump: siguen siendo el
+            // único hilo que toca el COM de CONTPAQi, solo que Comercial ya no espera.
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                HostClient.Resultado r;
+                try
+                {
+                    r = HostClient.EjecutarPython(codigo, hctx, timeoutMs: timeoutMs,
+                        sqlRunner: new CtxSqlRunner(ctx), erpRunner: new CtxErpRunner(ctx));
+                }
+                catch (Exception ex)
+                {
+                    r = new HostClient.Resultado { Exito = false, CodigoError = "BOTON_PYTHON_ERROR", MensajeError = ex.Message, Detalle = ex.StackTrace ?? "" };
+                }
+                sw.Stop();
+
+                // Auditoría + diálogos: de vuelta al hilo de Comercial (SQLite/MessageBox
+                // conviene mostrarlos siempre desde ahí, no desde un hilo del ThreadPool).
+                UiPump.Invoke(() =>
+                {
+                    try
+                    {
+                        Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
+                            "boton-python", sw.ElapsedMilliseconds, r.FilasAfectadas,
+                            r.Exito ? "OK" : "ERROR",
+                            r.Exito ? r.Valor : HostClient.FormatearError(r), ctx);
+                    }
+                    catch { }
+
+                    if (!r.Exito)
+                        MessageBox.Show(HostClient.FormatearError(r),
+                            "Error en script Python " + appKey, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    else if (!string.IsNullOrEmpty(r.Valor))
+                        MessageBox.Show(r.Valor, "BrosLMV - " + appKey,
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                });
+                GuardiaEjecucion.Salir(appKey);
+            });
+        }
+
+        // --- Script SQL crudo (tipo 'sql', corrido por la conexion viva) ---
+        private void EjecutarSql(string appKey, string codigo, ScriptContext ctx, string emp)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string res;
+            try { res = ctx.EjecutarSql(codigo); }
+            catch (Exception ex) { res = "ERROR: " + ex.Message; }
+            sw.Stop();
+
+            bool error = res.StartsWith("ERROR");
+            try
+            {
+                Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
+                    "boton-sql", sw.ElapsedMilliseconds, ctx.FilasAfectadas,
+                    error ? "ERROR" : "OK", res, ctx);
+            }
+            catch { }
+
+            MessageBox.Show(res, "BrosLMV SQL - " + appKey, MessageBoxButtons.OK,
+                error ? MessageBoxIcon.Error : MessageBoxIcon.Information);
+        }
+
+        private void EjecutarReceta(string appKey, string codigo, ScriptContext ctx, string emp)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string res;
+            try { res = RecetasRegistro.Ejecutar(codigo, ctx); }
+            catch (Exception ex) { res = "ERROR: " + ex.Message; }
+            sw.Stop();
+
+            bool error = res.StartsWith("ERROR");
+            try
+            {
+                Datos.RegistrarEjecucion(emp, ctx.ModuloActivo(), UserID, appKey,
+                    "boton-receta", sw.ElapsedMilliseconds, ctx.FilasAfectadas,
+                    error ? "ERROR" : "OK", res, ctx);
+            }
+            catch { }
+
+            MessageBox.Show(res, "BrosLMV Receta - " + appKey, MessageBoxButtons.OK,
+                error ? MessageBoxIcon.Error : MessageBoxIcon.Information);
+        }
+
+        private static string SafeEmpresa(ScriptContext ctx)
+        { try { return ctx.Empresa(); } catch { return ""; } }
+    }
+}

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>BrosLMV-Desinstalador</AssemblyName>
+    <RootNamespace>BrosLMV.Desinstalador</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <LangVersion>latest</LangVersion>
+    <AssemblyTitle>BrosLMV - Desinstalador</AssemblyTitle>
+    <Product>BrosLMV</Product>
+    <!-- Valor de respaldo si se compila fuera de build\generar_exes.ps1 (que pasa
+         /p:Version= tomado del addon empacado, fuente de verdad real). -->
+    <Version>2.18.1</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Data" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="assets\logo_blanco.png" />
+    <Resource Include="assets\logo_mono.png" />
+    <Resource Include="assets\app_icon.png" />
+    <EmbeddedResource Include="assets\desprovision_empresa.sql" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,1 @@
+{"receta":"sql_tokens","config":{"sql":"SELECT COUNT(*) AS N FROM zzBrosScript"}}

@@ -1,0 +1,118 @@
+/* BrosLMV — estilo base para ctx.dashboard(). Compartido por todos los reportes,
+   vive en C:\BrosLMV\lib\dashboard\ (parte del runtime, no de cada script). */
+:root {
+  --bl-bg: #f4f6fa;
+  --bl-card: #ffffff;
+  --bl-border: #e1e6ee;
+  --bl-text: #1f2937;
+  --bl-text-dim: #667085;
+  --bl-primary: #2563eb;
+  --bl-primary-dark: #1d4ed8;
+  --bl-header-bg: #0a3d6e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bl-bg);
+  color: var(--bl-text);
+  font: 14px/1.5 "Segoe UI", Arial, sans-serif;
+}
+
+.bl-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--bl-card);
+  border-bottom: 1px solid var(--bl-border);
+  flex-wrap: wrap;
+}
+
+.bl-toolbar h1 {
+  font-size: 17px;
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 180px;
+}
+
+.bl-toolbar .bl-count {
+  color: var(--bl-text-dim);
+  font-size: 12.5px;
+}
+
+.bl-search {
+  padding: 7px 12px;
+  border: 1px solid var(--bl-border);
+  border-radius: 6px;
+  font-size: 13px;
+  min-width: 200px;
+}
+.bl-search:focus { outline: none; border-color: var(--bl-primary); }
+
+.bl-btn {
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--bl-border);
+  background: var(--bl-card);
+  color: var(--bl-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.bl-btn:hover { background: var(--bl-bg); }
+.bl-btn-primary { background: var(--bl-primary); border-color: var(--bl-primary); color: #fff; }
+.bl-btn-primary:hover { background: var(--bl-primary-dark); }
+
+.bl-content { padding: 16px 18px; }
+
+.bl-table-wrap {
+  background: var(--bl-card);
+  border: 1px solid var(--bl-border);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+table.bl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.bl-table th, table.bl-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--bl-border);
+  text-align: left;
+  white-space: nowrap;
+}
+table.bl-table th {
+  background: var(--bl-header-bg);
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  position: sticky;
+  top: 0;
+}
+table.bl-table th .bl-sort-arrow { opacity: 0.6; font-size: 11px; margin-left: 4px; }
+table.bl-table tr:nth-child(even) td { background: #f8fafc; }
+table.bl-table tr:hover td { background: #eef2ff; }
+
+.bl-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--bl-text-dim);
+}
+
+.bl-pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 4px 0;
+  font-size: 13px;
+  color: var(--bl-text-dim);
+}
+.bl-pager button { padding: 4px 10px; }
+.bl-pager button:disabled { opacity: 0.4; cursor: default; }
+
+.bl-footer {
+  text-align: right;
+  color: var(--bl-text-dim);
+  font-size: 11.5px;
+  padding: 10px 18px 18px;
+}

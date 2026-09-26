@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    BrosLMV.Host — proceso supervisor x64 del canal C# <-> Python (v3.0).
+    Punto C3a: esqueleto + generacion del codigo C# desde protocol/broslmv.proto.
+    El codigo del .proto se genera EN CADA BUILD (Grpc.Tools), no se versiona.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Windows-only: el host habla con el addon de CONTPAQi y usa ACL de Named Pipes. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>BrosLMV.Host</AssemblyName>
+    <RootNamespace>BrosLMV.Host</RootNamespace>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.28.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.68.1" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <!-- ACL para restringir el Named Pipe al usuario de Windows actual (D6). -->
+    <PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <!--
+    El contrato vive en /protocol (compartido con el addon y el paquete Python).
+    GrpcServices=None: solo generamos los mensajes, sin stubs de servicio gRPC.
+  -->
+  <ItemGroup>
+    <Protobuf Include="..\..\protocol\broslmv.proto"
+              ProtoRoot="..\..\protocol"
+              GrpcServices="None"
+              Access="Public" />
+  </ItemGroup>
+
+  <!-- Worker minimo de C3d. En C4 se reemplaza por el CPython embeddable empacado. -->
+  <ItemGroup>
+    <None Include="..\..\workers\python\**\*"
+          Link="workers\python\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

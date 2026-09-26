@@ -1,0 +1,94 @@
+# === Temporales de compilación (NO ignorar instalador/bin: ese es el entregable) ===
+/src/obj/
+/src/bin/
+/runner/obj/
+/runner/bin/
+/build/out/
+/descargas/obj/
+/descargas/bin/
+/descargas-ui/obj/
+/descargas-ui/bin/
+/descargas-ui/config.json
+/descargas-ui/xml/
+/descargas-ui/ui.log
+/descargas-instalador/obj/
+/descargas-instalador/bin/
+/descargas-instalador/payload.zip
+/descargas-desinstalador/obj/
+/descargas-desinstalador/bin/
+/descargas-servicio/obj/
+/descargas-servicio/bin/
+
+# Volcado manual de `dotnet publish` (build de prueba, no es el entregable -- el entregable
+# real es el .exe empaquetado en dist/, ya ignorado abajo).
+/publicado/
+
+# Punto de Venta -- prototipo/investigacion en construccion, deliberadamente fuera del repo
+# publico todavia (ver puntodeventa/DISENO.md para el estado real).
+/puntodeventa/
+/puntodeventa-app/
+
+# === BrosLMV.Descargas: NUNCA subir FIEL de prueba ni datos fiscales reales descargados ===
+/descargas/_pruebas_fiel/
+/descargas/FIEL_2022/
+/descargas/*.cer
+/descargas/*.key
+/descargas/*.zip
+/descargas/sobre_firmado.xml
+/descargas/xml/
+# Carpetas de UUID (CFDI extraidos a mano o por el programa) -- patron GUID a secas en la raiz.
+/descargas/????????-????-????-????-????????????*/
+*.user
+*.suo
+.vs/
+
+# === Pruebas locales / secretos (nunca subir) ===
+.env
+*.env
+*.local
+.temp_tests/
+
+# === Host v3.0 (.NET 8). El codigo del .proto se GENERA en build (obj), no se versiona ===
+/host/*/obj/
+/host/*/bin/
+
+# === Empaque del runtime v3.0: BINARIOS REGENERABLES (NO versionar, ~100 MB) ===
+# host self-contained .NET 8 (build/generar_instalador.ps1), CPython embeddable
+# (build/descargar_python.ps1) y la copia del paquete Python. Se regeneran desde
+# las fuentes en host/ y workers/; no inflar el repo con binarios.
+/instalador/host/
+/instalador/runner/
+/instalador/runtimes/
+/instalador/workers/
+/instalador/lib/
+
+# === BrosLMV.HtmlToPdf (WebView2): binarios regenerables (build/generar_instalador.ps1) ===
+/htmlpdf/bin/
+/htmlpdf/obj/
+/instalador/htmlpdf/
+/instalador/formatos/
+
+# === Salidas de compilacion de los instaladores .exe (regenerables) ===
+/dist/
+/instaladores/*/obj/
+/instaladores/*/bin/
+/instaladores/*/app.ico
+/instaladores/*/assets/
+/instaladores/Empresas/payload.zip
+
+# Nota: instalador/bin/broslmv_conn.txt es solo una PLANTILLA (sin credenciales
+# reales). Las credenciales reales, si llegan a usarse, viven en C:\BrosLMV\bin
+# del equipo, NUNCA en este proyecto.
+
+# Helper de despliegue local (rutas absolutas de la maquina, no publicar)
+/deploy.ps1
+
+# === Basura de compilacion / cache (nunca versionar) ===
+__pycache__/
+*.pdb
+# DLL suelta del addon en la RAIZ (artefacto de build mal ubicado; el entregable
+# real es instalador/bin/BrosLMVClsMain.dll, no este).
+/BrosLMVClsMain.dll
+
+# === Config local del panel de vista previa (no compartir) ===
+.claude/

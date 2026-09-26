@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    BrosLMV.HtmlToPdf: convierte un archivo HTML a PDF bien hecho, usando el motor de Chrome
+    (WebView2), en vez del generador de PDF nativo de Comercial Pro (tecnologia vieja, salen
+    mal formados). Proceso APARTE, igual que BrosLMV.Runner: se invoca desde un boton del
+    addon (via ctx.erp.Call/Process.Start), nunca corre dentro del proceso de Comercial.
+
+    Uso: BrosLMV.HtmlToPdf.exe /html "C:\ruta\entrada.html" /pdf "C:\ruta\salida.pdf"
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>BrosLMV.HtmlToPdf</AssemblyName>
+    <RootNamespace>BrosLMV.HtmlToPdf</RootNamespace>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Misma version que ya usa src/BrosLMV.csproj para ctx.show_html: una sola version de
+         WebView2 en todo el proyecto. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <!--
+    Servicio de Windows "BrosLMV Descargas": reemplaza las 3 Tareas Programadas (pedido
+    explicito del usuario 2026-08-19: "quiero todo en segundo plano... debe existir un
+    servicio"). Referencia el proyecto CLI directo (ProjectReference, no Link de archivos
+    sueltos) para reusar Program.AutoTodasAsync/AutoSolicitarTodasAsync/VerificarEstatusAsync
+    sin duplicar logica ni lanzar el .exe de consola como subproceso (eso era justo la "consola
+    de CMD rara" que reportó el usuario: Tareas Programadas con LogonType=Interactive + un exe
+    de consola abren una ventana visible cada vez que corren).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>BrosLMV.Descargas.Servicio</AssemblyName>
+    <RootNamespace>BrosLMV.Descargas.Servicio</RootNamespace>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\descargas\BrosLMV.Descargas.csproj" />
+  </ItemGroup>
+
+</Project>

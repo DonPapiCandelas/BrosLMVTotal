@@ -1,0 +1,129 @@
+<Window x:Class="BrosLMV.DescargasUI.CfdiDetalleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Detalle de CFDI" Height="780" Width="820" MinHeight="560" MinWidth="640"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip"
+        Background="#F4F6F9">
+  <!-- Estilo Ghost/Tarjeta compartido en App.xaml; Etiqueta/Valor son unicos de esta ventana. -->
+  <Window.Resources>
+    <Style x:Key="Etiqueta" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#64748B"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Margin" Value="0,10,0,0"/>
+    </Style>
+    <Style x:Key="Valor" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#16263A"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+  </Window.Resources>
+
+  <Grid Margin="24">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0">
+      <TextBlock x:Name="LblTitulo" Text="CFDI" FontSize="18" FontWeight="Bold" Foreground="#16263A"/>
+      <TextBlock x:Name="LblUuid" Text="UUID" Foreground="#64748B" FontFamily="Consolas" FontSize="11" Margin="0,4,0,0"/>
+    </StackPanel>
+
+    <ScrollViewer Grid.Row="1" Margin="0,14,0,0" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+
+          <StackPanel Grid.Column="0">
+            <TextBlock Text="Emisor" Style="{StaticResource Etiqueta}" Margin="0,0,0,0"/>
+            <TextBlock x:Name="ValEmisor" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Receptor" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValReceptor" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Serie / Folio" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValFolio" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Tipo de comprobante" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValTipo" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Uso CFDI" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValUsoCfdi" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Forma de pago" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValFormaPago" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Método de pago" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValMetodoPago" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Fecha de emisión" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValFechaEmision" Style="{StaticResource Valor}"/>
+          </StackPanel>
+
+          <StackPanel Grid.Column="2">
+            <TextBlock Text="Subtotal" Style="{StaticResource Etiqueta}" Margin="0,0,0,0"/>
+            <TextBlock x:Name="ValSubtotal" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Descuento" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValDescuento" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Impuestos trasladados" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValIva" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Retenciones" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValRetenciones" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Total" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValTotal" Style="{StaticResource Valor}" FontWeight="Bold"/>
+            <TextBlock Text="Moneda / Tipo de cambio" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValMoneda" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Estatus SAT" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValEstatus" Style="{StaticResource Valor}"/>
+            <TextBlock Text="Descargado" Style="{StaticResource Etiqueta}"/>
+            <TextBlock x:Name="ValFechaDescarga" Style="{StaticResource Valor}"/>
+          </StackPanel>
+        </Grid>
+
+        <!-- Para CFDI tipo Pago (REP) el Concepto es siempre un renglon generico sin informacion
+             util (Pago, Importe=0): lo que de verdad importa ahi son los documentos que se estan
+             pagando (complemento de Pagos), no partidas de producto/servicio. Se muestra uno u
+             otro grid segun el tipo, nunca los dos. -->
+        <StackPanel x:Name="PanelPartidas">
+          <TextBlock Text="Partidas" Style="{StaticResource Etiqueta}" Margin="0,18,0,4"/>
+          <DataGrid x:Name="GridConceptos" BorderThickness="1" BorderBrush="#E6E9EF" IsReadOnly="True" CanUserResizeRows="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Clave" Binding="{Binding ClaveProdServ}" Width="70"/>
+              <DataGridTextColumn Header="Descripción" Binding="{Binding Descripcion}" Width="*"/>
+              <DataGridTextColumn Header="Cantidad" Binding="{Binding Cantidad}" Width="80"/>
+              <DataGridTextColumn Header="Valor unitario" Binding="{Binding ValorUnitario}" Width="100"/>
+              <DataGridTextColumn Header="Importe" Binding="{Binding Importe}" Width="100"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </StackPanel>
+
+        <StackPanel x:Name="PanelDocumentosPagados">
+          <TextBlock Text="Documentos pagados" Style="{StaticResource Etiqueta}" Margin="0,18,0,4"/>
+          <DataGrid x:Name="GridDocumentosPagados" BorderThickness="1" BorderBrush="#E6E9EF" IsReadOnly="True" CanUserResizeRows="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="UUID relacionado" Binding="{Binding UUIDRelacionado}" Width="220" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+              <DataGridTextColumn Header="Serie/Folio" Binding="{Binding SerieFolio}" Width="90"/>
+              <DataGridTextColumn Header="Fecha pago" Binding="{Binding FechaPago}" Width="110"/>
+              <DataGridTextColumn Header="F. Pago" Binding="{Binding FormaDePago}" Width="60"/>
+              <DataGridTextColumn Header="Parcialidad" Binding="{Binding NumParcialidad}" Width="80"/>
+              <DataGridTextColumn Header="Saldo anterior" Binding="{Binding ImpSaldoAnt}" Width="100"/>
+              <DataGridTextColumn Header="Importe pagado" Binding="{Binding ImpPagado}" Width="105"/>
+              <DataGridTextColumn Header="Saldo insoluto" Binding="{Binding ImpSaldoInsoluto}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Padding="16" Margin="0,16,0,0">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+          <TextBlock Text="Vínculo con Comercial Pro" Style="{StaticResource Etiqueta}" Margin="0"/>
+          <TextBlock x:Name="ValVinculo" Style="{StaticResource Valor}"/>
+        </StackPanel>
+        <Button x:Name="BtnVerificarEstatus" Grid.Column="1" Content="Verificar estatus" Style="{StaticResource Ghost}" Margin="0,0,8,0" Click="BtnVerificarEstatus_Click"/>
+        <Button x:Name="BtnAbrirCarpeta" Grid.Column="2" Content="Abrir carpeta del XML" Style="{StaticResource Ghost}" Margin="0,0,8,0" Click="BtnAbrirCarpeta_Click"/>
+        <Button Grid.Column="3" Content="Cerrar" Style="{StaticResource Ghost}" Click="Cerrar_Click"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

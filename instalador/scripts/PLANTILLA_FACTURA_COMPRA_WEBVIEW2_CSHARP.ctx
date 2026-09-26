@@ -1,0 +1,430 @@
+// lang: csharp
+// PLANTILLA: Factura de Compra — versión WebView2 (C#, HTML/CSS real)
+//
+// Qué hace: EXACTAMENTE lo mismo que PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx (transforma
+// 1+ Órdenes de Compra ya seleccionadas en el grid nativo de Comercial en una Factura de
+// Compra real, módulo 152) -- pero la ventana es una página HTML/CSS/JS real (WebView2), no
+// controles de Windows Forms. Mismo origen (ctx.GetSelectedIds()), mismo cálculo de
+// pendientes por SourceDocumentItemID, mismo perfil de encabezado y misma corrección del
+// bug real de la plantilla comunitaria (el vínculo con la OC origen se pone con un UPDATE
+// aparte después de AgregarArticulo, NO con su 8º parámetro -- ver
+// PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx para el detalle completo).
+//
+// Como en el resto de plantillas WebView2 de este catálogo, todo el cálculo de pendientes
+// se hace ANTES de mostrar la ventana y se manda precargado al HTML -- ctx.ShowHtmlFormulario
+// solo espera UN mensaje de vuelta, no hay ida y vuelta con el servidor mientras el usuario
+// captura.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Globalization;
+
+// ═══════════════════ VALIDACIÓN TEMPRANA DE LA SELECCIÓN ═══════════════════
+var idsSeleccionados = ctx.GetSelectedIds();
+if (idsSeleccionados == null || idsSeleccionados.Count == 0) {
+    ctx.Msg("Selecciona una o varias Órdenes de Compra en la lista (Ctrl+clic) antes de usar este botón.", "Sin selección");
+    return;
+}
+
+List<Dictionary<string, object>> ocsSeleccionadas;
+try {
+    ocsSeleccionadas = ctx.Query(
+        "SELECT d.DocumentID, d.BusinessEntityID, d.DepotID, d.FolioPrefix, d.Folio, be.OfficialName, " +
+        "ISNULL(m.OfficialNumber,'') AS RFC " +
+        "FROM docDocument d " +
+        "INNER JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID " +
+        "LEFT JOIN orgBusinessEntityMainInfo m ON m.BusinessEntityID = be.BusinessEntityID " +
+        "WHERE d.DocumentID IN (" + ctx.JoinIds(idsSeleccionados) + ") AND d.ModuleID = 183 " +
+        "  AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL");
+} catch (Exception ex) {
+    ctx.Msg("Error al leer la selección: " + ex.Message, "Error");
+    return;
+}
+if (ocsSeleccionadas.Count == 0) {
+    ctx.Msg("Ninguna de las filas seleccionadas es una Orden de Compra activa (módulo 183).", "Selección inválida");
+    return;
+}
+var proveedoresDistintos = ocsSeleccionadas.Select(r => Convert.ToInt32(r["BusinessEntityID"])).Distinct().ToList();
+if (proveedoresDistintos.Count > 1) {
+    ctx.Msg("Las Órdenes de Compra seleccionadas son de proveedores distintos. Selecciona Órdenes de Compra de UN SOLO proveedor a la vez.", "Selección inválida");
+    return;
+}
+int proveedorBE = proveedoresDistintos[0];
+string proveedorNombre = Convert.ToString(ocsSeleccionadas[0]["OfficialName"]);
+string proveedorRfc = Convert.ToString(ocsSeleccionadas[0]["RFC"]);
+int depotOrigen = Convert.ToInt32(ocsSeleccionadas[0]["DepotID"] ?? 1);
+string ocsResumenTexto = string.Join(", ", ocsSeleccionadas.Select(r => Convert.ToString(r["FolioPrefix"]) + Convert.ToString(r["Folio"])));
+
+// ═══════════════════ DATOS INICIALES ═══════════════════
+var condiciones = ctx.Query("SELECT PaymentTermID, PaymentTermName FROM vwLBSPaymentTermList WHERE Buys=1 AND Deleted=0 ORDER BY PaymentTermID");
+var impuestos = ctx.Query(@"
+    SELECT t.TaxTypeID, t.TaxTypeName, ISNULL(tp.IVA_Perc,0) AS IVA_Perc
+    FROM vwLBSTaxType t LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = t.TaxTypeID
+    ORDER BY t.TaxTypeName");
+
+// Cálculo PROPIO de "cuánto de esta partida de OC ya se facturó" -- ver
+// PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx (CargarPartidasPendientes) para la explicación
+// completa de por qué no se usa una vista nativa.
+List<Dictionary<string, object>> rows;
+try {
+    rows = ctx.Query(
+        "SELECT d.DocumentID, d.FolioPrefix, d.Folio, " +
+        "i.DocumentItemID, i.ProductID, ISNULL(p.ProductKey, i.ProductKey) AS ProductKey, " +
+        "ISNULL(p.ProductName, i.Description) AS ProductName, i.Unit, i.TaxTypeID, i.TaxPerc, " +
+        "i.UnitPrice, i.DiscountPerc, i.Quantity AS Ordenado, " +
+        "ISNULL((SELECT SUM(fi.Quantity) FROM docDocumentItem fi " +
+        "        INNER JOIN docDocument fd ON fd.DocumentID = fi.DocumentID " +
+        "        WHERE fi.SourceDocumentItemID = i.DocumentItemID AND fi.DeletedOn IS NULL " +
+        "          AND fd.DeletedOn IS NULL AND fd.CancelledOn IS NULL), 0) AS YaFacturado " +
+        "FROM docDocumentItem i " +
+        "INNER JOIN docDocument d ON d.DocumentID = i.DocumentID " +
+        "LEFT JOIN orgProduct p ON p.ProductID = i.ProductID " +
+        "WHERE d.DocumentID IN (" + ctx.JoinIds(idsSeleccionados) + ") " +
+        "  AND i.DeletedOn IS NULL AND i.ProductID > 0 " +
+        "ORDER BY d.DocumentID, i.LineNumber");
+} catch (Exception ex) {
+    ctx.Msg("Error al calcular pendientes de facturar: " + ex.Message, "Error");
+    return;
+}
+
+var ocFolioPorId = ocsSeleccionadas.ToDictionary(
+    r => Convert.ToInt32(r["DocumentID"]),
+    r => Convert.ToString(r["FolioPrefix"]) + Convert.ToString(r["Folio"]));
+
+// Consolida por producto -- cada partida consolidada lleva su lista de "fuentes" (una por
+// cada OC/partida de origen), que se manda al JS para poder repartir al guardar.
+var porProducto = new Dictionary<int, Dictionary<string, object>>();
+foreach (var r in rows) {
+    double ordenado = Convert.ToDouble(r["Ordenado"] ?? 0);
+    double yaFacturado = Convert.ToDouble(r["YaFacturado"] ?? 0);
+    double pendiente = ordenado - yaFacturado;
+    if (pendiente <= 0.0001) continue;
+
+    int pid = Convert.ToInt32(r["ProductID"]);
+    int docId = Convert.ToInt32(r["DocumentID"]);
+    var fuente = new Dictionary<string, object> {
+        ["sourceItemId"] = Convert.ToInt32(r["DocumentItemID"]),
+        ["ocFolio"] = ocFolioPorId.ContainsKey(docId) ? ocFolioPorId[docId] : ("Doc " + docId),
+        ["pendiente"] = pendiente
+    };
+    if (!porProducto.TryGetValue(pid, out var pc)) {
+        pc = new Dictionary<string, object> {
+            ["pid"] = pid,
+            ["key"] = Convert.ToString(r["ProductKey"]),
+            ["nombre"] = Convert.ToString(r["ProductName"]),
+            ["unidad"] = Convert.ToString(r["Unit"]),
+            ["taxTypeId"] = Convert.ToInt32(r["TaxTypeID"] ?? 0),
+            ["precio"] = Convert.ToDouble(r["UnitPrice"] ?? 0),
+            ["descuentoPerc"] = Convert.ToDouble(r["DiscountPerc"] ?? 0),
+            ["fuentes"] = new List<Dictionary<string, object>>()
+        };
+        porProducto[pid] = pc;
+    }
+    ((List<Dictionary<string, object>>)pc["fuentes"]).Add(fuente);
+}
+
+string JsonEsc(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+string N(object d) => Convert.ToDouble(d ?? 0).ToString(CultureInfo.InvariantCulture);
+
+var opcionesCondicion = string.Join("", condiciones.Select(c => "<option value=\"" + c["PaymentTermID"] + "\"" + (Convert.ToInt32(c["PaymentTermID"]) == 4 ? " selected" : "") + ">" + JsonEsc(Convert.ToString(c["PaymentTermName"])) + "</option>"));
+var impuestosJson = "[" + string.Join(",", impuestos.Select(t =>
+    "{\"id\":" + t["TaxTypeID"] + ",\"nombre\":\"" + JsonEsc(Convert.ToString(t["TaxTypeName"])) + "\",\"perc\":" + N(t["IVA_Perc"]) + "}")) + "]";
+
+var partidasJson = "[" + string.Join(",", porProducto.Values.Select(pc => {
+    var fuentes = (List<Dictionary<string, object>>)pc["fuentes"];
+    double pendienteTotal = fuentes.Sum(f => Convert.ToDouble(f["pendiente"]));
+    string ocsResumen = string.Join(", ", fuentes.Select(f => Convert.ToString(f["ocFolio"])).Distinct());
+    string fuentesJson = "[" + string.Join(",", fuentes.Select(f =>
+        "{\"sourceItemId\":" + f["sourceItemId"] + ",\"pendiente\":" + N(f["pendiente"]) + "}")) + "]";
+    return "{\"pid\":" + pc["pid"] +
+        ",\"key\":\"" + JsonEsc(Convert.ToString(pc["key"])) + "\"" +
+        ",\"nombre\":\"" + JsonEsc(Convert.ToString(pc["nombre"])) + "\"" +
+        ",\"unidad\":\"" + JsonEsc(Convert.ToString(pc["unidad"])) + "\"" +
+        ",\"taxTypeId\":" + pc["taxTypeId"] +
+        ",\"precio\":" + N(pc["precio"]) +
+        ",\"descuentoPerc\":" + N(pc["descuentoPerc"]) +
+        ",\"pendiente\":" + N(pendienteTotal) +
+        ",\"ocsResumen\":\"" + JsonEsc(ocsResumen) + "\"" +
+        ",\"fuentes\":" + fuentesJson + "}";
+})) + "]";
+
+// ═══════════════════ HTML ═══════════════════
+string html = @"
+<!DOCTYPE html>
+<html lang=""es"">
+<head>
+<meta charset=""utf-8"">
+<style>
+  :root { --primary: #B45309; --border: #DCE3ED; --bg: #EDF2F9; --text: #1F2937; --muted: #667085; --danger: #EF4444; }
+  * { box-sizing: border-box; }
+  body { font-family: ""Segoe UI"", sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  select, input { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+  input[readonly] { background: #F1F4F9; color: var(--muted); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; background: #F1F4F9; color: var(--muted); padding: 6px 8px; }
+  td { padding: 5px 8px; border-bottom: 1px solid #F1F4F9; vertical-align: middle; }
+  td input, td select { margin-bottom: 0; padding: 4px 6px; }
+  button { border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; border: 1px solid var(--border); background: #fff; cursor: pointer; }
+  button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .toolbar { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .vacio { color: var(--muted); text-align: center; padding: 20px; font-size: 13px; }
+  .totales { display: flex; justify-content: flex-end; gap: 28px; align-items: baseline; }
+  .totales div { text-align: right; }
+  .totales .lbl { font-size: 12px; color: var(--muted); }
+  .totales .val { font-size: 15px; font-weight: 600; }
+  .totales .val.desc { color: var(--danger); }
+  .totales .total .val { font-size: 22px; color: var(--primary); }
+  .son { text-align: right; font-size: 11px; font-style: italic; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+  <h1>Nueva Factura de Compra</h1>
+  <div class=""sub"">Versión WebView2 (C#) -- transforma las Órdenes de Compra seleccionadas en una Factura.</div>
+
+  <div class=""card"">
+    <div class=""row"">
+      <div><label>Proveedor</label><input readonly value=""" + JsonEsc(proveedorNombre) + @"""></div>
+      <div><label>RFC</label><input readonly value=""" + JsonEsc(proveedorRfc) + @"""></div>
+      <div><label>Órdenes origen</label><input readonly value=""" + JsonEsc(ocsResumenTexto) + @"""></div>
+    </div>
+    <div class=""row"">
+      <div style=""flex:0 0 200px""><label>Condición de pago</label><select id=""condicion"">" + opcionesCondicion + @"</select></div>
+      <div><label>Comentarios</label><input id=""comentarios"" placeholder=""Opcional""></div>
+    </div>
+  </div>
+
+  <div class=""card"">
+    <table>
+      <thead><tr><th>Orden(es)</th><th>Clave</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Impuesto</th><th>Desc. %</th><th>Importe</th></tr></thead>
+      <tbody id=""partidas""></tbody>
+    </table>
+    <div id=""vacio"" class=""vacio"" style=""display:none"">No hay partidas pendientes de facturar en las Órdenes de Compra seleccionadas.</div>
+  </div>
+
+  <div class=""card"">
+    <div class=""totales"">
+      <div><div class=""lbl"">Subtotal</div><div class=""val"" id=""tSubtotal"">$0.00</div></div>
+      <div><div class=""lbl"">Descuento</div><div class=""val desc"" id=""tDescuento"">-$0.00</div></div>
+      <div><div class=""lbl"">Impuestos</div><div class=""val"" id=""tImpuestos"">$0.00</div></div>
+      <div class=""total""><div class=""lbl"">TOTAL</div><div class=""val"" id=""tTotal"">$0.00</div></div>
+    </div>
+    <div class=""son"" id=""tSon"">SON: CERO PESOS 00/100 M.N.</div>
+  </div>
+
+  <div class=""toolbar"">
+    <button type=""button"" onclick=""cancelar()"">Cancelar</button>
+    <button type=""button"" class=""primary"" onclick=""crear()"">Crear Factura de Compra</button>
+  </div>
+
+<script>
+  const PARTIDAS = " + partidasJson + @";
+  const IMPUESTOS = " + impuestosJson + @";
+
+  function impPorId(id) { return IMPUESTOS.find(t => t.id == id); }
+
+  const UNIDADES = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE', 'DIEZ',
+    'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE', 'VEINTE'];
+  const DECENAS = ['', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+  const VEINTI = ['VEINTIUNO', 'VEINTIDÓS', 'VEINTITRÉS', 'VEINTICUATRO', 'VEINTICINCO', 'VEINTISÉIS', 'VEINTISIETE', 'VEINTIOCHO', 'VEINTINUEVE'];
+  const CENTENAS = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
+  function centenas_(n) {
+    if (n === 0) return ''; if (n === 100) return 'CIEN';
+    let s = ''; const c = Math.floor(n / 100), r = n % 100;
+    if (c > 0) s += CENTENAS[c] + ' ';
+    if (r > 0) { if (r <= 20) s += UNIDADES[r]; else { const d = Math.floor(r / 10), u = r % 10; if (d === 2 && u > 0) s += VEINTI[u - 1]; else { s += DECENAS[d]; if (u > 0) s += ' Y ' + UNIDADES[u]; } } }
+    return s.trim();
+  }
+  function enLetras(n) {
+    if (n === 0) return 'CERO';
+    let resultado = ''; const millones = Math.floor(n / 1000000); n %= 1000000; const miles = Math.floor(n / 1000); n %= 1000; const resto = n;
+    if (millones > 0) resultado += (millones === 1 ? 'UN MILLÓN ' : centenas_(millones) + ' MILLONES ');
+    if (miles > 0) resultado += (miles === 1 ? 'MIL ' : centenas_(miles) + ' MIL ');
+    if (resto > 0) resultado += centenas_(resto);
+    resultado = resultado.trim();
+    if (resultado.endsWith('UNO')) resultado = resultado.slice(0, -3) + 'UN';
+    return resultado;
+  }
+  function numeroALetras(valor) {
+    if (valor < 0) valor = 0;
+    const entero = Math.floor(valor); const centavos = Math.round((valor - entero) * 100);
+    return enLetras(entero) + ' PESOS ' + String(centavos).padStart(2, '0') + '/100';
+  }
+
+  const tbody = document.getElementById('partidas');
+  PARTIDAS.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    const impOpts = IMPUESTOS.map(t => `<option value=""${t.id}"" ${t.id==p.taxTypeId?'selected':''}>${t.nombre}</option>`).join('');
+    tr.innerHTML = `
+      <td>${p.ocsResumen}</td><td>${p.key}</td><td>${p.nombre}</td>
+      <td><input type=""number"" class=""qty"" data-i=""${i}"" value=""${p.pendiente}"" min=""0"" max=""${p.pendiente}"" step=""0.01"" style=""width:75px""></td>
+      <td><input type=""number"" class=""precio"" data-i=""${i}"" value=""${p.precio}"" min=""0"" step=""0.01"" style=""width:80px""></td>
+      <td><select class=""imp"" data-i=""${i}"" style=""width:120px"">${impOpts}</select></td>
+      <td><input type=""number"" class=""desc"" data-i=""${i}"" value=""${(p.descuentoPerc*100).toFixed(2)}"" min=""0"" max=""100"" step=""0.01"" style=""width:65px""></td>
+      <td class=""importe"" style=""text-align:right"">$0.00</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('vacio').style.display = PARTIDAS.length ? 'none' : 'block';
+
+  function recalcular() {
+    let subtotal = 0, descuentoTotal = 0, impuestosTotal = 0;
+    document.querySelectorAll('#partidas tr').forEach((tr, i) => {
+      const p = PARTIDAS[i];
+      const qty = parseFloat(tr.querySelector('.qty').value) || 0;
+      const precio = parseFloat(tr.querySelector('.precio').value) || 0;
+      const descPerc = (parseFloat(tr.querySelector('.desc').value) || 0) / 100;
+      const taxTypeId = parseInt(tr.querySelector('.imp').value);
+      const t = impPorId(taxTypeId);
+      const taxPerc = t ? t.perc : 0;
+      const importe = qty * precio;
+      const descMonto = importe * descPerc;
+      const neto = importe - descMonto;
+      const impMonto = neto * taxPerc;
+      tr.querySelector('.importe').textContent = '$' + importe.toFixed(2);
+      subtotal += importe; descuentoTotal += descMonto; impuestosTotal += impMonto;
+    });
+    const total = subtotal - descuentoTotal + impuestosTotal;
+    document.getElementById('tSubtotal').textContent = '$' + subtotal.toFixed(2);
+    document.getElementById('tDescuento').textContent = '-$' + descuentoTotal.toFixed(2);
+    document.getElementById('tImpuestos').textContent = '$' + impuestosTotal.toFixed(2);
+    document.getElementById('tTotal').textContent = '$' + total.toFixed(2);
+    document.getElementById('tSon').textContent = 'SON: ' + numeroALetras(total) + ' M.N.';
+  }
+  document.querySelectorAll('#partidas input, #partidas select').forEach(el => el.addEventListener('input', recalcular));
+  document.querySelectorAll('#partidas select').forEach(el => el.addEventListener('change', recalcular));
+  recalcular();
+
+  function cancelar() {
+    window.chrome.webview.postMessage(JSON.stringify({ cancelado: true }));
+  }
+
+  function crear() {
+    const partidas = [];
+    document.querySelectorAll('#partidas tr').forEach((tr, i) => {
+      const p = PARTIDAS[i];
+      const qty = parseFloat(tr.querySelector('.qty').value) || 0;
+      if (qty <= 0) return;
+      const precio = parseFloat(tr.querySelector('.precio').value) || 0;
+      const descPerc = (parseFloat(tr.querySelector('.desc').value) || 0) / 100;
+      const taxTypeId = parseInt(tr.querySelector('.imp').value);
+      partidas.push({ pid: p.pid, cantidad: qty, precio: precio, taxTypeId: taxTypeId, descuentoPerc: descPerc, fuentes: p.fuentes });
+    });
+    if (partidas.length === 0) { alert('Marca al menos una partida con cantidad mayor a 0.'); return; }
+    window.chrome.webview.postMessage(JSON.stringify({
+      condicionId: parseInt(document.getElementById('condicion').value),
+      comentarios: document.getElementById('comentarios').value,
+      partidas: partidas
+    }));
+  }
+</script>
+</body>
+</html>
+";
+
+// ═══════════════════ MOSTRAR Y RECIBIR ═══════════════════
+var r = ctx.ShowHtmlFormulario(html, "Nueva Factura de Compra (WebView2)", 1100, 780);
+
+if (r.ContainsKey("cancelado") || !(bool)r["submitted"])
+{
+    ctx.Msg("Cancelado, no se creó ningún documento.");
+    return;
+}
+
+int condId = r.ContainsKey("condicionId") ? Convert.ToInt32(r["condicionId"]) : 4;
+string comentarios = r.ContainsKey("comentarios") ? Convert.ToString(r["comentarios"]) : "";
+var partidasRecibidas = r["partidas"] as System.Collections.ArrayList;
+
+if (partidasRecibidas == null || partidasRecibidas.Count == 0)
+{
+    ctx.Msg("Faltan partidas.", "Error");
+    return;
+}
+
+// ═══════════════════ CREAR EN CONTPAQi (mismo patrón que la versión Forms) ═══════════════════
+int doc = ctx.erp.NuevoDocumento(152, depotOrigen, proveedorBE);
+ctx.NonQuery(
+    "UPDATE docDocument SET DepotIDFrom=0, UserID=0, PaymentTermID=" + condId + ", StatusDeliveryID=0, " +
+    "CampaignID=NULL, CostCenterID=NULL, ProjectID=NULL, DateDelivery=GETDATE(), " +
+    "Comments='" + comentarios.Replace("'", "''") + "' WHERE DocumentID=" + doc);
+
+long supplierID = Convert.ToInt64(ctx.Scalar("SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + proveedorBE));
+
+foreach (Dictionary<string, object> p in partidasRecibidas)
+{
+    int pid = Convert.ToInt32(p["pid"]);
+    double cantidad = Convert.ToDouble(p["cantidad"]);
+    double precio = Convert.ToDouble(p["precio"]);
+    int taxTypeId = Convert.ToInt32(p["taxTypeId"]);
+    double descuentoPerc = Convert.ToDouble(p["descuentoPerc"]);
+    var fuentes = p["fuentes"] as System.Collections.ArrayList;
+
+    // Reparte la cantidad entre las OC de origen (la más antigua primero) -- mismo patrón
+    // que CrearFactura() en la versión Forms.
+    double restante = cantidad;
+    if (fuentes != null)
+    {
+        foreach (Dictionary<string, object> fuente in fuentes)
+        {
+            if (restante <= 0.0001) break;
+            double pendiente = Convert.ToDouble(fuente["pendiente"]);
+            double aFacturarDeEsta = Math.Min(restante, pendiente);
+            if (aFacturarDeEsta <= 0.0001) continue;
+
+            // OJO: sin 8º parámetro -- ese escribe DeliverDocumentItemID (de Recepción), no
+            // SourceDocumentItemID (de Factura). El vínculo real se pone abajo con un UPDATE.
+            int itemId = ctx.erp.AgregarArticulo(doc, pid, aFacturarDeEsta, precio, -1, taxTypeId, descuentoPerc);
+            int sourceItemId = Convert.ToInt32(fuente["sourceItemId"]);
+            ctx.NonQuery("UPDATE docDocumentItem SET SourceDocumentItemID=" + sourceItemId + " WHERE DocumentItemID=" + itemId);
+
+            restante -= aFacturarDeEsta;
+        }
+    }
+
+    ctx.NonQuery(
+        "IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + pid + " AND SupplierID=" + supplierID + ") " +
+        "INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber) VALUES (" + pid + ", " + supplierID + ", 0, 3, 0)");
+}
+
+ctx.erp.RecalcCompleto(doc);
+ctx.erp.Save(doc);
+
+// PaymentAgenda: NuevoDocumento crea un placeholder Amount=0 que Save() no corrige (usa el
+// caché interno de XEngine, no la BD) -- se regenera a mano con los porcentajes reales de
+// engPaymentTermDetail. Ver PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx para el detalle.
+try
+{
+    double total = Convert.ToDouble(ctx.Scalar("SELECT Total FROM docDocument WHERE DocumentID=" + doc) ?? 0);
+    var detalle = ctx.Query("SELECT PaymentPerc, PaymentUnit, PaymentPeriod FROM engPaymentTermDetail WHERE PaymentTermID=" + condId + " ORDER BY PaymentTermDetailID");
+    if (detalle.Count > 0)
+    {
+        ctx.NonQuery("UPDATE docDocumentPaymentAgenda SET DeletedOn=GETDATE() WHERE DeletedOn IS NULL AND DocumentID=" + doc);
+        int numero = 1;
+        foreach (var d in detalle)
+        {
+            double perc = Convert.ToDouble(d["PaymentPerc"] ?? 0);
+            int unidad = Convert.ToInt32(d["PaymentUnit"] ?? 1);
+            int periodo = Convert.ToInt32(d["PaymentPeriod"] ?? 0);
+            string expresionFecha = unidad == 3 ? "DATEADD(MONTH," + periodo + ",GETDATE())"
+                                  : unidad == 2 ? "DATEADD(DAY," + (periodo * 7) + ",GETDATE())"
+                                  : "DATEADD(DAY," + periodo + ",GETDATE())";
+            double monto = total * perc / 100.0;
+            ctx.NonQuery(
+                "INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" +
+                doc + ", " + expresionFecha + ", " + perc.ToString(CultureInfo.InvariantCulture) + ", " +
+                monto.ToString(CultureInfo.InvariantCulture) + ", " + numero + ", GETDATE(), " + ctx.UserID + ")");
+            numero++;
+        }
+    }
+}
+catch { }
+
+try { ctx.erp.RefreshGrid(); } catch { }
+
+ctx.Msg("Factura de compra " + doc + " creada exitosamente.", "OK");

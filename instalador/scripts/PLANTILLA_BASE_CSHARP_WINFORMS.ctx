@@ -1,0 +1,60 @@
+// lang: csharp
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+
+// PLANTILLA_BASE_CSHARP_WINFORMS.ctx
+// Punto de partida MINIMO para una ventana modeless en C#. Sin logica de negocio:
+// solo el esqueleto + las protecciones para que Comercial nunca corra riesgo.
+// Para un ejemplo completo (proveedor, grid, crear documento) ver
+// "Ejemplo Premium - C# WinForms".
+//
+// Reglas (MANUAL.md #10 "Ventanas WinForms: modeless"):
+// 1. frm.Show() al final, NUNCA frm.ShowDialog() -- si no, Comercial queda bloqueado.
+// 2. Sin Owner (ni ShowInTaskbar=false) -> ventana independiente, se minimiza sola.
+// 3. try/catch en TODO manejador que haga SQL o ctx.erp, no solo en el boton principal:
+//    en modeless, el script "ya termino" cuando el usuario hace clic -- si algo truena
+//    sin proteccion, ya nadie mas lo atrapa y PUEDE TUMBAR COMERCIAL.
+// 4. No hace falta guardar la ventana a mano: Application.OpenForms la mantiene viva.
+// 5. Se pueden abrir varias ventanas del mismo boton a la vez (sin instancia unica).
+
+var frm = new Form {
+    Text = "Nueva ventana",
+    Size = new Size(520, 360),
+    StartPosition = FormStartPosition.CenterScreen,
+    BackColor = Color.FromArgb(241, 245, 249)
+};
+
+var lbl        = new Label { Text = "Buscar:", Location = new Point(16, 20), AutoSize = true };
+var txtBuscar  = new TextBox { Location = new Point(16, 42), Size = new Size(300, 23) };
+var btnBuscar  = new Button { Text = "Buscar", Location = new Point(326, 41), Size = new Size(90, 25) };
+var lst        = new ListBox { Location = new Point(16, 80), Size = new Size(480, 190) };
+var btnCerrar  = new Button { Text = "Cerrar", Location = new Point(16, 290), Size = new Size(90, 28) };
+
+frm.Controls.AddRange(new Control[] { lbl, txtBuscar, btnBuscar, lst, btnCerrar });
+
+// ═══════════════════ LÓGICA (adapta esta parte a tu caso) ═══════════════════
+void Buscar() {
+    // El try/catch va AQUÍ (o en cada manejador que llame a esta función):
+    // en modeless, un error de SQL sin proteger puede tumbar Comercial completo.
+    try {
+        string safe = txtBuscar.Text.Replace("'", "''");
+        var filas = ctx.Query(
+            "SELECT TOP 50 ProductKey, ProductName FROM orgProduct " +
+            "WHERE DeletedOn IS NULL AND ProductName LIKE '%" + safe + "%' " +
+            "ORDER BY ProductName");
+        lst.Items.Clear();
+        foreach (var f in filas) lst.Items.Add(f["ProductKey"] + " - " + f["ProductName"]);
+        if (lst.Items.Count == 0) lst.Items.Add("(sin resultados)");
+    } catch (Exception ex) {
+        ctx.Msg("Error al buscar: " + ex.Message, "Error");
+    }
+}
+
+// ═══════════════════ EVENTOS ═══════════════════
+btnBuscar.Click += (_, __) => Buscar();
+txtBuscar.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Buscar(); ev.Handled = true; } };
+btnCerrar.Click += (_, __) => frm.Close();
+
+// ═══════════════════ ARRANQUE: MODELESS ═══════════════════
+frm.Show();

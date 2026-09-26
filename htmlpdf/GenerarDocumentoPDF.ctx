@@ -1,0 +1,522 @@
+// BrosLMV.Cotizador -- "Generar documento (PDF)" DESDE UN DOCUMENTO ABIERTO.
+//
+// Se engancha al boton "Cotizador" del ribbon del documento (AppKey "Cotizador"). Abre una
+// ventana con: [Vista previa] [Generar PDF] [Enviar por correo], todo BASADO EN EL FORMATO
+// HTML real de Comercial (engModulePrintFormat.FileName) y resolviendo las MISMAS etiquetas
+// que usa Comercial:
+//   1. columnas del TVF  dbo.[vwLBSDocDocumentPrint40-DocumentID](@doc)  (130 columnas,
+//      una fila por renglon; cabecera repetida + datos del renglon)   -> etiqueta automatica
+//   2. si la etiqueta no es columna -> engAddendaFieldRef.SQL con {DocumentID}/{DocumentItemID}
+//   3. [Format(col,#,##0.00)] -> col.ToString("#,##0.00")
+// El HTML ya resuelto se renderiza con BrosLMV.HtmlToPdf.exe (motor Chrome/WebView2), no con
+// el generador viejo de Comercial.
+//
+// Ver material interno
+//
+// Requiere addon v2.86.0+ (ctx.ObtenerIdDeVentanaActiva). Empresa de pruebas: Distribuciones_Candelas.
+
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Windows.Forms;
+using System.Drawing;
+using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Net.Mail;
+
+// ------- clases nombradas (Roslyn del host no tiene Microsoft.CSharp -> nada de `dynamic`) -------
+class FormatoItem { public long Id; public string Nombre; public string Archivo; public override string ToString() => Nombre; }
+
+// ===================== 1) Documento y modulo =====================
+long? idVentana = ctx.ObtenerIdDeVentanaActiva();
+long documentId = idVentana ?? 0;
+if (documentId == 0)
+{
+    var sel = ctx.GetSelectedIds();
+    if (sel != null && sel.Count > 0) documentId = sel[0];
+}
+if (documentId == 0)
+{
+    ctx.Msg("No pude identificar el documento. Abre el documento (ya guardado) y vuelve a intentar,\n" +
+            "o seleccionalo en la lista.", "Generar documento (PDF)");
+    return "SIN DOCUMENTO";
+}
+
+var cabDoc = ctx.Query("SELECT ModuleID, Folio, ISNULL(FolioPrefix,'') AS Serie FROM docDocument WHERE DocumentID=" + documentId + " AND DeletedOn IS NULL");
+if (cabDoc.Count == 0) { ctx.Msg("El documento " + documentId + " no existe o esta cancelado.", "Generar documento (PDF)"); return "NO EXISTE"; }
+int moduleId = Convert.ToInt32(cabDoc[0]["ModuleID"]);
+string folioTxt = (Convert.ToString(cabDoc[0]["Serie"]) + " " + Convert.ToString(cabDoc[0]["Folio"])).Trim();
+
+// ===================== 2) Formatos del modulo + config de BrosLMV =====================
+var formatos = ctx.Query(
+    "SELECT PrintFormatID, FormatName, FileName, FormatIsDefault FROM engModulePrintFormat " +
+    "WHERE ModuleID=" + moduleId + " AND ISNULL(FileName,'')<>'' ORDER BY FormatIsDefault DESC, FormatName");
+if (formatos.Count == 0)
+{
+    ctx.Msg("El modulo " + moduleId + " no tiene un formato HTML configurado.\n\n" +
+            "Asignalo en la pestana BrosLMV -> Configuracion de formato, o crealo en 'Formatos de Impresion' de Comercial.", "Generar documento (PDF)");
+    return "SIN FORMATO";
+}
+
+int ownedBE = ctx.erp.OwnedBusinessEntityId;
+// Configuracion de formato: formato + plantilla + opciones de PDF (por modulo o General)
+long formatoPref = 0, plantillaCorreoId = 0;
+string rutaPdfDefault = "", patronNombre = "[Serie][Folio] - [Documento]";
+bool preguntarRuta = false, abrirTrasGenerar = true;
+string moduloNombre = Convert.ToString(ctx.Scalar("SELECT ModuleName FROM engModule WHERE ModuleID=" + moduleId)) ?? "";
+try
+{
+    Dictionary<string, object> rowGen = null, rowMod = null;
+    foreach (var row in ctx.Query("SELECT * FROM zzBrosFormatoConfig WHERE OwnedBusinessEntityID=" + ownedBE + " AND ModuleID IN (0," + moduleId + ")"))
+    {
+        if (Convert.ToInt32(row["ModuleID"]) == 0) rowGen = row; else rowMod = row;
+    }
+    if (rowMod != null)
+    {
+        if (rowMod["PrintFormatID"] != null && !(rowMod["PrintFormatID"] is DBNull)) formatoPref = Convert.ToInt64(rowMod["PrintFormatID"]);
+        if (rowMod["PlantillaCorreoID"] != null && !(rowMod["PlantillaCorreoID"] is DBNull)) plantillaCorreoId = Convert.ToInt64(rowMod["PlantillaCorreoID"]);
+    }
+    // opciones de PDF: la fila del modulo si esta personalizada, si no la General
+    bool pers = rowMod != null && rowMod["PdfPersonalizado"] != null && Convert.ToBoolean(rowMod["PdfPersonalizado"]);
+    var rp = pers ? rowMod : rowGen;
+    if (rp != null)
+    {
+        rutaPdfDefault = Convert.ToString(rp["RutaPdf"]) ?? "";
+        preguntarRuta = rp["PreguntarRuta"] != null && Convert.ToBoolean(rp["PreguntarRuta"]);
+        abrirTrasGenerar = rp["AbrirTrasGenerar"] == null || Convert.ToBoolean(rp["AbrirTrasGenerar"]);
+        if (!string.IsNullOrWhiteSpace(Convert.ToString(rp["PatronNombre"]))) patronNombre = Convert.ToString(rp["PatronNombre"]);
+    }
+}
+catch { /* si no existe la tabla aun, se usan los defaults */ }
+
+// cuenta SMTP propia (Configuracion de formato -> Correo)
+string smtpHost = "", smtpUser = "", smtpClave = "", smtpRem = "", smtpRemN = "";
+int smtpPort = 587; bool smtpSsl = true;
+try
+{
+    var sc = ctx.Query("SELECT SmtpHost, SmtpPort, SmtpSsl, Usuario, ClaveCifrada, Remitente, RemitenteNombre FROM zzBrosCorreoConfig WHERE OwnedBusinessEntityID=" + ownedBE);
+    if (sc.Count > 0)
+    {
+        smtpHost = Convert.ToString(sc[0]["SmtpHost"]) ?? "";
+        smtpPort = sc[0]["SmtpPort"] == null || sc[0]["SmtpPort"] is DBNull ? 587 : Convert.ToInt32(sc[0]["SmtpPort"]);
+        smtpSsl = sc[0]["SmtpSsl"] == null || Convert.ToBoolean(sc[0]["SmtpSsl"]);
+        smtpUser = Convert.ToString(sc[0]["Usuario"]) ?? "";
+        smtpRem = Convert.ToString(sc[0]["Remitente"]) ?? "";
+        smtpRemN = Convert.ToString(sc[0]["RemitenteNombre"]) ?? "";
+        if (sc[0]["ClaveCifrada"] != null && !(sc[0]["ClaveCifrada"] is DBNull))
+            try { smtpClave = ctx.erp.DecryptString(Convert.ToString(sc[0]["ClaveCifrada"])); } catch { }
+    }
+}
+catch { }
+
+// ===================== 3) Resolvedor de etiquetas =====================
+Func<long, List<Dictionary<string, object>>> cargarFilas = (doc) =>
+{
+    foreach (var tvf in new[] { "vwLBSDocDocumentPrint40-DocumentID", "vwLBSDocDocumentPrint33-DocumentID", "vwLBSDocDocumentPrint-DocumentID" })
+    {
+        try
+        {
+            var f = ctx.Query("SELECT * FROM dbo.[" + tvf + "](" + doc + ")");
+            if (f.Count > 0) return f;
+        }
+        catch { }
+    }
+    return new List<Dictionary<string, object>>();
+};
+
+var cacheRef = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+var refsExisten = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+Func<string, long, long, string> resolverRef = (clave, doc, item) =>
+{
+    string ck = clave + "|" + doc + "|" + item;
+    if (cacheRef.TryGetValue(ck, out var hit)) return hit;
+    string val = "";
+    try
+    {
+        var r = ctx.Query("SELECT SQL FROM engAddendaFieldRef WHERE FieldRefKey=N'" + clave.Replace("'", "''") + "' AND DeletedOn IS NULL");
+        if (r.Count > 0)
+        {
+            refsExisten.Add(clave);
+            string sql = Convert.ToString(r[0]["SQL"]) ?? "";
+            if (sql.Trim().Length > 0)
+            {
+                sql = sql.Replace("{DocumentID}", doc.ToString()).Replace("{DocumentItemID}", item.ToString());
+                var o = ctx.Scalar(sql);
+                val = o == null || o is DBNull ? "" : (o is DateTime dref ? dref.ToString("dd/MM/yyyy") : Convert.ToString(o, System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+    }
+    catch { val = ""; }
+    cacheRef[ck] = val;
+    return val;
+};
+
+Func<object, string> fmtValor = (o) =>
+{
+    if (o == null || o is DBNull) return "";
+    if (o is DateTime dt) return dt.ToString("dd/MM/yyyy");
+    return Convert.ToString(o, System.Globalization.CultureInfo.InvariantCulture);
+};
+
+var reFormat = new Regex(@"\[Format\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([^\)\]]+?)\s*\)\]", RegexOptions.IgnoreCase);
+var reTag = new Regex(@"\[([A-Za-z_][A-Za-z0-9_]*)\]");
+var sinResolver = new HashSet<string>();
+
+Func<string, Dictionary<string, object>, long, long, string> resolver = (txt, fila, doc, item) =>
+{
+    // [Format(col,mascara)]
+    txt = reFormat.Replace(txt, m =>
+    {
+        string col = m.Groups[1].Value, mask = m.Groups[2].Value.Trim();
+        object raw = fila != null && fila.ContainsKey(col) ? fila[col] : (object)resolverRef(col, doc, item);
+        if (raw == null || raw is DBNull || Convert.ToString(raw) == "") return "";
+        double d;
+        if (double.TryParse(Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture),
+                System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out d))
+        {
+            try { return d.ToString(mask, System.Globalization.CultureInfo.InvariantCulture); } catch { return d.ToString("#,##0.00"); }
+        }
+        return Convert.ToString(raw);
+    });
+
+    // [Etiqueta]
+    txt = reTag.Replace(txt, m =>
+    {
+        string tag = m.Groups[1].Value;
+        // sintéticos: se resuelven después en construirHtml (no son etiquetas normales)
+        if (tag == "QRBros" || tag == "QRPayload" || tag == "DesgloseImpuestos") return m.Value;
+        if (fila != null && fila.ContainsKey(tag)) return System.Net.WebUtility.HtmlEncode(fmtValor(fila[tag]));
+        string viaRef = resolverRef(tag, doc, item);
+        if (!string.IsNullOrEmpty(viaRef)) return System.Net.WebUtility.HtmlEncode(viaRef);
+        if (!refsExisten.Contains(tag)) sinResolver.Add(tag); // existe pero vacia != no existe
+        return "";
+    });
+    return txt;
+};
+
+// incrusta <img src="ruta.png"> como data: URI (para que el PDF lo lleve embebido)
+Func<string, string, string> incrustarImagenes = (html, baseDir) =>
+{
+    return Regex.Replace(html, "src\\s*=\\s*\"([^\"]+)\"", m =>
+    {
+        string src = m.Groups[1].Value;
+        if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase) || src.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return m.Value;
+        string ruta = src;
+        try { if (!Path.IsPathRooted(ruta)) ruta = Path.Combine(baseDir, src); } catch { }
+        if (!File.Exists(ruta)) return "src=\"\"";
+        string ext = Path.GetExtension(ruta).TrimStart('.').ToLowerInvariant();
+        if (ext == "jpg") ext = "jpeg";
+        try
+        {
+            string b64 = Convert.ToBase64String(File.ReadAllBytes(ruta));
+            return "src=\"data:image/" + ext + ";base64," + b64 + "\"";
+        }
+        catch { return "src=\"\""; }
+    }, RegexOptions.IgnoreCase);
+};
+
+Func<FormatoItem, string> construirHtml = (fmt) =>
+{
+    if (!File.Exists(fmt.Archivo)) throw new Exception("No existe el archivo de formato:\n" + fmt.Archivo);
+    byte[] bytes = File.ReadAllBytes(fmt.Archivo);
+    // Deteccion de codificacion robusta: BOM -> UTF-8; si no, se intenta UTF-8 estricto
+    // (lanza si hay bytes invalidos) y solo entonces se cae a windows-1252. El <meta charset>
+    // NO es de fiar: hay formatos de Comercial que son UTF-8 pero declaran windows-1252.
+    string html;
+    if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+        html = new UTF8Encoding(false).GetString(bytes, 3, bytes.Length - 3);
+    else
+    {
+        try { html = new UTF8Encoding(false, true).GetString(bytes); }      // throwOnInvalidBytes
+        catch { html = Encoding.GetEncoding(1252).GetString(bytes); }
+    }
+    // proteger <script> y <style> del resolvedor de etiquetas (la lib de QR tiene muchos [x])
+    var protegidos = new List<string>();
+    html = Regex.Replace(html, @"<(script|style)\b[\s\S]*?</\1>", mm =>
+    {
+        protegidos.Add(mm.Value);
+        return "@@BROSPROT" + (protegidos.Count - 1) + "@@";
+    }, RegexOptions.IgnoreCase);
+
+    var filas = cargarFilas(documentId);
+    var fila0 = filas.Count > 0 ? filas[0] : new Dictionary<string, object>();
+    long item0 = fila0.ContainsKey("DocumentItemID") && fila0["DocumentItemID"] != null && !(fila0["DocumentItemID"] is DBNull)
+        ? Convert.ToInt64(fila0["DocumentItemID"]) : 0;
+
+    // partir por <DETAIL> ... </DETAIL> (case-insensitive)
+    var mDet = Regex.Match(html, @"<DETAIL>(.*?)</DETAIL>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    var sb = new StringBuilder();
+    if (mDet.Success)
+    {
+        string pre = html.Substring(0, mDet.Index);
+        string banda = mDet.Groups[1].Value;
+        string post = html.Substring(mDet.Index + mDet.Length);
+        sb.Append(resolver(pre, fila0, documentId, item0));
+        foreach (var f in filas)
+        {
+            long it = f.ContainsKey("DocumentItemID") && f["DocumentItemID"] != null && !(f["DocumentItemID"] is DBNull) ? Convert.ToInt64(f["DocumentItemID"]) : 0;
+            sb.Append(resolver(banda, f, documentId, it));
+        }
+        sb.Append(resolver(post, fila0, documentId, item0));
+    }
+    else
+    {
+        sb.Append(resolver(html, fila0, documentId, item0));
+    }
+    string outHtml = incrustarImagenes(sb.ToString(), Path.GetDirectoryName(fmt.Archivo));
+    // el formato declara charset windows-1252 en un <meta>; ya lo pasamos a UTF-8 al escribir,
+    // hay que corregir el meta o WebView2 lo re-decodifica mal (acentos rotos).
+    outHtml = Regex.Replace(outHtml, "windows-1252", "utf-8", RegexOptions.IgnoreCase);
+
+    // [QRPayload] -> texto que codifica el QR (lo dibuja el <script> de la plantilla con qrcode.js)
+    if (outHtml.IndexOf("[QRPayload]", StringComparison.Ordinal) >= 0)
+    {
+        string payload = System.Net.WebUtility.HtmlDecode(resolver(
+            "[EmisorRfc]|[Serie][Folio]|[FechaDocumento]|[Format(Total,#,##0.00)] [Moneda]", fila0, documentId, item0));
+        // va dentro de data-qr="..." -> escapar comillas y <>
+        payload = payload.Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;");
+        outHtml = outHtml.Replace("[QRPayload]", payload);
+    }
+    // compat: si alguna plantilla vieja aun trae [QRBros], quitar el <img>
+    if (outHtml.IndexOf("[QRBros]", StringComparison.Ordinal) >= 0)
+        outHtml = Regex.Replace(outHtml, @"<img[^>]*\[QRBros\][^>]*>", "").Replace("[QRBros]", "");
+
+    // [DesgloseImpuestos] -> renglones de total por impuesto (IVA, IEPS y retenciones IVA/ISR/IEPS)
+    if (outHtml.IndexOf("[DesgloseImpuestos]", StringComparison.Ordinal) >= 0)
+    {
+        var sbtx = new StringBuilder();
+        try
+        {
+            var tx = ctx.Query(
+                "SELECT TaxName, CAST(Retention AS INT) AS Ret, SUM(Amount) AS Monto " +
+                "FROM docDocumentTaxDetail WHERE DocumentID=" + documentId + " " +
+                "GROUP BY TaxName, CAST(Retention AS INT) HAVING ABS(SUM(Amount)) > 0.005 " +
+                "ORDER BY CAST(Retention AS INT), TaxName");
+            foreach (var t in tx)
+            {
+                bool ret = Convert.ToInt32(t["Ret"]) == 1;
+                double mt = Convert.ToDouble(t["Monto"], System.Globalization.CultureInfo.InvariantCulture);
+                sbtx.Append("<div class=\"row keep\"><span class=\"k\">" + (ret ? "Ret. " : "") +
+                    System.Net.WebUtility.HtmlEncode(Convert.ToString(t["TaxName"])) + "</span><span class=\"v\">" +
+                    (ret ? "-" : "") + "$" + mt.ToString("#,##0.00", System.Globalization.CultureInfo.InvariantCulture) + "</span></div>");
+            }
+        }
+        catch { }
+        outHtml = outHtml.Replace("[DesgloseImpuestos]", sbtx.ToString());
+    }
+
+    // restaurar <script>/<style> protegidos
+    for (int i = 0; i < protegidos.Count; i++)
+        outHtml = outHtml.Replace("@@BROSPROT" + i + "@@", protegidos[i]);
+    return outHtml;
+};
+
+// ===================== 4) Herramienta HtmlToPdf =====================
+string ExeHtmlToPdf()
+{
+    foreach (var p in new[] {
+        @"C:\BrosLMV\htmlpdf\BrosLMV.HtmlToPdf.exe",
+        @"C:\MLVTotal\htmlpdf\bin\Release\net8.0-windows\BrosLMV.HtmlToPdf.exe" })
+        if (File.Exists(p)) return p;
+    return null;
+}
+
+string carpeta = Path.Combine(Path.GetTempPath(), "BrosLMV_PDF");
+Directory.CreateDirectory(carpeta);
+string BaseName() => "doc_" + documentId;
+
+// ===================== 5) Ventana =====================
+var frm = new Form {
+    Text = "BrosLMV - Generar documento" + (folioTxt.Length > 0 ? "  (" + folioTxt + ")" : "  (ID " + documentId + ")"),
+    Width = 560, Height = 240, StartPosition = FormStartPosition.CenterScreen,
+    FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false,
+    Font = new Font("Segoe UI", 9f), BackColor = Color.White
+};
+var lbl = new Label { Text = "Formato:", Left = 20, Top = 22, Width = 70 };
+var cbo = new ComboBox { Left = 92, Top = 18, Width = 430, DropDownStyle = ComboBoxStyle.DropDownList };
+foreach (var f in formatos)
+    cbo.Items.Add(new FormatoItem { Id = Convert.ToInt64(f["PrintFormatID"]), Nombre = Convert.ToString(f["FormatName"]) + (Convert.ToInt32(f["FormatIsDefault"]) == 1 ? "  (default)" : ""), Archivo = Convert.ToString(f["FileName"]) });
+cbo.SelectedIndex = 0;
+if (formatoPref != 0)
+    for (int i = 0; i < cbo.Items.Count; i++)
+        if (((FormatoItem)cbo.Items[i]).Id == formatoPref) { cbo.SelectedIndex = i; break; }
+
+var btnPrev = new Button { Text = "Vista previa", Left = 92, Top = 64, Width = 135, Height = 40 };
+var btnPdf = new Button { Text = "Generar PDF", Left = 240, Top = 64, Width = 135, Height = 40, BackColor = Color.FromArgb(0x2D, 0x6F, 0xE0), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+var btnMail = new Button { Text = "Enviar por correo", Left = 388, Top = 64, Width = 135, Height = 40 };
+var lblEstado = new Label { Left = 20, Top = 120, Width = 505, Height = 60, ForeColor = Color.FromArgb(0x64, 0x74, 0x8B) };
+
+FormatoItem FmtSel() => (FormatoItem)cbo.SelectedItem;
+
+Action<string> setEstado = s => { lblEstado.Text = s; lblEstado.Refresh(); };
+
+// nombre de archivo final a partir del patron configurado ([Documento]_[Serie][Folio], etc.)
+Func<string> nombreArchivo = () =>
+{
+    try
+    {
+        var fs = cargarFilas(documentId);
+        var f0 = fs.Count > 0 ? fs[0] : new Dictionary<string, object>();
+        long it0 = f0.ContainsKey("DocumentItemID") && f0["DocumentItemID"] != null && !(f0["DocumentItemID"] is DBNull) ? Convert.ToInt64(f0["DocumentItemID"]) : 0;
+        string pat = (patronNombre ?? "").Replace("[Modulo]", moduloNombre);   // [Modulo] = nombre del modulo
+        string n = System.Net.WebUtility.HtmlDecode(resolver(pat, f0, documentId, it0) ?? "");
+        n = Regex.Replace(n, "<[^>]+>", "").Trim();
+        foreach (char ch in Path.GetInvalidFileNameChars()) n = n.Replace(ch, '_');
+        return string.IsNullOrWhiteSpace(n) ? "doc_" + documentId : n;
+    }
+    catch { return "doc_" + documentId; }
+};
+
+Func<string> generarHtmlTemp = () =>
+{
+    string html = construirHtml(FmtSel());
+    string ruta = Path.Combine(carpeta, BaseName() + ".html");
+    File.WriteAllText(ruta, html, new UTF8Encoding(false));
+    if (sinResolver.Count > 0) ctx.Log("GenerarDocumentoPDF: etiquetas sin resolver -> " + string.Join(", ", sinResolver.OrderBy(x => x)));
+    return ruta;
+};
+
+btnPrev.Click += (s, e) =>
+{
+    try
+    {
+        setEstado("Armando vista previa...");
+        string exe = ExeHtmlToPdf();
+        if (exe == null) { ctx.Msg("No se encontro BrosLMV.HtmlToPdf.exe.", "Vista previa"); return; }
+        string html = generarHtmlTemp();
+        Process.Start(new ProcessStartInfo { FileName = exe, Arguments = "--html \"" + html + "\" --preview", UseShellExecute = false, CreateNoWindow = true });
+        setEstado("Vista previa abierta en ventana aparte.");
+    }
+    catch (Exception ex) { ctx.Msg(ex.Message, "Vista previa"); setEstado(""); }
+};
+
+btnPdf.Click += (s, e) =>
+{
+    try
+    {
+        setEstado("Generando PDF...");
+        string exe = ExeHtmlToPdf();
+        if (exe == null) { ctx.Msg("No se encontro BrosLMV.HtmlToPdf.exe.", "Generar PDF"); return; }
+
+        // destino segun Configuracion de formato -> PDF
+        string pdf;
+        bool hayCarpeta = !string.IsNullOrWhiteSpace(rutaPdfDefault) && Directory.Exists(rutaPdfDefault);
+        if (preguntarRuta || !hayCarpeta)
+        {
+            using (var sfd = new SaveFileDialog { Filter = "PDF (*.pdf)|*.pdf", FileName = nombreArchivo() + ".pdf",
+                InitialDirectory = hayCarpeta ? rutaPdfDefault : carpeta })
+            {
+                if (sfd.ShowDialog() != DialogResult.OK) { setEstado(""); return; }
+                pdf = sfd.FileName;
+            }
+        }
+        else pdf = Path.Combine(rutaPdfDefault, nombreArchivo() + ".pdf");
+
+        string html = generarHtmlTemp();
+        if (File.Exists(pdf)) { try { File.Delete(pdf); } catch { } }
+        var psi = new ProcessStartInfo { FileName = exe, Arguments = "--html \"" + html + "\" --pdf \"" + pdf + "\"", UseShellExecute = false, RedirectStandardError = true, CreateNoWindow = true };
+        string err;
+        using (var p = Process.Start(psi)) { err = p.StandardError.ReadToEnd(); p.WaitForExit(60000); }
+        if (!File.Exists(pdf)) { ctx.Msg("No se genero el PDF.\n\n" + err, "Generar PDF"); setEstado(""); return; }
+        setEstado("PDF: " + pdf);
+        if (abrirTrasGenerar) { try { Process.Start(new ProcessStartInfo { FileName = pdf, UseShellExecute = true }); } catch { } }
+    }
+    catch (Exception ex) { ctx.Msg(ex.Message, "Generar PDF"); setEstado(""); }
+};
+
+btnMail.Click += (s, e) =>
+{
+    try
+    {
+        string exe = ExeHtmlToPdf();
+        if (exe == null) { ctx.Msg("No se encontro BrosLMV.HtmlToPdf.exe.", "Enviar por correo"); return; }
+
+        // destinatario sugerido: correo del cliente/proveedor del documento
+        string sugerido = "";
+        try { sugerido = Convert.ToString(ctx.Scalar(
+            "SELECT TOP 1 c.Value FROM docDocument d " +
+            "JOIN orgContact oc ON oc.BusinessEntityID=d.BusinessEntityID " +
+            "JOIN orgContactMethod c ON c.ContactID=oc.ContactID AND c.ContactMethodTypeID=3 " +
+            "WHERE d.DocumentID=" + documentId)) ?? ""; } catch { }
+
+        if (string.IsNullOrWhiteSpace(smtpHost))
+        {
+            ctx.Msg("Falta configurar la cuenta de correo.\n\nPestana BrosLMV -> Configuracion de formato -> Correo.", "Enviar por correo");
+            return;
+        }
+
+        string dest = Prompt("Enviar por correo", "Destinatario(s), separa con ; :", sugerido);
+        if (string.IsNullOrWhiteSpace(dest)) return;
+
+        // asunto/cuerpo/CC/BCC: plantilla asignada al modulo (Configuracion de formato -> Correo), con [Etiquetas] resueltas
+        string asunto = "Documento " + folioTxt, cuerpo = "<p>Adjunto el documento en PDF.</p>", cc = "", bcc = "";
+        if (plantillaCorreoId != 0)
+        {
+            try
+            {
+                var tpl = ctx.Query("SELECT Asunto, CuerpoHtml, CC, BCC FROM zzBrosPlantillaCorreo WHERE PlantillaCorreoID=" + plantillaCorreoId + " AND DeletedOn IS NULL");
+                if (tpl.Count > 0)
+                {
+                    var fs = cargarFilas(documentId);
+                    var f0 = fs.Count > 0 ? fs[0] : new Dictionary<string, object>();
+                    long it0 = f0.ContainsKey("DocumentItemID") && f0["DocumentItemID"] != null && !(f0["DocumentItemID"] is DBNull) ? Convert.ToInt64(f0["DocumentItemID"]) : 0;
+                    string sT = Convert.ToString(tpl[0]["Asunto"]) ?? "", bT = Convert.ToString(tpl[0]["CuerpoHtml"]) ?? "";
+                    if (sT.Trim().Length > 0) asunto = System.Net.WebUtility.HtmlDecode(resolver(sT, f0, documentId, it0));
+                    if (bT.Trim().Length > 0) cuerpo = resolver(bT, f0, documentId, it0);
+                    cc = Convert.ToString(tpl[0]["CC"]) ?? ""; bcc = Convert.ToString(tpl[0]["BCC"]) ?? "";
+                }
+            }
+            catch { }
+        }
+
+        setEstado("Generando PDF para adjuntar...");
+        string html = generarHtmlTemp();
+        string pdf = Path.Combine(carpeta, nombreArchivo() + ".pdf");
+        if (File.Exists(pdf)) { try { File.Delete(pdf); } catch { } }
+        var psi = new ProcessStartInfo { FileName = exe, Arguments = "--html \"" + html + "\" --pdf \"" + pdf + "\"", UseShellExecute = false, RedirectStandardError = true, CreateNoWindow = true };
+        using (var p = Process.Start(psi)) { p.StandardError.ReadToEnd(); p.WaitForExit(60000); }
+        if (!File.Exists(pdf)) { ctx.Msg("No se genero el PDF, no se envio nada.", "Enviar por correo"); setEstado(""); return; }
+
+        setEstado("Enviando...");
+        using (var msg = new MailMessage())
+        {
+            msg.From = new MailAddress(string.IsNullOrWhiteSpace(smtpRem) ? smtpUser : smtpRem, string.IsNullOrWhiteSpace(smtpRemN) ? null : smtpRemN);
+            foreach (var d in dest.Split(';', ',')) if (d.Trim().Length > 0) msg.To.Add(d.Trim());
+            foreach (var d in (cc ?? "").Split(';', ',')) if (d.Trim().Length > 0) msg.CC.Add(d.Trim());
+            foreach (var d in (bcc ?? "").Split(';', ',')) if (d.Trim().Length > 0) msg.Bcc.Add(d.Trim());
+            msg.Subject = asunto;
+            msg.Body = cuerpo;
+            msg.IsBodyHtml = true;
+            msg.Attachments.Add(new Attachment(pdf));
+            using (var cli = new SmtpClient(smtpHost, smtpPort))
+            {
+                cli.EnableSsl = smtpSsl;
+                if (!string.IsNullOrEmpty(smtpUser)) cli.Credentials = new NetworkCredential(smtpUser, smtpClave);
+                cli.Send(msg);
+            }
+        }
+        setEstado("Enviado a: " + dest);
+        ctx.Msg("Correo enviado a:\n" + dest, "Enviar por correo");
+    }
+    catch (Exception ex) { ctx.Msg(ex.Message, "Enviar por correo"); setEstado(""); }
+};
+
+frm.Controls.AddRange(new Control[] { lbl, cbo, btnPrev, btnPdf, btnMail, lblEstado });
+frm.ShowDialog();
+return "OK doc=" + documentId + " modulo=" + moduleId;
+
+// --------- helper: prompt de una linea ---------
+string Prompt(string titulo, string etiqueta, string valor)
+{
+    using (var f = new Form { Text = titulo, Width = 460, Height = 170, StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false, Font = new Font("Segoe UI", 9f) })
+    {
+        var l = new Label { Text = etiqueta, Left = 15, Top = 15, Width = 410 };
+        var t = new TextBox { Left = 15, Top = 40, Width = 410, Text = valor ?? "" };
+        var ok = new Button { Text = "Aceptar", Left = 260, Top = 80, Width = 75, DialogResult = DialogResult.OK };
+        var ca = new Button { Text = "Cancelar", Left = 345, Top = 80, Width = 80, DialogResult = DialogResult.Cancel };
+        f.Controls.AddRange(new Control[] { l, t, ok, ca });
+        f.AcceptButton = ok; f.CancelButton = ca;
+        return f.ShowDialog() == DialogResult.OK ? t.Text.Trim() : "";
+    }
+}

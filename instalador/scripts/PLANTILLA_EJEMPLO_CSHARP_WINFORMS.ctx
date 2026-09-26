@@ -1,0 +1,551 @@
+// lang: csharp
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+using System.Collections.Generic;
+using System.Linq;
+
+// ═══════════════════ DATOS INICIALES ═══════════════════
+var almacenes = ctx.Query("SELECT DepotID, DepotName FROM orgDepot WHERE DeletedOn IS NULL ORDER BY DepotName");
+var proveedores = ctx.Query(@"
+    SELECT be.BusinessEntityID, be.OfficialName,
+           ISNULL(m.OfficialNumber,'') AS RFC
+    FROM orgBusinessEntity be
+    INNER JOIN orgSupplier s ON s.BusinessEntityID=be.BusinessEntityID
+    LEFT JOIN orgBusinessEntityMainInfo m ON m.BusinessEntityID=be.BusinessEntityID
+    WHERE be.DeletedOn IS NULL
+    ORDER BY be.OfficialName");
+// Moneda y condicion de pago: se leen del sistema (vistas nativas del ERP).
+var monedas = ctx.Query("SELECT CurrencyID, IntlSymbol, Currency, Rate FROM vwLBSCurrencyList ORDER BY CurrencyID");
+var condiciones = ctx.Query("SELECT PaymentTermID, PaymentTermName FROM vwLBSPaymentTermList WHERE Buys=1 AND Deleted=0 ORDER BY PaymentTermID");
+
+var partidas = new List<Item>();
+var provAll = new List<Opt>();
+var curRate = new Dictionary<int, double>();
+Prod productoSeleccionado = null;
+bool suspenderBusqueda = false;
+bool suspenderProv = false;
+
+// ═══════════════════ COLORES / FUENTES ═══════════════════
+var C_BG      = Color.FromArgb(241, 245, 249);
+var C_BORDER  = Color.FromArgb(203, 213, 225);
+var C_PRIMARY = Color.FromArgb(16, 185, 129);
+var C_DANGER  = Color.FromArgb(239, 68, 68);
+var C_TEXT    = Color.FromArgb(30, 41, 59);
+var C_MUTED   = Color.FromArgb(100, 116, 139);
+var C_PANEL   = Color.White;
+var C_HEADER  = Color.FromArgb(248, 250, 252);
+var C_BLUE_SEL= Color.FromArgb(238, 242, 255);
+// Cinta superior (ribbon): gris oscuro para diferenciarla de los paneles blancos.
+var C_RIBBON    = Color.FromArgb(51, 65, 85);
+var C_RIBBON_TX = Color.FromArgb(226, 232, 240);
+var C_RIBBON_MU = Color.FromArgb(148, 163, 184);
+
+var F_TAB     = new Font("Segoe UI", 10f, FontStyle.Bold);
+var F_H2      = new Font("Segoe UI", 9f, FontStyle.Bold);
+var F_BODY    = new Font("Segoe UI", 9f);
+var F_SM      = new Font("Segoe UI", 8.5f);
+var F_ICON    = new Font("Segoe UI Emoji", 20f);
+var F_ICON_SM = new Font("Segoe UI Emoji", 10f);
+
+// ═══════════════════ VENTANA ═══════════════════
+var frm = new Form {
+    Text = "Nueva Requisición de Compra",
+    Size = new Size(1100, 800),
+    StartPosition = FormStartPosition.CenterScreen,
+    BackColor = C_BG,
+    KeyPreview = true
+};
+
+// ═══════════════════ CINTA SUPERIOR (RIBBON) ═══════════════════
+var ribbon = new Panel { Location = new Point(10, 10), Size = new Size(1060, 96), BackColor = C_RIBBON, Parent = frm };
+new Label { Text = "Principal", Font = F_TAB, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 4), AutoSize = true, Parent = ribbon };
+
+// Botones de la cinta (clickeables). Devuelve el panel para conectar el Click al final.
+int currentX = 12;
+var toolButtons = new Dictionary<string, Panel>();
+Panel AddToolbarBtn(string key, string icon, string text, string group, Color? iconColor = null) {
+    var p = new Panel { Location = new Point(currentX, 24), Size = new Size(78, 66), BackColor = C_RIBBON, Cursor = Cursors.Hand, Parent = ribbon };
+    var lblIcon = new Label { Text = icon, Font = F_ICON, ForeColor = iconColor ?? C_RIBBON_TX, AutoSize = false, Size = new Size(78, 34), TextAlign = ContentAlignment.MiddleCenter, BackColor = C_RIBBON, Parent = p };
+    var lblTxt  = new Label { Text = text, Font = new Font("Segoe UI", 8f), ForeColor = C_RIBBON_TX, AutoSize = false, Size = new Size(78, 30), Location = new Point(0, 34), TextAlign = ContentAlignment.TopCenter, BackColor = C_RIBBON, Parent = p };
+    p.MouseEnter += (_, __) => { p.BackColor = Color.FromArgb(71, 85, 105); lblIcon.BackColor = p.BackColor; lblTxt.BackColor = p.BackColor; };
+    p.MouseLeave += (_, __) => { p.BackColor = C_RIBBON; lblIcon.BackColor = C_RIBBON; lblTxt.BackColor = C_RIBBON; };
+    toolButtons[key] = p;
+    currentX += 80;
+    return p;
+}
+void AddSep() { new Panel { Location = new Point(currentX, 28), Size = new Size(1, 58), BackColor = C_RIBBON_MU, Parent = ribbon }; currentX += 12; }
+
+AddToolbarBtn("guardar",  "💾", "Guardar\nF5",       "Registro", Color.FromArgb(52, 211, 153));
+AddToolbarBtn("nueva",    "➕", "Guardar y\nNueva",   "Registro");
+AddToolbarBtn("cancelar", "❌", "Cancelar\nEsc",      "Registro", Color.FromArgb(248, 113, 113));
+AddSep();
+AddToolbarBtn("preview",  "🔎", "Vista\nprevia",      "Documento");
+AddToolbarBtn("imprimir", "🖨️", "Imprimir",          "Documento");
+AddSep();
+AddToolbarBtn("limpiar",  "🧹", "Limpiar\ncampos",    "Acciones");
+
+// Info del documento (Fecha / Serie / Folio) — a la derecha de la cinta, SIN encimarse.
+var infoPnl = new Panel { Location = new Point(700, 8), Size = new Size(352, 80), BackColor = C_RIBBON, Parent = ribbon };
+infoPnl.Paint += (_, ev) => ev.Graphics.DrawRectangle(new Pen(C_RIBBON_MU), 0, 6, infoPnl.Width - 1, infoPnl.Height - 10);
+new Label { Text = "Información del documento", Font = new Font("Segoe UI", 8f), ForeColor = C_RIBBON_MU, BackColor = C_RIBBON, Location = new Point(8, 0), AutoSize = true, Parent = infoPnl };
+
+new Label { Text = "Fecha:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 24), AutoSize = true, Parent = infoPnl };
+var dtFecha = new DateTimePicker { Location = new Point(60, 21), Size = new Size(110, 23), Format = DateTimePickerFormat.Short, Font = F_BODY, Parent = infoPnl };
+
+new Label { Text = "Serie:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(185, 24), AutoSize = true, Parent = infoPnl };
+var txtSerie = new TextBox { Location = new Point(228, 21), Size = new Size(110, 23), Font = F_BODY, Parent = infoPnl };
+
+new Label { Text = "Folio:", Font = F_BODY, ForeColor = C_RIBBON_TX, BackColor = C_RIBBON, Location = new Point(12, 52), AutoSize = true, Parent = infoPnl };
+// Folio editable: se precarga el consecutivo pero el usuario puede modificarlo.
+var txtFolio = new TextBox { Location = new Point(60, 49), Size = new Size(110, 23), Font = F_BODY, Parent = infoPnl };
+new Label { Text = "(consecutivo, editable)", Font = F_SM, ForeColor = C_RIBBON_MU, BackColor = C_RIBBON, Location = new Point(185, 52), AutoSize = true, Parent = infoPnl };
+
+// ═══════════════════ HELPERS DE GRUPO ═══════════════════
+Panel CreateGroup(string title, int x, int y, int w, int h, Control parent) {
+    var p = new Panel { Location = new Point(x, y), Size = new Size(w, h), BackColor = C_PANEL, Parent = parent };
+    p.Paint += (s, e) => {
+        var g = e.Graphics;
+        g.DrawRectangle(new Pen(C_BORDER), 0, 0, w - 1, h - 1);
+        g.FillRectangle(new SolidBrush(C_HEADER), 1, 1, w - 2, 28);
+        g.DrawLine(new Pen(C_BORDER), 0, 29, w, 29);
+        g.DrawString(title, F_H2, new SolidBrush(C_TEXT), new PointF(10, 5));
+    };
+    return p;
+}
+Label Lbl(string txt, int x, int y, Control p) {
+    return new Label { Text = txt, Location = new Point(x, y), Font = F_BODY, AutoSize = true, Parent = p };
+}
+void SelectByVal(ComboBox cbo, int val) {
+    for (int i = 0; i < cbo.Items.Count; i++)
+        if ((cbo.Items[i] as Opt)?.Val == val) { cbo.SelectedIndex = i; return; }
+    if (cbo.Items.Count > 0) cbo.SelectedIndex = 0;
+}
+
+int topY = 116;
+
+// ═══════════════════ 1. PROVEEDOR ═══════════════════
+var grpProv = CreateGroup("1. Proveedor", 10, topY, 650, 100, frm);
+Lbl("Buscar (RFC/Nombre):", 15, 40, grpProv);
+// Combo editable con BUSQUEDA INCREMENTAL por nombre o RFC.
+var cboProv = new ComboBox { Location = new Point(150, 38), Size = new Size(280, 23), Font = F_BODY, DropDownStyle = ComboBoxStyle.DropDown, FlatStyle = FlatStyle.Flat, Parent = grpProv };
+foreach (var p in proveedores)
+    provAll.Add(new Opt(Convert.ToString(p["OfficialName"]), Convert.ToInt32(p["BusinessEntityID"]), Convert.ToString(p["RFC"])));
+foreach (var o in provAll) cboProv.Items.Add(o);
+if (cboProv.Items.Count > 0) cboProv.SelectedIndex = 0;
+
+Lbl("RFC:", 15, 70, grpProv);
+var lblRfc = new TextBox { Text = "", Location = new Point(150, 68), Size = new Size(280, 23), ReadOnly = true, Font = F_BODY, ForeColor = C_MUTED, Parent = grpProv };
+
+Lbl("Moneda:", 440, 40, grpProv);
+var cboMoneda = new ComboBox { Location = new Point(510, 38), Size = new Size(130, 23), Font = F_BODY, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, Parent = grpProv };
+foreach (var m in monedas) {
+    int cid = Convert.ToInt32(m["CurrencyID"]);
+    curRate[cid] = Convert.ToDouble(m["Rate"] ?? 1);
+    cboMoneda.Items.Add(new Opt(Convert.ToString(m["IntlSymbol"]) + " - " + Convert.ToString(m["Currency"]), cid));
+}
+SelectByVal(cboMoneda, 3); // MXN por defecto
+
+Lbl("Cond. pago:", 440, 70, grpProv);
+var cboCond = new ComboBox { Location = new Point(510, 68), Size = new Size(130, 23), Font = F_BODY, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, Parent = grpProv };
+foreach (var c in condiciones)
+    cboCond.Items.Add(new Opt(Convert.ToString(c["PaymentTermName"]), Convert.ToInt32(c["PaymentTermID"])));
+SelectByVal(cboCond, 1); // CONTADO por defecto
+
+// ═══════════════════ 2. ALMACEN Y CENTRO DE COSTO ═══════════════════
+var grpAlm = CreateGroup("2. Almacén y Centro de Costo", 670, topY, 400, 100, frm);
+Lbl("Almacén:", 15, 40, grpAlm);
+var cboDep = new ComboBox { Location = new Point(120, 38), Size = new Size(260, 23), Font = F_BODY, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, Parent = grpAlm };
+foreach (var d in almacenes)
+    cboDep.Items.Add(new Opt(Convert.ToString(d["DepotName"]), Convert.ToInt32(d["DepotID"])));
+if (cboDep.Items.Count > 0) cboDep.SelectedIndex = 0;
+
+Lbl("Centro Costo:", 15, 70, grpAlm);
+var cboCC = new ComboBox { Location = new Point(120, 68), Size = new Size(260, 23), Font = F_BODY, FlatStyle = FlatStyle.Flat, Parent = grpAlm };
+cboCC.Items.Add(new Opt("Ninguno", 0));
+cboCC.SelectedIndex = 0;
+
+topY += 110;
+
+// ═══════════════════ 3. COMENTARIOS ═══════════════════
+var grpObs = CreateGroup("3. Comentarios del Documento", 10, topY, 1060, 75, frm);
+var txtObs = new TextBox { Multiline = true, Location = new Point(15, 35), Size = new Size(1030, 30), Font = F_BODY, ScrollBars = ScrollBars.Vertical, Parent = grpObs };
+
+topY += 85;
+
+// ═══════════════════ 4. PARTIDAS ═══════════════════
+var grpPart = CreateGroup("4. Partidas", 10, topY, 1060, 320, frm);
+var txtProducto = new TextBox { Location = new Point(15, 35), Size = new Size(260, 23), Font = F_BODY, Parent = grpPart };
+var btnBuscarProd = new Button { Text = "🔍", Location = new Point(280, 34), Size = new Size(28, 25), Font = F_ICON_SM, FlatStyle = FlatStyle.Flat, Parent = grpPart };
+btnBuscarProd.FlatAppearance.BorderColor = C_BORDER;
+
+Lbl("Cantidad:", 325, 38, grpPart);
+var nudCantidad = new NumericUpDown { Value = 1, DecimalPlaces = 4, Maximum = 999999999M, Location = new Point(385, 35), Size = new Size(80, 23), Font = F_BODY, Parent = grpPart };
+
+var btnAgregar = new Button { Text = "➕ Agregar", Location = new Point(475, 34), Size = new Size(90, 26), BackColor = C_PRIMARY, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = F_BODY, Parent = grpPart };
+btnAgregar.FlatAppearance.BorderSize = 0;
+
+var btnEliminar = new Button { Text = "❌ Eliminar", Location = new Point(575, 34), Size = new Size(90, 26), FlatStyle = FlatStyle.Flat, ForeColor = C_DANGER, Font = F_BODY, Parent = grpPart };
+btnEliminar.FlatAppearance.BorderColor = C_BORDER;
+
+var lblTotalPartidas = Lbl("Total de partidas: 0", 910, 38, grpPart);
+lblTotalPartidas.Font = F_H2;
+
+var grid = new DataGridView {
+    Location = new Point(15, 70),
+    Size = new Size(1030, 235),
+    BackgroundColor = C_PANEL,
+    BorderStyle = BorderStyle.None,
+    CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+    ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
+    EnableHeadersVisualStyles = false,
+    RowHeadersVisible = false,
+    AllowUserToAddRows = false,
+    AllowUserToDeleteRows = false,
+    SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+    MultiSelect = false,
+    GridColor = C_BORDER,
+    Parent = grpPart
+};
+grid.ColumnHeadersDefaultCellStyle.BackColor = C_HEADER;
+grid.ColumnHeadersDefaultCellStyle.ForeColor = C_TEXT;
+grid.ColumnHeadersDefaultCellStyle.Font = F_H2;
+grid.ColumnHeadersHeight = 28;
+
+DataGridViewTextBoxColumn Col(string name, string header, int width, bool readOnly, DataGridViewContentAlignment align = DataGridViewContentAlignment.MiddleLeft) {
+    var c = new DataGridViewTextBoxColumn { Name = name, HeaderText = header, Width = width, ReadOnly = readOnly };
+    c.DefaultCellStyle.Alignment = align;
+    grid.Columns.Add(c);
+    return c;
+}
+Col("PID", "PID", 0, true).Visible = false;
+Col("Key", "CLAVE", 120, true);
+var cDesc = Col("Desc", "DESCRIPCIÓN", 400, true);
+cDesc.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+Col("Unit", "U.M.", 80, true);
+Col("Stock", "EXISTENCIA", 100, true, DataGridViewContentAlignment.MiddleRight);
+Col("Qty", "CANTIDAD", 100, false, DataGridViewContentAlignment.MiddleRight);
+grid.DefaultCellStyle.SelectionBackColor = C_BLUE_SEL;
+grid.DefaultCellStyle.SelectionForeColor = C_TEXT;
+
+var pnlEmpty = new Panel { Location = new Point(300, 120), Size = new Size(430, 100), BackColor = C_PANEL, Parent = grpPart };
+new Label { Text = "📦", Font = new Font("Segoe UI Emoji", 40f), AutoSize = true, Location = new Point(40, 20), ForeColor = C_MUTED, Parent = pnlEmpty };
+new Label { Text = "No hay partidas agregadas", Font = new Font("Segoe UI", 12f, FontStyle.Bold), AutoSize = true, Location = new Point(120, 30), ForeColor = C_TEXT, Parent = pnlEmpty };
+new Label { Text = "Busque y agregue productos para comenzar.", Font = F_BODY, AutoSize = true, Location = new Point(120, 55), ForeColor = C_MUTED, Parent = pnlEmpty };
+
+// Lista flotante de resultados de producto
+var pnlDrop = new Panel { Visible = false, BackColor = C_BORDER, Padding = new Padding(1), Parent = frm };
+var lstMatch = new ListBox { Visible = true, Dock = DockStyle.Fill, Font = F_BODY, BorderStyle = BorderStyle.None, IntegralHeight = false, BackColor = C_PANEL, ForeColor = C_TEXT, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 45, Parent = pnlDrop };
+
+// ═══════════════════ 5. FOOTER ═══════════════════
+var footerY = frm.ClientSize.Height - 44;
+var pnlFooter = new Panel { Location = new Point(0, footerY), Size = new Size(1100, 44), BackColor = C_PANEL, Parent = frm };
+pnlFooter.Paint += (s, e) => e.Graphics.DrawLine(new Pen(C_BORDER), 0, 0, 1100, 0);
+Lbl("Elaboró:", 20, 13, pnlFooter);
+string elaboro = ""; try { elaboro = ctx.erp.UserName; } catch { }
+new TextBox { Text = elaboro, Location = new Point(80, 11), Size = new Size(200, 23), ReadOnly = true, Font = F_BODY, Parent = pnlFooter };
+new Label { Text = "Usa  💾 Guardar (F5)  en la cinta para crear la requisición.", Location = new Point(300, 13), AutoSize = true, Font = F_BODY, ForeColor = C_MUTED, Parent = pnlFooter };
+
+// ═══════════════════ LÓGICA DE DIBUJO DE LA LISTA ═══════════════════
+lstMatch.DrawItem += (_, ev) => {
+    if (ev.Index < 0) return;
+    var p = lstMatch.Items[ev.Index] as Prod;
+    bool sel = (ev.State & DrawItemState.Selected) == DrawItemState.Selected;
+    ev.Graphics.FillRectangle(new SolidBrush(sel ? C_BLUE_SEL : C_PANEL), ev.Bounds);
+    if (p == null) return;
+    var r = ev.Bounds;
+    using (var brText = new SolidBrush(C_TEXT))
+    using (var brMuted = new SolidBrush(C_MUTED))
+    using (var keyFont = new Font("Segoe UI", 9f, FontStyle.Bold)) {
+        ev.Graphics.DrawString(p.Key, keyFont, brText, r.Left + 10, r.Top + 6);
+        ev.Graphics.DrawString(p.Desc, F_BODY, brText, new RectangleF(r.Left + 120, r.Top + 6, Math.Max(180, r.Width - 130), 18));
+        ev.Graphics.DrawString("Unidad " + p.Unit + " · Exist: " + p.Stock.ToString("N2"), F_SM, brMuted, r.Left + 120, r.Top + 24);
+    }
+};
+
+// ═══════════════════ LÓGICA CORE ═══════════════════
+int DepotSel() { var s = cboDep.SelectedItem as Opt; return s != null ? s.Val : 1; }
+int ProvSel() {
+    var s = cboProv.SelectedItem as Opt;
+    if (s != null) return s.Val;
+    string t = (cboProv.Text ?? "").Trim();
+    var m = provAll.FirstOrDefault(o => o.Txt.Equals(t, StringComparison.OrdinalIgnoreCase));
+    return m != null ? m.Val : 0;
+}
+
+void ActualizarProveedor() {
+    var s = cboProv.SelectedItem as Opt;
+    if (s == null) {
+        string t = (cboProv.Text ?? "").Trim();
+        s = provAll.FirstOrDefault(o => o.Txt.Equals(t, StringComparison.OrdinalIgnoreCase));
+    }
+    lblRfc.Text = (s != null && !string.IsNullOrWhiteSpace(s.Extra)) ? s.Extra : (s != null ? "(sin RFC)" : "");
+}
+
+void PrecargarFolio() {
+    try {
+        string pre = ctx.erp.GetFolioPrefix(1040, DepotSel());
+        string fol = ctx.erp.GetNextFolio(1040, pre, DepotSel());
+        txtSerie.Text = pre ?? "";
+        txtFolio.Text = fol ?? "";
+    } catch { txtSerie.Text = "REQ"; txtFolio.Text = ""; }
+}
+
+void OcultarResultados() { pnlDrop.Visible = false; }
+
+void Buscar(string query) {
+    string q = (query ?? "").Trim();
+    if (q.Length == 0) { lstMatch.Items.Clear(); OcultarResultados(); return; }
+
+    string safe = q.Replace("'", "''");
+    string filtro = q == "#" ? "" : "AND (p.ProductKey LIKE '%" + safe + "%' OR p.ProductName LIKE '%" + safe + "%') ";
+    string limite = q == "#" ? "TOP 300" : "TOP 80";
+
+    // Ventana MODELESS (Show, no ShowDialog): un error aquí ya no lo atrapa el
+    // try/catch del script (que terminó apenas se mostró la ventana). Sin este
+    // try/catch, un error de SQL tumbaría Comercial completo, no solo esta ventana.
+    List<Dictionary<string, object>> rows;
+    try {
+        rows = ctx.Query(
+            "SELECT " + limite + " p.ProductID, p.ProductKey, p.ProductName, p.Unit, " +
+            "ISNULL((SELECT SUM(Quantity) FROM orgProductKardex k WHERE k.ProductID=p.ProductID AND k.DepotID=" + DepotSel() + " AND k.Cancelled=0),0) AS Stock " +
+            "FROM orgProduct p WHERE p.DeletedOn IS NULL AND p.TaxTypeID IS NOT NULL AND p.TaxTypeID > 0 " +
+            filtro + "ORDER BY p.ProductName");
+    } catch (Exception ex) {
+        ctx.Msg("Error al buscar productos: " + ex.Message, "Error");
+        OcultarResultados();
+        return;
+    }
+
+    lstMatch.BeginUpdate();
+    lstMatch.Items.Clear();
+    foreach (var r in rows) {
+        lstMatch.Items.Add(new Prod {
+            PID = Convert.ToInt32(r["ProductID"]),
+            Key = Convert.ToString(r["ProductKey"]),
+            Desc = Convert.ToString(r["ProductName"]),
+            Unit = Convert.ToString(r["Unit"]),
+            Stock = Convert.ToDouble(r["Stock"] ?? 0)
+        });
+    }
+    lstMatch.EndUpdate();
+
+    if (lstMatch.Items.Count == 0) {
+        OcultarResultados();
+        ctx.Msg("No se encontraron productos con esa búsqueda.");
+        return;
+    }
+    lstMatch.SelectedIndex = 0;
+    int alto = Math.Min(lstMatch.Items.Count * lstMatch.ItemHeight + 4, 280);
+    pnlDrop.SetBounds(grpPart.Left + txtProducto.Left, grpPart.Top + txtProducto.Bottom + 2, 600, alto);
+    pnlDrop.Visible = true;
+    pnlDrop.BringToFront();
+}
+
+void SeleccionarProducto() {
+    var p = lstMatch.SelectedItem as Prod;
+    if (p == null) return;
+    productoSeleccionado = p;
+    suspenderBusqueda = true;
+    txtProducto.Text = p.Key + " — " + p.Desc;
+    txtProducto.SelectionStart = txtProducto.TextLength;
+    suspenderBusqueda = false;
+    OcultarResultados();
+    nudCantidad.Focus();
+}
+
+void RefreshGrid() {
+    grid.Rows.Clear();
+    foreach (var it in partidas)
+        grid.Rows.Add(it.PID, it.Key, it.Desc, it.Unit, it.Stock, it.Qty);
+    pnlEmpty.Visible = partidas.Count == 0;
+    lblTotalPartidas.Text = "Total de partidas: " + partidas.Count;
+}
+
+void LimpiarCaptura() {
+    productoSeleccionado = null;
+    suspenderBusqueda = true;
+    txtProducto.Clear();
+    suspenderBusqueda = false;
+    nudCantidad.Value = 1M;
+    txtProducto.Focus();
+}
+
+void AgregarProducto() {
+    if (productoSeleccionado == null) {
+        if (pnlDrop.Visible && lstMatch.SelectedItem != null) SeleccionarProducto();
+        else { ctx.Msg("Busca y selecciona un producto."); txtProducto.Focus(); return; }
+    }
+    double cant = Convert.ToDouble(nudCantidad.Value);
+    var p = productoSeleccionado;
+    var ext = partidas.FirstOrDefault(z => z.PID == p.PID);
+    if (ext != null) ext.Qty += cant;
+    else partidas.Add(new Item { PID = p.PID, Key = p.Key, Desc = p.Desc, Unit = p.Unit, Stock = p.Stock, Qty = cant });
+    RefreshGrid();
+    LimpiarCaptura();
+}
+
+void LimpiarTodo() {
+    partidas.Clear();
+    RefreshGrid();
+    LimpiarCaptura();
+    txtObs.Clear();
+    PrecargarFolio();
+}
+
+// ═══════════════════ CREAR EN CONTPAQI ═══════════════════
+void CrearRequisicion(bool nueva) {
+    int be = ProvSel();
+    if (be == 0) { ctx.Msg("Selecciona un proveedor."); return; }
+    if (partidas.Count == 0) { ctx.Msg("Agrega al menos un producto."); return; }
+
+    long supplierID = Convert.ToInt64(ctx.Scalar("SELECT SupplierID FROM orgSupplier WHERE BusinessEntityID=" + be));
+    if (!ctx.Confirm("¿Crear requisición de compra con " + partidas.Count + " producto" + (partidas.Count == 1 ? "" : "s") + "?")) return;
+
+    frm.Cursor = Cursors.WaitCursor;
+    var btnG = toolButtons["guardar"]; btnG.Enabled = false;
+    try {
+        int dep = DepotSel();
+        int monedaId = (cboMoneda.SelectedItem as Opt)?.Val ?? 3;
+        int condId = (cboCond.SelectedItem as Opt)?.Val ?? 0;
+        double rate = curRate.ContainsKey(monedaId) ? curRate[monedaId] : 1;
+
+        ctx.NonQuery("SET XACT_ABORT OFF; SET IMPLICIT_TRANSACTIONS OFF");
+        int doc = ctx.erp.NuevoDocumento(1040, dep, be); // 1040 = Solicitud de Compra
+        if (doc <= 0 || !string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("NuevoDocumento: " + ctx.erp.LastError);
+
+        // Moneda + condicion de pago + comentarios (del sistema / capturados)
+        ctx.NonQuery(
+            "UPDATE docDocument SET DepotIDFrom=0, UserID=0, " +
+            "CurrencyID=" + monedaId + ", Rate=" + rate.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", " +
+            "PaymentTermID=" + condId + ", " +
+            "DateDocument='" + dtFecha.Value.ToString("yyyyMMdd") + "', " +
+            "Comments='" + txtObs.Text.Replace("'", "''") + "' WHERE DocumentID=" + doc);
+
+        // Folio manual (si el usuario lo modificó)
+        string folioManual = (txtFolio.Text ?? "").Trim();
+        if (folioManual.Length > 0)
+            ctx.NonQuery("UPDATE docDocument SET Folio=N'" + folioManual.Replace("'", "''") + "' WHERE DocumentID=" + doc);
+
+        foreach (var it in partidas) {
+            ctx.erp.AgregarArticulo(doc, it.PID, it.Qty);
+            if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("AgregarArticulo: " + ctx.erp.LastError);
+            ctx.NonQuery("IF NOT EXISTS (SELECT 1 FROM orgProductSupplier WHERE ProductID=" + it.PID + " AND SupplierID=" + supplierID + ") " +
+                         "INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID, OrderNumber) VALUES (" + it.PID + ", " + supplierID + ", 0, " + monedaId + ", 0)");
+        }
+
+        ctx.erp.RecalcCompleto(doc);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("RecalcCompleto: " + ctx.erp.LastError);
+        ctx.erp.Save(doc);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("Save: " + ctx.erp.LastError);
+        try { ctx.erp.RefreshGrid(); } catch { }
+
+        ctx.Msg("Requisición de compra " + doc + " creada exitosamente.", "OK");
+        if (nueva) { LimpiarTodo(); }
+        else frm.Close();
+    } catch (Exception ex) {
+        ctx.Msg(ex.Message, "Error");
+    } finally {
+        frm.Cursor = Cursors.Default;
+        toolButtons["guardar"].Enabled = true;
+    }
+}
+
+// ═══════════════════ EVENTOS ═══════════════════
+// Conecta el Click de un botón de la cinta (panel + sus etiquetas hijas).
+void WireTool(string key, Action a) {
+    var host = toolButtons[key];
+    EventHandler h = (_, __) => { try { a(); } catch (Exception ex) { ctx.Msg(ex.Message, "Error"); } };
+    host.Click += h;
+    foreach (Control ch in host.Controls) ch.Click += h;
+}
+WireTool("guardar",  () => CrearRequisicion(false));
+WireTool("nueva",    () => CrearRequisicion(true));
+WireTool("cancelar", () => frm.Close());
+WireTool("preview",  () => ctx.Msg("Vista previa: en proceso (próxima versión de la plantilla).", "En proceso"));
+WireTool("imprimir", () => ctx.Msg("Impresión: en proceso (próxima versión de la plantilla).", "En proceso"));
+WireTool("limpiar",  () => { if (partidas.Count == 0 || ctx.Confirm("¿Limpiar todos los campos?")) LimpiarTodo(); });
+
+// Búsqueda incremental de proveedor (por nombre o RFC)
+cboProv.TextUpdate += (_, __) => {
+    if (suspenderProv) return;
+    string f = cboProv.Text;
+    string fu = f.ToUpperInvariant();
+    suspenderProv = true;
+    cboProv.Items.Clear();
+    foreach (var o in provAll)
+        if (f.Length == 0 || o.Txt.ToUpperInvariant().Contains(fu) || (o.Extra ?? "").ToUpperInvariant().Contains(fu))
+            cboProv.Items.Add(o);
+    cboProv.Text = f;
+    cboProv.SelectionStart = f.Length;
+    cboProv.SelectionLength = 0;
+    cboProv.DroppedDown = cboProv.Items.Count > 0;
+    Cursor.Current = Cursors.Default;
+    cboProv.SelectionStart = f.Length;
+    suspenderProv = false;
+    ActualizarProveedor();
+};
+cboProv.SelectedIndexChanged += (_, __) => { if (!suspenderProv) ActualizarProveedor(); };
+
+// Búsqueda de producto (texto + botón lupa)
+txtProducto.TextChanged += (_, __) => {
+    if (suspenderBusqueda) return;
+    productoSeleccionado = null;
+    Buscar(txtProducto.Text);
+};
+btnBuscarProd.Click += (_, __) => {
+    string t = (txtProducto.Text ?? "").Trim();
+    Buscar(t.Length == 0 ? "#" : t);
+    txtProducto.Focus();
+};
+
+lstMatch.MouseDoubleClick += (_, __) => SeleccionarProducto();
+lstMatch.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.Enter) { SeleccionarProducto(); ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Escape) { OcultarResultados(); txtProducto.Focus(); ev.Handled = true; }
+};
+txtProducto.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.Down && pnlDrop.Visible) { lstMatch.Focus(); if (lstMatch.SelectedIndex < 0 && lstMatch.Items.Count > 0) lstMatch.SelectedIndex = 0; ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Enter) {
+        if (pnlDrop.Visible && lstMatch.SelectedItem != null) SeleccionarProducto();
+        else if (productoSeleccionado != null) AgregarProducto();
+        ev.Handled = true; ev.SuppressKeyPress = true;
+    } else if (ev.KeyCode == Keys.Escape) { LimpiarCaptura(); ev.Handled = true; }
+};
+nudCantidad.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.Enter) { AgregarProducto(); ev.Handled = true; ev.SuppressKeyPress = true; }
+};
+
+btnAgregar.Click += (_, __) => AgregarProducto();
+btnEliminar.Click += (_, __) => {
+    if (grid.CurrentRow == null) return;
+    int i = grid.CurrentRow.Index;
+    if (i >= 0 && i < partidas.Count) { partidas.RemoveAt(i); RefreshGrid(); }
+};
+cboDep.SelectedIndexChanged += (_, __) => PrecargarFolio();
+
+// Atajos globales
+frm.KeyDown += (_, ev) => {
+    if (ev.KeyCode == Keys.F5) { CrearRequisicion(false); ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Escape && !pnlDrop.Visible) { frm.Close(); ev.Handled = true; }
+};
+
+// ═══════════════════ CLASES ═══════════════════
+class Opt {
+    public string Txt; public int Val; public string Extra;
+    public Opt(string t, int v, string e = "") { Txt = t; Val = v; Extra = e; }
+    public override string ToString() => Txt;
+}
+class Item { public int PID; public string Key; public string Desc; public string Unit; public double Qty; public double Stock; }
+class Prod { public int PID; public string Key; public string Desc; public string Unit; public double Stock; }
+
+// ═══════════════════ ARRANQUE ═══════════════════
+ActualizarProveedor();
+PrecargarFolio();
+RefreshGrid();
+
+// MODELESS (no ShowDialog): se puede minimizar y seguir trabajando en Comercial,
+// y se pueden tener varias requisiciones (u otras ventanas de botones) abiertas
+// a la vez. Application.OpenForms la mantiene viva mientras esté abierta; no
+// hace falta guardar la referencia a mano.
+frm.Show();
