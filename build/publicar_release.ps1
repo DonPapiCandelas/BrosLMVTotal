@@ -129,7 +129,7 @@ else {
 # --- notas y hashes ---
 $notas = New-Object Collections.Generic.List[string]
 if ($Producto -eq 'Addon') {
-    $cl = Get-Content (Join-Path $root 'docs\CHANGELOG.md') -Raw
+    $cl = [IO.File]::ReadAllText((Join-Path $root 'docs\CHANGELOG.md'), [Text.Encoding]::UTF8)
     $mm = [regex]::Match($cl, "(?ms)^## \[$([regex]::Escape($ver))\][^\r\n]*\r?\n(.*?)(?=^## \[)")
     if ($mm.Success) { $notas.Add($mm.Groups[1].Value.Trim()) } else { $notas.Add("Ver docs/CHANGELOG.md") }
 } else {
