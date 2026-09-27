@@ -441,12 +441,22 @@ documento requiere:
 | `productId` | `int` | requerido | ProductID del producto |
 | `cantidad` | `double` | `1` | Cantidad |
 | `precioUnitario` | `double` | `-1` | Precio unitario (<0 = sin precio, queda 0) |
-| `costo` | `double` | `-1` | Costo de entrada (<0 = no setear; >=0 puebla CostPrice) |
+| `costo` | `double` | `-1` | Costo de entrada (<0 = no setear; >=0 puebla CostPrice). **Ojo:** "no setear" NO significa "Comercial lo calcula después" — la columna `CostPrice` de `docDocumentItem` tiene DEFAULT `0`, así que dejarlo en `-1` (el default de este parámetro) deja el costo real en `0` igual que si hubieras pasado `0` a propósito, con el mismo riesgo de "Division by zero" nativo si el producto no tiene costo por otra vía (ver "💥 Division by zero" en §12, causas 1 y 3). Si el producto puede quedar sin costo real, resuelve uno explícito antes de llamar (`ctx.erp.GetCostPriceComercial` — ver §6.7) en vez de confiar en el default. |
 | `taxTypeIdOverride` | `int` | `-1` | Impuesto a usar en vez del de `orgProduct.TaxTypeID` (<0 = usar el del producto). Útil para un combo de "Impuesto" editable en la UI — ver "Ejemplo Premium · Orden de Compra". |
 | `descuentoPerc` | `double` | `0` | Descuento de la partida, en **fracción** (0.05 = 5%, no "5") |
 | `deliverDocumentItemId` | `int` | `0` | (v2.22.0) `DocumentItemID` del documento ORIGEN que esta partida está surtiendo — p. ej., la partida de la Orden de Compra que una Recepción de Compra está recibiendo. 0 = no aplica. Ver "Ejemplo Premium · Recepción de Compra" y MANUAL.md §10.4 — para Factura de Compra el campo real es OTRO (`SourceDocumentItemID`, fijado aparte por SQL, no por este parámetro). |
 | `lote` | `string` | `null` | (v2.22.0) Solo si `orgProduct.UseLot=1`. **Ojo:** esto llena el campo simple `docDocumentItem.Lot` — NO es lo mismo que las tablas de detalle `docDocumentLot`/`docDocumentSerialNumber` (que soportan varios lotes/series por partida, con caducidad); para eso, ver el capturador de la plantilla de Recepción de Compra, que hace el INSERT directo a esas tablas. |
 | `serialNumber` | `string` | `null` | (v2.22.0) Solo si `orgProduct.UseSerialNumber=1`. Mismo comentario que `lote`: un solo valor aquí, no reemplaza la captura de múltiples series. |
+
+#### `ctx.erp.AgregarSerie(documentId, documentItemId, productId, serialNumber, depotId, quantity=-1)` — asignar una serie a una partida ya creada
+
+(v2.90.0, `quantity` agregado en v2.91.0) Inserta directo en `docDocumentSerialNumber` — para
+partidas con varias series se llama una vez por serie. **`quantity` importa según la dirección
+del documento:** `-1` (el default) es la convención correcta para documentos de SALIDA
+(Factura, Remisión, Pedido — la serie "sale" del almacén); un documento de ENTRADA (Recepción
+de Compra, Factura de Compra) necesita `quantity=1`, o la serie queda registrada como si
+hubiera salido del almacén cuando en realidad entró (hallazgo real de producción, corregido en
+v2.91.0 — antes `quantity` estaba fijo en `-1` sin importar el tipo de documento).
 
 ### 6.3 Operaciones de documento (post-creación)
 
@@ -1347,8 +1357,8 @@ Con eso activo, ese usuario:
 cualquier usuario al que quieras dar acceso de solo consulta sin tocar los permisos nativos
 de Comercial. Quita la fila de `zzBrosPref` (o pon `Valor='0'`) para revertirlo.
 
-### 💥 "Division by zero" nativo al Guardar/Visualizar: dos causas raíz reales confirmadas
-`XEngineLib` truena con "Division by zero" al guardar o visualizar un documento en dos
+### 💥 "Division by zero" nativo al Guardar/Visualizar: tres causas raíz reales confirmadas
+`XEngineLib` truena con "Division by zero" al guardar o visualizar un documento en tres
 escenarios reales, ninguno obvio desde el mensaje de error:
 
 1. **Causa raíz real: el producto estaba dado de alta como Paquete (`ProductTypeID=3`)
@@ -1369,11 +1379,21 @@ escenarios reales, ninguno obvio desde el mensaje de error:
    usa), dejarla en `1` provoca el mismo "Division by zero" al Visualizar/Guardar. Confirmado
    con partidas creadas vía `ctx.erp.AgregarArticulo` — revisa/fuerza `MustBeDelivered=0`
    explícitamente si el tipo de documento no maneja entregas pendientes.
+3. **`orgProduct.CostPriceComercial` (columna del CATÁLOGO, no `docDocumentItem.CostPrice`
+   de la partida) en `0`.** Comercial **recalcula y sobreescribe `docDocumentItem.CostPrice`
+   al Guardar** usando `orgProduct.CostPriceComercial ÷ tipo de cambio` — así que llenar
+   `CostPrice` a mano en la partida no protege contra esta causa: si el catálogo tiene
+   `CostPriceComercial=0` para ese producto, el recálculo nativo vuelve a dividir entre cero
+   sin importar lo que el script haya escrito. Confirmado como causa distinta a la 1
+   (después de corregir `ProductTypeID` y seguir viendo el error para otro producto). Hay
+   wrapper de solo lectura para consultarlo antes de crear el documento:
+   `ctx.erp.GetCostPriceComercial(productId)` (ver §6.7) — revísalo si vas a facturar/mover
+   un producto que nunca ha tenido movimientos de costeo reales.
 
-La causa 2 se confirmó **descartando primero candidatos más obvios** (`CostPrice`/
+Las causas 2 y 3 se confirmaron **descartando primero candidatos más obvios** (`CostPrice`/
 `ProductVolume` en 0 en todo el catálogo, `SourceDocumentID` en 0) antes de dar con la causa
-real — si te topas con este error, no asumas la primera causa que se te ocurra: revisa estas
-dos primero.
+real — si te topas con este error, no asumas la primera causa que se te ocurra: revisa las
+tres de arriba, en orden, antes de seguir buscando.
 
 ### 🔒 Nunca ocultar en silencio un CFDI/XML ya asociado a otro documento
 Un patrón de bug real (encontrado dos veces, en herramientas de asociación de XML distintas):
@@ -1522,6 +1542,15 @@ SELECT TOP 50 * FROM zzBrosAuditoria ORDER BY id DESC;
 
 ### ⚠️ Folio
 - `NuevoDocumento` resuelve el folio automáticamente. No usar `MAX(Folio)+1` manual.
+- **Excepción real confirmada:** esto depende de que el módulo tenga filas configuradas en
+  `engDocumentFolio` — no es garantizado en una base de cliente real. Se confirmó un caso con
+  **`engDocumentFolio` casi vacía en toda la base (3 filas totales) y ninguna para el módulo**
+  que se estaba usando (Facturas de Cliente). Si te topas con esto, `MAX(Folio)+1` manual es
+  la única opción — pero hazlo **agrupado por el `FolioPrefix` exacto** (el string completo,
+  no solo `ModuleID`+`OwnedBusinessEntityID`): se confirmó folios históricos mezclados bajo el
+  mismo módulo+entidad con 4-5 series de prefijo distintas (variantes como `BCD40`/`BCD4.0`/
+  `BCD`, más series especiales como anticipos), que colisionarían si el `MAX` no filtra por el
+  prefijo exacto que vas a usar.
 
 ### ⚠️ Transacciones
 - Los builders del addon (`NuevoDocumento` + 4 anclas) ejecutan 5 INSERT sin transacción.

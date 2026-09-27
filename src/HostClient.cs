@@ -642,45 +642,77 @@ namespace BrosLMV
             return table;
         }
 
+        // OpenFileDialog/SaveFileDialog/FolderBrowserDialog son WinForms -- igual que WebView2
+        // (ver RenderUiHtml abajo), exigen un hilo STA. El hilo que atiende el pipe de Python
+        // NO esta garantizado en STA; sin este hilo dedicado, ctx.select_file()/select_folder()
+        // desde un script Python truena el proceso completo (hallazgo real, confirmado en
+        // produccion: AdjuntarArch, v2.91.0). Antes de v2.91.0 esto corria directo en el hilo
+        // del pipe -- funcionaba desde C# (corre en el hilo de UI del addon) pero no desde Python.
         private static UiResponse RenderSelectFile(UiSelectFile spec)
         {
             string ruta = null;
-            if (spec.Save)
+            Exception hiloEx = null;
+            var hilo = new System.Threading.Thread(() =>
             {
-                using (var dlg = new SaveFileDialog
+                try
                 {
-                    Title = string.IsNullOrWhiteSpace(spec.Title) ? "Guardar archivo" : spec.Title,
-                    Filter = string.IsNullOrWhiteSpace(spec.Filter) ? "Todos los archivos|*.*" : spec.Filter,
-                    InitialDirectory = string.IsNullOrWhiteSpace(spec.InitialDir) ? null : spec.InitialDir
-                })
-                    if (dlg.ShowDialog() == DialogResult.OK) ruta = dlg.FileName;
-            }
-            else
-            {
-                using (var dlg = new OpenFileDialog
-                {
-                    Title = string.IsNullOrWhiteSpace(spec.Title) ? "Seleccionar archivo" : spec.Title,
-                    Filter = string.IsNullOrWhiteSpace(spec.Filter) ? "Todos los archivos|*.*" : spec.Filter,
-                    InitialDirectory = string.IsNullOrWhiteSpace(spec.InitialDir) ? null : spec.InitialDir,
-                    CheckFileExists = true
-                })
-                    if (dlg.ShowDialog() == DialogResult.OK) ruta = dlg.FileName;
-            }
+                    if (spec.Save)
+                    {
+                        using (var dlg = new SaveFileDialog
+                        {
+                            Title = string.IsNullOrWhiteSpace(spec.Title) ? "Guardar archivo" : spec.Title,
+                            Filter = string.IsNullOrWhiteSpace(spec.Filter) ? "Todos los archivos|*.*" : spec.Filter,
+                            InitialDirectory = string.IsNullOrWhiteSpace(spec.InitialDir) ? null : spec.InitialDir
+                        })
+                            if (dlg.ShowDialog() == DialogResult.OK) ruta = dlg.FileName;
+                    }
+                    else
+                    {
+                        using (var dlg = new OpenFileDialog
+                        {
+                            Title = string.IsNullOrWhiteSpace(spec.Title) ? "Seleccionar archivo" : spec.Title,
+                            Filter = string.IsNullOrWhiteSpace(spec.Filter) ? "Todos los archivos|*.*" : spec.Filter,
+                            InitialDirectory = string.IsNullOrWhiteSpace(spec.InitialDir) ? null : spec.InitialDir,
+                            CheckFileExists = true
+                        })
+                            if (dlg.ShowDialog() == DialogResult.OK) ruta = dlg.FileName;
+                    }
+                }
+                catch (Exception ex) { hiloEx = ex; }
+            });
+            hilo.SetApartmentState(System.Threading.ApartmentState.STA);
+            hilo.Start();
+            hilo.Join();
+            if (hiloEx != null)
+                return new UiResponse { Error = new Error { Code = "SELECT_FILE_ERROR", Message = hiloEx.Message } };
             return new UiResponse { SelectedPath = ruta ?? "" };
         }
 
         private static UiResponse RenderSelectFolder(UiSelectFolder spec)
         {
             string ruta = null;
-            using (var dlg = new FolderBrowserDialog
+            Exception hiloEx = null;
+            var hilo = new System.Threading.Thread(() =>
             {
-                Description = string.IsNullOrWhiteSpace(spec.Title) ? "Seleccionar carpeta" : spec.Title
-            })
-            {
-                if (!string.IsNullOrWhiteSpace(spec.InitialDir) && Directory.Exists(spec.InitialDir))
-                    dlg.SelectedPath = spec.InitialDir;
-                if (dlg.ShowDialog() == DialogResult.OK) ruta = dlg.SelectedPath;
-            }
+                try
+                {
+                    using (var dlg = new FolderBrowserDialog
+                    {
+                        Description = string.IsNullOrWhiteSpace(spec.Title) ? "Seleccionar carpeta" : spec.Title
+                    })
+                    {
+                        if (!string.IsNullOrWhiteSpace(spec.InitialDir) && Directory.Exists(spec.InitialDir))
+                            dlg.SelectedPath = spec.InitialDir;
+                        if (dlg.ShowDialog() == DialogResult.OK) ruta = dlg.SelectedPath;
+                    }
+                }
+                catch (Exception ex) { hiloEx = ex; }
+            });
+            hilo.SetApartmentState(System.Threading.ApartmentState.STA);
+            hilo.Start();
+            hilo.Join();
+            if (hiloEx != null)
+                return new UiResponse { Error = new Error { Code = "SELECT_FOLDER_ERROR", Message = hiloEx.Message } };
             return new UiResponse { SelectedPath = ruta ?? "" };
         }
 

@@ -8,6 +8,29 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](CHANGELOG_ARCHIVO.md).
 
+## [2.92.0] — 2026-09-27 — Dos bugs reales corregidos: `ctx.select_file`/`select_folder` desde Python y `AgregarSerie` en documentos de entrada
+
+Motivado por el barrido a fondo de un proyecto satélite (migración de otra herramienta de
+scripting a BrosLMV, botón por botón, en producción): dos bugs reales del addon compartido,
+no de ese cliente, encontrados al migrar un gestor de adjuntos y una Recepción de Compra.
+
+### Corregido
+- **`ctx.select_file()`/`ctx.select_folder()` desde un script Python tronaban el proceso
+  completo.** `RenderSelectFile`/`RenderSelectFolder` (en `HostClient.cs`) mostraban el
+  diálogo de Windows (`OpenFileDialog`/`SaveFileDialog`/`FolderBrowserDialog`, todos WinForms)
+  directo en el hilo que atiende el pipe de Python, que no está garantizado en modo STA —
+  igual que ya le pasaba a WebView2 antes de que `RenderUiHtml` se moviera a un hilo STA
+  dedicado (ver `CHANGELOG_ARCHIVO.md`), pero esas dos funciones nunca recibieron el mismo
+  arreglo. Ahora corren en su propio hilo STA, igual que `RenderUiHtml`. Confirmado en
+  producción con `AdjuntarArch`.
+- **`ctx.erp.AgregarSerie(...)` fijaba `Quantity=-1` sin importar el tipo de documento.**
+  Esa convención es correcta para documentos de SALIDA (Factura, Remisión, Pedido), pero un
+  documento de ENTRADA (Recepción de Compra, Factura de Compra) necesita `Quantity=1` — con
+  el valor fijo, las series quedaban registradas como si hubieran salido del almacén en vez
+  de haber entrado. Confirmado en producción: Recepción de Compra 14768. Ahora acepta un
+  parámetro opcional `quantity` (default `-1`, mismo comportamiento que antes para los
+  llamadores existentes); `RecepcionOC` debe pasar `quantity=1` explícito.
+
 ## [2.91.0] — 2026-09-27 — Paginación real (Paged.js) para `htmlpdf/formatos/`
 
 > El único cambio en `src\` es el bump de `AssemblyVersion`; lo demás vive en

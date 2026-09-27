@@ -47,6 +47,22 @@
   </header>
 
   <div class="ver">
+    <h2>2.92.0</h2>
+    <div class="date">2026-09-27 — Dos bugs reales corregidos (select_file/select_folder en Python, AgregarSerie)</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li><code>ctx.select_file()</code>/<code>ctx.select_folder()</code> desde Python tronaban
+            el proceso (WinForms exige un hilo STA) — ahora corren en su propio hilo STA, igual
+            que ya hacía <code>ctx.show_html()</code>.</li>
+        <li><code>ctx.erp.AgregarSerie(...)</code> fijaba <code>Quantity=-1</code> sin importar el
+            tipo de documento — correcto para Factura/Remisión/Pedido (salida), incorrecto para
+            Recepción de Compra/Factura de Compra (entrada). Nuevo parámetro opcional
+            <code>quantity</code> (default -1, mismo comportamiento de antes).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
     <h2>2.91.0</h2>
     <div class="date">2026-09-27 — Paginación real (Paged.js) disponible para plantillas de PDF</div>
     <div class="grp add"><div class="h">Agregado</div>
