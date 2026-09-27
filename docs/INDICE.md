@@ -16,8 +16,8 @@ Orden de lectura sugerido según lo que necesites.
 | Documento | Qué encontrarás |
 |-----------|-----------------|
 | [`ESTADO.md`](ESTADO.md) | **Dónde vamos, pendientes y qué sigue.** Punto de entrada al retomar el proyecto + REGLA DE ORO de documentación — corto a propósito |
-| [`CHANGELOG_ARCHIVO.md`](CHANGELOG_ARCHIVO.md) / [`ESTADO_ARCHIVO.md`](ESTADO_ARCHIVO.md) | Historial largo (versiones 2.80.0 y anteriores / bitácora de sesiones vieja) — solo consulta puntual, no arranque |
-| [`PLAN_IMPLEMENTACION.md`](PLAN_IMPLEMENTACION.md) | **Plan de implementación post-análisis (2026-07-22):** hallazgos verificados, brechas de documentación y tareas priorizadas con instrucciones paso a paso |
+| [`CHANGELOG_ARCHIVO.md`](CHANGELOG_ARCHIVO.md) / [`ESTADO_ARCHIVO.md`](ESTADO_ARCHIVO.md) / [`PLAN_IMPLEMENTACION_ARCHIVO.md`](PLAN_IMPLEMENTACION_ARCHIVO.md) | Historial largo (versiones viejas / bitácora de sesiones / plan original 2026-07-22 con sus banners de HECHO) — solo consulta puntual, no arranque |
+| [`PLAN_IMPLEMENTACION.md`](PLAN_IMPLEMENTACION.md) | **Pendientes reales** — corto, sin lo ya resuelto (eso quedó en el archivo de arriba) |
 
 ## Empezar y usar
 
