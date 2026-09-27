@@ -1357,8 +1357,8 @@ Con eso activo, ese usuario:
 cualquier usuario al que quieras dar acceso de solo consulta sin tocar los permisos nativos
 de Comercial. Quita la fila de `zzBrosPref` (o pon `Valor='0'`) para revertirlo.
 
-### 💥 "Division by zero" nativo al Guardar/Visualizar: tres causas raíz reales confirmadas
-`XEngineLib` truena con "Division by zero" al guardar o visualizar un documento en tres
+### 💥 "Division by zero" nativo al Guardar/Visualizar: cuatro causas raíz reales confirmadas
+`XEngineLib` truena con "Division by zero" al guardar o visualizar un documento en cuatro
 escenarios reales, ninguno obvio desde el mensaje de error:
 
 1. **Causa raíz real: el producto estaba dado de alta como Paquete (`ProductTypeID=3`)
@@ -1389,11 +1389,23 @@ escenarios reales, ninguno obvio desde el mensaje de error:
    wrapper de solo lectura para consultarlo antes de crear el documento:
    `ctx.erp.GetCostPriceComercial(productId)` (ver §6.7) — revísalo si vas a facturar/mover
    un producto que nunca ha tenido movimientos de costeo reales.
+4. **`orgProduct.ProductVolume` en `0`.** Causa distinta e independiente de las tres
+   anteriores — confirmada con `CostPrice`/`CostPriceComercial` ya corregidos (no-cero) y
+   el error seguía saliendo al dar **Visualizar** (no solo Guardar). Se confirmó por SQL
+   que el producto de la partida tenía `ProductVolume=0` (coincide con "Volumen 0.00" en
+   el panel "Origen" de la pantalla nativa) — la plantilla nativa de Visualizar usa el
+   volumen como divisor en algún cálculo interno (costo/flete por m³, no confirmable sin
+   acceso al binario cerrado de `XEngineLib`). Un volumen mínimo no-cero (p. ej. `0.001`)
+   en el catálogo es inofensivo si el negocio no factura por volumen, y evita el crash.
+   Igual que la causa 1, **se corrige el catálogo (`orgProduct`), no el documento** — el
+   volumen es dato del producto, beneficia a cualquier documento futuro con ese producto.
 
-Las causas 2 y 3 se confirmaron **descartando primero candidatos más obvios** (`CostPrice`/
-`ProductVolume` en 0 en todo el catálogo, `SourceDocumentID` en 0) antes de dar con la causa
-real — si te topas con este error, no asumas la primera causa que se te ocurra: revisa las
-tres de arriba, en orden, antes de seguir buscando.
+Las causas 2 y 3 se confirmaron **descartando primero candidatos más obvios** (`CostPrice`
+en 0 en todo el catálogo, `SourceDocumentID` en 0) antes de dar con la causa real; la
+causa 4 se confirmó después, en un caso donde 1-3 ya estaban corregidas y el error seguía
+saliendo. Si te topas con este error, no asumas la primera causa que se te ocurra: revisa
+las cuatro de arriba, en orden, antes de seguir buscando — y ten presente que **pueden
+coexistir varias a la vez** para el mismo producto.
 
 ### 🔒 Nunca ocultar en silencio un CFDI/XML ya asociado a otro documento
 Un patrón de bug real (encontrado dos veces, en herramientas de asociación de XML distintas):
