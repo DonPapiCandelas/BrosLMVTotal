@@ -1157,6 +1157,13 @@ cosas importantes que aprender de esto para cualquier documento derivado nuevo:
    los valores que quedan en `docDocument`/`docDocumentItem`) en vez de asumirlo por analogía con
    otro documento. Recepción de Compra y Factura de Compra, por ejemplo, difieren en varios campos
    del encabezado (`StatusDeliveryID`, `DepotIDFrom`, etc.) pese a parecerse mucho en el flujo.
+4. **Facturación PARCIAL (por cantidad, no todo-o-nada) necesita revalidar justo antes de crear.**
+   Si la ventana deja elegir cuánto de cada partida facturar (no solo cuáles), el pendiente real
+   pudo cambiar mientras el usuario tenía la ventana abierta (otra persona facturó la misma OC
+   mientras tanto). Patrón validado: recalcular el pendiente de cada partida elegida con la MISMA
+   consulta SQL que armó la ventana, justo antes del `NuevoDocumento`/`AgregarArticulo`, y abortar
+   sin crear nada si alguna cantidad pedida ya no cabe en lo pendiente — en vez de crear parcial o
+   dejar que CONTPAQi lo acepte silenciosamente por encima de lo ordenado.
 
 **Totales y total en letra (v2.21.0).** El desglose se calcula partida por partida, no lo
 recalcula CONTPAQi al vuelo: por cada partida `neto = importe − importe×descuento%` y
