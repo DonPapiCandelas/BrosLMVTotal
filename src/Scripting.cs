@@ -2009,16 +2009,20 @@ namespace BrosLMV
         // asignada. `depotId` = almacén de donde sale la serie (normalmente el mismo
         // `DepotID` del documento). Mismo patrón de columnas que ya usaba el SQL manual de
         // `docDocumentSerialNumber` en los scripts portados de otra herramienta de scripting
-        // (scripts de envío a factura y de facturación de pedidos): `Quantity=-1` fija (convención ya
-        // confirmada contra datos reales, no un valor inventado aquí).
-        public void AgregarSerie(int documentId, int documentItemId, int productId, string serialNumber, int depotId)
+        // (scripts de envío a factura y de facturación de pedidos): `Quantity=-1` (convención
+        // confirmada contra datos reales para documentos de SALIDA — Factura, Remisión, Pedido).
+        // Un documento de ENTRADA (Recepción de Compra, Factura de Compra) necesita `Quantity=1`
+        // — quedó en -1 fijo por error hasta v2.91.0 (hallazgo real: Recepción 14768 registró las
+        // series como si hubieran salido del almacén). El default se deja en -1 para no cambiar
+        // el comportamiento de los llamadores existentes (todos de salida).
+        public void AgregarSerie(int documentId, int documentItemId, int productId, string serialNumber, int depotId, int quantity = -1)
         {
             RequiereSql("AgregarSerie");
             GuardaEscritura();
             int userID = UserId;
             string sql =
                 "INSERT INTO docDocumentSerialNumber (DocumentID, DocumentItemID, ProductID, SerialNumber, Quantity, DepotID, CreatedOn, CreatedBy) " +
-                "VALUES (" + documentId + ", " + documentItemId + ", " + productId + ", " + Lit(serialNumber) + ", -1, " + depotId + ", GETDATE(), " + userID + ")";
+                "VALUES (" + documentId + ", " + documentItemId + ", " + productId + ", " + Lit(serialNumber) + ", " + quantity + ", " + depotId + ", GETDATE(), " + userID + ")";
             _owner.NonQuery(sql);
         }
 
