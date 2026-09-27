@@ -1351,13 +1351,18 @@ de Comercial. Quita la fila de `zzBrosPref` (o pon `Valor='0'`) para revertirlo.
 `XEngineLib` truena con "Division by zero" al guardar o visualizar un documento en dos
 escenarios reales, ninguno obvio desde el mensaje de error:
 
-1. **Un producto nunca tuvo `CostPrice` sembrado en `orgProductCostComercial`** (el libro
-   real de costeo). Pasa cuando un producto terminado solo se mueve por una Remisión (nunca
-   tuvo una entrada formal de almacén) y el script que generó esa Remisión insertó sus
-   `docDocumentItem` sin llenar `CostPrice` — el recálculo de costos divide entre un costo
-   que nunca existió. Si escribes `docDocumentItem` por SQL directo, llena siempre
-   `CostPrice` (mínimo `0.01` si de plano no hay costo real) — nunca lo dejes en blanco/0
-   asumiendo que Comercial lo va a calcular después.
+1. **Causa raíz real: el producto estaba dado de alta como Paquete (`ProductTypeID=3`)
+   cuando debía ser Producto Terminado (`ProductTypeID=2`)** — confirmado y corregido en
+   producción. Un Paquete se costea por sus componentes (`orgProductComponent`); si se
+   mueve por una Remisión sin pasar por ese camino de costeo (p. ej. nunca tuvo una entrada
+   formal de almacén), `orgProductCostComercial` (el libro real de costeo) nunca se siembra
+   para ese producto, y el recálculo de costos (`RecalcCostComercial`/`RecalcCostFiscal`)
+   divide entre un costo que no existe. **La corrección real es cambiar el tipo de producto
+   a Producto Terminado**, no parchear `CostPrice` por SQL — llenar `CostPrice` a mano en
+   `docDocumentItem` (lo que se probó primero) es un síntoma tratado, no la causa arreglada,
+   y puede quedar corto si el documento vuelve a pasar por un recálculo de costos real.
+   Si ves este error, primero revisa `orgProduct.ProductTypeID` del producto involucrado
+   antes de tocar nada por SQL.
 2. **`docDocumentItem.MustBeDelivered` queda en `1` en una partida que NO es de
    OC/Pedido.** Esa bandera significa "pendiente de entrega" y solo tiene sentido en
    documentos que SÍ esperan una entrega futura; en una Factura (u otro documento que no la
@@ -1365,7 +1370,7 @@ escenarios reales, ninguno obvio desde el mensaje de error:
    con partidas creadas vía `ctx.erp.AgregarArticulo` — revisa/fuerza `MustBeDelivered=0`
    explícitamente si el tipo de documento no maneja entregas pendientes.
 
-Ambas causas se confirmaron **descartando primero candidatos más obvios** (`CostPrice`/
+La causa 2 se confirmó **descartando primero candidatos más obvios** (`CostPrice`/
 `ProductVolume` en 0 en todo el catálogo, `SourceDocumentID` en 0) antes de dar con la causa
 real — si te topas con este error, no asumas la primera causa que se te ocurra: revisa estas
 dos primero.
