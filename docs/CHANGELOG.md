@@ -8,6 +8,23 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](CHANGELOG_ARCHIVO.md).
 
+## [2.91.0] — 2026-09-27 — Paginación real (Paged.js) para `htmlpdf/formatos/`
+
+> El único cambio en `src\` es el bump de `AssemblyVersion`; lo demás vive en
+> `htmlpdf\formatos\` y documentación nueva.
+
+### Agregado
+- `htmlpdf/formatos/paged.polyfill.min.js` — Paged.js v0.4.3 (MIT), disponible para cualquier
+  plantilla que necesite encabezado/pie repetidos en cada hoja y "Página X de Y" real en el PDF
+  (Chromium/WebView2 no resuelve `counter(page)` de `@page` sin esto). Ver
+  [`PAGINACION_PDF.md`](PAGINACION_PDF.md) para el patrón completo: `string-set`/`string()`,
+  spacer flex, el workaround de un bug real de Paged.js 0.4.3 que no repite `<thead>` entre
+  hojas, y el contrato `window.__READY_FOR_PDF__` (ya soportado por `htmlpdf/Program.cs` desde
+  antes).
+- **Ninguna de las 10 plantillas existentes se modificó todavía** — este cambio solo trae la
+  pieza lista para usarse; retrofitear una plantilla concreta queda pendiente (ver "Qué falta"
+  en `PAGINACION_PDF.md`).
+
 ## [2.90.0] — 2026-09-15 — `ctx.erp.NuevoDocumento`/`AgregarArticulo`: Rate, PaymentTermID, CurrencyID, Title, SourceDocumentID, Comments, SourceDocumentItemID
 
 Motivado por la migración de un script de facturación de pedidos desde otra herramienta de scripting a

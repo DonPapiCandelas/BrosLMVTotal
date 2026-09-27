@@ -33,7 +33,10 @@
 ## Salido después del plan original (no estaba contemplado)
 
 - **PDF de documentos + correo** (`htmlpdf/`), Configuración de formato, 10 formatos
-  genéricos — construido y shipped (2.87.0–2.89.0).
+  genéricos — construido y shipped (2.87.0–2.89.0). **Paginación real (Paged.js)** disponible
+  desde 2.91.0 (`docs/PAGINACION_PDF.md`, `htmlpdf/formatos/paged.polyfill.min.js`) — patrón
+  listo, ninguna de las 10 plantillas retocada todavía (pendiente real, plantilla por
+  plantilla).
 - **Motor de Asientos Contables** — construido y validado en producción (cobros/pagos
   multi-moneda). Ver `docs/MOTOR_ASIENTOS_CONTABLES.md`. Genuinamente pendiente: los
   scripts wrapper (Generar/Visualizar/Editar/Nuevo) como plantillas reusables en
@@ -50,9 +53,13 @@
   confirmar la lista completa de enums del SDK.
 - **Barrido de `C:\ProyectosLMV`** (21 proyectos con contenido real, en curso) — objetivo:
   que BrosLMV sea la referencia completa de cómo hablar con Comercial (XEngine/SQL/SDK).
-  Hecho: `ContabilizadorSDK` (dio el SDK de Contabilidad de arriba). Descartado: `CRMPremium`
-  (es de Comercial Premium, otro producto). Pendiente, en este orden: `ReporteadorComercial` +
-  `ReporteadorContabilidad` (ya tienen material de aprendizaje propio y uno de los dos ya
-  trae su propio `AGENTS.md`), `Coctel_de_ideas`
-  (chico, cierra el caso de los 73 botones + Paged.js), luego el resto uno por uno — confirmar
-  primero con el usuario si cada uno es Comercial PRO (sirve) o Premium/otro sistema (no).
+  Hecho: `ContabilizadorSDK` (dio el SDK de Contabilidad de arriba), `ReporteadorContabilidad`
+  (dio `docs/CONTABILIDAD_MODELO_DATOS.md`), `Coctel_de_ideas` parcial (dio la paginación
+  Paged.js de arriba). Descartado: `CRMPremium`, `ReporteadorComercial` (Comercial Premium,
+  otro producto). Pendiente en `Coctel_de_ideas` antes de pasar al siguiente proyecto:
+  `EnviarAFacturaProveedor.ctx` (OC→Factura de Compra con facturación parcial vía WebView2,
+  revisar si el patrón ya está cubierto por otra plantilla), `FIX_botones_cotizador.sql`
+  (confirmar si es duplicado de un fix ya conocido), `QUITAR_ACCESO_FACIL.sql` (posible
+  patrón genérico de migración, sin evaluar). Después, el resto de los ~19 proyectos uno por
+  uno — confirmar primero con el usuario si cada uno es Comercial PRO (sirve) o Premium/otro
+  sistema (no).
