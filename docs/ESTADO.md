@@ -22,9 +22,9 @@ real: `build/generar_instalador.ps1` (mata `ComercialSP.exe` a la fuerza — avi
 demo en curso) + `build/generar_exes.ps1`. Ya pasó de verdad: se hizo una demo con un cliente
 con una versión semanas más vieja que la de GitHub porque nadie regeneró el instalador.
 
-## Estado actual (2026-09-27, addon v2.90.0)
+## Estado actual (2026-09-27, addon v2.91.0)
 
-- **Addon**: v2.90.0. Lo más reciente: PDF de documentos + correo (`htmlpdf/`, botón
+- **Addon**: v2.91.0. Lo más reciente: PDF de documentos + correo (`htmlpdf/`, botón
   "Generar documento (PDF)"), "Configuración de formato" (WebView2) con pestaña
   Diagnóstico, 10 formatos HTML genéricos, y el botón "Cotizador" dentro del documento ya se
   activa **por módulo** (no masivo — una versión vieja rompía el guardado nativo, ver
@@ -70,6 +70,12 @@ con una versión semanas más vieja que la de GitHub porque nadie regeneró el i
   contra datos de producción (`Ejercicio` con dos numeraciones, `CtaMayor` vs `Afectable`, el
   join correcto de `TipoPol`, cobertura real de `SaldosSegmentoNegocio`). `ReporteadorComercial`
   se descartó: es de Comercial Premium, no Comercial PRO.
+- **`docs/PAGINACION_PDF.md`** (barrido de `C:\ProyectosLMV`, `Coctel_de_ideas`): trae a BrosLMV
+  la librería Paged.js (MIT) + el patrón completo de paginación real para PDFs (encabezado/pie
+  repetido, "Página X de Y" real, workaround del bug de `<thead>` no repetido) — probado en
+  producción en el proyecto de origen. La librería y la doc ya están en el repo
+  (`htmlpdf/formatos/paged.polyfill.min.js`); **ninguna de las 10 plantillas existentes se
+  retocó todavía** — retrofitear queda pendiente, plantilla por plantilla.
 
 ## Qué sigue (sin decidir todavía, en ningún orden particular)
 
