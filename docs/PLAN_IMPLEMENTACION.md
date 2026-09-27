@@ -34,10 +34,11 @@
 
 - **PDF de documentos + correo** (`htmlpdf/`), Configuración de formato, 10 formatos
   genéricos — construido y shipped (2.87.0–2.89.0).
-- **Motor de pólizas propio**: investigación completa de cómo genera Comercial sus pólizas
-  y cómo generarlas/abrirlas por COM sin reimplementar nada — **sin decisión de producto**
-  sobre construir el motor propio (resolvería proveedor+moneda, que el nativo no soporta).
-  Ver `docs/ESTADO.md`.
+- **Motor de Asientos Contables** — construido y validado en producción (cobros/pagos
+  multi-moneda). Ver `docs/MOTOR_ASIENTOS_CONTABLES.md`. Genuinamente pendiente: los
+  scripts wrapper (Generar/Visualizar/Editar/Nuevo) como plantillas reusables en
+  `instalador/scripts/` (hoy solo el motor de cálculo está generalizado), y el editor
+  visual (diseño ya escrito).
 - **Punto de Venta** (privado, prototipo) — login revisado, sigue en pruebas.
 - **Canal C# ↔ Python v3.0** (`host/`) — en desarrollo, reemplaza al canal v1 cuando esté
   listo.

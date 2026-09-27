@@ -1,0 +1,325 @@
+// ===== MOTOR ASIENTO PAGO PROVEEDOR (inicio) =====
+// Parte del Motor de Asientos Contables de BrosLMV (ver docs/MOTOR_ASIENTOS_CONTABLES.md).
+// Bloque IDÉNTICO en los scripts Generar/Visualizar/Editar/Nuevo de Pago Proveedor que lo usen.
+// Fuente única: scripts\motor\MotorAsientoPago.cs.txt; se copia con scripts\motor\sincronizar_motor.ps1.
+// No editar el bloque dentro de un script. Es independiente del motor de cobros (MotorAsientoCobro.cs.txt).
+// Calcula los renglones de la póliza de un Pago Proveedor a partir de las partidas del asiento. No escribe nada.
+// Cada partida: mov (Cargo/Abono), nombre, cuenta (fórmula), fuente (importe), porcentaje (100 = 100%),
+// suprimirCero, abs, concentrar, concepto, referencia y condiciones (JSON, todas con "Y").
+// Signo: un importe negativo pasa al lado contrario, salvo que la partida tenga Abs().
+
+// Módulos soportados: 248 = Cobros Cliente (tercero = cliente, *CL), 247 = Pagos Proveedor (tercero = proveedor, *PV).
+// Importes disponibles: clave -> { nivel, nombre para el usuario }.
+// nivel: cobro = un renglón por cobro/pago; documento = uno por documento aplicado;
+// impuesto = uno por cada impuesto de cada documento (IVA 16%, ISR retenido de honorarios, etc.); ajuste = al final.
+// "TC cobro" es el tipo de cambio de la operación (cobro o pago).
+Dictionary<string,string[]> MotFuentes=new Dictionary<string,string[]>{
+ {"COBRO_IMPORTE",new[]{"cobro","Importe del cobro / pago (banco)"}},
+ {"COBRO_SIN_APLICAR",new[]{"cobro","Importe sin aplicar a documentos (anticipo)"}},
+ {"DOC_TOTAL_TCF",new[]{"documento","Total aplicado a TC factura"}},
+ {"DOC_TOTAL_TCC",new[]{"documento","Total aplicado a TC cobro / pago"}},
+ {"DOC_BASE_TCF",new[]{"documento","Base (sin IVA) a TC factura"}},
+ {"DOC_BASE_TCC",new[]{"documento","Base (sin IVA) a TC cobro / pago"}},
+ {"DOC_IVA_TCF",new[]{"documento","IVA a TC factura"}},
+ {"DOC_IVA_TCC",new[]{"documento","IVA a TC cobro / pago"}},
+ {"DOC_RET_TCF",new[]{"documento","Retenciones (todas) a TC factura"}},
+ {"DOC_RET_TCC",new[]{"documento","Retenciones (todas) a TC cobro / pago"}},
+ {"DOC_FLUCT_BASE",new[]{"documento","Fluctuación cambiaria de la base (+utilidad / −pérdida)"}},
+ {"DOC_FLUCT_IVA",new[]{"documento","Fluctuación cambiaria del IVA (+utilidad / −pérdida)"}},
+ {"DOC_FLUCT_TOTAL",new[]{"documento","Fluctuación cambiaria del total (+utilidad / −pérdida)"}},
+ {"IMP_TCF",new[]{"impuesto","Impuesto a TC factura"}},
+ {"IMP_TCC",new[]{"impuesto","Impuesto a TC cobro / pago"}},
+ {"IMP_FLUCT",new[]{"impuesto","Fluctuación cambiaria del impuesto (+utilidad / −pérdida)"}},
+ {"AJUSTE_DIFERENCIA",new[]{"ajuste","Diferencia cargos y abonos (operación aplicada; máx. $1.00)"}}};
+// Variables de la operación. Los nombres "Cobro" y "Pago" dan el mismo valor; el editor muestra los de su módulo.
+string[] MotVarsCobro={"FinancialOperationID","Cliente","FechaCobro","ImporteCobro","MonedaCobro","TipoCambioCobro","DescripcionCobro","ComentariosCobro","ReferenciaCobro","Banco","Proyecto","ClaveProyecto"};
+string[] MotVarsPago={"FinancialOperationID","Proveedor","FechaPago","ImportePago","MonedaPago","TipoCambioPago","DescripcionPago","ComentariosPago","ReferenciaPago","Banco","Proyecto","ClaveProyecto"};
+string[] MotVarsDocumento={"DocumentoID","Folio","MonedaDocumento","TotalAplicado","TCFactura","TCPago"};
+string[] MotVarsImpuesto={"Impuesto","TipoImpuesto","TasaImpuesto"};
+// Campos de condición por nivel de la partida.
+string[] MotCamposCondicion(string nivel){
+ if(nivel=="documento")return new[]{"MonedaCobro","CobroTotalmenteAplicado","MonedaDocumento","Retencion","Fluctuacion"};
+ if(nivel=="impuesto")return new[]{"MonedaCobro","CobroTotalmenteAplicado","MonedaDocumento","ClaseImpuesto","TipoImpuesto","Tasa","EsRetencion","Fluctuacion"};
+ if(nivel=="ajuste")return new[]{"MonedaCobro","CobroTotalmenteAplicado","DiferenciaAbsoluta"};
+ return new[]{"MonedaCobro","CobroTotalmenteAplicado"};
+}
+// Campos de condición que se comparan como texto (sólo "igual a" / "distinto de").
+bool MotCampoTexto(string campo){return campo=="MonedaCobro"||campo=="MonedaDocumento"||campo=="CobroTotalmenteAplicado"||campo=="ClaseImpuesto"||campo=="TipoImpuesto"||campo=="EsRetencion";}
+
+class MotLinea{
+ public int Orden;public string Partida="",Documento="",CuentaTexto="",NombreCuenta="",Concepto="",Referencia="",Moneda="MXN";
+ public Dictionary<string,object> Cuenta;public bool FaltaCuenta,Omitida,Concentrar;
+ public double Debe,Haber,DebeME,HaberME,TC=1;public List<long> Docs=new List<long>();
+ public string Plantilla="";public List<Dictionary<string,string>> VarsDocs=new List<Dictionary<string,string>>();public Dictionary<string,string> VarsBase;
+}
+class MotResultado{
+ public List<string> Errores=new List<string>(),Avisos=new List<string>();public List<MotLinea> Lineas=new List<MotLinea>();
+ public string Encabezado="",NombreBanco="",Titulo="";public Dictionary<string,object> Cobro;public DateTime Fecha;
+ public Dictionary<string,string> VarsCobro=new Dictionary<string,string>();public List<Dictionary<string,string>> VarsDocumentos=new List<Dictionary<string,string>>();
+ public List<string> CuentasPartidas=new List<string>();public double TotalDebe,TotalHaber;public bool AplicacionCompleta;
+ public long Modulo;public List<string> ImpuestosSinPartida=new List<string>();
+}
+
+string MotS(object v){return v==null||v is DBNull?"":Convert.ToString(v);}
+long MotL(object v){return v==null||v is DBNull?0:Convert.ToInt64(v);}
+double MotD(object v){return v==null||v is DBNull?0:Convert.ToDouble(v);}
+bool MotB(object v){return v!=null&&!(v is DBNull)&&Convert.ToBoolean(v);}
+object MotG(Dictionary<string,object> d,string k){return d!=null&&d.ContainsKey(k)?d[k]:null;}
+string MotNum(double v){return Math.Round(v,2).ToString("0.00",System.Globalization.CultureInfo.InvariantCulture);}
+string MotMoneda(long id){return id==2?"USD":id==1?"EUR":"MXN";}
+string MotNivel(string fuente){return MotFuentes.ContainsKey(fuente??"")?MotFuentes[fuente][0]:"";}
+
+// Texto con variables [Nombre]. Vacío = texto por omisión. Máximo 255 (accPolizaTransaccion/accPoliza).
+string MotPlantilla(string texto,string omision,Dictionary<string,string> vars){
+ string t=String.IsNullOrWhiteSpace(texto)?omision:texto.Trim();
+ t=System.Text.RegularExpressions.Regex.Replace(t,@"\[([A-Za-z]+)\]",m=>vars.ContainsKey(m.Groups[1].Value)?(vars[m.Groups[1].Value]??""):m.Value);
+ return t.Length>255?t.Substring(0,255):t;
+}
+
+bool MotCumple(string reglas,Dictionary<string,string> valores,string partida){
+ if(String.IsNullOrWhiteSpace(reglas)||reglas.Trim()=="[]")return true;
+ var lista=new System.Web.Script.Serialization.JavaScriptSerializer().DeserializeObject(reglas) as object[];
+ if(lista==null)throw new Exception("Las condiciones de la partida '"+partida+"' no son válidas.");
+ foreach(object o in lista){
+  var r=o as Dictionary<string,object>;
+  string campo=MotS(MotG(r,"campo")),op=MotS(MotG(r,"operador")),valor=MotS(MotG(r,"valor")).Trim();
+  if(!valores.ContainsKey(campo))throw new Exception("La partida '"+partida+"' tiene una condición sobre '"+campo+"', que no aplica a su importe.");
+  string actual=valores[campo];bool ok;
+  if(MotCampoTexto(campo)){
+   bool igual=String.Equals(actual,valor,StringComparison.OrdinalIgnoreCase);
+   if(op=="=")ok=igual;else if(op=="!=")ok=!igual;else throw new Exception("Operador '"+op+"' no válido para "+campo+" en la partida '"+partida+"'.");
+  }else{
+   double a=Double.Parse(actual,System.Globalization.CultureInfo.InvariantCulture),b;
+   if(!Double.TryParse(valor,System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out b))throw new Exception("Valor '"+valor+"' no numérico en la partida '"+partida+"'.");
+   if(op=="=")ok=Math.Abs(a-b)<0.005;else if(op=="!=")ok=Math.Abs(a-b)>=0.005;else if(op=="<")ok=a<b;else if(op=="<=")ok=a<=b;else if(op==">")ok=a>b;else if(op==">=")ok=a>=b;
+   else throw new Exception("Operador '"+op+"' no válido en la partida '"+partida+"'.");
+  }
+  if(!ok)return false;
+ }
+ return true;
+}
+
+// Partidas activas de un asiento guardado, con las mismas claves que usa el editor.
+List<Dictionary<string,object>> MotPartidasDeBD(long asiento){
+ return ctx.Query("SELECT Orden,TipoMovimiento,NombrePartida,CuentaFormula,FuenteImporte,Porcentaje,SuprimirCero,ValorAbsoluto,Concentrar,Concepto,Referencia,CondicionesJson FROM zzBrosAsientoContablePartida WHERE AsientoContableID="+asiento+" AND Activo=1 ORDER BY Orden,AsientoContablePartidaID")
+  .Select(x=>new Dictionary<string,object>{{"mov",MotS(x["TipoMovimiento"])},{"nombre",MotS(x["NombrePartida"])},{"cuenta",MotS(x["CuentaFormula"])},{"fuente",MotS(x["FuenteImporte"])},
+   {"porcentaje",MotD(x["Porcentaje"])},{"suprimirCero",MotB(x["SuprimirCero"])},{"abs",MotB(x["ValorAbsoluto"])},{"concentrar",MotB(x["Concentrar"])},
+   {"concepto",MotS(x["Concepto"])},{"referencia",MotS(x["Referencia"])},{"condiciones",MotS(x["CondicionesJson"])}}).ToList();
+}
+
+MotResultado MotCalcular(long fo,string conceptoEncabezado,List<Dictionary<string,object>> partidas){
+ var R=new MotResultado();
+ var cs=ctx.Query("SELECT FinancialOperationID,BusinessEntityID,FinancialEntityID,DateOperation,Amount,CurrencyID,Rate,RecipientName,ModuleID,Description,Comments,Reference,ProjectID,CancelledOn FROM docFinancialOperation WHERE FinancialOperationID="+fo+" AND DeletedOn IS NULL");
+ if(cs.Count==0||MotL(cs[0]["ModuleID"])!=247){R.Errores.Add("El ID "+fo+" no es un Pago Proveedor vigente (módulo 247).");return R;}
+ if(!(cs[0]["CancelledOn"] is DBNull)&&cs[0]["CancelledOn"]!=null){R.Errores.Add("El pago "+fo+" está cancelado: no se genera póliza.");return R;}
+ var c=cs[0];R.Cobro=c;R.Fecha=Convert.ToDateTime(c["DateOperation"]);long mon=MotL(c["CurrencyID"]);
+ R.Modulo=MotL(c["ModuleID"]);bool esPago=R.Modulo==247;
+ // Fluctuación: + = utilidad para la empresa. Al cobrar, un TC mayor al de la factura es utilidad; al pagar, es pérdida.
+ double sgn=esPago?-1:1;
+ var banco=ctx.Query("SELECT TOP 1 Segmento,FinancialEntityName FROM orgFinancialEntity WHERE FinancialEntityID="+MotL(c["FinancialEntityID"]));
+ R.NombreBanco=banco.Count>0?MotS(banco[0]["FinancialEntityName"]):"";
+ string proyecto="",clave="";
+ if(MotL(c["ProjectID"])>0){var pr=ctx.Query("SELECT TOP 1 ProjectName,ProjectKey FROM orgProject WHERE ProjectID="+MotL(c["ProjectID"]));if(pr.Count>0){proyecto=MotS(pr[0]["ProjectName"]);clave=MotS(pr[0]["ProjectKey"]);}}
+ var vc=new Dictionary<string,string>{{"FinancialOperationID",fo.ToString()},{"Cliente",MotS(c["RecipientName"])},{"FechaCobro",R.Fecha.ToString("dd/MM/yyyy")},
+  {"ImporteCobro",MotD(c["Amount"]).ToString("N2")},{"MonedaCobro",MotMoneda(mon)},{"TipoCambioCobro",MotD(c["Rate"]).ToString("0.000000")},
+  {"DescripcionCobro",MotS(c["Description"])},{"ComentariosCobro",MotS(c["Comments"])},{"ReferenciaCobro",MotS(c["Reference"])},
+  {"Banco",R.NombreBanco},{"Proyecto",proyecto},{"ClaveProyecto",clave}};
+ vc["Proveedor"]=vc["Cliente"];vc["FechaPago"]=vc["FechaCobro"];vc["ImportePago"]=vc["ImporteCobro"];vc["MonedaPago"]=vc["MonedaCobro"];
+ vc["TipoCambioPago"]=vc["TipoCambioCobro"];vc["DescripcionPago"]=vc["DescripcionCobro"];vc["ComentariosPago"]=vc["ComentariosCobro"];vc["ReferenciaPago"]=vc["ReferenciaCobro"];
+ R.VarsCobro=vc;R.Titulo=fo+" · "+vc["Cliente"]+" · "+vc["ImporteCobro"]+" "+vc["MonedaCobro"]+" · "+vc["FechaCobro"];
+ R.Encabezado=MotPlantilla(conceptoEncabezado,esPago?"Pago - [Proveedor] - ([FinancialOperationID])":"Cobro - [Cliente] - ([FinancialOperationID])",vc);
+ double importeCobroMXN=MotD(c["Amount"])*MotD(c["Rate"]);
+ double rateOp=MotD(c["Rate"]);if(rateOp==0)rateOp=1;
+ // Lo aplicado, en la MONEDA DEL PAGO. docDocumentPayment.Amount viene en la moneda del DOCUMENTO y
+ // AmountPaidCurrency en pesos (a un TC propio del pago), así que se combinan según las monedas:
+ // misma moneda -> Amount; pago en pesos y documento en otra -> AmountPaidCurrency;
+ // pago en USD y documento en pesos -> Amount / TC del pago. Verificado en producción contra pagos y cobros reales.
+ double aplicado=MotD(ctx.Query("SELECT ISNULL(SUM(CASE WHEN d.CurrencyID="+mon+" THEN dp.Amount WHEN "+mon+"=3 THEN dp.AmountPaidCurrency ELSE dp.Amount/"+rateOp.ToString(System.Globalization.CultureInfo.InvariantCulture)+" END),0) AS x FROM docDocumentPayment dp JOIN docDocument d ON d.DocumentID=dp.DocumentID WHERE dp.FinancialOperationID="+fo+" AND dp.DeletedOn IS NULL")[0]["x"]);
+ double saldoSinAplicar=MotD(c["Amount"])-aplicado;
+ R.AplicacionCompleta=Math.Abs(saldoSinAplicar)<=0.005;
+ var condCobro=new Dictionary<string,string>{{"MonedaCobro",vc["MonedaCobro"]},{"CobroTotalmenteAplicado",R.AplicacionCompleta?"Si":"No"}};
+
+ // Cuentas: [CuentaBanco] = segmento del banco; *CL = segmento del cliente (cobros); *PV = segmento del proveedor (pagos).
+ string segCliente="",segProveedor="",aliasBanco="";
+ Func<object,string> seg4=v=>{string s=MotS(v).Trim();long n;return s!=""&&long.TryParse(s,out n)&&n>0?n.ToString().PadLeft(4,'0'):"";};
+ // Un cliente/proveedor puede tener varias filas (eliminadas o de otra empresa): se usa la vigente de la empresa de la operación.
+ string filtroTercero=" WHERE BusinessEntityID="+MotL(c["BusinessEntityID"])+" AND DeletedOn IS NULL ORDER BY CASE WHEN OwnedBusinessEntityID="+MotL(ctx.Query("SELECT OwnedBusinessEntityID AS x FROM docFinancialOperation WHERE FinancialOperationID="+fo)[0]["x"])+" THEN 0 ELSE 1 END";
+ if(!esPago){var cli=ctx.Query("SELECT TOP 1 Segmento FROM orgCustomer"+filtroTercero+",CustomerID DESC");if(cli.Count>0)segCliente=MotL(cli[0]["Segmento"]).ToString().PadLeft(4,'0');}
+ else{var prv=ctx.Query("SELECT TOP 1 Segmento FROM orgSupplier"+filtroTercero+",SupplierID DESC");if(prv.Count>0)segProveedor=seg4(prv[0]["Segmento"]);}
+ string segBanco=banco.Count>0?MotS(banco[0]["Segmento"]):"";
+ if(segBanco.Length==10)aliasBanco=segBanco.Substring(0,4)+"-"+segBanco.Substring(4,2)+"-"+segBanco.Substring(6,4);
+ var cache=new Dictionary<string,Dictionary<string,object>>();
+ Func<string,string> aliasDe=f=>{f=(f??"").Trim();
+  if(f.Equals("[CuentaBanco]",StringComparison.OrdinalIgnoreCase))return aliasBanco;
+  if(f.Contains("*CL")&&segCliente.Length!=4)return "";
+  if(f.Contains("*PV")&&segProveedor.Length!=4)return "";
+  return f.Replace("*CL",segCliente).Replace("*PV",segProveedor).Replace("*","");};
+ Func<string,Dictionary<string,object>> cuentaDe=f=>{string a=aliasDe(f);if(a=="")return null;if(cache.ContainsKey(a))return cache[a];
+  var r=ctx.Query("SELECT TOP 1 AccountingCatalogID,AccountNumber,AliasAccountNumber,AccountName FROM engrefAccountingCatalog WHERE DeletedOn IS NULL AND (AliasAccountNumber=N'"+a.Replace("'","''")+"' OR AccountNumber=N'"+a.Replace("'","''")+"') ORDER BY AccountingCatalogID");
+  cache[a]=r.Count==0?null:r[0];return cache[a];};
+ Func<string,string> faltaSegmento=f=>{f=(f??"").Trim();
+  if(f.Equals("[CuentaBanco]",StringComparison.OrdinalIgnoreCase)&&aliasBanco=="")return "la cuenta bancaria no tiene un segmento de 10 dígitos";
+  if(f.Contains("*CL")&&esPago)return "*CL es el segmento del cliente; en pagos usa *PV";
+  if(f.Contains("*PV")&&!esPago)return "*PV es el segmento del proveedor; en cobros usa *CL";
+  if(f.Contains("*CL")&&segCliente.Length!=4)return "el cliente no tiene segmento contable";
+  if(f.Contains("*PV")&&segProveedor.Length!=4)return "el proveedor no tiene segmento contable";
+  return "";};
+ foreach(var p in partidas){string f=MotS(MotG(p,"cuenta")),fs=faltaSegmento(f);var k=fs==""?cuentaDe(f):null;
+  R.CuentasPartidas.Add(fs!=""?"Sin cuenta: "+fs:k==null?"No existe: "+aliasDe(f):MotS(k["AliasAccountNumber"])+" · "+MotS(k["AccountName"]));}
+
+ var docs=ctx.Query(@"SELECT d.DocumentID,ISNULL(d.FolioPrefix,N'') AS FolioPrefix,ISNULL(CONVERT(nvarchar(50),d.Folio),N'') AS Folio,
+    d.CurrencyID,d.Rate AS TCFactura,ISNULL(MAX(td.PaymentRate),1) AS TCPago,
+    ISNULL(SUM(CASE WHEN td.Retention=0 THEN td.Amount ELSE 0 END),0) AS IVA,
+    ISNULL(SUM(CASE WHEN td.Retention=1 THEN td.Amount ELSE 0 END),0) AS RetIVA,
+    ISNULL(SUM(CASE WHEN td.Retention=0 THEN td.TaxBase ELSE 0 END),0) AS Base,
+    ISNULL(MAX(dp.Amount),0) AS TotalAplicado
+    FROM docDocumentPayment dp JOIN docDocument d ON d.DocumentID=dp.DocumentID
+    JOIN docFinancialOperationTaxDetail td ON td.FinancialOperationID=dp.FinancialOperationID AND td.DocumentID=d.DocumentID
+    WHERE dp.FinancialOperationID="+fo+@" AND dp.DeletedOn IS NULL AND ABS(dp.Amount)>0.0001
+    GROUP BY d.DocumentID,d.FolioPrefix,d.Folio,d.CurrencyID,d.Rate ORDER BY d.DocumentID");
+ if(docs.Count==0){
+  if(!esPago){R.Errores.Add("El cobro no tiene documentos aplicados con importe.");return R;}
+  R.Avisos.Add("El pago no tiene documentos aplicados: sólo se generan las partidas del pago (por ejemplo, el anticipo).");
+ }
+ var todosDocs=docs.Select(d=>MotL(d["DocumentID"])).ToList();
+ // Impuestos de cada documento (sólo si alguna partida los usa): uno por impuesto, tipo, tasa y retención.
+ var imps=new List<Dictionary<string,object>>();
+ if(partidas.Any(p=>MotNivel(MotS(MotG(p,"fuente")))=="impuesto"))
+  imps=ctx.Query(@"SELECT td.DocumentID,ISNULL(td.TaxName,N'') AS TaxName,ISNULL(td.TaxTypeID,0) AS TaxTypeID,ISNULL(tt.TaxTypeName,N'') AS TipoImpuesto,
+    ISNULL(td.TaxTypeName,N'') AS Clase,td.Retention,ISNULL(td.TaxPerc,0) AS TaxPerc,SUM(td.Amount) AS Amount
+    FROM docFinancialOperationTaxDetail td LEFT JOIN engTaxType tt ON tt.TaxTypeID=td.TaxTypeID
+    WHERE td.FinancialOperationID="+fo+@"
+    GROUP BY td.DocumentID,td.TaxName,td.TaxTypeID,tt.TaxTypeName,td.TaxTypeName,td.Retention,td.TaxPerc
+    ORDER BY td.DocumentID,td.Retention,td.TaxName,td.TaxTypeID").ToList();
+ var cubierto=new HashSet<int>();
+ if(partidas.Count==0){R.Errores.Add("El asiento no tiene partidas.");return R;}
+ foreach(var p in partidas)if(MotNivel(MotS(MotG(p,"fuente")))=="")R.Errores.Add("La partida '"+MotS(MotG(p,"nombre"))+"' tiene un importe desconocido: '"+MotS(MotG(p,"fuente"))+"'.");
+ if(R.Errores.Count>0)return R;
+
+ // Renglón a partir de un importe en MXN (y su M.E.). Igual que el generador original: MXN a 2 decimales, M.E. a 6.
+ Action<Dictionary<string,object>,int,double,double,string,double,Dictionary<string,string>,Dictionary<string,string>,string,List<long>> agregar=
+  (p,orden,mxn,me,moneda,tc,vars,cond,documento,ds)=>{
+   string nombre=MotS(MotG(p,"nombre"));double pct=MotD(MotG(p,"porcentaje"))/100.0;
+   mxn*=pct;me*=pct;
+   if(MotB(MotG(p,"abs"))){mxn=Math.Abs(mxn);me=Math.Abs(me);}
+   if(MotB(MotG(p,"suprimirCero"))&&Math.Abs(mxn)<0.005&&Math.Abs(me)<0.005)return;
+   bool cargo=MotS(MotG(p,"mov")).Equals("Cargo",StringComparison.OrdinalIgnoreCase);
+   if(mxn<0||(mxn==0&&me<0)){cargo=!cargo;mxn=-mxn;me=-me;}
+   var l=new MotLinea{Orden=orden,Partida=nombre,Documento=documento,Moneda=moneda,TC=tc,Concentrar=MotB(MotG(p,"concentrar")),VarsBase=vars};
+   l.Docs.AddRange(ds);
+   l.Omitida=!MotCumple(MotS(MotG(p,"condiciones")),cond,nombre);
+   string f=MotS(MotG(p,"cuenta"));l.Cuenta=faltaSegmento(f)==""?cuentaDe(f):null;l.FaltaCuenta=l.Cuenta==null;
+   l.CuentaTexto=l.Cuenta==null?(aliasDe(f)==""?f:aliasDe(f)):MotS(l.Cuenta["AliasAccountNumber"]);
+   l.NombreCuenta=l.Cuenta==null?(faltaSegmento(f)!=""?"Sin cuenta: "+faltaSegmento(f):"No existe en el catálogo"):MotS(l.Cuenta["AccountName"]);
+   l.Plantilla=MotS(MotG(p,"concepto"));if(l.Plantilla.Trim()=="")l.Plantilla=nombre+(documento==""?"":" - [Folio]");
+   l.Concepto=MotPlantilla(l.Plantilla,"",vars);l.Referencia=MotPlantilla(MotS(MotG(p,"referencia")),"",vars);
+   if(vars.ContainsKey("Folio"))l.VarsDocs.Add(vars);
+   double d2=Math.Round(mxn,2),m6=Math.Round(me,6);
+   if(cargo){l.Debe=d2;l.DebeME=m6;}else{l.Haber=d2;l.HaberME=m6;}
+   R.Lineas.Add(l);};
+
+ // 1) Partidas del cobro, en su orden.
+ for(int i=0;i<partidas.Count;i++){var p=partidas[i];if(MotNivel(MotS(MotG(p,"fuente")))!="cobro")continue;
+  bool usdCobro=mon==2;double rate=MotD(c["Rate"]);if(rate==0)rate=1;
+  if(MotS(MotG(p,"fuente"))=="COBRO_SIN_APLICAR"){
+   // Lo que no se aplicó a documentos (anticipo): saldo en la moneda del pago, en MXN a su TC.
+   agregar(p,i,saldoSinAplicar*rate,usdCobro?saldoSinAplicar:0,usdCobro?"USD":"MXN",usdCobro?rate:1,vc,condCobro,"",new List<long>());
+  }
+  else agregar(p,i,importeCobroMXN,usdCobro?MotD(c["Amount"]):0,usdCobro?"USD":"MXN",usdCobro?MotD(c["Rate"]):1,vc,condCobro,"",todosDocs);}
+ // 2) Por documento: para cada documento, sus partidas en orden.
+ foreach(var d in docs){
+  string folio=MotS(d["FolioPrefix"])+MotS(d["Folio"]);long md=MotL(d["CurrencyID"]);bool usd=md==2;
+  double tf=MotD(d["TCFactura"]);if(tf==0)tf=1;double tp=MotD(d["TCPago"]);if(tp==0)tp=1;
+  double total=MotD(d["TotalAplicado"]),iva=MotD(d["IVA"]),ret=MotD(d["RetIVA"]),baseD=MotD(d["Base"]);
+  var v=new Dictionary<string,string>(vc);
+  v["DocumentoID"]=MotL(d["DocumentID"]).ToString();v["Folio"]=folio;v["MonedaDocumento"]=MotMoneda(md);
+  v["TotalAplicado"]=total.ToString("N2");v["TCFactura"]=tf.ToString("0.000000");v["TCPago"]=tp.ToString("0.000000");
+  R.VarsDocumentos.Add(v);
+  var cd=new Dictionary<string,string>(condCobro);cd["MonedaDocumento"]=v["MonedaDocumento"];cd["Retencion"]=MotNum(ret);cd["Fluctuacion"]=usd?MotNum(sgn*baseD*(tp-tf)):"0.00";
+  string etiqueta=folio+" · "+v["MonedaDocumento"];var uno=new List<long>{MotL(d["DocumentID"])};
+  long docID=MotL(d["DocumentID"]);
+  for(int i=0;i<partidas.Count;i++){var p=partidas[i];string fu=MotS(MotG(p,"fuente"));
+   if(MotNivel(fu)=="impuesto"){
+    // Un renglón por cada impuesto del documento; sus condiciones eligen cuál (tasa, tipo, retención).
+    for(int j=0;j<imps.Count;j++){var g=imps[j];if(MotL(g["DocumentID"])!=docID)continue;
+     double monto=MotD(g["Amount"]),tasa=Math.Round(MotD(g["TaxPerc"])*100,4);
+     string tasaTxt=tasa.ToString("0.####",System.Globalization.CultureInfo.InvariantCulture);
+     var vi=new Dictionary<string,string>(v);vi["Impuesto"]=MotS(g["TaxName"]);vi["TipoImpuesto"]=MotS(g["TipoImpuesto"]);vi["TasaImpuesto"]=tasaTxt;
+     var ci=new Dictionary<string,string>(cd);ci["ClaseImpuesto"]=MotS(g["Clase"]);ci["TipoImpuesto"]=MotS(g["TipoImpuesto"]);ci["Tasa"]=tasaTxt;
+     ci["EsRetencion"]=MotB(g["Retention"])?"Si":"No";ci["Fluctuacion"]=usd?MotNum(sgn*monto*(tp-tf)):"0.00";
+     int antes=R.Lineas.Count;string et=etiqueta+" · "+MotS(g["TaxName"]);
+     if(fu=="IMP_FLUCT")agregar(p,i,usd?sgn*monto*(tp-tf):0,0,"MXN",1,vi,ci,et,uno);
+     else{double tcImp=fu=="IMP_TCC"?tp:tf;agregar(p,i,usd?monto*tcImp:monto,usd?monto:0,usd?"USD":"MXN",usd?tcImp:1,vi,ci,et,uno);}
+     if(fu!="IMP_FLUCT"&&R.Lineas.Count>antes&&!R.Lineas.Last().Omitida)cubierto.Add(j);
+    }
+    continue;
+   }
+   if(MotNivel(fu)!="documento")continue;
+   // Documento en USD: M.E. = importe en dólares, MXN = dólares x TC elegido. Documento en pesos: el importe tal cual.
+   double x=0,tcSel=tf;bool fx=false;
+   switch(fu){
+    case "DOC_TOTAL_TCF":x=total;tcSel=tf;break; case "DOC_TOTAL_TCC":x=total;tcSel=tp;break;
+    case "DOC_BASE_TCF":x=baseD;tcSel=tf;break;  case "DOC_BASE_TCC":x=baseD;tcSel=tp;break;
+    case "DOC_IVA_TCF":x=iva;tcSel=tf;break;     case "DOC_IVA_TCC":x=iva;tcSel=tp;break;
+    case "DOC_RET_TCF":x=ret;tcSel=tf;break;     case "DOC_RET_TCC":x=ret;tcSel=tp;break;
+    case "DOC_FLUCT_BASE":x=baseD;fx=true;break; case "DOC_FLUCT_IVA":x=iva;fx=true;break; case "DOC_FLUCT_TOTAL":x=total;fx=true;break;
+   }
+   if(fx)agregar(p,i,usd?sgn*x*(tp-tf):0,0,"MXN",1,v,cd,etiqueta,uno);
+   else agregar(p,i,usd?x*tcSel:x,usd?x:0,usd?"USD":"MXN",usd?tcSel:1,v,cd,etiqueta,uno);
+  }
+ }
+ // Impuestos con importe que ninguna partida «por impuesto» tomó (p. ej. un tipo de retención sin cuenta configurada).
+ for(int j=0;j<imps.Count;j++){var g=imps[j];if(cubierto.Contains(j)||Math.Abs(MotD(g["Amount"]))<0.005)continue;
+  var dd=docs.FirstOrDefault(x=>MotL(x["DocumentID"])==MotL(g["DocumentID"]));
+  string fol=dd==null?MotL(g["DocumentID"]).ToString():MotS(dd["FolioPrefix"])+MotS(dd["Folio"]);
+  string tipo=MotS(g["TipoImpuesto"]);if(tipo=="")tipo=MotS(g["Clase"]);
+  R.ImpuestosSinPartida.Add(fol+": «"+MotS(g["TaxName"])+"» ("+tipo+", "+Math.Round(MotD(g["TaxPerc"])*100,4).ToString("0.####")+"%) por "+MotD(g["Amount"]).ToString("N2")+" no quedó en ninguna partida de impuesto.");
+ }
+ // 3) Concentrar cuentas: une renglones de la misma partida, cuenta, moneda y TC.
+ var finales=new List<MotLinea>();
+ foreach(var l in R.Lineas){
+  if(!l.Concentrar||l.Omitida){finales.Add(l);continue;}
+  var dest=finales.FirstOrDefault(x=>x.Concentrar&&!x.Omitida&&x.Orden==l.Orden&&x.CuentaTexto==l.CuentaTexto&&x.Moneda==l.Moneda&&Math.Abs(x.TC-l.TC)<0.0000005);
+  if(dest==null){finales.Add(l);continue;}
+  dest.Debe+=l.Debe;dest.Haber+=l.Haber;dest.DebeME+=l.DebeME;dest.HaberME+=l.HaberME;
+  foreach(long x in l.Docs)if(!dest.Docs.Contains(x))dest.Docs.Add(x);
+  dest.VarsDocs.AddRange(l.VarsDocs);
+ }
+ foreach(var l in finales.Where(x=>x.Concentrar&&x.VarsDocs.Count>1)){
+  double neto=Math.Round(l.Debe-l.Haber,2),netoME=Math.Round(l.DebeME-l.HaberME,6);
+  l.Debe=neto>0?neto:0;l.Haber=neto<0?-neto:0;l.DebeME=neto>=0?Math.Abs(netoME):0;l.HaberME=neto<0?Math.Abs(netoME):0;
+  // Variables del documento: valores de todos los documentos concentrados, separados por coma.
+  var vj=new Dictionary<string,string>(l.VarsBase);
+  foreach(string k in MotVarsDocumento)vj[k]=String.Join(", ",l.VarsDocs.Select(x=>x.ContainsKey(k)?x[k]:"").Distinct());
+  l.Concepto=MotPlantilla(l.Plantilla,"",vj);l.Documento=l.VarsDocs.Count+" documentos";
+ }
+ finales=finales.Where(l=>!(l.Concentrar&&!l.Omitida&&Math.Abs(l.Debe)<0.005&&Math.Abs(l.Haber)<0.005&&Math.Abs(l.DebeME)<0.005&&Math.Abs(l.HaberME)<0.005&&l.VarsDocs.Count>1)).ToList();
+ R.Lineas=finales;
+ // 4) Ajuste: diferencia entre cargos y abonos, sólo con el cobro totalmente aplicado y hasta $1.00.
+ double sd=Math.Round(R.Lineas.Where(l=>!l.Omitida).Sum(l=>l.Debe),2),sh=Math.Round(R.Lineas.Where(l=>!l.Omitida).Sum(l=>l.Haber),2);
+ double dif=Math.Round(sd-sh,2);
+ bool hayAjuste=false;
+ // El redondeo se ajusta con la operación totalmente aplicada, o cuando su remanente sin aplicar ya quedó
+ // registrado en su propia partida (importe «sin aplicar»): lo que resta entonces es sólo redondeo.
+ bool remanenteRegistrado=R.Lineas.Any(l=>!l.Omitida&&l.Orden>=0&&l.Orden<partidas.Count&&MotS(MotG(partidas[l.Orden],"fuente"))=="COBRO_SIN_APLICAR");
+ bool puedeAjustar=R.AplicacionCompleta||remanenteRegistrado;
+ for(int i=0;i<partidas.Count;i++){var p=partidas[i];if(MotNivel(MotS(MotG(p,"fuente")))!="ajuste")continue;hayAjuste=true;
+  if(puedeAjustar&&Math.Abs(dif)>=0.01&&Math.Abs(dif)<=1.00){
+   var cdif=new Dictionary<string,string>(condCobro);cdif["DiferenciaAbsoluta"]=MotNum(Math.Abs(dif));
+   // Un Abono con diferencia positiva abona; si es negativa pasa a Cargo (igual que antes).
+   bool esCargo=MotS(MotG(p,"mov")).Equals("Cargo",StringComparison.OrdinalIgnoreCase);
+   agregar(p,i,esCargo?-dif:dif,0,"MXN",1,vc,cdif,"",new List<long>());
+   var l=R.Lineas.Last();if(!l.Omitida){sd+=l.Debe;sh+=l.Haber;dif=Math.Round(sd-sh,2);}
+  }
+ }
+ if(Math.Abs(dif)>0.005){
+  if(!puedeAjustar)R.Avisos.Add("Falta aplicar "+Math.Abs(saldoSinAplicar).ToString("N2")+" "+vc["MonedaCobro"]+(esPago?" del pago. La diferencia de cargos y abonos sólo se ajusta con el pago totalmente aplicado.":" del cobro. La diferencia de cargos y abonos sólo se ajusta con el cobro totalmente aplicado."));
+  else if(hayAjuste&&Math.Abs(dif)>1.00)R.Avisos.Add("La diferencia de $"+Math.Abs(dif).ToString("N2")+" supera el tope de $1.00 y no se ajusta automáticamente.");
+  else if(!hayAjuste)R.Avisos.Add("El asiento no tiene una partida de «Diferencia cargos y abonos».");
+ }
+ foreach(var l in R.Lineas.Where(x=>!x.Omitida&&x.FaltaCuenta).GroupBy(x=>x.Partida+"|"+x.CuentaTexto).Select(g=>g.First()))
+  R.Errores.Add("La partida '"+l.Partida+"' usa la cuenta "+l.CuentaTexto+": "+l.NombreCuenta.ToLowerInvariant()+".");
+ R.TotalDebe=Math.Round(sd,2);R.TotalHaber=Math.Round(sh,2);
+ return R;
+}
+// ===== MOTOR ASIENTO PAGO PROVEEDOR (fin) =====

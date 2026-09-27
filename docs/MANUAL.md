@@ -1289,6 +1289,35 @@ ctx.Msg("Recepción creada: doc=" + rc);
 
 ## 12. Advertencias y buenas prácticas
 
+### 🔔 Enganchar un botón a un evento nativo de Comercial (`ctx.EventoId`)
+Además de invocarse desde el ribbon o la Consola, cualquier AppKey se puede enganchar a
+un evento nativo del módulo (Guardar, Actualizar, Seleccionar, Imprimir, Eliminar, Doble
+clic) desde **Propiedades del módulo → pestaña Avanzado → "Ejecutar función"**, eligiendo
+el Evento y escribiendo en Función:
+
+```text
+BrosLMV.<AppKey>_[Token]
+```
+
+Donde `[Token]` es cualquier campo que Comercial sepa sustituir por su valor real antes
+de invocar (`[DocumentID]`, `[FinancialOperationID]`, etc. — el mismo mecanismo que usa
+`Concepto` en una definición de asiento contable). Comercial sustituye el token como
+**texto** antes de llamar, así que tu script recibe el AppKey literal como
+`<AppKey>_12345`. `ClsMain.EjecutarScript` ya maneja esto solo: si no encuentra ese
+AppKey exacto, reintenta con el nombre base y expone el número en `ctx.EventoId`
+(`long?`) — tu script debe darle **prioridad sobre lo que esté seleccionado en el
+grid**, para que guardar una ventana minimizada no dispare la lógica de otro registro:
+
+```csharp
+long id = ctx.EventoId.HasValue && ctx.EventoId.Value > 0
+    ? ctx.EventoId.Value
+    : ctx.GetSelectedIds().FirstOrDefault();
+```
+
+Es la base de cualquier automatización "al guardar" — por ejemplo, el Motor de Asientos
+Contables (`docs/MOTOR_ASIENTOS_CONTABLES.md`) lo usa para generar la póliza justo al
+guardar un Cobro/Pago, sin que el usuario tenga que darle clic a nada aparte.
+
 ### 👁️ Solo lectura forzado por usuario (desde v2.42.0, T2.2)
 Cualquier script (SQL, C#, Python) ya respeta `ctx.SoloLectura` — bloquea
 `NonQuery`/escrituras SQL y los builders de `ctx.erp` (`NuevoDocumento`, `AgregarArticulo`,

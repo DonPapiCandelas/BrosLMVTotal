@@ -44,11 +44,15 @@ con una versión semanas más vieja que la de GitHub porque nadie regeneró el i
   repo público a propósito** (ver `AGENTS.md` §1). Login WPF revisado recientemente: si el
   usuario real de Comercial ligado al alias no tiene password (`engUser.UserPassword` vacío),
   entra sin pedir nada — mismo comportamiento que Comercial.
-- **Motor de pólizas propio**: solo investigación por ahora (cómo genera Comercial sus
-  pólizas, `accPolizaDefinition*`, resolución de cuentas por `AliasAccountNumber`, cómo
-  abrirlas/generarlas por COM sin reimplementar nada). Dos scripts de prueba en `pruebas/`
-  (privado) lo confirman funcionando. **Sin decisión de producto tomada** sobre construir un
-  motor de asientos propio (resolvería el caso proveedor+moneda, que el nativo no soporta).
+- **Motor de Asientos Contables**: existe y **ya está validado en producción** con más
+  de un cliente real (cobros/pagos multi-moneda) — se construyó 100% como scripts +
+  tablas propias, sin tocar el addon (`ctx.EventoId`, la pieza que lo habilita, ya
+  existía desde antes). Documentado a fondo en
+  [`MOTOR_ASIENTOS_CONTABLES.md`](MOTOR_ASIENTOS_CONTABLES.md); esquema opcional en
+  `instalador/sql/motor_asientos_contables.sql`, motor de cálculo reusable en
+  `instalador/scripts/motor/`. Falta generalizar los scripts wrapper (hoy solo el motor
+  de cálculo está en el repo) y construir el editor visual (diseño ya escrito, con su
+  propia regla de "no guardar una opción que el motor todavía ignore").
 - **GitHub**: historial reescrito a un solo commit limpio (sin nombres de terceros/clientes),
   `AGENTS.md`/`CLAUDE.md` nuevos, `build/publicar_release.ps1` para publicar releases con
   revisiones previas (regla de oro, árbol limpio, escaneo de términos prohibidos). v2.90.0 ya
