@@ -82,3 +82,42 @@ puntual (buscar una versión o un tema), no contexto de arranque — son miles d
   ChatGPT sirve bien como segunda opinión sobre un diff puntual (revisión de código, sin
   tocar nada vivo). Gemini sirve bien para trabajo de texto en volumen (resumir/reorganizar
   documentación larga) que no necesite ejecutar nada contra el sistema real.
+
+## 6. Proyectos satélite (clientes) que usan BrosLMV como referencia/entrenamiento
+
+Esto YA pasó una vez y se perdió dos meses de trabajo real (el Motor de Asientos
+Contables, construido en un proyecto de cliente aparte, nunca llegó aquí hasta que se
+rescató a mano). **Este repositorio es el único cerebro compartido entre todas las IAs
+y todos los proyectos.** Ningún trabajo relacionado con BrosLMV está terminado hasta
+que vive aquí — sin excepción, sin importar en qué carpeta, con qué IA, o para qué
+cliente se hizo.
+
+**Si estás trabajando en OTRO proyecto** (típicamente `C:\ProyectosLMV\<algo>`) que
+usa BrosLMV/Comercial/CONTPAQi como base:
+
+1. Antes de nada, lee este archivo (`C:\MLVTotal\AGENTS.md`) — aplica igual ahí.
+2. Cualquier capacidad, corrección o hallazgo **genérico** de BrosLMV que construyas o
+   descubras ahí (no específico de ese cliente — ej. un patrón nuevo de `ctx.erp`, una
+   tabla propia reusable, un bug real del addon, una forma de resolver algo que
+   Comercial no hace solo) se anota en un archivo `PENDIENTE_BACKPORT_BROSLMV.md` en
+   la raíz de ESE proyecto — una entrada por hallazgo, con suficiente contexto para
+   traerlo después sin haber visto la conversación original.
+3. Nunca es aceptable que algo así se quede solo documentado en el proyecto satélite
+   "porque ya funciona ahí" — si es genérico, pertenece a `C:\MLVTotal`.
+4. Lo específico del cliente (nombres, cuentas contables reales, rutas de red, bases de
+   datos) **nunca** se trae tal cual — se generaliza antes de integrarse aquí (mismo
+   criterio que la sección 1 y 5 de este archivo). Ver `docs/MOTOR_ASIENTOS_CONTABLES.md`
+   como ejemplo ya hecho de esta operación completa.
+
+**Si estás trabajando aquí y el usuario menciona que algo se hizo "en otro proyecto"
+o "para entrenar" con un cliente:** pregunta la ruta y ofrece analizarla y traer lo
+genérico — no asumas que ya lo sabes. El procedimiento (ya probado una vez): leer toda
+la documentación de ese proyecto, identificar qué es genérico vs. específico del
+cliente, sanitizar nombres/rutas/servidores, escribirlo en `docs/` de este repo,
+verificar con `build/verificar_regla_de_oro.ps1` (incluye el escaneo de términos
+prohibidos) antes de commitear.
+
+**Plantilla de arranque para un proyecto satélite nuevo:** copiar
+`docs/PLANTILLA_PROYECTO_SATELITE.md` a la raíz de ese proyecto como su propio
+`AGENTS.md` (o pegarlo al inicio del chat) para que, desde el primer mensaje, la IA
+que trabaje ahí ya sepa esta regla.

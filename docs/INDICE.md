@@ -30,6 +30,7 @@ Orden de lectura sugerido según lo que necesites.
 | 4b | [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) | Cómo construir un dashboard rápido y portable: `ctx.dashboard()`, agregación en SQL, cero assets por script/terminal | Quien hace reportes HTML |
 | 4c | [`MOTOR_ASIENTOS_CONTABLES.md`](MOTOR_ASIENTOS_CONTABLES.md) | **Motor de Asientos Contables** (validado en producción): pólizas de cobro/pago multi-moneda que Comercial no puede armar solo, esquema propio, `ctx.EventoId`, idempotencia y límites de sincronización | Quien contabilice cobros/pagos multi-moneda |
 | 4d | [`DISENO.md`](DISENO.md) | **Tokens visuales** (color, tipografía, patrones ya construidos) — de dónde parte cualquier pantalla nueva, en WinForms, WebView2 o WPF | Quien construya UI |
+| 4e | [`PLANTILLA_PROYECTO_SATELITE.md`](PLANTILLA_PROYECTO_SATELITE.md) | **Para proyectos de cliente aparte** que usan BrosLMV como referencia — cómo evitar que el trabajo genérico se quede atrapado ahí (ver `AGENTS.md` §6) | Quien abra un proyecto satélite nuevo |
 
 ## Escribir scripts (C#, Python, SQL)
 

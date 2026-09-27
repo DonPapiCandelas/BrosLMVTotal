@@ -26,9 +26,10 @@ if ($terminos.Count -eq 0) {
 }
 $rx = '(' + ($terminos -join '|') + ')'
 
-# Excepcion unica y deliberada: AGENTS.md nombra "Entrenamiento/" a proposito, para
-# explicar por que ninguna otra carpeta debe reusar ese nombre (ver AGENTS.md #1).
-# Es la unica mencion permitida en todo el repo -- cualquier otra es una regresion real.
+# Excepcion unica y deliberada: AGENTS.md nombra la carpeta privada de material de
+# terceros a proposito, para explicar por que ninguna otra carpeta debe reusar ese
+# nombre (ver AGENTS.md #1). Es la unica mencion permitida en todo el repo --
+# cualquier otra es una regresion real.
 $excepciones = @('AGENTS.md')
 
 Push-Location $raiz
