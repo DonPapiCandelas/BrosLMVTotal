@@ -65,6 +65,11 @@ con una versión semanas más vieja que la de GitHub porque nadie regeneró el i
   `ContabilizadorSDK`) — cómo escribir pólizas directo en CONTPAQi Contabilidad, sin pasar por
   Comercial (`SDKCONTPAQNGLib`, `TSdkPoliza`/`TSdkMovimientoPoliza`). Confirmado contra material
   oficial de CONTPAQi + un prototipo externo, **no probado en vivo desde este repo todavía**.
+- **`docs/CONTABILIDAD_MODELO_DATOS.md`**: el lado de lectura del mismo barrido
+  (`ReporteadorContabilidad`) — las 6 trampas reales del esquema de Contabilidad, verificadas
+  contra datos de producción (`Ejercicio` con dos numeraciones, `CtaMayor` vs `Afectable`, el
+  join correcto de `TipoPol`, cobertura real de `SaldosSegmentoNegocio`). `ReporteadorComercial`
+  se descartó: es de Comercial Premium, no Comercial PRO.
 
 ## Qué sigue (sin decidir todavía, en ningún orden particular)
 
