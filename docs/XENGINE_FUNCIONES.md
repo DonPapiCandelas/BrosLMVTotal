@@ -122,6 +122,11 @@ Afectar inventario, recalcular, cancelar/reactivar, guardar, estatus:
 - Las operaciones que escriben (`AffectStockNEW`, `CancelDocument`, `Save`) requieren
   **permiso explícito** y pasan por la auditoría del host.
 - Llamarlas siempre en el **hilo de UI correcto** del addon (son COM del proceso 32-bit).
+- **Sin wrapper conocido hoy para `Payment.clsMain`/`RecalcDocumentPayments`** (clase COM
+  distinta a `Document.clsMain`, confirmado al migrar un script real que la necesitaba). Si
+  un script necesita recalcular pagos y no hay wrapper en `ctx.erp` para eso, envolver la
+  llamada en `try/except` con degradación silenciosa en vez de asumir que existe o
+  reimplementar el cálculo a mano.
 
 ---
 

@@ -1347,6 +1347,61 @@ Con eso activo, ese usuario:
 cualquier usuario al que quieras dar acceso de solo consulta sin tocar los permisos nativos
 de Comercial. Quita la fila de `zzBrosPref` (o pon `Valor='0'`) para revertirlo.
 
+### 💥 "Division by zero" nativo al Guardar/Visualizar: dos causas raíz reales confirmadas
+`XEngineLib` truena con "Division by zero" al guardar o visualizar un documento en dos
+escenarios reales, ninguno obvio desde el mensaje de error:
+
+1. **Un producto nunca tuvo `CostPrice` sembrado en `orgProductCostComercial`** (el libro
+   real de costeo). Pasa cuando un producto terminado solo se mueve por una Remisión (nunca
+   tuvo una entrada formal de almacén) y el script que generó esa Remisión insertó sus
+   `docDocumentItem` sin llenar `CostPrice` — el recálculo de costos divide entre un costo
+   que nunca existió. Si escribes `docDocumentItem` por SQL directo, llena siempre
+   `CostPrice` (mínimo `0.01` si de plano no hay costo real) — nunca lo dejes en blanco/0
+   asumiendo que Comercial lo va a calcular después.
+2. **`docDocumentItem.MustBeDelivered` queda en `1` en una partida que NO es de
+   OC/Pedido.** Esa bandera significa "pendiente de entrega" y solo tiene sentido en
+   documentos que SÍ esperan una entrega futura; en una Factura (u otro documento que no la
+   usa), dejarla en `1` provoca el mismo "Division by zero" al Visualizar/Guardar. Confirmado
+   con partidas creadas vía `ctx.erp.AgregarArticulo` — revisa/fuerza `MustBeDelivered=0`
+   explícitamente si el tipo de documento no maneja entregas pendientes.
+
+Ambas causas se confirmaron **descartando primero candidatos más obvios** (`CostPrice`/
+`ProductVolume` en 0 en todo el catálogo, `SourceDocumentID` en 0) antes de dar con la causa
+real — si te topas con este error, no asumas la primera causa que se te ocurra: revisa estas
+dos primero.
+
+### 🔒 Nunca ocultar en silencio un CFDI/XML ya asociado a otro documento
+Un patrón de bug real (encontrado dos veces, en herramientas de asociación de XML distintas):
+filtrar la lista de XML disponibles con algo como `WHERE ISNULL(DocumentID,0)=0` para
+"esconder" los que ya están vinculados a otro documento. El problema: el usuario nunca ve que
+ese XML existe y puede reasociarlo por error a un segundo documento (doble asociación fiscal,
+error grave). El patrón correcto: **mostrar TODOS los XML del proveedor**, marcar
+visualmente los ya asociados (deshabilitados para selección) e indicar en qué documento están
+usados — nunca esconderlos.
+
+### 🏢 No hardcodear la empresa propia (`OwnedBusinessEntityID`) ni su nombre
+Bug real encontrado dos veces: un filtro tipo `WHERE FILTRO_EMPRESA = 'Nombre Empresa A'` (o
+un `HAVING OwnedBusinessEntityID = 1`) escrito a mano para una sola razón social, en un
+cliente con **más de una empresa propia** en la misma base (`orgBusinessEntity.IsOwned=1`
+con varios `BusinessEntityID`). El síntoma es sutil: todo funciona bien para la empresa que sí
+coincide con el filtro, y silenciosamente no aparece nada (o no promueve/asocia nada) para la
+otra. Siempre deriva `OwnedBusinessEntityID` **del documento/contexto actual**, nunca de un
+literal — aunque hoy el cliente solo use una empresa, el catálogo puede crecer.
+
+### 🎯 `ctx.erp.ActiveModuleId` no es confiable para distinguir "partidas seleccionadas" de "documento completo"
+Si un script necesita saber si el usuario seleccionó partidas sueltas (p. ej. desde un
+submódulo de detalle) o el documento completo, no asumas el módulo activo — verifica
+directamente si los IDs que llegan de `ctx.GetSelectedIds()` existen como `DocumentItemID`
+en la tabla de detalle. Es más robusto que inferirlo por `ActiveModuleId`, que resultó no
+serlo en un caso real.
+
+### 🔑 `ctx.GetSelectedIds()` SÍ puede traer `DocumentItemID`, no solo IDs de documento
+No asumas que la selección del grid siempre es a nivel documento. Algunos módulos
+(confirmado uno vía `engModuleParameter.PrimaryKey`) tienen `PrimaryKey=DocumentItemID` —
+en esos, `ctx.GetSelectedIds()` regresa IDs de PARTIDA, y el script puede operar selección
+de partidas de varios documentos distintos a la vez. Verifica el `PrimaryKey` real del
+módulo (`engModuleParameter`) antes de asumir qué tipo de ID te va a llegar.
+
 ### 🔒 Integridad de scripts: hash y aprobación (desde v2.35.0)
 Cada vez que guardas un script desde la Consola (**Guardar**/**Guardar como**), BrosLMV
 calcula un hash SHA-256 del código y lo guarda junto con él (`zzBrosScript.HashSHA256`).

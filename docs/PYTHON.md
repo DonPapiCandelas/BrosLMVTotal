@@ -172,6 +172,17 @@ result = f"{len(docs)} documentos del cliente"
 - El esquema completo tiene ~500 tablas, vistas y procedimientos almacenados. Antes de escribir
   SQL nuevo, inspecciona la base de datos objetivo (`INFORMATION_SCHEMA` o el catálogo de
   Comercial) en vez de asumir nombres de columna por analogía.
+- **Fechas como parámetro: siempre string ISO 8601, nunca el objeto nativo.** Ni un
+  `System.DateTime` (p. ej. de un `DateTimePicker` en una ventana WinForms de Python) ni un
+  `datetime.datetime` de Python son serializables tal cual por el puente `ctx.query`/
+  `ctx.execute`. Conviértelo a `'YYYY-MM-DD HH:MM:SS'` antes de pasarlo como parámetro — SQL
+  Server lo castea implícitamente sin ambigüedad.
+- **INSERT directo a `docDocumentItem`: cuidado con `CoefUnit`.** La columna tiene DEFAULT
+  `0`, no `1` — si el INSERT no lo especifica explícitamente, la partida queda con
+  `CoefUnit=0` y `RecalcCostComercial`/`RecalcCostFiscal` truena con "Divide by zero" al
+  guardar. Copia siempre `ISNULL(CoefUnit,1)` (y `Unit`) del renglón origen. `AgregarArticulo`
+  ya lo maneja bien — esto solo aplica cuando insertas la partida por SQL crudo en vez de usar
+  el helper.
 
 ## 4. Qué se necesita instalado
 
@@ -186,6 +197,11 @@ El instalador único deja en `C:\BrosLMV`: `bin\` (addon + `Google.Protobuf.dll`
 - `ctx.msg`/`ctx.confirm`/`ctx.form`/`ctx.show_html`/`ctx.select_file`/`ctx.select_folder`
   ya se ven en vivo durante la ejecución (relay al addon vía Named Pipe) — no hay que
   esperar a que el script termine.
+- **`ComboBox`/`ListBox` de WinForms con `Items` de objetos Python pierden la selección.**
+  Límite real de `pythonnet`: el control nativo intenta castear cada item y truena
+  (`InvalidCastException` en `ComboBox.NativeAdd -> PyObject.Convert[T]()`). Usa strings en
+  `Items` (lo que se ve en pantalla) + una lista paralela del lado Python para recuperar el
+  ID/código real por `SelectedIndex`.
 
 Ver el diseño del host en [`ARQUITECTURA_V3.md`](ARQUITECTURA_V3.md) y el historial en
 [`CHANGELOG.md`](CHANGELOG.md).
