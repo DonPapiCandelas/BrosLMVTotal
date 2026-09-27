@@ -1,29 +1,36 @@
 # Cómo contribuir a BrosLMV
 
-¡Gracias por tu interés! BrosLMV es software libre bajo **GPL-3.0**. La meta del
-proyecto es un motor de botones para CONTPAQi Comercial cada vez más potente, con
-**recetas no-code** y **scripting multi-lenguaje**. Las contribuciones de la comunidad
-—sobre todo nuevas **recetas**— son el corazón del proyecto.
+¡Gracias por tu interés! BrosLMV es software libre bajo **GPL-3.0**: un motor de botones y
+scripting multi-lenguaje (C#/Python/SQL) para CONTPAQi Comercial PRO, con generación de PDF,
+ejecución headless y un subproducto de descarga de CFDI del SAT. Tiene además un motor de
+recetas no-code (MVP funcional, `src/Recetas.cs`) — útil, pero no es lo único ni lo
+principal del proyecto hoy.
 
-> Antes de escribir código, lee [`docs/INDICE.md`](docs/INDICE.md) (índice de toda la
-> documentación) y el [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (estado actual).
+> Antes de escribir código, lee [`AGENTS.md`](AGENTS.md) (reglas no-negociables),
+> [`docs/INDICE.md`](docs/INDICE.md) (índice de toda la documentación) y
+> [`docs/ESTADO.md`](docs/ESTADO.md) (estado actual).
 
 ---
 
 ## 1. Reglas de oro del repositorio
 
-Estas reglas son **obligatorias** y mantienen la calidad del proyecto:
+Estas reglas son **obligatorias** y mantienen la calidad del proyecto (detalle completo en
+[`AGENTS.md`](AGENTS.md)):
 
 1. **Toda la documentación es total.** Cada cambio de código se acompaña, en el **mismo
    PR**, de:
    - Nueva entrada en [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
    - Subir `AssemblyVersion` en [`src/ClsMain.cs`](src/ClsMain.cs) (SemVer).
+   - Bloque nuevo en `src/assets/notas_version.html`.
    - Actualizar los `.md` afectados (API → `SCRIPTING_CONTRATOS.md`, etc.).
+   - Pasar `build/verificar_regla_de_oro.ps1` y `build/probar_humo.ps1` en verde.
 2. **Versionado atómico.** Un PR = un cambio coherente. Mensaje de commit descriptivo
    (qué y por qué).
-3. **Los tests viven en `/.temp_tests`** (carpeta ignorada por git). Inclúyelos en la
-   descripción del PR (qué probaste y el resultado).
-4. **Nunca** subas credenciales, cadenas de conexión reales, ni datos de empresas.
+3. **Las pruebas de humo viven en `build/humo/casos/`** (33 casos, `build/probar_humo.ps1`
+   los corre todos). Si tu cambio lo amerita, agrega un caso nuevo ahí; para experimentos
+   sueltos que no se van a quedar, usa una carpeta local fuera del repo (nunca se commitean).
+4. **Nunca** subas credenciales, cadenas de conexión reales, datos de empresas, ni nombres de
+   terceros/clientes — ver la lista de reglas en [`AGENTS.md`](AGENTS.md) §3.
 
 ## 2. Flujo de trabajo
 

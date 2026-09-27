@@ -1,4 +1,10 @@
-# BrosLMV — Motor de recetas no-code (diseño)
+# BrosLMV — Motor de recetas no-code
+
+> **Estado real (2026-09-27): el MVP de este diseño ya está construido** — `src/Recetas.cs`,
+> 2 recetas (`sql_tokens`, `crear_documento_desde_otro`), pasos encadenados, y el asistente
+> "Nueva acción" en la Consola. Sin trabajo activo reciente (no es prioridad actual). Lo que
+> sigue debajo es el documento de diseño original — sigue siendo la referencia de la meta y
+> de las fases que faltan, pero no todo lo que describe como "planeado" ya lo está.
 
 > La meta más ambiciosa del proyecto: que **quien no programa pueda crear botones**
 > eligiendo una **acción preestablecida** y llenando un formulario, donde los campos se

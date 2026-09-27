@@ -2,15 +2,21 @@
 
 Orden de lectura sugerido según lo que necesites.
 
-> Este índice cubre el **addon de Comercial PRO** (botones + Consola) y `BrosLMV.Runner`
-> (ejecución headless, mismo motor). `BrosLMV.Descargas` es un subproducto independiente con
-> su propia documentación autocontenida: [`../descargas/DOCUMENTACION.md`](../descargas/DOCUMENTACION.md).
+> Este índice cubre el **addon de Comercial PRO** (botones + Consola), `BrosLMV.Runner`
+> (ejecución headless, mismo motor) y `htmlpdf/` (PDF de documentos y correo). `BrosLMV.Descargas`
+> es un subproducto independiente con su propia documentación autocontenida:
+> [`../descargas/DOCUMENTACION.md`](../descargas/DOCUMENTACION.md).
+
+> **Antes que nada**, lee [`../AGENTS.md`](../AGENTS.md) — reglas no-negociables del repo
+> (regla de oro, qué nunca reimplementar, qué nunca se publica), válido para cualquier IA
+> o persona que trabaje aquí.
 
 ## Estado y continuación (empezar aquí al retomar)
 
 | Documento | Qué encontrarás |
 |-----------|-----------------|
-| [`ESTADO.md`](ESTADO.md) | **Dónde vamos, pendientes y qué sigue.** Punto de entrada al retomar el proyecto + REGLA DE ORO de documentación |
+| [`ESTADO.md`](ESTADO.md) | **Dónde vamos, pendientes y qué sigue.** Punto de entrada al retomar el proyecto + REGLA DE ORO de documentación — corto a propósito |
+| [`CHANGELOG_ARCHIVO.md`](CHANGELOG_ARCHIVO.md) / [`ESTADO_ARCHIVO.md`](ESTADO_ARCHIVO.md) | Historial largo (versiones 2.80.0 y anteriores / bitácora de sesiones vieja) — solo consulta puntual, no arranque |
 | [`PLAN_IMPLEMENTACION.md`](PLAN_IMPLEMENTACION.md) | **Plan de implementación post-análisis (2026-07-22):** hallazgos verificados, brechas de documentación y tareas priorizadas con instrucciones paso a paso |
 
 ## Empezar y usar
@@ -43,11 +49,11 @@ Orden de lectura sugerido según lo que necesites.
 | 10 | [`ARQUITECTURA_V3.md`](ARQUITECTURA_V3.md) | Diseño multi-lenguaje: host x64 fuera de proceso, Named Pipes + Protobuf, `ctx` remoto, SQL solo-proxy, seguridad | Quien trabaja el host de Python |
 | 11 | [`CHANGELOG.md`](CHANGELOG.md) | Historial de versiones y cambios | Seguimiento |
 
-## En diseño
+## Recetas no-code (MVP construido, sin trabajo activo)
 
 | # | Documento | Qué encontrarás | Para quién |
 |---|-----------|-----------------|-----------|
-| 12 | [`RECETAS_NOCODE.md`](RECETAS_NOCODE.md) | **Motor de recetas no-code (planeado):** botones sin programar (tokens + acciones + estructuras de documento) | Quien implemente el no-code |
+| 12 | [`RECETAS_NOCODE.md`](RECETAS_NOCODE.md) | **Motor de recetas no-code** (`src/Recetas.cs`): botones sin programar (tokens + acciones + estructuras de documento). MVP ya funciona (2 recetas, pasos encadenados, asistente "Nueva acción" en la Consola) — no es prioridad actual, ver `ESTADO.md` | Quien retome el no-code |
 
 ## Gobernanza del proyecto (open-source, en la raíz)
 
