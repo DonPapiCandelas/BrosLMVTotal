@@ -59,6 +59,12 @@ con una versión semanas más vieja que la de GitHub porque nadie regeneró el i
   publicada como release.
 - **`docs/CHANGELOG.md`** y este archivo se podaron hoy (2026-09-27): lo viejo/repetido pasó
   a `CHANGELOG_ARCHIVO.md`/`ESTADO_ARCHIVO.md`, sin perder nada.
+- **Disciplina de proyectos satélite** (`AGENTS.md` §6 + `docs/PLANTILLA_PROYECTO_SATELITE.md`):
+  para que trabajo genérico hecho en otros proyectos de cliente no se quede atrapado ahí.
+- **`docs/SDK_CONTABILIDAD.md`**: investigación (barrido de `C:\ProyectosLMV`, empezando por
+  `ContabilizadorSDK`) — cómo escribir pólizas directo en CONTPAQi Contabilidad, sin pasar por
+  Comercial (`SDKCONTPAQNGLib`, `TSdkPoliza`/`TSdkMovimientoPoliza`). Confirmado contra material
+  oficial de CONTPAQi + un prototipo externo, **no probado en vivo desde este repo todavía**.
 
 ## Qué sigue (sin decidir todavía, en ningún orden particular)
 

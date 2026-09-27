@@ -44,3 +44,15 @@
   listo.
 - **Firmar digitalmente los `.exe`** — pendiente real, no cosmético: un antivirus ya marcó
   `BrosLMV.Host.exe` como falso positivo de ransomware en un cliente.
+- **SDK de CONTPAQi Contabilidad** — investigado y documentado (`docs/SDK_CONTABILIDAD.md`):
+  escribir pólizas directo en Contabilidad, sin pasar por Comercial. Falta: construir el
+  puente x86 como componente real (hoy solo documentado como patrón), probarlo en vivo, y
+  confirmar la lista completa de enums del SDK.
+- **Barrido de `C:\ProyectosLMV`** (21 proyectos con contenido real, en curso) — objetivo:
+  que BrosLMV sea la referencia completa de cómo hablar con Comercial (XEngine/SQL/SDK).
+  Hecho: `ContabilizadorSDK` (dio el SDK de Contabilidad de arriba). Descartado: `CRMPremium`
+  (es de Comercial Premium, otro producto). Pendiente, en este orden: `ReporteadorComercial` +
+  `ReporteadorContabilidad` (ya tienen material de aprendizaje propio y uno de los dos ya
+  trae su propio `AGENTS.md`), `Coctel_de_ideas`
+  (chico, cierra el caso de los 73 botones + Paged.js), luego el resto uno por uno — confirmar
+  primero con el usuario si cada uno es Comercial PRO (sirve) o Premium/otro sistema (no).
