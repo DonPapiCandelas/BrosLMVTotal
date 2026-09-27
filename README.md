@@ -35,6 +35,22 @@ Tres lenguajes conviven en el mismo botón o consola del addon: C# (Roslyn, en p
 Este repositorio es el proyecto completo: código fuente, documentación suficiente para
 reconstruir cada herramienta desde cero, y los paquetes de instalación listos para distribuir.
 
+### Panorama general
+
+```mermaid
+flowchart LR
+    subgraph Comercial["CONTPAQi Comercial PRO"]
+        Ribbon["Ribbon 'Soluciones LMV'"] --> Addon["Addon BrosLMV<br/>(src/, COM en proceso)"]
+        Addon --> Consola["Consola de scripts<br/>C# · Python · SQL"]
+        Addon --> PDF["Generar documento (PDF)<br/>+ Configuración de formato<br/>(htmlpdf/)"]
+        Addon --> Motor["Motor de Asientos Contables<br/>(opcional, por cliente)"]
+    end
+    Consola -->|"host x64 fuera de proceso"| Python["Canal Python<br/>(host/, workers/)"]
+    Runner["BrosLMV.Runner<br/>(headless, sin Comercial abierto)"] --> Addon
+    Descargas["BrosLMV.Descargas<br/>(subproducto independiente)"] -->|"SAT: descarga masiva CFDI"| SAT[("Servicio de Descarga<br/>Masiva del SAT")]
+    Descargas -->|"vincula XML"| Addon
+```
+
 ## Qué hace
 
 ### El addon + Consola (Comercial PRO)

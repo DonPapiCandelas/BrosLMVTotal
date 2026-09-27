@@ -26,14 +26,19 @@ No reemplaza el motor nativo — es un motor **paralelo**, que se activa por eve
 
 ## Arquitectura
 
-```text
-Cobro/Pago en Comercial
-  -> docFinancialOperation (encabezado: fecha, importe, moneda, banco, tercero)
-  -> docDocumentPayment (aplicación a cada factura)
-  -> docFinancialOperationTaxDetail (impuestos del cobro/pago)
-  -> Motor de Asientos Contables BrosLMV
-  -> accPoliza + accPolizaTransaccion + asociaciones (MetodoPago/Comprobante)
-  -> sincronización a Contabilidad: la hace Comercial (nativa), NUNCA este motor
+```mermaid
+flowchart TD
+    A["Cobro / Pago guardado en Comercial"] --> B["docFinancialOperation<br/>(fecha, importe, moneda, banco, tercero)"]
+    B --> C["docDocumentPayment<br/>(aplicación a cada factura)"]
+    B --> D["docFinancialOperationTaxDetail<br/>(impuestos del cobro/pago)"]
+    C --> E
+    D --> E["Motor de Asientos Contables BrosLMV<br/>(MotorAsientoCobro / MotorAsientoPago)"]
+    F["zzBrosAsientoContable*<br/>(receta: partidas, fórmulas, condiciones)"] --> E
+    E --> G["accPoliza + accPolizaTransaccion<br/>+ asociaciones (MétodoPago / Comprobante)"]
+    G --> H{"¿Usuario sincroniza<br/>a Contabilidad?"}
+    H -->|"botón/config nativa de Comercial"| I["Enviado a Contabilidad<br/>(accPoliza.SynchronizedOn se llena)"]
+    H -->|"no todavía"| G
+    I -.->|"a partir de aquí,<br/>el motor ya no la toca"| I
 ```
 
 ## Tablas propias

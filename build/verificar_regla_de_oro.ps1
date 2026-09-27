@@ -52,4 +52,11 @@ if ($fallas.Count -gt 0) {
 }
 
 Write-Host "OK: version $version documentada en CHANGELOG.md y notas_version.html." -ForegroundColor Green
+
+# Segundo guardian: ningun archivo trackeado debe mencionar un termino prohibido
+# (ver AGENTS.md #5). Best-effort -- si .terminos_prohibidos.local no existe en este
+# equipo (ej. CI, un clon fresco), avisa y no rompe el build.
+& (Join-Path $PSScriptRoot "verificar_terminos_prohibidos.ps1")
+if ($LASTEXITCODE -ne 0) { exit 1 }
+
 exit 0
