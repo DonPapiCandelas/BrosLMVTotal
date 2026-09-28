@@ -1162,6 +1162,11 @@ cosas importantes que aprender de esto para cualquier documento derivado nuevo:
    los valores viejos. La Factura de Compra regenera la agenda a mano después de `Save()`, leyendo
    los porcentajes/plazos reales de `engPaymentTermDetail`. Si tu documento cambia `PaymentTermID`
    o `Total` por SQL después de `NuevoDocumento`, revisa si también necesitas este paso.
+   **Confirmado independientemente:** una integración externa que no conocía
+   `engPaymentTermDetail` tuvo que parsear los DÍAS de crédito a mano desde el texto del
+   nombre de la condición de pago (`engPaymentTerm.PaymentTermName`, p. ej. "30 DIAS"/
+   "2 SEMANAS"/"12 Meses" — `engPaymentTerm` no tiene columna de días) — confirma que
+   `engPaymentTermDetail` es la fuente estructurada correcta y evita ese parseo frágil.
 3. Antes de escribir un documento derivado nuevo, **verifica el perfil real de encabezado contra
    una base de datos de pruebas** (crea el documento equivalente a mano en Comercial y compara
    los valores que quedan en `docDocument`/`docDocumentItem`) en vez de asumirlo por analogía con
@@ -1438,6 +1443,33 @@ No asumas que la selección del grid siempre es a nivel documento. Algunos módu
 en esos, `ctx.GetSelectedIds()` regresa IDs de PARTIDA, y el script puede operar selección
 de partidas de varios documentos distintos a la vez. Verifica el `PrimaryKey` real del
 módulo (`engModuleParameter`) antes de asumir qué tipo de ID te va a llegar.
+
+### 📦 Escribir una Orden de Compra nativa por SQL: hallazgos de ingeniería inversa (BEFORE/AFTER + Extended Events)
+Confirmado por una integración externa que replica el guardado nativo de OC (módulo 183) por
+SQL directo, capturando el flujo real con Extended Events sobre la sesión XEngine — útil para
+cualquier script que escriba `orgProductKardex`/`docDocumentDeliveryAgenda` a mano o agregue
+campos extra:
+
+- **`orgProductKardex` usa un patrón negar-insertar-limpiar para idempotencia**, no un simple
+  INSERT: `UPDATE orgProductKardex SET DocumentItemID=-abs(DocumentItemID) WHERE DocumentID=N`
+  (marca negativos los existentes) → INSERT de las filas nuevas → `DELETE WHERE
+  DocumentItemID<0 AND DocumentID=N` (limpia los marcados). En alta nueva los pasos 1 y 3
+  afectan 0 filas; en un re-guardado, borra y reescribe el kardex desde cero. Mismo patrón
+  clean-slate que ya usa `docDocumentTaxDetail` (`DELETE` + re-INSERT), aplicado al inventario.
+- **`docDocumentDeliveryAgenda` (agenda de entrega) solo se llena para partidas con
+  `MustBeDelivered=True`** — confirma por qué existe esa bandera en primer lugar: en una OC
+  nativa, un producto físico la trae en `True` (genera kardex + entrada en esta agenda); un
+  servicio la trae en `False` y **no** genera ninguna de las dos. Esto no contradice el
+  hallazgo ya documentado arriba (💥 causa 2 de "Division by zero") — ahí el problema era
+  dejarla en `1` en un documento que NO es OC/Pedido (una Factura), donde la bandera no
+  aplica y solo estorba.
+- **Los "campos extra" del usuario (Contabilidad Electrónica / campos personalizados) son
+  columnas físicas agregadas directamente a la tabla existente** (`docDocumentExt` a nivel
+  documento, `docDocumentItem` a nivel partida) — CONTPAQi **no** usa un modelo EAV
+  (Entity-Attribute-Value). El motor nativo simplemente incluye esas columnas en el INSERT
+  normal (el de `docDocumentItem` pasó de 81 a 82 parámetros al agregar un campo extra). Si tu
+  script escribe a mano una tabla con campos extra conocidos, inclúyelos como columnas
+  normales del mismo INSERT — no hay tabla ni JOIN aparte que buscar.
 
 ### 🔒 Integridad de scripts: hash y aprobación (desde v2.35.0)
 Cada vez que guardas un script desde la Consola (**Guardar**/**Guardar como**), BrosLMV
