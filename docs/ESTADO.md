@@ -82,6 +82,11 @@ con una versión semanas más vieja que la de GitHub porque nadie regeneró el i
   (`htmlpdf/formatos/paged.polyfill.min.js`); **ninguna de las 10 plantillas existentes se
   retocó todavía** — retrofitear queda pendiente, plantilla por plantilla.
 
+- **Barrido de proyectos de clientes terminado (2026-09-27)** — ver `PLAN_IMPLEMENTACION.md`.
+  Lo que salió está en `MANUAL.md` §10.5/§10.6/§12, `DASHBOARDS_HTML.md`,
+  `MIGRAR_BOTONES_RT.md` y las versiones 2.91.0–2.93.0. **Regenerar el instalador** para que
+  2.92.0/2.93.0 lleguen a instalaciones nuevas.
+
 ## Qué sigue (sin decidir todavía, en ningún orden particular)
 
 - Decidir si se construye el motor de pólizas/asientos propio (investigación lista, falta

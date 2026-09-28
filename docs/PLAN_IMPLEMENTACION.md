@@ -51,15 +51,18 @@
   escribir pólizas directo en Contabilidad, sin pasar por Comercial. Falta: construir el
   puente x86 como componente real (hoy solo documentado como patrón), probarlo en vivo, y
   confirmar la lista completa de enums del SDK.
-- **Barrido de `C:\ProyectosLMV`** (21 proyectos con contenido real, en curso) — objetivo:
-  que BrosLMV sea la referencia completa de cómo hablar con Comercial (XEngine/SQL/SDK).
-  Hecho: `ContabilizadorSDK` (dio el SDK de Contabilidad de arriba), `ReporteadorContabilidad`
-  (dio `docs/CONTABILIDAD_MODELO_DATOS.md`), `Coctel_de_ideas` parcial (dio la paginación
-  Paged.js de arriba). Descartado: `CRMPremium`, `ReporteadorComercial` (Comercial Premium,
-  otro producto). Pendiente en `Coctel_de_ideas` antes de pasar al siguiente proyecto:
-  `EnviarAFacturaProveedor.ctx` (OC→Factura de Compra con facturación parcial vía WebView2,
-  revisar si el patrón ya está cubierto por otra plantilla), `FIX_botones_cotizador.sql`
-  (confirmar si es duplicado de un fix ya conocido), `QUITAR_ACCESO_FACIL.sql` (posible
-  patrón genérico de migración, sin evaluar). Después, el resto de los ~19 proyectos uno por
-  uno — confirmar primero con el usuario si cada uno es Comercial PRO (sirve) o Premium/otro
-  sistema (no).
+- **Barrido de `C:\ProyectosLMV` — TERMINADO (2026-09-27).** Objetivo: que BrosLMV sea la
+  referencia completa de cómo hablar con Comercial (XEngine/SQL/SDK). Lección de método: lo
+  que vale está **en producción, en el servidor de cada cliente** (código en `zzBrosScript`,
+  tablas `rt*`, datos reales para verificar); las copias locales suelen estar viejas o ser
+  duplicados. Integrado: SDK y modelo de datos de Contabilidad, paginación Paged.js, dos bugs
+  reales del addon (v2.92.0) y uno de las plantillas de Factura de Compra (v2.93.0), mapa de
+  vínculos entre documentos, operaciones financieras, reglas del Runner para integraciones
+  externas, causas reales de "Division by zero" y `MIGRAR_BOTONES_RT.md`. Descartados: los de
+  Comercial Premium u otro sistema, infraestructura, pruebas y duplicados. Cada proyecto
+  revisado tiene su `PENDIENTE_BACKPORT_BROSLMV.md` (local o en el servidor del cliente) con
+  lo que quedó sin llevar. Pendientes que salieron del barrido y siguen abiertos: confirmar
+  si `accPolizaDefinitionItem.CondicionPersonalizada` es una función nativa de renglones de
+  póliza condicionales (se cruza con el Motor de Asientos), probar `Document.MostrarPoliza`/
+  `SincronizarPoliza` desde `ctx.erp`, y la columna de partida Remisión→Pedido con captura
+  100% nativa.
