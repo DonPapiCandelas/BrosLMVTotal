@@ -68,7 +68,8 @@ C:\MLVTotal\
 
 ## 3. Cómo compilar (paso a paso)
 
-Hay tres niveles según lo que toques. **Para un release completo, corre A y luego B.**
+Hay tres niveles según lo que toques. **Para un release completo, corre A y luego B, y publica
+con C.**
 
 ### A) Recompilar el núcleo y actualizar el paquete
 
@@ -112,6 +113,51 @@ de compilar, así `dist\` nunca acumula versiones viejas):
 
 > **Requisitos al compilar:** .NET SDK presente y, la 1ª vez, internet (NuGet).
 > Si `dotnet build` falla por paquetes, es que faltó internet en la 1ª compilación.
+
+### C) Publicar un release en GitHub (proceso probado, 2026-09-28)
+
+`main` está protegida (exige revisión aprobada) y el proyecto tiene un solo autor, así que
+**todo entra por PR** y se mergea con permiso de administrador cuando CI está en verde:
+
+```powershell
+git checkout -b <tipo>/<tema>            # nombre de rama SIN nombres de clientes (se publica)
+# ... cambios + commit (regla de oro: build\verificar_regla_de_oro.ps1) ...
+git push -u origin <tipo>/<tema>
+gh pr create --base main --head <tipo>/<tema> --title "..." --body "..."
+gh pr checks <n> --watch                   # esperar CI en verde
+gh pr merge <n> --rebase --admin --delete-branch
+```
+
+Luego, para publicar:
+
+1. Regenera el paquete y los `.exe` (A y B de arriba).
+2. **Comitea `instalador\bin\BrosLMVClsMain.dll` por PR.** La compilación no es determinista:
+   cada build produce bytes distintos, y `instalador\bin` es el entregable versionado — debe
+   quedar en `main` exactamente la DLL que viaja dentro de los `.exe`.
+3. **Después del merge, no hagas `git checkout main` normal.** Cambiar de rama reescribe la DLL
+   en disco (nueva fecha de modificación) y `publicar_release.ps1` rechaza publicar porque los
+   `.exe` quedan "más viejos que la DLL empacada". Mueve `main` sin tocar archivos — su
+   contenido ya es idéntico a lo mergeado:
+   ```powershell
+   git fetch origin
+   git branch -f main origin/main
+   git symbolic-ref HEAD refs/heads/main
+   git reset            # sincroniza el índice; el árbol queda limpio
+   ```
+4. `build\publicar_release.ps1` (simulación: regla de oro, árbol limpio y `HEAD = origin/main`,
+   `.exe` posteriores a la DLL, escaneo de términos prohibidos dentro de los instaladores) y,
+   si todo pasa, `build\publicar_release.ps1 -Publicar`. Las notas juntan todas las versiones
+   del CHANGELOG desde el último release publicado.
+
+Trampas que ya pasaron:
+- **Renombrar la rama de un PR abierto lo cierra** (GitHub solo reasigna los PR que la usan como
+  destino). Si una rama necesita otro nombre, abre un PR nuevo desde la rama renombrada.
+- **Nombres de clientes en mensajes de commit o nombres de rama** también se publican.
+  `build\verificar_terminos_prohibidos.ps1` (lo corre la regla de oro) ya los revisa, además de
+  los archivos.
+- Las empresas ya provisionadas conservan su propia copia de las plantillas de fábrica en
+  `zzBrosScript`: un arreglo en `instalador\scripts\` no les llega solo con instalar la versión
+  nueva.
 
 ---
 
