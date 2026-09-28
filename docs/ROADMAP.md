@@ -42,7 +42,7 @@
 | 2.5 | **Punto de Venta fuera de privado** | Prototipo en pruebas | Terminar pruebas; decidir si entra al repo público |
 | 2.6 | **Metadatos formales de script** (`@lenguaje/@permisos/@timeout`) | Hoy solo marcadores sueltos (`# lang: python`, `# timeout:`) | Esquema en `zzBrosScript` o cabecera declarativa (`ARQUITECTURA_V3.md` §8) |
 | 2.7 | **Auto-referenciar `C:\BrosLMV\lib\` en scripts C#** | Las 4 librerías ya se instalan ahí, pero cada script necesita su `#r` (`ScriptRunner.BuildOptions` en `src/Scripting.cs` solo referencia ensamblados fijos) | Agregar las DLL de esa carpeta a `WithReferences` + prueba de humo |
-| 2.8 | **Limpiar historial viejo en GitHub** | El historial se reescribió el 2026-09-27; los SHAs viejos pueden seguir en caché de GitHub y en forks | Ticket a GitHub Support para purgar SHAs sin referencia |
+| 2.8 | **Limpiar historial viejo en GitHub** | El historial se reescribió el 2026-09-27; los SHAs viejos pueden seguir en caché de GitHub y en forks | Ticket a GitHub Support para purgar SHAs sin referencia y borrar el PR #3 (cerrado; su encabezado conserva el nombre viejo de la rama, que tenía un nombre de cliente — reemplazado por el PR #4) |
 
 ## Deuda de documentación
 
