@@ -1510,6 +1510,49 @@ motor nativo al capturar una OC a mano:
   quien recibe (nunca la "cantidad enviada", para que el kardex siempre refleje lo que de
   verdad pasó sin necesitar corrección después).
 
+### 🔌 Integraciones externas vía `BrosLMV.Runner`: reglas confirmadas en producción
+Del consumidor real del Runner (una app web que sincroniza en ambos sentidos con Comercial
+Pro, en producción en más de un cliente):
+
+- **Nunca invoques el Runner desde un proceso de servidor web** (en ese caso `php -S`/
+  `artisan serve` atendiendo una petición HTTP): falla siempre con "no encontrado
+  registrado"; el mismo comando desde un proceso de consola, un servicio de Windows o una
+  Tarea Programada funciona siempre. La causa raíz no se determinó (el patrón es 100%
+  reproducible). Arquitectura que sí funciona: la petición web **solo encola** (tabla propia,
+  `Status='pending'`) y un proceso persistente (servicio de Windows con un ciclo de ~3 s) es el
+  único que dispara el Runner sobre toda la cola pendiente — más una Tarea Programada de
+  respaldo por si el proceso persistente muere.
+- **No pongas un trigger `AFTER INSERT` en `docDocument`** para detectar documentos nuevos
+  capturados en Comercial: se confirmó con pruebas reales que corrompe el ID que el motor lee
+  de vuelta justo después de su INSERT — riesgo de que XEngine asocie partidas al documento
+  equivocado en **todo** Comercial Pro, no solo en tu flujo. (Consistente con que el motor lea
+  `@@IDENTITY`, que a diferencia de `SCOPE_IDENTITY()` sí lo altera un trigger que inserte en
+  otra tabla con identidad.) Para detectar documentos nativos nuevos usa **polling con marca de
+  agua** (`DocumentID > último visto`, por módulo). La misma precaución aplica a cualquier
+  trigger sobre una tabla en la que el motor inserte y luego lea la identidad generada.
+- **Deduplica antes de encolar** (mismo tipo de documento + referencia de origen), pero con una
+  salida explícita para forzar un reenvío cuando el documento anterior ya se borró/canceló en
+  Comercial — si no, la deduplicación bloquea en silencio el reenvío y devuelve un
+  `DocumentID` muerto.
+- **Reconciliación de borrados:** revisa periódicamente `docDocument.DeletedOn` de los
+  documentos ya vinculados — el sistema externo debe reaccionar a un borrado/cancelación hecho
+  en Comercial, nunca iniciarlo.
+- **Estado de entrega de una OC:** Comercial muestra Entregado/Parcial/No entregado a partir de
+  `docDocument.StatusDeliveryID`, **no** de `docDocumentDeliveryAgenda.QtyDelivered` (confirmado
+  que esa columna nunca se usa).
+- **Una Recepción de Compra nativa solo admite un `SourceDocumentID`** — esta integración genera
+  una Recepción nativa por cada OC involucrada cuando se reciben varias a la vez. (Las
+  plantillas de BrosLMV, §10.4, juntan N OC en una sola Recepción con `SourceDocumentID` = la
+  primera OC, informativo; ambos enfoques funcionan, pero el de una-por-OC deja la trazabilidad
+  nativa completa.)
+- **Costo real de existencias:** no uses `orgProduct.CostPrice` (dato de catálogo que se queda
+  viejo) — el costo vigente por PEPS está en `orgProductCostFiscal` (vista
+  `vwLBSProductCostFiscalList`), una fila por movimiento de entrada; toma la más reciente por
+  producto+almacén.
+- **Columnas reales de `docDocumentTaxDetail`:** `TaxName`, `TaxTypeName`, `Retention`,
+  `RegionalTaxID`, `IVASobreIEPS` — no `Name`/`Classification`/`IsRetention` (un INSERT con esos
+  nombres truena).
+
 ### ⏳ Cuelgue indefinido (sin error ni timeout) al crear un documento: historial de kardex corrupto
 Confirmado en producción por un consumidor real de `BrosLMV.Runner`: crear una Recepción de
 Compra para un producto específico **se colgaba indefinidamente** — sin excepción, sin timeout,
