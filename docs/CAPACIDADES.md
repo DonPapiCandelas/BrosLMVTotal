@@ -284,14 +284,13 @@ using Newtonsoft.Json;
 | Análisis tipo dataframe | dataframe / numérico |
 | Navegador moderno (Chart.js/D3) | control de navegador basado en Edge |
 
-> **Mejora planeada (ver `MANUAL.md`):** una carpeta `C:\BrosLMV\lib\` que el motor
-> **auto-referencie**, para que cualquier DLL puesto ahí esté disponible en todos
-> los scripts **sin** escribir `#r`. Es un cambio pequeño en el núcleo.
-
-> **Ya ejecutado (2026-07-07):** ver [`PLAN_LIBRERIAS_EXTERNAS.md`](archivo/PLAN_LIBRERIAS_EXTERNAS.md)
-> — 4 librerías ya en `instalador\lib\` (WebView2, ClosedXML, Newtonsoft.Json, QRCoder),
-> con ejemplos de código y el patrón seguro de inicialización de WebView2 (riesgo de
-> congelar Comercial si se hace mal).
+> **Hecho (2026-07-07):** 4 librerías viajan con el instalador en `C:\BrosLMV\lib\`
+> (WebView2, ClosedXML, Newtonsoft.Json, QRCoder) — historia en
+> [`archivo/PLAN_LIBRERIAS_EXTERNAS.md`](archivo/PLAN_LIBRERIAS_EXTERNAS.md), con el patrón
+> seguro de inicialización de WebView2 (riesgo de congelar Comercial si se hace mal).
+> **Todavía no hecho:** que el motor **auto-referencie** esa carpeta — hoy cada script C#
+> que use una de esas DLL necesita su `#r` (verificado: `ScriptRunner.BuildOptions` en
+> `src/Scripting.cs` solo referencia ensamblados fijos). Está en `ROADMAP.md` 2.7.
 
 ---
 

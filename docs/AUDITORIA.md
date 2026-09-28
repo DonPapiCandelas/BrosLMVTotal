@@ -38,9 +38,10 @@ producción de clientes). Una afirmación sin evidencia es un defecto.
    — pero verifica).
 3. **Cómo funciona Comercial por dentro:** antes de afirmar algo, búscalo en `docs/`
    (sobre todo `MANUAL.md` §10–§12) y, **si tienes acceso local al repo**, en la carpeta
-   privada `Entrenamiento/` (empieza por `Entrenamiento/README.md`; tiene capturas nativas
-   BEFORE/AFTER de cada documento). Si solo tienes GitHub, esa carpeta no está publicada:
-   marca el hallazgo "requiere verificar contra `Entrenamiento`".
+   privada de ingeniería inversa que describe `AGENTS.md` §1 (empieza por su `README.md`;
+   tiene capturas nativas BEFORE/AFTER de cada documento). Si solo tienes GitHub, esa carpeta
+   no está publicada: marca el hallazgo "requiere verificar contra la carpeta privada de
+   ingeniería inversa".
 4. **No ejecutes nada contra bases de clientes.** Pruebas solo contra el sandbox (ver §5).
    Nada destructivo sin `BACKUP DATABASE` antes.
 5. **No cambies código productivo como parte de la auditoría.** Propón el cambio en el
