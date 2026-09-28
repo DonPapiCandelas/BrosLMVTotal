@@ -1167,6 +1167,18 @@ cosas importantes que aprender de esto para cualquier documento derivado nuevo:
    nombre de la condición de pago (`engPaymentTerm.PaymentTermName`, p. ej. "30 DIAS"/
    "2 SEMANAS"/"12 Meses" — `engPaymentTerm` no tiene columna de días) — confirma que
    `engPaymentTermDetail` es la fuente estructurada correcta y evita ese parseo frágil.
+   **Cómo se lee `engPaymentTermDetail` (confirmado contra el catálogo nativo `engRefCombo`
+   `CboGroupName='PaymentTermPeriod'` y contra los nombres reales de las condiciones):** una fila
+   por parcialidad; `PaymentPerc` = % del total; **`PaymentPeriodID` = la UNIDAD** (1=día,
+   2=semana, 3=mes, 4=trimestre, 5=semestre, 6=año); **`PaymentUnit` = cuántas de esa unidad**.
+   `PaymentPeriod` **no** es el plazo (casi siempre vale 0). Ejemplos reales: "30 DIAS" =
+   `PaymentUnit=1, PaymentPeriodID=3` (+1 mes); "60 DIAS" = `2, 3`; "2 SEMANAS" = `2, 2`; "50%-50%"
+   = dos filas `0, 1` (hoy) y `3, 3` (+3 meses). Hasta v2.92.0 las 6 plantillas de Factura de
+   Compra de fábrica leían `PaymentUnit` como unidad y `PaymentPeriod` como cantidad — dejaban
+   "30/60/90 DIAS" venciendo el mismo día del documento (corregido en v2.93.0).
+   **Ojo en JavaScript (ventanas WebView2):** para armar `YYYY-MM-DD` de un vencimiento no uses
+   `toISOString()` — convierte a UTC y en México (UTC-6) recorre la fecha un día hacia atrás;
+   arma la cadena con `getFullYear()/getMonth()/getDate()` locales.
 3. Antes de escribir un documento derivado nuevo, **verifica el perfil real de encabezado contra
    una base de datos de pruebas** (crea el documento equivalente a mano en Comercial y compara
    los valores que quedan en `docDocument`/`docDocumentItem`) en vez de asumirlo por analogía con

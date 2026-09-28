@@ -47,6 +47,18 @@
   </header>
 
   <div class="ver">
+    <h2>2.93.0</h2>
+    <div class="date">2026-09-27 — Fechas de vencimiento correctas en Factura de Compra</div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul>
+        <li>Las plantillas de Factura de Compra calculaban mal las fechas de pago: condiciones como
+            "30 DIAS" o "60 DIAS" quedaban venciendo el mismo día del documento. Ahora cada
+            parcialidad vence en la fecha que indica su condición de pago.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ver">
     <h2>2.92.0</h2>
     <div class="date">2026-09-27 — Dos bugs reales corregidos (select_file/select_folder en Python, AgregarSerie)</div>
     <div class="grp fix"><div class="h">Corregido</div>

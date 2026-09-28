@@ -430,19 +430,24 @@ void RefreshGrid() {
 // interno de XEngine, no desde la BD, así que queda con montos inválidos si no se hace esto.
 void RegenerarPaymentAgenda(int doc, int paymentTermId) {
     double total = Convert.ToDouble(ctx.Scalar("SELECT Total FROM docDocument WHERE DocumentID=" + doc) ?? 0);
-    var detalle = ctx.Query("SELECT PaymentPerc, PaymentUnit, PaymentPeriod FROM engPaymentTermDetail WHERE PaymentTermID=" + paymentTermId + " ORDER BY PaymentTermDetailID");
+    var detalle = ctx.Query("SELECT PaymentPerc, PaymentUnit, PaymentPeriodID FROM engPaymentTermDetail WHERE PaymentTermID=" + paymentTermId + " ORDER BY PaymentTermDetailID");
     if (detalle.Count == 0) return; // condición sin detalle configurado: se deja el placeholder tal cual
 
     ctx.NonQuery("UPDATE docDocumentPaymentAgenda SET DeletedOn=GETDATE() WHERE DeletedOn IS NULL AND DocumentID=" + doc);
     int numero = 1;
     foreach (var d in detalle) {
         double perc = Convert.ToDouble(d["PaymentPerc"] ?? 0);
-        int unidad = Convert.ToInt32(d["PaymentUnit"] ?? 1);
-        int periodo = Convert.ToInt32(d["PaymentPeriod"] ?? 0);
-        // PaymentUnit visto en captura real: 1=días/inmediato, 2=semanas, 3=meses.
-        string expresionFecha = unidad == 3 ? "DATEADD(MONTH," + periodo + ",GETDATE())"
-                              : unidad == 2 ? "DATEADD(DAY," + (periodo * 7) + ",GETDATE())"
-                              : "DATEADD(DAY," + periodo + ",GETDATE())";
+        // engPaymentTermDetail: PaymentPeriodID = UNIDAD (1=día, 2=semana, 3=mes, 4=trimestre,
+        // 5=semestre, 6=año -- catálogo engRefCombo 'PaymentTermPeriod'); PaymentUnit = CUÁNTAS de
+        // esa unidad. PaymentPeriod NO es el plazo (casi siempre 0) -- confirmado con datos reales.
+        int cuenta = Convert.ToInt32(d["PaymentUnit"] ?? 0);
+        int periodoId = Convert.ToInt32(d["PaymentPeriodID"] ?? 1);
+        string expresionFecha = periodoId == 6 ? "DATEADD(YEAR," + cuenta + ",GETDATE())"
+                              : periodoId == 5 ? "DATEADD(MONTH," + (cuenta * 6) + ",GETDATE())"
+                              : periodoId == 4 ? "DATEADD(MONTH," + (cuenta * 3) + ",GETDATE())"
+                              : periodoId == 3 ? "DATEADD(MONTH," + cuenta + ",GETDATE())"
+                              : periodoId == 2 ? "DATEADD(DAY," + (cuenta * 7) + ",GETDATE())"
+                              : "DATEADD(DAY," + cuenta + ",GETDATE())";
         double monto = total * perc / 100.0;
         ctx.NonQuery(
             "INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" +
