@@ -1208,6 +1208,50 @@ de impuesto), clasificaciones (`Category1`-`Category4` del catálogo), existenci
 precios negociados por proveedor (`orgProductSupplier`). Útil como plantilla para agregar un
 "ver detalle" similar en cualquier otro script que liste productos.
 
+### 10.5 Mapa de vínculos entre documentos (genealogía)
+
+Para reconstruir la cadena de un documento (qué lo originó y qué salió de él) — reportes de
+trazabilidad, "cuánto falta por recibir/facturar", validaciones antes de cancelar — estas son
+las columnas que Comercial usa de verdad. Verificado contra datos de producción (compras) y
+contra las capturas nativas de `Entrenamiento` (ventas):
+
+| Relación | Nivel | Columna | Evidencia |
+|---|---|---|---|
+| Recepción de Compra (184) → OC (183) | encabezado | `docDocument.SourceDocumentID` = OC | 51/51 recepciones en producción |
+| Recepción de Compra (184) → OC (183) | partida | `docDocumentItem.DeliverDocumentItemID` = partida de la OC (`SourceDocumentItemID` queda en 0) | 99/99 partidas |
+| Factura de Compra (152) → OC (183) | partida | `docDocumentItem.SourceDocumentItemID` = partida de la OC | 4/4 partidas |
+| Factura de Compra (152) → OC | encabezado | `SourceDocumentID` **en 0 en el nativo**; las plantillas de BrosLMV ponen la primera OC (solo informativo) | ambos coexisten sin problema |
+| Remisión (157) → Pedido (967) | encabezado | `docDocument.SourceDocumentID` = Pedido | capturas nativas |
+| Factura de cliente (21), Entrada/Salida (202/203), OC, Pedido | encabezado | `SourceDocumentID` = 0 | capturas nativas |
+| Cualquiera | encabezado | `docDocument.DestinationDocumentID` — **no se usa** (0 en todos los datos observados); no construyas lógica sobre ella | producción |
+| Pago/cobro → documento | aplicación | `docDocumentPayment` (`DocumentID`, `FinancialOperationID`, `PaymentWithDocumentID`, `Amount`, `AmountPaidCurrency`, `SaldoAnterior`, `SaldoInsoluto`) | esquema; ver `MOTOR_ASIENTOS_CONTABLES.md` |
+
+Reglas para recorrerla:
+- Recorre en ambos sentidos por las tres columnas (`SourceDocumentID`, `SourceDocumentItemID`,
+  `DeliverDocumentItemID`) — una búsqueda en anchura desde el documento que te interesa.
+- Filtra `DeletedOn IS NULL` en **cada** salto (documento y partida) y considera
+  `CancelledOn` aparte: un documento eliminado sigue ahí con su vínculo, y además pierde su
+  `docDocumentCFD` (ver §12 "`Delete` vs `CancelDocument`").
+- Una Recepción nativa solo admite un `SourceDocumentID`: para saber de qué OC viene cada
+  partida cuando se recibieron varias, usa `DeliverDocumentItemID`, no el encabezado.
+- Pendiente de confirmar con datos reales de ventas: la columna de partida que usa la
+  Remisión hacia el Pedido y la Factura de cliente hacia la Remisión/Pedido (las capturas
+  disponibles solo confirman el encabezado).
+
+**Saldos a una fecha de corte (cuentas por pagar/cobrar históricas).** `docDocument.Balance`,
+`TotalPaid` y `StatusPaidID` son una foto **del presente**: no pueden responder "¿cuánto se
+debía al 30 de agosto?". Para eso reconstruye el saldo desde los hechos: `docDocument.Total`
+menos la suma de `docDocumentPayment.Amount` (vigentes) con `DateOperation <= corte`, y los
+vencimientos desde `docDocumentPaymentAgenda.DatePayment`. Confirmado en un reporte de CxP en
+producción: con corte = hoy, el cálculo coincide factura por factura con `Balance`/`TotalPaid`.
+Consecuencia práctica: para un reporte con fecha de corte **no filtres por `Balance <> 0`** —
+una factura pagada hoy pudo tener saldo en la fecha de corte; carga el periodo completo
+(medido: ~2,000 facturas y ~2,000 pagos en 12 meses caben sin problema en `ctx.show_html`
+comprimido, ver `DASHBOARDS_HTML.md`) y calcula el saldo en el navegador para que cambiar la
+fecha de corte sea instantáneo. Y en cuentas por pagar **incluye Gastos (módulo 242)** además
+de Facturas de Compra (152): es un módulo nativo con la misma agenda de pago y los mismos pagos
+aplicados.
+
 ---
 
 ## 11. Ejemplos de scripts
