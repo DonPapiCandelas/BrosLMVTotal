@@ -1478,6 +1478,20 @@ campos extra:
   **léelo con `ctx.Query` + revisar si la fila trae `null`, no con `ctx.Scalar`**, que resultó
   no distinguir de forma confiable "la columna no existe" (NULL real) de otros casos. Guarda el
   resultado una sola vez por corrida del script, no por partida.
+  **Cómo auditar todo lo no-nativo de una empresa antes de escribirle scripts:** compara su
+  base contra una empresa nativa de la misma instancia (`ComercialSP`) con consultas
+  cruzadas a `sys.tables`/`sys.columns`/`sys.views`/`sys.foreign_keys`/`sys.triggers`
+  (`WHERE name NOT IN (SELECT name FROM ComercialSP.sys.tables)`, etc.) más
+  `SELECT ModuleID, ModuleName, DLL FROM engModule WHERE Custom = 1` para los módulos
+  clonados/personalizados. Dos precauciones confirmadas: (1) el `ComercialSP` de un servidor
+  con BrosLMV ya provisionado no es de fábrica pura (trae las tablas `zzBros*` base); (2)
+  antes de declarar una columna "personalizada", descarta que sea **drift de versión** de
+  Comercial — se vieron columnas que existían en una empresa y no en `ComercialSP` de la misma
+  instancia y que tenían toda la pinta de venir de una actualización (p. ej.
+  `accPolizaDefinitionItem.CondicionPersonalizada`, `accPoliza.AccountingConditionError`), no
+  de un integrador. Un conteo de `sys.triggers` que cambia de un mes a otro es señal de
+  revisar qué se instaló — cualquier trigger nuevo sobre tablas donde el motor inserta es un
+  riesgo (ver "🔌 Integraciones externas…" más abajo).
 
 ### 🚚 Gaps reales entre los builders (`NuevoDocumento`/`AgregarArticulo`) y el comportamiento nativo en Orden de Compra
 Confirmado por una integración externa en producción que procesa una cola de documentos
@@ -1690,7 +1704,10 @@ SELECT TOP 50 * FROM zzBrosAuditoria ORDER BY id DESC;
   no solo `ModuleID`+`OwnedBusinessEntityID`): se confirmó folios históricos mezclados bajo el
   mismo módulo+entidad con 4-5 series de prefijo distintas (variantes como `BCD40`/`BCD4.0`/
   `BCD`, más series especiales como anticipos), que colisionarían si el `MAX` no filtra por el
-  prefijo exacto que vas a usar.
+  prefijo exacto que vas a usar. Y como `MAX+1` **no es atómico** (confirmado: folios
+  duplicados con 2 procesos en paralelo), si hay capturistas o procesos concurrentes en ese
+  módulo, serializa con `sp_getapplock` (recurso = módulo+serie) dentro de la misma transacción
+  que inserta el documento.
 
 ### ⚠️ Transacciones
 - Los builders del addon (`NuevoDocumento` + 4 anclas) ejecutan 5 INSERT sin transacción.
