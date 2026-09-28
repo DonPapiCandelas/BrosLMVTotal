@@ -130,9 +130,12 @@ BrosLMV/
 │   ├── BrosLMV.csproj          Proyecto .NET (target net48, dependencias)
 │   ├── ClsMain.cs               COM server + despachador de botones + AssemblyResolve
 │   ├── Scripting.cs             Motor Roslyn, contexto `ctx`, conexión y lectura del grid
+│   ├── HostClient.cs            Cliente del host de Python + ventanas WebView2/diálogos (hilo STA)
+│   ├── Recetas.cs / EstructurasDocumento.cs   Motor de recetas no-code
 │   ├── Datos.cs                  Almacenamiento local SQLite (auditoría, recientes, favoritos)
 │   ├── Consola.cs                Ventana de la consola (editor, paneles, ejecución)
-│   ├── ConsolaPasswordHash.cs      Hash salteado (PBKDF2) reusado por la contraseña de la Consola
+│   ├── ConsolaPassword*.cs       Candado opcional de la Consola (hash PBKDF2 + ventana)
+│   ├── UiPump.cs                 Bombeo de mensajes de UI para ventanas no modales
 │   ├── Rutas.cs                    Rutas fijas (C:\BrosLMV\...)
 │   └── assets/                      Logo e icono embebidos en la DLL
 │
@@ -154,8 +157,8 @@ BrosLMV/
 │   └── Desinstalador/            BrosLMV-Desinstalador.exe (quitar de empresas o del equipo)
 ├── instalador/                 Insumos de los .exe del addon (no se entrega suelto)
 │   ├── bin/                      DLLs compiladas (+ x86/SQLite.Interop.dll)
-│   ├── scripts/                  Scripts de ejemplo (.csx/.ctx)
-│   ├── sql/                      provision_empresa.sql / desprovision_empresa.sql
+│   ├── scripts/                  Plantillas de fábrica (.ctx/.py/.sql) + motor/ de asientos
+│   ├── sql/                      Provisión de empresa + esquemas opcionales (asientos contables)
 │   └── assets/                    Logos + BrosLMV.ico
 │
 ├── build/                      Scripts de compilación (addon y Descargas)
@@ -223,12 +226,16 @@ Todo lo del addon vive en `docs/` (orden de lectura sugerido en [`docs/INDICE.md
 
 | Documento | Para qué |
 |-----------|----------|
-| [`MANUAL.md`](docs/MANUAL.md) | Crear y editar botones, API de `ctx`, ejemplos |
-| [`CAPACIDADES.md`](docs/CAPACIDADES.md) | Alcance y poder real (reportes HTML, análisis, librerías) |
+| [`ESTADO.md`](docs/ESTADO.md) | Estado de cada pieza, hoy |
+| [`ROADMAP.md`](docs/ROADMAP.md) | Qué sigue, priorizado y con evidencia |
+| [`MANUAL.md`](docs/MANUAL.md) | **El documento central**: botones, API `ctx`/`ctx.erp`, crear documentos, vínculos entre documentos, operaciones financieras y todo lo aprendido de Comercial en producción |
+| [`CAPACIDADES.md`](docs/CAPACIDADES.md) | Alcance real (reportes HTML, análisis, librerías) |
 | [`INSTALACION.md`](docs/INSTALACION.md) | Instalación detallada (servidor + terminales) |
 | [`DESARROLLO.md`](docs/DESARROLLO.md) | Modificar el código y recompilar |
-| [`ESPECIFICACION.md`](docs/ESPECIFICACION.md) | Blueprint técnico completo, para reconstruir desde cero |
+| [`AUDITORIA.md`](docs/AUDITORIA.md) | Guía para revisar el proyecto desde fuera |
 | [`CHANGELOG.md`](docs/CHANGELOG.md) | Historial de versiones |
+
+Si vas a trabajar en el repo (persona o IA), empieza por [`AGENTS.md`](AGENTS.md).
 
 `BrosLMV.Descargas` documenta su propio proyecto en un solo archivo, autocontenido:
 [`descargas/DOCUMENTACION.md`](descargas/DOCUMENTACION.md) (arquitectura, protocolo del SAT,

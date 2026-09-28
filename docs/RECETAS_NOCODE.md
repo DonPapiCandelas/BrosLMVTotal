@@ -12,9 +12,8 @@
 > (no necesita el host de Python), y por eso **puede llegar antes** que el multilenguaje
 > v3.0 y **sin** depender de cerrar el dilema de UI.
 >
-> Estado: **diseño / planeado**. Se construirá por sesiones, alimentado por la ingeniería
-> inversa de lo que Comercial PRO hace al crear/cancelar cada documento (snapshot-diff +
-> captura en vivo).
+> (Texto original del diseño, 2026-07: "Estado: diseño / planeado" — ya no aplica, ver el
+> aviso de arriba. Las fases 1-6 se construyeron en v2.43.0–v2.48.0.)
 
 ---
 
