@@ -1268,6 +1268,13 @@ fecha de corte sea instantáneo. Y en cuentas por pagar **incluye Gastos (módul
 de Facturas de Compra (152): es un módulo nativo con la misma agenda de pago y los mismos pagos
 aplicados.
 
+**Existencias a una fecha** (el equivalente de inventario): `SUM(orgProductKardex.Quantity)`
+con `DateTransaction <= corte`, `orgProductKardex.Cancelled = 0`, documento vigente y no
+cancelado (`DeletedOn`/`CancelledOn IS NULL`), partida vigente, y sin servicios
+(`ProductTypeID <> 4`). Inventario inicial / entradas / salidas de un periodo salen del mismo
+`SUM` separando por fecha y por signo de `Quantity`. Las filas de kardex de una OC traen
+`Quantity = 0` (solo compromiso, `QuantityToBeDelivered`), así que no alteran la existencia.
+
 **Notas de crédito, devoluciones y cobranza (clientes).** Confirmado en una empresa con
 ~19,000 facturas de cliente al año:
 - Tipos por `DocumentTypeID` (con `DocRecipientID=1`): **5 = Factura**, **6 = Nota de
