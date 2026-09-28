@@ -1,5 +1,6 @@
 # verificar_terminos_prohibidos.ps1
-# Guardian: ningun archivo TRACKEADO por git debe mencionar nombres de terceros,
+# Guardian: ningun archivo del repo (rastreado o nuevo), ningun mensaje de commit aun no
+# publicado en main, ni el nombre de la rama actual debe mencionar nombres de terceros,
 # clientes, servidores o rutas privadas (ver AGENTS.md #5 "Nunca nombrar terceros").
 #
 # La lista vive SOLO en este equipo -- .terminos_prohibidos.local (raiz, no
@@ -61,6 +62,31 @@ foreach ($f in $archivos) {
     }
 }
 
+# Mensajes de commit que todavia no estan en origin/main, y el nombre de la rama actual:
+# tambien se publican (paso de verdad: un mensaje y un nombre de rama con un nombre de
+# cliente llegaron a GitHub). Si no hay origin/main (clon superficial, CI), se salta.
+Push-Location $raiz
+try {
+    git rev-parse --verify --quiet origin/main *> $null
+    if ($LASTEXITCODE -eq 0) {
+        $commits = @(git log --format=%h origin/main..HEAD)
+        foreach ($c in $commits) {
+            $msg = (git log -1 --format=%B $c) -join "`n"
+            $m = [regex]::Matches($msg, $rx, 'IgnoreCase')
+            if ($m.Count -gt 0) {
+                $unicos = ($m | ForEach-Object { $_.Value } | Select-Object -Unique) -join ', '
+                $hallazgos += "  - mensaje del commit ${c}: $unicos"
+            }
+        }
+    }
+    $rama = git rev-parse --abbrev-ref HEAD
+    if ($rama -and [regex]::IsMatch($rama, $rx, 'IgnoreCase')) {
+        $hallazgos += "  - nombre de la rama actual: $rama"
+    }
+} finally {
+    Pop-Location
+}
+
 if ($hallazgos.Count -gt 0) {
     Write-Host ""
     Write-Host "TERMINOS PROHIBIDOS ENCONTRADOS (no commitear/publicar asi):" -ForegroundColor Red
@@ -70,5 +96,5 @@ if ($hallazgos.Count -gt 0) {
     exit 1
 }
 
-Write-Host "OK: ningun archivo trackeado menciona un termino de .terminos_prohibidos.local." -ForegroundColor Green
+Write-Host "OK: ni archivos, ni mensajes de commit sin publicar, ni el nombre de la rama mencionan un termino de .terminos_prohibidos.local." -ForegroundColor Green
 exit 0
