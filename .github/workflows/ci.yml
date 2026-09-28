@@ -38,7 +38,7 @@ jobs:
             8.0.x
       - name: Compilar addon (BrosLMVClsMain.dll)
         run: dotnet build src\BrosLMV.csproj -c Release
-      - name: Compilar Runner (prototipo T3.3, NO shipped en el instalador)
+      - name: Compilar Runner (headless, el instalador lo copia a C:\BrosLMV\runner)
         run: dotnet build runner\BrosLMV.Runner.csproj -c Release
       - name: Compilar host v3.0
         run: dotnet build host\BrosLMV.Host\BrosLMV.Host.csproj -c Release
