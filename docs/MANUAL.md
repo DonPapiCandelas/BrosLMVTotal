@@ -1222,7 +1222,14 @@ contra las capturas nativas de `Entrenamiento` (ventas):
 | Factura de Compra (152) → OC (183) | partida | `docDocumentItem.SourceDocumentItemID` = partida de la OC | 4/4 partidas |
 | Factura de Compra (152) → OC | encabezado | `SourceDocumentID` **en 0 en el nativo**; las plantillas de BrosLMV ponen la primera OC (solo informativo) | ambos coexisten sin problema |
 | Remisión (157) → Pedido (967) | encabezado | `docDocument.SourceDocumentID` = Pedido | capturas nativas |
-| Factura de cliente (21), Entrada/Salida (202/203), OC, Pedido | encabezado | `SourceDocumentID` = 0 | capturas nativas |
+| Remisión (157) → Pedido (967) | partida | `SourceDocumentItemID` = partida del Pedido | 24,080 partidas en producción (*) |
+| Pedido (967) → Cotización (155) | encabezado + partida | `SourceDocumentID` / `SourceDocumentItemID` → Cotización | ~6,800 pedidos / ~20,000 partidas |
+| Venta/Ticket (158 y clones) → Cotización (155) | encabezado + partida | `SourceDocumentID` / `SourceDocumentItemID` | ~5,600 tickets |
+| Factura de cliente (21 y clones) → Venta/Ticket (158) | encabezado + partida | `SourceDocumentID` / `SourceDocumentItemID` → Ticket (factura de un ticket) | ~19,500 facturas / ~50,000 partidas |
+| Nota de crédito (142 y clones) → Factura (21) o Devolución (159) | encabezado + partida | `SourceDocumentID` / `SourceDocumentItemID` | ~1,300 notas |
+| Devolución (159) → Remisión (157) | partida | `SourceDocumentItemID` (encabezado → Pedido) | ~730 partidas |
+| Nota de crédito de proveedor (187) → Factura de Compra (152) | partida | `SourceDocumentItemID` | (pocas) |
+| Entrada/Salida (202/203), OC, Cotización | encabezado | `SourceDocumentID` = 0 | capturas nativas + producción |
 | Cualquiera | encabezado | `docDocument.DestinationDocumentID` — **no se usa** (0 en todos los datos observados); no construyas lógica sobre ella | producción |
 | Pago/cobro → documento | aplicación | `docDocumentPayment` (`DocumentID`, `FinancialOperationID`, `PaymentWithDocumentID`, `Amount`, `AmountPaidCurrency`, `SaldoAnterior`, `SaldoInsoluto`) | esquema; ver `MOTOR_ASIENTOS_CONTABLES.md` |
 
@@ -1234,9 +1241,18 @@ Reglas para recorrerla:
   `docDocumentCFD` (ver §12 "`Delete` vs `CancelDocument`").
 - Una Recepción nativa solo admite un `SourceDocumentID`: para saber de qué OC viene cada
   partida cuando se recibieron varias, usa `DeliverDocumentItemID`, no el encabezado.
-- Pendiente de confirmar con datos reales de ventas: la columna de partida que usa la
-  Remisión hacia el Pedido y la Factura de cliente hacia la Remisión/Pedido (las capturas
-  disponibles solo confirman el encabezado).
+- **Regla general, confirmada con ~130,000 partidas de dos empresas en producción:** toda
+  conversión de un documento en otro liga la partida con `SourceDocumentItemID`; **la única
+  excepción es la Recepción de Compra**, que usa `DeliverDocumentItemID` (la "entrega" de la
+  OC). (*) En la empresa medida, parte de las Remisiones se crearon con un script propio que
+  escribe `SourceDocumentItemID` — consistente con el resto de las conversiones nativas, pero
+  la evidencia de esa fila no es 100% nativa.
+- **Clasifica por `engModule.ModuleIDBase`, no por `ModuleID`.** Las empresas clonan módulos
+  nativos para separar series, formas de pago o sucursales (vistos: 4 clones de Factura de
+  cliente por forma de pago, 2 clones de Venta/Ticket, 4 de Nota de crédito, 3 de OC, clones
+  del módulo de Cobro por banco). Cada clon trae su propio `ModuleID` pero comparte
+  `ModuleIDBase` con el nativo (21, 158, 142, 183…) y se comporta igual. Un reporte o script
+  que filtre `ModuleID = 21` se pierde todas las facturas de los clones.
 
 **Saldos a una fecha de corte (cuentas por pagar/cobrar históricas).** `docDocument.Balance`,
 `TotalPaid` y `StatusPaidID` son una foto **del presente**: no pueden responder "¿cuánto se
@@ -1251,6 +1267,82 @@ comprimido, ver `DASHBOARDS_HTML.md`) y calcula el saldo en el navegador para qu
 fecha de corte sea instantáneo. Y en cuentas por pagar **incluye Gastos (módulo 242)** además
 de Facturas de Compra (152): es un módulo nativo con la misma agenda de pago y los mismos pagos
 aplicados.
+
+**Notas de crédito, devoluciones y cobranza (clientes).** Confirmado en una empresa con
+~19,000 facturas de cliente al año:
+- Tipos por `DocumentTypeID` (con `DocRecipientID=1`): **5 = Factura**, **6 = Nota de
+  Crédito**, **4 = Devolución**. Las Devoluciones no se "aplican" como las NC (su `Balance`
+  nunca llega a 0) — trátalas como un concepto aparte.
+- **Una NC aplicada a una factura es una fila de `docDocumentPayment` con
+  `PaymentWithDocumentID` = `DocumentID` de la NC.** Para la factura cuenta exactamente igual
+  que un pago en efectivo (mismo `Amount`, misma fecha) — su saldo se calcula igual sin
+  importar si la "paga" dinero o una NC, y puede mezclar ambos. El saldo pendiente de aplicar
+  de la propia NC = `NC.Total − SUM(Amount WHERE PaymentWithDocumentID = NC.DocumentID)`, que
+  coincide exacto con `NC.Balance` (reconciliado 15/15).
+- Las NC traen una fila de agenda de pago como cualquier documento, pero **no tienen
+  vencimiento real** — no les apliques semáforo de vencido/por vencer.
+
+**Totales, costo y margen de un documento de venta:**
+- `docDocument.SubTotal` es **bruto, antes de descuento**: `SubTotal − TotalDiscount + TotalTax
+  = Total` (verificado en 6,499 documentos de venta; en compras resta además
+  `TotalRetention`). La venta neta es `SubTotal − TotalDiscount`.
+- Costo real de lo vendido = `docDocumentItem.CostPrice × Quantity` (costo capturado en la
+  partida al momento de la venta). Si la empresa arrastra existencias negativas históricas,
+  los costos del catálogo (`orgProduct.CostPrice`/`CostPriceComercial`) y el libro nativo
+  quedan contaminados — un reporte de margen serio puede necesitar su propio cálculo PEPS.
+- Para un costo "de referencia" por producto, toma Recepciones de Compra + Entradas de
+  Almacén; **no mezcles Facturas de Compra (152)**: a veces facturan en otra unidad que la de
+  inventario (tonelada vs. bulto), lo que da costos unitarios absurdos.
+- **El sistema no guarda con qué lista de precios se vendió cada partida** — no hay forma de
+  reconstruir "cuánto se vendió a precio de mayoreo vs. público" desde `docDocumentItem`.
+
+**No cuentes dos veces la misma venta.** Una venta puede pasar por Pedido → Ticket (158) →
+Factura (21), o facturarse directo. En un reporte de ventas cuenta solo el **documento
+terminal** de cada cadena Ticket↔Factura (el que no tiene un documento hijo vigente cuyo
+`SourceDocumentID` apunte a él) — así un ticket ya facturado no aparece también por
+separado. Y verifica en la empresa si la Remisión es un paso hacia la factura o un documento
+de surtido en paralelo (en la empresa medida nunca era origen de una factura, se excluía del
+conteo).
+
+### 10.6 Operaciones financieras, conciliación bancaria y el candado de edición
+
+**Perfil real de `docFinancialOperation`** (cobros, pagos, traspasos) — medido sobre ~105,000
+operaciones de una empresa en producción. Identifica el tipo de operación por
+`DocRecipientID` + `DocumentTypeID` + `DebitCreditCoef` (o por `ModuleIDBase`), nunca solo por
+`ModuleID`: la empresa medida tenía el módulo de Cobro clonado por banco y por forma de pago.
+
+| Operación | ModuleID nativo | DocRecipientID | DocumentTypeID | DebitCreditCoef |
+|---|---|---|---|---|
+| Cobro a cliente (y sus clones, p. ej. por banco / REP) | 248 | 1 | 31 | +1 |
+| Pago a proveedor | 247 | 2 | 32 | −1 |
+| Traspaso entre cuentas | 362 | 0 | 28 | **dos filas**: −1 origen y +1 destino |
+| Pago a empleados | 842 | 7 | 42 | −1 |
+| Otros ingresos / otros egresos | 1161 / 1162 | 9 | 80 / 81 | +1 / −1 |
+
+- La **aplicación** de un cobro/pago a documentos vive en `docDocumentPayment`
+  (`FinancialOperationID` → `DocumentID`, ver §10.5); >99% de los cobros y pagos medidos tenían
+  al menos una aplicación. Los traspasos y "otros ingresos" nunca la tienen.
+- **No crees un pago insertando solo `docFinancialOperation`.** Se vio en producción un script
+  que lo hacía (el encabezado con `ModuleID`/`DocumentTypeID`/`Amount`/fechas, nada más): el
+  pago queda sin aplicar a facturas, sin actualizar `Balance`/`StatusPaidID` de los documentos
+  y sin póliza. Mientras no haya un wrapper del SDK para pagos (ver `XENGINE_FUNCIONES.md`,
+  "`Payment.clsMain`"), usa el perfil de arriba solo para **leer y clasificar**.
+- **Conciliación bancaria:** `docEdoCtaBanco` guarda los movimientos del estado de cuenta
+  (`FinancialEntityID`, `DateAffectation`, `Debit`, `Credit`, `Balance`, `Reference`,
+  `Description`) y se liga a la operación con `docEdoCtaBanco.FinancialOperationID` — ahí se
+  ve qué movimiento del banco corresponde a qué cobro/pago (50,000+ movimientos en la empresa
+  medida).
+
+**`docDocument.UserID` es el candado de "documento en uso".** Comercial lo llena con el usuario
+que tiene el documento abierto y lo vuelve a `NULL` al cerrarlo (visible en la captura nativa
+de la OC: `UPDATE docDocument SET UserID=NULL WHERE UserID=@u AND DocumentID=@doc` al cerrar).
+Si Comercial se cae con documentos abiertos, se quedan "en uso por otro usuario". Para
+liberarlos: `UPDATE docDocument SET UserID=NULL WHERE DocumentID=@doc AND UserID=@usuario` —
+**uno por uno y confirmando que ese usuario ya no lo tiene abierto**. Se vio en producción un
+botón que liberaba **todos** los documentos de golpe (`UPDATE docDocument SET UserID=0 WHERE
+UserID>0`): libera también los que otra persona está editando en ese momento, y dos personas
+terminan guardando el mismo documento. Por la misma razón, los builders (`NuevoDocumento`) y
+los perfiles de §7 dejan `UserID` en 0/NULL al crear.
 
 ---
 

@@ -139,7 +139,12 @@ también sea portable:
    ```
    Si aun comprimido no cabe (reportes verdaderamente enormes), escribe el HTML a un
    archivo temporal y usa `Navigate()` en vez de `NavigateToString()` — no tiene ese
-   límite. (`ctx.dashboard()` no necesita esto hoy: 3,000 filas típicas comprimen a decenas
+   límite. Alternativa ya probada en producción: escribir el `.html` autocontenido a disco
+   y abrirlo en el **navegador predeterminado** (`os.startfile`). Caso medido: histórico
+   completo de 26 años, 243,047 partidas → 11 MB comprimido, 25 s en generarse; el problema
+   nunca fue el volumen, era el canal (`NavigateToString`). El costo: se pierde el canal de
+   vuelta a Python (`postMessage`), así que el periodo y "Exportar a Excel" se eligen antes,
+   en un formulario chico, y dentro del reporte se exporta CSV con JS puro. (`ctx.dashboard()` no necesita esto hoy: 3,000 filas típicas comprimen a decenas
    de KB, muy por debajo del límite.)
 5. **Excepción legítima a "agrega en SQL": reportes con fecha de corte.** Si el usuario debe
    poder mover una fecha de corte (saldos al día X, antigüedad de saldos), manda los
