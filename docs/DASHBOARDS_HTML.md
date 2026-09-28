@@ -141,6 +141,22 @@ también sea portable:
    archivo temporal y usa `Navigate()` en vez de `NavigateToString()` — no tiene ese
    límite. (`ctx.dashboard()` no necesita esto hoy: 3,000 filas típicas comprimen a decenas
    de KB, muy por debajo del límite.)
+5. **Excepción legítima a "agrega en SQL": reportes con fecha de corte.** Si el usuario debe
+   poder mover una fecha de corte (saldos al día X, antigüedad de saldos), manda los
+   **hechos** (documentos + pagos con su fecha) y calcula en el navegador — así cambiar la
+   fecha es instantáneo sin cerrar la ventana (`ctx.show_html` es de una sola vía). Caso real
+   medido: ~2,000 facturas + ~2,000 pagos de 12 meses caben comprimidos sin problema. Ver
+   `MANUAL.md` §10.5 "Saldos a una fecha de corte".
+6. **La ventana no tiene DevTools visibles: los errores de JS fallan en silencio.** Agrega
+   un manejador global que los muestre —
+   `window.addEventListener("error", e => alert(e.error ? (e.error.stack || e.error.message) : e.message))`
+   — para que un "no pasa nada al dar clic" se convierta en un mensaje con la causa real.
+7. **Engancha el clic de cada fila al objeto con el que dibujaste esa fila** (closure), no a
+   un ID que luego vuelves a buscar en un arreglo que se recalcula (filtros, fecha de corte).
+   Bug real en producción: tras recalcular la vista, el clic buscaba el documento en una
+   versión que ya no lo tenía — "no se encontró el documento" con la fila todavía visible.
+8. **Fechas en JS: no uses `toISOString()` para armar `YYYY-MM-DD`** — convierte a UTC y en
+   México recorre la fecha un día hacia atrás; usa `getFullYear()/getMonth()/getDate()`.
 
 ---
 
@@ -170,3 +186,5 @@ como piloto (`ReporteXVehiculo`) antes de tocar los otros tres.
       carpeta `_assets\` nueva.
 - [ ] Ninguna ruta tiene el nombre de la empresa escrito a mano — uso `ctx.empresa`.
 - [ ] Si los datos son grandes, van comprimidos (gzip+base64).
+- [ ] Hay un manejador global de errores de JS (la ventana no tiene DevTools).
+- [ ] Los clics de fila usan el objeto del render, no una re-búsqueda por ID.
