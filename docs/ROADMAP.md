@@ -9,7 +9,7 @@
 > Prioridades: **P0** = bloquea que lo ya hecho llegue a los clientes o hay un riesgo activo;
 > **P1** = siguiente trabajo con valor real demostrado; **P2** = útil, sin urgencia;
 > **Ideas** = sin compromiso ni evidencia suficiente todavía.
-> Última revisión: 2026-09-27 (v2.93.0).
+> Última revisión: 2026-09-28 (v2.93.0; se agrega 1.8).
 
 ## P0 — Ahora
 
@@ -30,6 +30,7 @@
 | 1.5 | **Aplicar paginación real (Paged.js) a los 10 formatos PDF** | Los formatos actuales no repiten encabezado/pie ni numeran "Página X de Y"; el patrón ya está probado en producción | Una plantilla a la vez, empezando por Orden de Compra (`PAGINACION_PDF.md` "Qué falta") |
 | 1.6 | **Python: host persistente (C6d)** | Hoy cada ejecución lanza un host (~1 s la primera vez) | Ver `host/README.md` y `ARQUITECTURA_V3.md` |
 | 1.7 | **Plantillas multi-empresa** | En un cliente había 12 scripts casi idénticos, duplicados por empresa propia; dos bugs reales vinieron de filtrar la empresa a mano | Revisar las plantillas de fábrica: que tomen `OwnedBusinessEntityID` del documento/contexto, nunca de una constante |
+| 1.8 | **Carga masiva de documentos desde XML (recibidos y emitidos), hecha bien** | Capturas en una empresa de fábrica (2026-09-28, 6,922 XML recibidos) con la función nativa *XML Recibidos → Procesar / Generar documento*: (1) guarda solo el nombre del archivo y depende de que siga en `Procesado\`; acepta XML con UUID inválido y mueve los rechazados sin avisar; (2) **pierde las retenciones federales** al generar gastos (ISR RESICO, IVA 4 % de fletes) — documento incoherente y póliza sin impuesto retenido por pagar; una retención local deja la **póliza descuadrada**; registra IVA *exento* como 0 %; (3) **ignora los complementos**: un estado de cuenta de monedero de combustible registró solo la comisión y omitió las cargas (≈85 mil de gasto y 13 mil de IVA acreditable en un mes); nada de Carta Porte, pagos (documentos relacionados), impuestos locales ni CFDI relacionados queda en tablas; (4) "Crear todos los productos" los deja **sin clave y no vendibles**, y la memoria de productos empata por descripción **sin filtrar proveedor**; (5) el proveedor creado desde XML queda incompleto (sin canales). Las facturas de cliente desde XML emitidos tienen problemas similares | (a) **Tablas propias por UUID** para todo lo que Comercial no guarda: XML crudo de cada complemento, CFDI relacionados, impuestos por concepto (exento vs 0 %), pagos por documento relacionado, cargas de combustible, Carta Porte, impuestos locales, ruta/hash del archivo; (b) visor del complemento desde *XML Recibidos*; (c) script de BrosLMV de **carga masiva** que resuelva productos (clave, tipo, vendible, empate por proveedor), jale completos los datos del proveedor/cliente, y genere documentos y pólizas **correctos** (todas las retenciones, exento, impuestos locales), buscando primero la vía nativa (`Document.clsMain`/`AccPoliza.clsMain`); (d) validador previo a la carga (UUID inválido, duplicado, receptor ajeno) |
 
 ## P2 — Después
 
