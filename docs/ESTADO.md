@@ -29,7 +29,7 @@ con una versión semanas más vieja que la de GitHub porque nadie regeneró el i
 | **Addon** (botones + Consola, C#/Python/SQL en `zzBrosScript`) | En producción en varias empresas. Últimos cambios: correcciones reales salidas del barrido de clientes (2.92.0–2.93.0) | `CHANGELOG.md`, `MANUAL.md` |
 | **Python** | En producción desde v2.6.0: host x64 fuera de proceso por Named Pipe + SQL por la conexión viva de Comercial. Pendiente: host persistente (C6d) | `PYTHON.md`, `ARQUITECTURA_V3.md`, `host/README.md` |
 | **PDF de documentos + correo** (`htmlpdf/`) | En producción (2.87.0–2.89.0), 10 formatos genéricos. Paginación real con Paged.js disponible (2.91.0), sin aplicar a las plantillas todavía | `PAGINACION_PDF.md` |
-| **`BrosLMV.Runner`** (headless) | Funciona y lo usan integraciones externas en producción (colas de documentos). **No viene en el instalador** | `MANUAL.md` §12 "Integraciones externas vía BrosLMV.Runner" |
+| **`BrosLMV.Runner`** (headless) | Funciona, lo usan integraciones externas en producción (colas de documentos) y el instalador lo copia a `C:\BrosLMV\runner` (al menos desde v2.90.0). Pendiente: política de escrituras sin supervisión y reintentos | `MANUAL.md` §12 "Integraciones externas vía BrosLMV.Runner" |
 | **Motor de recetas no-code** | MVP construido (2 recetas, pasos encadenados, asistente). Sin trabajo activo | `RECETAS_NOCODE.md` |
 | **Motor de Asientos Contables** | Validado en producción (cobros/pagos multi-moneda); en el repo solo está el motor de cálculo y el esquema | `MOTOR_ASIENTOS_CONTABLES.md` |
 | **Contabilidad** (SDK y modelo de datos) | Investigado y documentado; el SDK no se ha probado en vivo desde este repo | `SDK_CONTABILIDAD.md`, `CONTABILIDAD_MODELO_DATOS.md` |
