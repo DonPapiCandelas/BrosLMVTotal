@@ -16,9 +16,13 @@
 7. [Crear documentos — recetas por tipo](#7-crear-documentos)
 8. [Crear catálogos](#8-crear-catálogos)
 9. [Python — paridad y diferencias](#9-python)
-10. [Ventanas WinForms: modeless (no bloquear Comercial)](#10-ventanas-winforms-modeless-no-bloquear-comercial)
+10. [Ventanas, plantillas y documentos derivados](#10-ventanas-plantillas-y-documentos-derivados)
+    - 10.1–10.3 Ventanas WinForms modeless y plantillas base
+    - [10.4 Documentos derivados (N OC → 1 documento)](#104-documentos-derivados-n-órdenes-de-compra--1-documento-recepción--factura)
+    - [10.5 Mapa de vínculos entre documentos, saldos y existencias a una fecha, ventas y cobranza](#105-mapa-de-vínculos-entre-documentos-genealogía)
+    - [10.6 Operaciones financieras, conciliación bancaria y el candado de edición](#106-operaciones-financieras-conciliación-bancaria-y-el-candado-de-edición)
 11. [Ejemplos de scripts](#11-ejemplos-de-scripts)
-12. [Advertencias y buenas prácticas](#12-advertencias-y-buenas-prácticas)
+12. [Advertencias y buenas prácticas](#12-advertencias-y-buenas-prácticas) — incluye los hallazgos reales de producción: causas de "Division by zero", campos extra por empresa, gaps entre los builders y lo nativo, reglas para integraciones con el Runner
 13. [Cómo está programado por dentro](#13-cómo-está-programado-por-dentro)
 14. [Recompilar el núcleo](#14-recompilar-el-núcleo)
 15. [Cheat sheet](#15-cheat-sheet)
@@ -867,6 +871,12 @@ ctx.erp.RefreshGrid();
 return "Traspaso creado: doc=" + doc;
 ```
 
+> ⚠️ **Verifica antes que el módulo 204 sume en el destino en esa empresa.** Si
+> `engModuleParameter.StockAffectation = -1` para el módulo 204, el traspaso solo resta en el
+> origen y **nunca suma en el destino** (confirmado en producción). En ese caso usa una Salida
+> (203) en el origen + una Entrada (202) en el destino — ver §12 "Gaps reales entre los
+> builders y el comportamiento nativo en Orden de Compra".
+
 ---
 
 ## 8. Crear catálogos
@@ -1061,7 +1071,7 @@ else:
 
 ---
 
-## 10. Ventanas WinForms: modeless (no bloquear Comercial)
+## 10. Ventanas, plantillas y documentos derivados
 
 Un botón que abre una ventana (crear un documento, capturar datos, etc.) puede hacerse de dos
 formas: **modal** (bloquea Comercial mientras está abierta) o **modeless** (se minimiza, se puede
