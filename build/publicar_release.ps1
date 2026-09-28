@@ -130,8 +130,26 @@ else {
 $notas = New-Object Collections.Generic.List[string]
 if ($Producto -eq 'Addon') {
     $cl = [IO.File]::ReadAllText((Join-Path $root 'docs\CHANGELOG.md'), [Text.Encoding]::UTF8)
-    $mm = [regex]::Match($cl, "(?ms)^## \[$([regex]::Escape($ver))\][^\r\n]*\r?\n(.*?)(?=^## \[)")
-    if ($mm.Success) { $notas.Add($mm.Groups[1].Value.Trim()) } else { $notas.Add("Ver docs/CHANGELOG.md") }
+    # Las notas cubren TODAS las versiones desde el ultimo release publicado del addon (tags vX.Y.Z),
+    # no solo la actual: quien actualiza desde el release anterior necesita ver todo lo que cambio.
+    $previa = $null
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $tags = & $gh release list --limit 100 --json tagName --jq '.[].tagName' 2>$null
+    $ErrorActionPreference = $eap
+    $publicadas = @($tags | Where-Object { $_ -match '^v(\d+\.\d+\.\d+)$' } | ForEach-Object { [version]($_.Substring(1)) } | Where-Object { $_ -lt [version]$ver })
+    if ($publicadas.Count) { $previa = ($publicadas | Sort-Object -Descending)[0] }
+    if ($previa) { $notas.Add("Cambios desde v${previa}:"); $notas.Add("") }
+    $secciones = [regex]::Matches($cl, "(?ms)^## \[(\d+\.\d+\.\d+)\]([^\r\n]*)\r?\n(.*?)(?=^## \[|\z)")
+    foreach ($s in $secciones) {
+        $v = [version]$s.Groups[1].Value
+        if ($v -gt [version]$ver) { continue }
+        if ($previa -and $v -le $previa) { break }          # el CHANGELOG va de la mas nueva a la mas vieja
+        if (-not $previa -and $v -lt [version]$ver) { break }  # sin release previo: solo la actual
+        $notas.Add("## $($s.Groups[1].Value)$($s.Groups[2].Value)")
+        $notas.Add($s.Groups[3].Value.Trim())
+        $notas.Add("")
+    }
+    if ($notas.Count -eq 0) { $notas.Add("Ver docs/CHANGELOG.md") }
 } else {
     $notas.Add("Instalador y desinstalador de BrosLMV.Descargas v$ver. Ver descargas/DOCUMENTACION.md.")
 }
