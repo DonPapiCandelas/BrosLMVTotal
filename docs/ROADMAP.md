@@ -15,7 +15,7 @@
 
 | # | Qué | Evidencia | Siguiente paso |
 |---|---|---|---|
-| 0.1 | **Regenerar el instalador y publicar release 2.93.0** | 2.92.0 corrige `ctx.select_file`/`select_folder` desde Python y `AgregarSerie` en entradas; 2.93.0 corrige las fechas de vencimiento de las plantillas de Factura de Compra. Nada de eso llega a una instalación nueva hasta regenerar | `build/generar_instalador.ps1` + `build/generar_exes.ps1` + `build/publicar_release.ps1` |
+| ~~0.1~~ | ~~Regenerar el instalador y publicar release 2.93.0~~ | **Hecho 2026-09-28** — [v2.93.0](https://github.com/DonPapiCandelas/BrosLMVTotal/releases/tag/v2.93.0) | — |
 | 0.2 | **Primera auditoría externa** | El proyecto creció rápido y con varias IAs; la documentación se consolidó el 2026-09-27 | Seguir [`AUDITORIA.md`](AUDITORIA.md) |
 | 0.3 | **Firmar digitalmente los `.exe`** | Un antivirus en un cliente marcó `BrosLMV.Host.exe` como ransomware (falso positivo) | Conseguir certificado de firma de código y firmar en `build/generar_exes.ps1` |
 

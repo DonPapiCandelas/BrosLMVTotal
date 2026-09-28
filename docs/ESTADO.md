@@ -41,8 +41,10 @@ terminó y lo genérico ya está en `MANUAL.md` (§10.5 vínculos entre document
 operaciones financieras, §12 advertencias), `DASHBOARDS_HTML.md` y `MIGRAR_BOTONES_RT.md`.
 La documentación vieja o superada se movió a `docs/archivo/`.
 
-**Pendiente inmediato:** regenerar el instalador para que 2.92.0/2.93.0 lleguen a
-instalaciones nuevas.
+**Último release publicado:** [v2.93.0](https://github.com/DonPapiCandelas/BrosLMVTotal/releases/tag/v2.93.0)
+(2026-09-28), con las notas de 2.91.0–2.93.0. Las empresas ya provisionadas conservan su
+propia copia de las plantillas de fábrica en `zzBrosScript`: el arreglo de vencimientos de
+2.93.0 solo les llega si se actualiza esa copia.
 
 ## Qué sigue
 
