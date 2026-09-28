@@ -1470,6 +1470,45 @@ campos extra:
   normal (el de `docDocumentItem` pasó de 81 a 82 parámetros al agregar un campo extra). Si tu
   script escribe a mano una tabla con campos extra conocidos, inclúyelos como columnas
   normales del mismo INSERT — no hay tabla ni JOIN aparte que buscar.
+  **Peligro real confirmado:** un campo extra existe **por empresa**, no por instalación de
+  Comercial — no asumas que porque una empresa lo tiene configurado, todas lo tienen. Escribir
+  a una columna extra que esa empresa nunca configuró revienta con `Invalid column name` y
+  aborta **todo el documento a medio crear** (incidente real: 2 Recepciones de Compra quedaron
+  atoradas por esto). Verifica primero con `COL_LENGTH('docDocumentItem', 'Proyecto')` — pero
+  **léelo con `ctx.Query` + revisar si la fila trae `null`, no con `ctx.Scalar`**, que resultó
+  no distinguir de forma confiable "la columna no existe" (NULL real) de otros casos. Guarda el
+  resultado una sola vez por corrida del script, no por partida.
+
+### 🚚 Gaps reales entre los builders (`NuevoDocumento`/`AgregarArticulo`) y el comportamiento nativo en Orden de Compra
+Confirmado por una integración externa en producción que procesa una cola de documentos
+(patrón: tabla de encolado + un `zzBrosScript` disparado por el consumidor, en vez de un botón
+de usuario) — los builders del SDK **no replican automáticamente** varias cosas que sí hace el
+motor nativo al capturar una OC a mano:
+
+- **`docDocumentDeliveryAgenda` no se crea sola** ni siquiera pasando por
+  `ctx.erp.AgregarArticulo` — hay que insertarla a mano por cada partida física (no servicios),
+  igual que confirma la ingeniería inversa de la OC nativa (ver arriba). El builder no lo hace
+  por ti.
+- **`orgProductSupplier` tampoco se crea/actualiza sola** — upsert a mano (`UPDATE` si ya existe
+  el par ProductID+SupplierID, `INSERT` si no) después de `AgregarArticulo`.
+- **`docDocumentPaymentAgenda` con condición de pago a varias parcialidades (p. ej. 50%-50%)
+  sale mal** también pasando por los builders normales (`NuevoDocumento`+`AgregarArticulo`), no
+  solo escribiendo SQL directo: queda 1 sola fila al 100% con `Amount=0`. Hay que borrarla y
+  reconstruirla a mano con los porcentajes/fechas reales (mismo patrón ya documentado arriba
+  con `engPaymentTermDetail`, aquí con los datos ya calculados del lado de quien encola).
+- **`ctx.erp.UpdateStatusDelivery(sourceDocumentId)` no cubre el 100% de los casos** al recibir
+  una OC — llámalo igual (puede actualizar algo más, p. ej. el ícono del grid), pero **calcula
+  tú el valor final de `StatusDeliveryID`** comparando `SUM(Quantity)` de la OC origen
+  (`MustBeDelivered=1`) contra `SUM(Quantity)` de las partidas de Recepción que la referencian
+  vía `DeliverDocumentItemID` — nada recibido → `3`, parcial → `2`, completo → `1` (valores
+  confirmados con datos reales en los 3 casos).
+- **El módulo nativo de Traspaso entre Almacenes (204) puede ser unidireccional según la
+  configuración de la empresa** — revisa `engModuleParameter.StockAffectation` para ese
+  módulo; en `-1` solo resta existencia en origen y **nunca suma en destino**. Si te topas con
+  esto, el workaround confiable es **no usar el módulo 204**: crea una Salida de Almacén (203)
+  en el origen + una Entrada de Almacén (202) en el destino, con la cantidad ya confirmada por
+  quien recibe (nunca la "cantidad enviada", para que el kardex siempre refleje lo que de
+  verdad pasó sin necesitar corrección después).
 
 ### 🔒 Integridad de scripts: hash y aprobación (desde v2.35.0)
 Cada vez que guardas un script desde la Consola (**Guardar**/**Guardar como**), BrosLMV
