@@ -36,7 +36,12 @@ con una versión semanas más vieja que la de GitHub porque nadie regeneró el i
   "Nueva acción" en la Consola). Sin trabajo activo reciente — no es prioridad actual salvo
   que se pida de nuevo.
 - **`BrosLMV.Runner`** (ejecución headless): prototipo funcional, probado con un consumidor
-  externo real en producción. **No shipped en el instalador todavía.**
+  externo real en producción (una app web que crea documentos nativos — Entradas/Salidas de
+  Almacén, Órdenes de Compra, Recepciones — vía una cola propia (`zzBrosDocQueue`) + un
+  `zzBrosScript` que la procesa y dispara el Runner; también trae de vuelta lo capturado
+  directo en Comercial). Varios gaps reales entre los builders y el comportamiento nativo
+  salieron de ahí — ver `MANUAL.md` §12 "Gaps reales entre los builders...". **No shipped en
+  el instalador todavía.**
 - **Canal C# ↔ Python v3.0** (`host/`, `workers/`, `protocol/`): en desarrollo (checkpoints
   C3a–C3d, ver `host/README.md`), reemplaza al canal Python v1 actual cuando esté listo.
 - **`BrosLMV.Descargas`**: subproducto independiente, shipped, instalador propio v2.1.1.
