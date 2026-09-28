@@ -1510,6 +1510,20 @@ motor nativo al capturar una OC a mano:
   quien recibe (nunca la "cantidad enviada", para que el kardex siempre refleje lo que de
   verdad pasó sin necesitar corrección después).
 
+### ⏳ Cuelgue indefinido (sin error ni timeout) al crear un documento: historial de kardex corrupto
+Confirmado en producción por un consumidor real de `BrosLMV.Runner`: crear una Recepción de
+Compra para un producto específico **se colgaba indefinidamente** — sin excepción, sin timeout,
+hubo que matar el proceso. Aislado con pruebas controladas: no era el impuesto ni la retención
+(se colgaba igual con y sin retención); con un producto **sin historial de kardex** el mismo
+flujo funcionaba perfecto. Causa real: ese producto tenía su historial de costo/kardex corrupto
+por pruebas previas que **mezclaron capturas nativas con INSERTs de SQL crudo** al kardex. Si un
+documento se cuelga solo con un producto concreto, sospecha primero de su historial de kardex,
+no de XEngine — y no mezcles SQL crudo al kardex con capturas nativas sobre el mismo producto.
+
+De paso, confirmado en ese mismo consumidor: XEngine **sí genera solo** las filas correctas de
+`docDocumentTaxDetail` para impuestos con retención (p. ej. IVA 16% + retención) con solo poner
+el `TaxTypeID` en la partida — no hay que calcular retenciones a mano cuando se usa el SDK.
+
 ### 🔒 Integridad de scripts: hash y aprobación (desde v2.35.0)
 Cada vez que guardas un script desde la Consola (**Guardar**/**Guardar como**), BrosLMV
 calcula un hash SHA-256 del código y lo guarda junto con él (`zzBrosScript.HashSHA256`).
