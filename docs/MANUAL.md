@@ -1697,6 +1697,13 @@ SELECT TOP 50 * FROM zzBrosAuditoria ORDER BY id DESC;
 - **`ctx.erp.CancelDocument(doc)`** = cancelación. Marca `CancelledOn` y debería revertir kardex.
   **Usar siempre para documentos de inventario.**
 - `ctx.erp.ReactivateDocument(doc)` = inverso de `CancelDocument`.
+- **Eliminar un documento (nativo) borra físicamente su fila de `docDocumentCFD`**, aunque
+  `docDocument` solo quede marcado con `DeletedOn`. Confirmado en producción: 136/136 documentos
+  vigentes con su `docDocumentCFD`, 30/30 eliminados sin ella. Consecuencias: (1) un documento
+  sin `docDocumentCFD` es firma de "fue eliminado", **no** de que `NuevoDocumento` no la haya
+  creado (sí la crea siempre — un proyecto satélite lo diagnosticó mal por mirar documentos de
+  prueba ya borrados); (2) si un script toca `docDocumentCFD` de un documento que pudo haberse
+  eliminado, verifica que la fila exista antes de un `UPDATE`, y revisa cuántas filas afectó.
 
 ### ⚠️ No duplicar anclas
 - `NuevoDocumento` ya crea las 4 anclas (`docDocumentExt`, `docDocumentExtra`, `docDocumentCFD`,
