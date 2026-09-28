@@ -22,8 +22,12 @@ mezclarlas es como se filtran nombres de clientes al repo público (ya pasó, ya
 ## 2. Arranque obligatorio, en este orden
 
 1. Este archivo, completo.
-2. [`docs/ESTADO.md`](docs/ESTADO.md) — qué se está haciendo ahora mismo.
-3. Para algo puntual, [`docs/INDICE.md`](docs/INDICE.md) te manda al documento correcto.
+2. [`docs/ESTADO.md`](docs/ESTADO.md) — estado de cada pieza, hoy.
+3. [`docs/ROADMAP.md`](docs/ROADMAP.md) — qué sigue y por qué.
+4. Para algo puntual, [`docs/INDICE.md`](docs/INDICE.md) te manda al documento correcto.
+5. Si vienes a **auditar**, además [`docs/AUDITORIA.md`](docs/AUDITORIA.md).
+
+**No uses como fuente de verdad** nada de `docs/archivo/` (historia, con contradicciones).
 
 **Nunca cargues `docs/CHANGELOG.md` completo.** Es historial de versiones para consulta
 puntual (buscar una versión o un tema), no contexto de arranque — son miles de líneas.
@@ -61,7 +65,7 @@ puntual (buscar una versión o un tema), no contexto de arranque — son miles d
 |---|---|
 | `src/` | Addon principal (servidor COM, Consola, motor Roslyn) |
 | `runner/` | `BrosLMV.Runner` — ejecución headless sin Comercial abierto |
-| `host/` + `workers/` + `protocol/` | Canal C# ↔ Python v3.0 (en desarrollo) |
+| `host/` + `workers/` + `protocol/` | Canal de Python: host x64 fuera de proceso por Named Pipe (en producción desde v2.6.0; pendiente host persistente) |
 | `htmlpdf/` | PDF de documentos (WebView2), Cotizador, Configuración de formato, 10 formatos |
 | `descargas*/` | `BrosLMV.Descargas` — subproducto independiente. Doc propia: `descargas/DOCUMENTACION.md` |
 | `instalador/` + `instaladores/` | Insumos y fuente de los `.exe` instaladores del addon |

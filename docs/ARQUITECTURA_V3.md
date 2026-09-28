@@ -191,7 +191,7 @@ usan análisis pesado.
   declarativo) + `ctx.show_html(...)` (WebView2). Sin modo in-process.
   **Adelanto (2026-07-06):** no hace falta esperar a `ctx.show_html` para tener WebView2
   disponible en C# — un script puede usarlo vía `#r`, sin cambios al núcleo. Ver
-  [`PLAN_LIBRERIAS_EXTERNAS.md`](PLAN_LIBRERIAS_EXTERNAS.md) §3. Dos caminos hoy: `#r`
+  [`PLAN_LIBRERIAS_EXTERNAS.md`](archivo/PLAN_LIBRERIAS_EXTERNAS.md) §3. Dos caminos hoy: `#r`
   en scripts C# (WebView2 crudo, control total) o `ctx.show_html(...)` desde Python
   (v2.24.0, ya implementado — WebView2 embebido, sin manejar el hilo STA a mano).
 - **`broslmv.proto`** definitivo (empezar por aquí en la implementación → punto C2).
@@ -201,7 +201,10 @@ usan análisis pesado.
 - Metadatos de script: cabecera declarativa completa (`@nombre/@lenguaje/@runtime/
   @permisos/@timeout`) y/o columnas en `zzBrosScript` — sigue pendiente como
   esquema formal, aunque ya existen marcadores puntuales (`# lang: python`).
-- Eventos/hooks (`Al Guardar`, etc.) — sigue pendiente.
+- Eventos/hooks (`Al Guardar`, etc.) — **resuelto por la vía nativa**: cualquier AppKey se
+  engancha a un evento del módulo desde Propiedades → Avanzado → "Ejecutar función", y el
+  script recibe el ID en `ctx.EventoId` (`MANUAL.md` §12). Un sistema de hooks propio ya no es
+  necesario.
 
 ---
 

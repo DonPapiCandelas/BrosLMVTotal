@@ -1,5 +1,11 @@
 # BrosLMV — Especificación técnica (blueprint de reconstrucción)
 
+> ⚠️ **Desactualizado: describe la v2.18.0 (el addon va en 2.93.0).** El contrato COM, el
+> registro y las trampas de fondo siguen siendo válidos, pero la API de `ctx`/`ctx.erp`, el
+> canal de Python, los componentes (`htmlpdf/`, Runner, recetas) y las versiones cambiaron
+> mucho. Fuente de verdad actual: el código + `MANUAL.md` + `SCRIPTING_CONTRATOS.md` +
+> `CHANGELOG.md`. Actualizarlo está en `ROADMAP.md` ("Deuda de documentación").
+
 Documento **autosuficiente** para reconstruir BrosLMV **desde cero**. Contiene el
 contrato con CONTPAQi, la arquitectura, las versiones exactas, los nombres exactos
 de los miembros COM que usamos, los algoritmos, el registro y las trampas

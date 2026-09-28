@@ -1,5 +1,9 @@
 # Referencias de la consola y verificación del API `ctx` / `ctx.erp`
 
+> ⚠️ **Estado descrito: v2.11.1 (el addon va en 2.93.0).** El método de verificación (dump
+> COM + auditoría + lote) sigue siendo válido; los conteos y el "falta verificar" pueden estar
+> vencidos. API vigente: `SCRIPTING_CONTRATOS.md` y `MANUAL.md` §5–6.
+
 > **Documento de continuación.** Explica el sistema de "Referencias" de la consola, el API real
 > que reflejan, cómo se exponen TODAS las funciones de XEngine y el **método para verificarlas
 > sin ir una por una**. Pensado para que cualquier agente/persona retome el trabajo.

@@ -88,9 +88,11 @@ El host lee `BROSLMV_SQL_CONN`, `broslmv_cred.dat` DPAPI o `broslmv_conn.txt`.
   ✅ **C3d** Python round-trip · ✅ **C4** CPython embeddable · ✅ **C5a** SDK minimo ·
   ✅ **C5b** SQL remoto contra gateway · ✅ **C5c** SQL Server real ·
   ✅ **C5d** auditoria (`Audit/`) + callbacks UI/log/progress (`Callbacks/`). **Cierra Bloque C.**
-- ⏭️ **C6**: integrar el ADDON como cliente del pipe (ComercialSP lanza el host, abre el
-  pipe, manda `ExecuteScript`) y render real de UI Opcion A (`ctx.form`/`ctx.show_html`).
-  El `LoggingHostCallbackSink` se reemplaza por el relay real al addon por el pipe.
+- ✅ **C6a** cliente del pipe en el addon · ✅ **C6b** botones y Consola en Python (v2.6.0) ·
+  ✅ **C6c** relay SQL por la conexión viva de Comercial (v2.7.0) · ✅ UI Opción A
+  (`ctx.form` v2.32.0, `ctx.show_html` v2.24.0). **El canal Python por este host está en
+  producción desde la v2.6.0** (ver `docs/PYTHON.md`).
+- ⏭️ **C6d**: host persistente — hoy se lanza un host por ejecución (≈1 s la primera vez).
 
 ## Trampas conocidas (para quien continúe)
 

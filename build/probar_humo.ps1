@@ -3,7 +3,7 @@
 # exit != 0 = fallo) e imprime su propio detalle en caso de error. Este script solo agrega
 # el resumen verde/rojo y decide el exit code final.
 #
-# Regla del proyecto (docs\PLAN_IMPLEMENTACION.md, T4.1): no se corre generar_exes.ps1 sin
+# Regla del proyecto (T4.1 del plan original, docs\archivo\PLAN_IMPLEMENTACION_ARCHIVO.md): no se corre generar_exes.ps1 sin
 # humo en verde.
 #
 # Uso:

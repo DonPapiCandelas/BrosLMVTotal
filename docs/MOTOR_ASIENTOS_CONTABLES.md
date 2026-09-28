@@ -213,5 +213,5 @@ el motor de cálculo todavía ignore.
   plantillas reusables en `instalador/scripts/`, parametrizadas por módulo — hoy solo
   existe el motor de cálculo (`instalador/scripts/motor/`) de forma genérica.
 - Construir el editor visual descrito arriba, respetando su regla de oro.
-- Documentar en `MANUAL.md` el patrón `ctx.EventoId` como capacidad general del addon
-  (no solo de este motor) — pendiente independiente, ver `docs/PLAN_IMPLEMENTACION.md`.
+- ~~Documentar `ctx.EventoId` como capacidad general del addon~~ — hecho, `MANUAL.md` §12
+  "Enganchar un botón a un evento nativo". Prioridad del resto: `ROADMAP.md` 1.3.

@@ -288,7 +288,7 @@ using Newtonsoft.Json;
 > **auto-referencie**, para que cualquier DLL puesto ahí esté disponible en todos
 > los scripts **sin** escribir `#r`. Es un cambio pequeño en el núcleo.
 
-> **Ya ejecutado (2026-07-07):** ver [`PLAN_LIBRERIAS_EXTERNAS.md`](PLAN_LIBRERIAS_EXTERNAS.md)
+> **Ya ejecutado (2026-07-07):** ver [`PLAN_LIBRERIAS_EXTERNAS.md`](archivo/PLAN_LIBRERIAS_EXTERNAS.md)
 > — 4 librerías ya en `instalador\lib\` (WebView2, ClosedXML, Newtonsoft.Json, QRCoder),
 > con ejemplos de código y el patrón seguro de inicialización de WebView2 (riesgo de
 > congelar Comercial si se hace mal).

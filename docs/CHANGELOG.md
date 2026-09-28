@@ -6,7 +6,7 @@ junto con la actualización de la documentación correspondiente.
 Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 **Quitado**. La versión va también en `AssemblyVersion` (en `src\ClsMain.cs`).
 
-> Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](CHANGELOG_ARCHIVO.md).
+> Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
 ## [2.93.0] — 2026-09-27 — Vencimientos de Factura de Compra: fórmula de `engPaymentTermDetail` corregida
 
@@ -38,7 +38,7 @@ no de ese cliente, encontrados al migrar un gestor de adjuntos y una Recepción 
   diálogo de Windows (`OpenFileDialog`/`SaveFileDialog`/`FolderBrowserDialog`, todos WinForms)
   directo en el hilo que atiende el pipe de Python, que no está garantizado en modo STA —
   igual que ya le pasaba a WebView2 antes de que `RenderUiHtml` se moviera a un hilo STA
-  dedicado (ver `CHANGELOG_ARCHIVO.md`), pero esas dos funciones nunca recibieron el mismo
+  dedicado (ver `archivo/CHANGELOG_ARCHIVO.md`), pero esas dos funciones nunca recibieron el mismo
   arreglo. Ahora corren en su propio hilo STA, igual que `RenderUiHtml`. Confirmado en
   producción con `AdjuntarArch`.
 - **`ctx.erp.AgregarSerie(...)` fijaba `Quantity=-1` sin importar el tipo de documento.**

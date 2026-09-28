@@ -1,6 +1,6 @@
 # Caso de humo T4.1 #3: crear Orden de Compra vía ctx.erp de ESCRITURA, headless (BrosLMV.Runner).
 # Primera prueba real de escrituras ctx.erp headless -- solo contra el sandbox ComercialSP,
-# nunca contra una empresa de cliente real (ver CHANGELOG/PLAN_IMPLEMENTACION: sigue
+# nunca contra una empresa de cliente real (ver CHANGELOG y AGENTS.md §3: sigue
 # pendiente la decision de producto sobre habilitar esto en jobs programados de verdad).
 # No es idempotente: cada corrida crea una OC nueva (DocumentTypeID=40, ModuleID=183) --
 # se valida contando cuantas hay antes/despues, no buscando una fija.
