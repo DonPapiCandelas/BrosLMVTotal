@@ -1527,9 +1527,9 @@ Con eso activo, ese usuario:
 cualquier usuario al que quieras dar acceso de solo consulta sin tocar los permisos nativos
 de Comercial. Quita la fila de `zzBrosPref` (o pon `Valor='0'`) para revertirlo.
 
-### 💥 "Division by zero" nativo al Guardar/Visualizar: cuatro causas raíz reales confirmadas
-`XEngineLib` truena con "Division by zero" al guardar o visualizar un documento en cuatro
-escenarios reales, ninguno obvio desde el mensaje de error:
+### 💥 "Division by zero" nativo al Guardar/Visualizar: tres causas raíz confirmadas (y una descartada)
+`XEngineLib` truena con "Division by zero" al guardar o visualizar un documento en tres
+escenarios reales, ninguno obvio desde el mensaje de error (la 2 se creyó causa y se descartó):
 
 1. **Causa raíz real: el producto estaba dado de alta como Paquete (`ProductTypeID=3`)
    cuando debía ser Producto Terminado (`ProductTypeID=2`)** — confirmado y corregido en
@@ -1543,12 +1543,13 @@ escenarios reales, ninguno obvio desde el mensaje de error:
    y puede quedar corto si el documento vuelve a pasar por un recálculo de costos real.
    Si ves este error, primero revisa `orgProduct.ProductTypeID` del producto involucrado
    antes de tocar nada por SQL.
-2. **`docDocumentItem.MustBeDelivered` queda en `1` en una partida que NO es de
-   OC/Pedido.** Esa bandera significa "pendiente de entrega" y solo tiene sentido en
-   documentos que SÍ esperan una entrega futura; en una Factura (u otro documento que no la
-   usa), dejarla en `1` provoca el mismo "Division by zero" al Visualizar/Guardar. Confirmado
-   con partidas creadas vía `ctx.erp.AgregarArticulo` — revisa/fuerza `MustBeDelivered=0`
-   explícitamente si el tipo de documento no maneja entregas pendientes.
+2. ~~**`docDocumentItem.MustBeDelivered` en `1` en una partida que no es de OC/Pedido.**~~
+   **Descartada (2026-09-28).** Se creyó causa porque se corrigió al mismo tiempo que la
+   causa real (el producto era Paquete, causa 1). Evidencia en contra: una **Factura de
+   Compra capturada a mano en Comercial deja sus partidas con `MustBeDelivered=1`**
+   ("pendiente de recepción") y guarda y visualiza sin error; la misma factura generada desde
+   XML la deja en `0`. `MustBeDelivered` controla la agenda de entrega/recepción pendiente,
+   no el costeo. No hace falta forzarla a `0`.
 3. **`orgProduct.CostPriceComercial` (columna del CATÁLOGO, no `docDocumentItem.CostPrice`
    de la partida) en `0`.** Comercial **recalcula y sobreescribe `docDocumentItem.CostPrice`
    al Guardar** usando `orgProduct.CostPriceComercial ÷ tipo de cambio` — así que llenar
@@ -1570,12 +1571,61 @@ escenarios reales, ninguno obvio desde el mensaje de error:
    Igual que la causa 1, **se corrige el catálogo (`orgProduct`), no el documento** — el
    volumen es dato del producto, beneficia a cualquier documento futuro con ese producto.
 
-Las causas 2 y 3 se confirmaron **descartando primero candidatos más obvios** (`CostPrice`
-en 0 en todo el catálogo, `SourceDocumentID` en 0) antes de dar con la causa real; la
-causa 4 se confirmó después, en un caso donde 1-3 ya estaban corregidas y el error seguía
+La causa 3 se confirmó **descartando primero candidatos más obvios** (`CostPrice` en 0 en
+todo el catálogo, `SourceDocumentID` en 0) antes de dar con la causa real; la causa 4 se
+confirmó después, en un caso donde las anteriores ya estaban corregidas y el error seguía
 saliendo. Si te topas con este error, no asumas la primera causa que se te ocurra: revisa
-las cuatro de arriba, en orden, antes de seguir buscando — y ten presente que **pueden
-coexistir varias a la vez** para el mismo producto.
+las tres confirmadas (1, 3 y 4), en orden, antes de seguir buscando — y ten presente que
+**pueden coexistir varias a la vez** para el mismo producto.
+
+### ⚖️ Reglas de afectación por módulo: qué mueve cada tipo de documento
+Cada módulo de documento trae en *Propiedades → Parámetros* (tabla `engModuleParameter`,
+`Section='Parámetro'`) **las reglas que usa Comercial para decidir qué afecta**. Es la fuente
+de verdad para cualquier script que cree o mueva documentos: **no decidas por el tipo de
+documento ni por `MustBeDelivered`, lee el parámetro del módulo** (`engModule.ModuleID` del
+documento; los módulos clonados tienen los suyos).
+
+| `ParameterKey` | En pantalla | Valores |
+|---|---|---|
+| `StockAffectation` | Afectación Inventario | `0` no afecta · `1` existencia presente · `2` disponible · `3` ambos (quita del disponible y agrega al presente). **Signo positivo = entra al almacén, negativo = sale** (texto de ayuda nativo) |
+| `CostAffectation` | Afectación Costo Fiscal | `1` entrada al costeo fiscal · `-1` salida · `0` no afecta |
+| `CostAffectationComercial` | Afectación Costo Comercial | igual, para el costeo comercial |
+| `FinancialAffectation` | Afectación en Banco | signo del saldo/flujo del documento: `1` cargo (cuenta por cobrar, cobro) · `-1` abono (cuenta por pagar, pago) · `0` no genera saldo *(interpretación por los valores de todos los módulos; sin texto de ayuda nativo)* |
+| `DocRecipient` | Recipiente | `1` cliente · `2` proveedor · `3` almacén · `4` entre almacenes · `7` empleado · `9`/`10` otros (bancos, préstamos) *(deducido por los módulos que usan cada valor)* |
+| `DocumentTypeID` | — | tipo de documento para CFDI/reportes |
+
+Valores de fábrica de los módulos más usados (`ModuleID` = base):
+
+| Módulo | Inventario | Costo fiscal | Costo comercial | Saldo | Recipiente |
+|---|---|---|---|---|---|
+| 21 Facturas Cliente | 0 | -1 | 0 | 1 | 1 |
+| 158 Ventas | -1 | 0 | -1 | 1 | 1 |
+| 157 Entregas/Remisiones | -3 | 0 | -1 | 0 | 1 |
+| 967 Pedidos | -2 | 0 | 0 | 1 | 1 |
+| 142 Notas de Crédito Cliente | 0 | 1 | 0 | -1 | 1 |
+| 159 Devoluciones (cliente) | 1 | 0 | 1 | 0 | 1 |
+| 1193 Facturas a consignación | -4 | -1 | 0 | 1 | 1 |
+| 183 Órdenes de Compra | 2 | 0 | 0 | 0 | 2 |
+| 184 Recepciones de Compra | 3 | 0 | 1 | 0 | 2 |
+| 152 Facturas Compra | 0 | 1 | 0 | -1 | 2 |
+| 185 Devoluciones (proveedor) | -1 | 0 | -1 | 0 | 2 |
+| 187 Notas de Crédito Proveedor | 0 | -1 | 0 | 1 | 2 |
+| 242 Gastos | 0 | 0 | 0 | -1 | 2 |
+| 202 Entrada de Almacén | 1 | 0 | 1 | 0 | 3 |
+| 203 Salida de Almacén | -1 | 0 | -1 | 0 | 3 |
+| 204 Movimiento Entre Almacenes | -1 | 0 | -1 | 0 | 4 |
+| 205 Ajuste de Inventario | 1 | 0 | 1 | 0 | 3 |
+| 400 Salida de Insumos / 401 Entrada de Prod. Terminados | -1 / 1 | 0 / 1 | -1 / 1 | 0 | 3 |
+
+Consecuencias confirmadas en una empresa de fábrica (2026-09-28): la **Factura de Compra no
+mete existencias** (`StockAffectation=0`) pero **sí registra la entrada en el costeo fiscal**
+(`CostAffectation=1` → `orgProductCostFiscal`); las existencias las mete la **Recepción de
+Compra** (`3`). La Factura de Cliente tampoco mueve inventario (lo hace la Remisión o la Venta).
+El valor `-4` de Facturas a consignación no está en el texto de ayuda (sin confirmar).
+**Regla para scripts de BrosLMV:** mover kardex solo si `StockAffectation <> 0` para el
+módulo del documento, con el signo que indica; igual para costeo y saldo con sus parámetros.
+Consulta: `SELECT ParameterKey, Value FROM engModuleParameter WHERE ModuleID=@m AND
+Section='Parámetro'`.
 
 ### 🔒 Nunca ocultar en silencio un CFDI/XML ya asociado a otro documento
 Un patrón de bug real (encontrado dos veces, en herramientas de asociación de XML distintas):
@@ -1624,10 +1674,10 @@ campos extra:
 - **`docDocumentDeliveryAgenda` (agenda de entrega) solo se llena para partidas con
   `MustBeDelivered=True`** — confirma por qué existe esa bandera en primer lugar: en una OC
   nativa, un producto físico la trae en `True` (genera kardex + entrada en esta agenda); un
-  servicio la trae en `False` y **no** genera ninguna de las dos. Esto no contradice el
-  hallazgo ya documentado arriba (💥 causa 2 de "Division by zero") — ahí el problema era
-  dejarla en `1` en un documento que NO es OC/Pedido (una Factura), donde la bandera no
-  aplica y solo estorba.
+  servicio la trae en `False` y **no** genera ninguna de las dos. (La bandera **no** causa
+  "Division by zero": esa sospecha se descartó, ver 💥 causa 2. En una Factura de Compra
+  nativa también viene en `1`.) Qué documentos afectan inventario lo decide el parámetro del
+  módulo, no esta bandera — ver "Reglas de afectación por módulo" abajo.
 - **Los "campos extra" del usuario (Contabilidad Electrónica / campos personalizados) son
   columnas físicas agregadas directamente a la tabla existente** (`docDocumentExt` a nivel
   documento, `docDocumentItem` a nivel partida) — CONTPAQi **no** usa un modelo EAV
