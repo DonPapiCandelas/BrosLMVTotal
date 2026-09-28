@@ -34,7 +34,9 @@ $excepciones = @('AGENTS.md')
 
 Push-Location $raiz
 try {
-    $archivos = git ls-files
+    # Rastreados + nuevos no ignorados: un archivo recien creado que todavia no se agrega
+    # tambien entra al siguiente commit, y antes se colaba sin revisar (paso de verdad).
+    $archivos = @(git ls-files) + @(git ls-files --others --exclude-standard)
 } finally {
     Pop-Location
 }
