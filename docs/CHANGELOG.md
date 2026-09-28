@@ -8,6 +8,24 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](CHANGELOG_ARCHIVO.md).
 
+## [2.93.0] — 2026-09-27 — Vencimientos de Factura de Compra: fórmula de `engPaymentTermDetail` corregida
+
+> El único cambio en `src\` es el bump de `AssemblyVersion`; el arreglo vive en las plantillas
+> de fábrica (`instalador\scripts\`). **Regenerar el instalador** para que llegue a instalaciones
+> nuevas; las empresas ya provisionadas tienen su propia copia de la plantilla.
+
+### Corregido
+- **Las 6 plantillas de Factura de Compra** (`PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP`,
+  `..._FORMS_PYTHON`, `..._FORMS_SQL_PURO_CSHARP`, `..._WEBVIEW2_CSHARP`, `..._WEBVIEW2_PYTHON`,
+  `PLANTILLA_EJEMPLO_FACTURA_COMPRA_CSHARP`) calculaban las fechas de la agenda de pago leyendo
+  `PaymentUnit` como unidad y `PaymentPeriod` como cantidad. Es al revés: **`PaymentPeriodID` es
+  la unidad** (1=día, 2=semana, 3=mes, 4=trimestre, 5=semestre, 6=año, catálogo `engRefCombo`
+  `PaymentTermPeriod`) y **`PaymentUnit` es la cantidad**; `PaymentPeriod` casi siempre es 0.
+  Efecto real: condiciones como "30/60/90 DIAS" quedaban venciendo **el mismo día** del
+  documento (solo "2 SEMANAS" salía bien, por coincidencia). Verificado contra las condiciones
+  reales de una empresa en producción; hallazgo tomado de un proyecto satélite que ya usaba la
+  fórmula correcta. Documentado en `MANUAL.md` §10.4.
+
 ## [2.92.0] — 2026-09-27 — Dos bugs reales corregidos: `ctx.select_file`/`select_folder` desde Python y `AgregarSerie` en documentos de entrada
 
 Motivado por el barrido a fondo de un proyecto satélite (migración de otra herramienta de

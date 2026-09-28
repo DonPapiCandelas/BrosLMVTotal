@@ -350,20 +350,25 @@ else:
                 # engPaymentTermDetail. Ver PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx.
                 try:
                     total = float(ctx.scalar("SELECT Total FROM docDocument WHERE DocumentID=" + str(doc)) or 0)
-                    detalle = ctx.query("SELECT PaymentPerc, PaymentUnit, PaymentPeriod FROM engPaymentTermDetail WHERE PaymentTermID=" + str(cond_id) + " ORDER BY PaymentTermDetailID")
+                    detalle = ctx.query("SELECT PaymentPerc, PaymentUnit, PaymentPeriodID FROM engPaymentTermDetail WHERE PaymentTermID=" + str(cond_id) + " ORDER BY PaymentTermDetailID")
                     if detalle:
                         ctx.execute("UPDATE docDocumentPaymentAgenda SET DeletedOn=GETDATE() WHERE DeletedOn IS NULL AND DocumentID=" + str(doc))
                         numero = 1
                         for d in detalle:
                             perc = float(d["PaymentPerc"] or 0)
-                            unidad = int(d["PaymentUnit"] or 1)
-                            periodo = int(d["PaymentPeriod"] or 0)
-                            if unidad == 3:
-                                expr = "DATEADD(MONTH,%d,GETDATE())" % periodo
-                            elif unidad == 2:
-                                expr = "DATEADD(DAY,%d,GETDATE())" % (periodo * 7)
+                            # engPaymentTermDetail: PaymentPeriodID = UNIDAD (1=dia, 2=semana, 3=mes, 4=trimestre,
+                            # 5=semestre, 6=anio -- catalogo engRefCombo 'PaymentTermPeriod'); PaymentUnit = CUANTAS de
+                            # esa unidad. PaymentPeriod NO es el plazo (casi siempre 0) -- confirmado con datos reales.
+                            cuenta = int(d["PaymentUnit"] or 0)
+                            periodo_id = int(d["PaymentPeriodID"] or 1)
+                            if periodo_id == 6:
+                                expr = "DATEADD(YEAR,%d,GETDATE())" % cuenta
+                            elif periodo_id in (3, 4, 5):
+                                expr = "DATEADD(MONTH,%d,GETDATE())" % (cuenta * {3: 1, 4: 3, 5: 6}[periodo_id])
+                            elif periodo_id == 2:
+                                expr = "DATEADD(DAY,%d,GETDATE())" % (cuenta * 7)
                             else:
-                                expr = "DATEADD(DAY,%d,GETDATE())" % periodo
+                                expr = "DATEADD(DAY,%d,GETDATE())" % cuenta
                             monto = total * perc / 100.0
                             ctx.execute(
                                 "INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" +
