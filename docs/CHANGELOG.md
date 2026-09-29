@@ -8,6 +8,19 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.94.1] — 2026-09-29 — Consola: documentación siempre disponible y guardado más claro
+
+### Corregido
+- **«Ver documentación» ya no falla** con «No se encontró la documentación»: los HTML de las plantillas viajan **dentro de la DLL**
+  (antes eran archivos sueltos en `C:\BrosLMV\docs\plantillas` que se perdían si no se copiaban). Si existe un archivo más nuevo en esa carpeta, sigue sirviendo de respaldo.
+- Un script **Python sin la línea `# lang: python`** ya se reconoce (si su primera línea de código es `import x` o `from x import y`) en vez de intentar compilarse como C#.
+
+### Cambiado
+- **Categorizar** (clic secundario) ahora muestra un combo con las categorías que ya existen en la empresa (o permite escribir una nueva), igual que «Guardar como».
+- **Guardar** acepta el nombre del botón con espacios y acentos («Crear docs XML» → `CREAR_DOCS_XML`) y, para una plantilla, propone el nombre recomendado en su cabecera.
+- Las plantillas muestran en su ayuda emergente el nombre con el que se guardan como botón (`BrosLMV.<NOMBRE>`).
+- Plan de la Consola v3 documentado en `docs/PLAN_CONSOLA_V3.md`.
+
 ## [2.94.0] — 2026-09-28 — Documentos desde XML, ágil
 
 ### Agregado

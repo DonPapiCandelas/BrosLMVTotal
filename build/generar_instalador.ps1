@@ -36,6 +36,16 @@ Write-Host "==================================================="
 # que no bloquee la DLL (en un equipo de desarrollo puro, esto no hace nada).
 Get-Process ComercialSP -ErrorAction SilentlyContinue | Stop-Process -Force
 
+Write-Host "0) Documentacion HTML de las plantillas (se incrusta en la DLL; clic secundario -> Ver documentacion)..." -ForegroundColor Cyan
+$docsPlant = Join-Path $root "instalador\docs\plantillas"
+New-Item -ItemType Directory -Force $docsPlant | Out-Null
+$py = Get-Command python -ErrorAction SilentlyContinue
+if ($py) {
+    & python (Join-Path $root "build\md_a_html.py") (Join-Path $root "docs\CREAR_DOC_DESDE_XML.md") (Join-Path $docsPlant "CREAR_DOC_DESDE_XML.html")
+} else {
+    Write-Host "   AVISO: no hay Python; se usa el HTML ya versionado en instalador\docs\plantillas." -ForegroundColor Yellow
+}
+
 Write-Host "1) Compilando addon..." -ForegroundColor Cyan
 dotnet build (Join-Path $src "BrosLMV.csproj") -c Release -o $out
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR DE COMPILACION" -ForegroundColor Red; exit 1 }
@@ -72,16 +82,6 @@ Copy-Item (Join-Path $root "htmlpdf\ConfiguracionFormato.ctx") (Join-Path $root 
 $fmtDst = Join-Path $root "instalador\formatos"
 New-Item -ItemType Directory -Force $fmtDst | Out-Null
 Copy-Item (Join-Path $root "htmlpdf\formatos\*.html") $fmtDst -Force
-
-Write-Host "3e) Documentacion HTML de las plantillas (clic secundario -> Ver documentacion)..." -ForegroundColor Cyan
-$docsPlant = Join-Path $root "instalador\docs\plantillas"
-New-Item -ItemType Directory -Force $docsPlant | Out-Null
-$py = Get-Command python -ErrorAction SilentlyContinue
-if ($py) {
-    & python (Join-Path $root "build\md_a_html.py") (Join-Path $root "docs\CREAR_DOC_DESDE_XML.md") (Join-Path $docsPlant "CREAR_DOC_DESDE_XML.html")
-} else {
-    Write-Host "   AVISO: no hay Python; se usa el HTML ya versionado en instalador\docs\plantillas." -ForegroundColor Yellow
-}
 
 Write-Host "4) Copiando workers..." -ForegroundColor Cyan
 $workersSrc = Join-Path $root "workers"
