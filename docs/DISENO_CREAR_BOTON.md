@@ -14,7 +14,7 @@
 Consecuencias para el diseño:
 - «Global» = una fila en `engRibbonMenu` con `ExtraMenuModuleID = 0`; «solo estos módulos» = **una fila por módulo** elegido.
 - Una pestaña o sección nueva es solo una fila en `engRibbonTab` / `engRibbonGroup` (aditivo, no rompe lo existente).
-- Los íconos son archivos (`.ico`) en `…\Compac\ComercialSP\Icons\`; los nativos usan 369 distintos.
+- Los íconos son archivos (`.ico`) en `…\Compac\ComercialSP\Icons\` (1,765 archivos; los botones nativos usan 369 distintos). `IconFile` guarda solo el nombre del archivo.
 - **Quién lo ve:** `IfUserIDIs` admite un solo usuario por fila. «Todos» = una fila con 0; «estos usuarios/grupos» = **una fila por usuario** (los grupos, `engUserGroup`, se expanden a sus usuarios al crear). Hoy ningún botón del laboratorio usa `IfUserIDIs`, así que hay que comprobar que Comercial lo respeta (prueba 6). Los permisos nativos de Comercial (`cpSecurityPermissions`, por grupo y menú) son otro mecanismo y no se tocan.
 - Estas tablas viven en la **base de cada empresa**: un botón se crea por empresa. La opción «aplicar también a otras empresas» (decisión del plan) escribe las mismas filas en cada base elegida.
 
@@ -23,7 +23,11 @@ Consecuencias para el diseño:
 Se abre con clic secundario sobre un script → **«Crear botón…»** (y desde «Más opciones»).
 
 1. **Nombre del botón** — por defecto el nombre visible del script. Vista previa en vivo del botón.
-2. **Ícono** — galería con buscador (los `.ico` de Comercial + los de BrosLMV) y «Elegir archivo…» (se copia a la carpeta de íconos).
+2. **Ícono** — el catálogo real es la carpeta `…\Compac\ComercialSP\Icons` (1,765 `.ico`, casi todos en versión 16 y 32 px; se muestra la de 32):
+   - **Sugeridos** arriba, según el nombre del botón (p. ej. «XML» o «documentos» → `DocumentGenerator`, `Documents`, `ImportExcel`…) más el de BrosLMV.
+   - **Buscador** sobre todos los nombres de archivo y cuadrícula con miniaturas reales.
+   - **«Explorar carpeta…»** abre el selector de Windows en esa carpeta y acepta también un `.ico`/`.png` de cualquier lugar (se copia a la carpeta de íconos con prefijo `BrosLMV_`).
+   - Técnica: C# lista la carpeta y entrega las miniaturas al HTML como PNG en base64, por páginas y con caché (no se cargan los 1,765 de golpe).
 3. **Dónde aparece**
    - Todos los módulos (global) **o** módulos específicos: lista con casillas y buscador, agrupada por naturaleza (compras, ventas, inventarios…), tomada de `engModuleParameter`, no escrita a mano.
 4. **Pestaña** — combo con las existentes (BrosLMV, General, Lista, Reporte…) **o «Nueva pestaña…»** con el nombre que quiera el usuario.
