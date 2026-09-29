@@ -1,0 +1,1508 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manual del SDK de BrosLMV</title>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--tx:#1b2433;--mut:#66748a;--lin:#dde3ec;--ac:#1f5fd6;--acs:#e8f0fe;--cod:#f1f4f9;--warn:#8a5a00;--warns:#fff4e0}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1520;--card:#161f2e;--tx:#e6ebf3;--mut:#93a1b6;--lin:#2a3648;--ac:#6ea2ff;--acs:#1d2b47;--cod:#0f1724;--warn:#f0b35a;--warns:#3a2c12}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.6 "Segoe UI",system-ui,sans-serif}
+.wrap{display:grid;grid-template-columns:290px minmax(0,1fr);min-height:100vh}
+nav{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;background:var(--card);border-right:1px solid var(--lin);padding:16px 14px}
+nav h1{font-size:15px;margin:0 0 2px}nav .sub{color:var(--mut);font-size:12px;margin-bottom:12px}
+nav input{width:100%;padding:8px 10px;border:1px solid var(--lin);border-radius:6px;background:var(--bg);color:var(--tx);font:inherit;margin-bottom:8px}
+.seg{display:flex;border:1px solid var(--lin);border-radius:7px;overflow:hidden;margin-bottom:12px}
+.seg button{flex:1;border:0;background:var(--card);color:var(--tx);padding:6px 4px;font:inherit;font-size:12.5px;cursor:pointer;border-right:1px solid var(--lin)}
+.seg button:last-child{border-right:0}.seg button.on{background:var(--ac);color:#fff}
+nav h2{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:14px 0 4px}
+nav a{display:block;color:var(--tx);text-decoration:none;padding:2px 8px;border-radius:5px;font-size:13px}nav a:hover{background:var(--acs);color:var(--ac)}
+main{padding:24px 34px 80px;max-width:980px}
+main h1{font-size:24px;margin:0 0 6px}main h2{font-size:19px;margin:36px 0 10px;padding-top:10px;border-top:1px solid var(--lin)}
+main h3{font-size:16px;margin:0 0 6px}p,li{max-width:78ch}a{color:var(--ac)}
+code{background:var(--cod);padding:1px 5px;border-radius:4px;font:12.5px Consolas,monospace}
+pre{background:var(--cod);padding:12px 14px;border-radius:8px;overflow:auto;margin:8px 0}pre code{background:none;padding:0}
+.ficha{background:var(--card);border:1px solid var(--lin);border-radius:10px;padding:16px 20px;margin:0 0 14px}
+.firma{margin:4px 0 8px}.resumen{font-weight:600;margin:0 0 6px}
+.lg{font-size:11px;padding:1px 7px;border-radius:99px;background:var(--acs);color:var(--ac);vertical-align:middle;font-weight:600}
+.lg-py{background:#e3f6ee;color:#12805c}.lg-sql{background:var(--warns);color:var(--warn)}
+@media (prefers-color-scheme:dark){.lg-py{background:#12332a;color:#4ad0a0}}
+.desde{font-size:11.5px;color:var(--mut);font-weight:400}
+.ej{margin:10px 0 0;color:var(--mut);font-size:12.5px}
+.notas{background:var(--warns);color:var(--warn);border-radius:8px;padding:8px 14px;margin:8px 0}.notas ul{margin:4px 0 0;padding-left:18px}
+.rel{color:var(--mut);font-size:12.5px;margin-bottom:0}.corta{color:var(--mut);font-size:12px;margin:8px 0 0}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}th,td{border:1px solid var(--lin);padding:5px 9px;text-align:left;vertical-align:top}th{background:var(--cod)}
+.guias h2{font-size:18px}.guias h3{font-size:15px}
+.ficha.oculta{display:none}.ficha:target{outline:2px solid var(--ac);outline-offset:2px}
+.aviso{color:var(--mut);font-size:13px}
+details.interno summary{cursor:pointer;color:var(--mut);margin:8px 0}
+@media (max-width:860px){.wrap{grid-template-columns:1fr}nav{position:static;height:auto}main{padding:16px}}
+</style></head><body><div class="wrap">
+<nav><h1>SDK de BrosLMV</h1><div class="sub">Manual de referencia · 170 funciones</div>
+<input id="q" type="search" placeholder="Buscar función…"><div class="seg"><button class="on" data-l="todos">Todo</button><button data-l="cs">C#</button><button data-l="py">Python</button><button data-l="sql">SQL</button></div>
+<h2>Guías</h2><a href="#guias">Guías del SDK</a><h2>C#</h2><a href="#cat-cs-Selecci-n-y-datos">Selección y datos</a><a href="#cat-cs-Consultas-SQL">Consultas SQL</a><a href="#cat-cs-Tokens">Tokens</a><a href="#cat-cs-Contexto">Contexto</a><a href="#cat-cs-Interacci-n">Interacción</a><a href="#cat-cs-ERP---Contexto">ERP · Contexto</a><a href="#cat-cs-ERP---Documento">ERP · Documento</a><a href="#cat-cs-ERP---UI">ERP · UI</a><a href="#cat-cs-ERP---Folio">ERP · Folio</a><a href="#cat-cs-ERP---Precios-y-existencias">ERP · Precios y existencias</a><a href="#cat-cs-ERP---Cr-dito">ERP · Crédito</a><a href="#cat-cs-ERP---Par-metros">ERP · Parámetros</a><a href="#cat-cs-ERP---Utilidades">ERP · Utilidades</a><a href="#cat-cs-ERP---DLookup">ERP · DLookup</a><a href="#cat-cs-ERP---Bit-cora">ERP · Bitácora</a><a href="#cat-cs-ERP---Impresi-n-y-export">ERP · Impresión y export</a><a href="#cat-cs-ERP---Correo">ERP · Correo</a><a href="#cat-cs-ERP---Web---sistema">ERP · Web / sistema</a><a href="#cat-cs-ERP---CFDI">ERP · CFDI</a><a href="#cat-cs-ERP---Avanzado">ERP · Avanzado</a><a href="#cat-cs-Utilidades">Utilidades</a><h2>Python</h2><a href="#cat-py-Python">Python</a><a href="#cat-py-ctx-erp--Comercial-">ctx.erp (Comercial)</a><h2>SQL</h2><a href="#cat-sql-Sentencias">Sentencias</a><a href="#cat-sql-Tokens">Tokens</a><h2>Otros</h2><a href="#internas">Funciones internas</a></nav>
+<main><h1>Manual del SDK de BrosLMV</h1>
+<p class="aviso">Todo lo que un script puede hacer con <code>ctx</code>: consultar datos, crear documentos, mostrar ventanas y más. 41 funciones tienen ficha completa (parámetros, ejemplos y notas); el resto trae firma, descripción y ejemplo.
+Este manual se genera del catálogo del SDK, así que siempre coincide con lo que el panel de referencias de la Consola muestra.</p>
+<div class="guias" id="guias"><h1>Guías del SDK de BrosLMV</h1>
+<p>Estas guías explican <strong>cómo se usan</strong> las funciones del SDK con ejemplos que se pueden copiar. Cada función tiene además su ficha en el manual (firma, parámetros, ejemplos y notas). Los ejemplos están en C# y Python; SQL puro tiene su propia guía (tokens). Regla de oro para todos: <strong>filtra siempre por la empresa activa</strong> y <strong>no escribas a mano</strong> IDs de módulos, almacenes o catálogos: léelos de la empresa.</p>
+<h2>1. Tu primer script</h2>
+<p>Un script es un archivo de texto que Comercial ejecuta desde un botón. Elige el lenguaje con el botón *Lenguaje* de la Consola (C#, Python o SQL).</p>
+<p><strong>C#</strong> (el predeterminado; no lleva marca):</p>
+<pre><code>var ids = ctx.GetSelectedIds();                        // lo que el usuario seleccionó en la lista
+if (ids.Count == 0) { ctx.Msg(&quot;Selecciona un documento.&quot;); return; }
+var total = ctx.Scalar(&quot;SELECT SUM(Total) FROM docDocument WHERE DocumentID IN (&quot; + ctx.JoinIds(ids) + &quot;)&quot;);
+ctx.Msg(&quot;Total de la selección: &quot; + total);</code></pre>
+<p><strong>Python</strong> (la Consola escribe <code># lang: python</code> por ti):</p>
+<pre><code>from broslmv import ctx
+
+ids = ctx.get_selected_ids()
+total = ctx.scalar(&quot;SELECT SUM(Total) FROM docDocument WHERE DocumentID IN ({})&quot;.format(&quot;,&quot;.join(map(str, ids))))
+result = f&quot;Total de la selección: {total}&quot;   # lo que asignes a result se muestra al terminar</code></pre>
+<p><strong>SQL puro</strong> (<code>-- lang: sql</code>): los tokens <code>{pID}</code> y <code>{pIDs}</code> se sustituyen solos.</p>
+<pre><code>SELECT SUM(Total) AS Total FROM docDocument WHERE DocumentID IN ({pIDs})</code></pre>
+<h2>2. Leer y cambiar datos: Scalar, Query, NonQuery y OpenConn</h2>
+<div class="tabla"><table><thead><tr><th>Necesito…</th><th>C#</th><th>Python</th></tr></thead><tbody><tr><td>Un solo valor (conteo, total)</td><td><code>ctx.Scalar(sql)</code></td><td><code>ctx.scalar(sql)</code></td></tr><tr><td>Varias filas</td><td><code>ctx.Query(sql)</code></td><td><code>ctx.query(sql)</code></td></tr><tr><td>Insertar, actualizar o borrar</td><td><code>ctx.NonQuery(sql)</code></td><td><code>ctx.execute(sql)</code></td></tr><tr><td>Un lote de varios INSERT o una transacción</td><td><code>ctx.OpenConn()</code></td><td>(usa un script C# para el lote)</td></tr></tbody></table></div>
+<p><strong>Scalar</strong> devuelve la primera columna de la primera fila (o <code>null</code>). <strong>Query</strong> devuelve una lista de filas; cada fila es un diccionario <code>columna → valor</code>:</p>
+<pre><code>var filas = ctx.Query(&quot;SELECT TOP 5 Folio, Total FROM docDocument ORDER BY DocumentID DESC&quot;);
+foreach (var f in filas) ctx.Log(f[&quot;Folio&quot;] + &quot; → &quot; + f[&quot;Total&quot;]);</code></pre>
+<pre><code>filas = ctx.query(&quot;SELECT TOP 5 Folio, Total FROM docDocument WHERE ModuleID = @m&quot;, {&quot;m&quot;: 152})
+for f in filas:
+    ctx.log(f&quot;{f[&#x27;Folio&#x27;]} → {f[&#x27;Total&#x27;]}&quot;)</code></pre>
+<p><strong>Cuidados:</strong></p>
+<ul><li>En C# no hay parámetros: escapa las comillas simples duplicándolas (<code>'</code> → <code>''</code>). En Python usa <code>@nombre</code> y un diccionario.</li><li><code>NonQuery</code>/<code>execute</code> se bloquean en *Modo solo lectura*. Un <code>UPDATE</code> o <code>DELETE</code> sin <code>WHERE</code> afecta toda la tabla.</li><li><strong>Varios INSERT en un solo texto: usa <code>ctx.OpenConn()</code></strong>, no <code>Scalar</code>/<code>NonQuery</code>: por el puente COM se pierde el resultado y puede reintentar y duplicar.</li></ul>
+<pre><code>using (var cn = ctx.OpenConn())
+using (var tx = cn.BeginTransaction())
+using (var cmd = cn.CreateCommand())
+{
+    cmd.Transaction = tx;
+    cmd.CommandText = &quot;SET NOCOUNT ON; INSERT INTO miTabla(Nombre) VALUES(@n); SELECT SCOPE_IDENTITY();&quot;;
+    cmd.Parameters.AddWithValue(&quot;@n&quot;, &quot;Ejemplo&quot;);
+    var id = cmd.ExecuteScalar();
+    tx.Commit();                       // o queda todo, o no queda nada
+}</code></pre>
+<h2>3. Crear un documento (paso a paso)</h2>
+<p>Este ejemplo crea una Factura de compra con una partida, la guarda, refresca la lista y la abre. Cada línea explica su porqué.</p>
+<p><strong>C#:</strong></p>
+<pre><code>// 1) El proveedor, el módulo y el almacén salen de la empresa: no los escribas a mano si el script es para varios clientes.
+int moduloId = 152, almacenId = 1, proveedorId = 162, productoId = 1;
+
+int doc = ctx.erp.NuevoDocumento(moduloId, almacenId, proveedorId);   // encabezado con folio automático
+ctx.erp.AgregarArticulo(doc, productoId, 2, 100);                     // producto, cantidad 2, precio 100
+ctx.erp.RecalcCompleto(doc);                                          // totales e impuestos (sin esto la partida queda en 0)
+ctx.erp.Save(doc);                                                    // guarda el documento
+if (ctx.erp.LastError != null) { ctx.Msg(ctx.erp.LastError); return; }
+
+ctx.erp.RefreshGrid();                                                // UNA vez, al final
+ctx.erp.AbrirDocumento(doc, moduloId);                                // el usuario lo ve de inmediato</code></pre>
+<p><strong>Python:</strong></p>
+<pre><code>from broslmv import ctx
+
+proveedores = [162, 170, 205]     # ejemplo
+producto = 1
+creados = []
+
+for proveedor in proveedores:
+    doc_id = ctx.erp.NuevoDocumento(152, 1, proveedor)   # Factura de compra, almacén 1
+    ctx.erp.AgregarArticulo(doc_id, producto, 1, 100)    # producto, cantidad, precio
+    ctx.erp.RecalcCompleto(doc_id)                       # totales e impuestos
+    ctx.erp.Save(doc_id)                                 # guarda
+    creados.append(doc_id)
+
+ctx.erp.RefreshGrid()    # una vez, ya con todo creado (no dentro del ciclo)
+result = f&quot;Se crearon {len(creados)} documento(s): {creados}&quot;</code></pre>
+<p><strong>Según lo que afecte el módulo</strong> (se lee de <code>engModuleParameter</code>, no del tipo de documento):</p>
+<ul><li>Si afecta <strong>inventario</strong>: <code>ctx.erp.AffectStockNEW(doc)</code>.</li><li>Si afecta <strong>costos</strong>: <code>ctx.erp.CalcularCostos(doc)</code>.</li><li>Si afecta <strong>saldos</strong> (cuentas por pagar/cobrar): <code>ctx.erp.UpdateDocumentPaidInfo(doc)</code>.</li><li>Si maneja <strong>entregas</strong>: <code>ctx.erp.UpdateStatusDelivery(doc)</code>.</li></ul>
+<p><strong>La póliza no se crea sola</strong> cuando el documento nace por script. Se genera con el motor nativo:</p>
+<pre><code>var acc = ctx.erp.CrearHelper(&quot;Accounting.clsMain&quot;);
+acc.GetType().InvokeMember(&quot;CrearPolizasDocumento&quot;, System.Reflection.BindingFlags.InvokeMethod, null, acc, new object[] { (long)doc, false, &quot;&quot; });</code></pre>
+<h2>4. Refrescar el grid (estándar)</h2>
+<p>Todo script que cambie datos que se ven en una lista termina con <strong>una sola</strong> llamada a <code>ctx.erp.RefreshGrid()</code>, <strong>después del último cambio</strong> (nunca dentro de un ciclo). Refresca la lista y regresa a la misma fila que tenía el usuario, sin mandar la vista al principio. Es la misma llamada en C# y en Python. Requiere BrosLMV 2.94.0 o superior.</p>
+<h2>5. Tokens: {pID}, {pIDs} y compañía</h2>
+<p>Los tokens son marcas que se sustituyen por valores del contexto actual.</p>
+<div class="tabla"><table><thead><tr><th>Token</th><th>Valor</th></tr></thead><tbody><tr><td><code>{pID}</code></td><td>Primer ID seleccionado en la lista (0 si no hay)</td></tr><tr><td><code>{pIDs}</code></td><td>Todos los IDs seleccionados, separados por coma</td></tr><tr><td><code>{pUserID}</code></td><td>Usuario activo</td></tr><tr><td><code>{pModulo}</code></td><td>Módulo activo</td></tr><tr><td><code>{pEmpresa}</code></td><td>Nombre de la base de datos activa</td></tr><tr><td><code>{DATOS:Campo}</code></td><td>Valor de ese campo en la primera fila seleccionada</td></tr></tbody></table></div>
+<ul><li>En <strong>SQL puro</strong> se sustituyen solos.</li><li>En <strong>C#</strong> usa <code>ctx.ResolverTokens("… {pIDs} …")</code> (o <code>ctx.EjecutarSql(...)</code> para correr SQL con tokens y recibir texto).</li><li>En <strong>Python</strong> no hay sustitución de texto: usa <code>ctx.get_selected_ids()</code>, <code>ctx.user_id</code>, <code>ctx.module_id</code>, <code>ctx.empresa</code> y <code>ctx.fila</code>.</li></ul>
+<h2>6. Mostrar ventanas al usuario</h2>
+<div class="tabla"><table><thead><tr><th>Quiero…</th><th>C#</th><th>Python</th></tr></thead><tbody><tr><td>Un aviso</td><td><code>ctx.Msg("Listo")</code></td><td><code>ctx.msg("Listo")</code></td></tr><tr><td>Preguntar Sí/No</td><td><code>if (ctx.Confirm("¿Seguro?")) {…}</code></td><td><code>if ctx.confirm("¿Seguro?"): …</code></td></tr><tr><td>Escribir en la bitácora</td><td><code>ctx.Log("texto")</code></td><td><code>ctx.log("texto")</code></td></tr><tr><td>Una página HTML (reporte, tablero)</td><td><code>ctx.ShowHtml(html, "Título")</code></td><td><code>ctx.show_html(html, "Título")</code></td></tr><tr><td>Un formulario que devuelva datos</td><td><code>ctx.ShowHtmlFormulario(html)</code></td><td><code>ctx.form({…})</code></td></tr></tbody></table></div>
+<p>Para elegir archivos en Python: <code>ctx.select_file(...)</code> y <code>ctx.select_folder(...)</code>; para Excel: <code>ctx.read_excel(...)</code> y <code>ctx.write_excel(...)</code>.</p>
+<h2>7. Reglas de BrosLMV para scripts que van a más de un cliente</h2>
+<ol><li><strong>Empresa activa:</strong> las tablas con <code>OwnedBusinessEntityID</code> (almacenes, proveedores, clientes, centros de costo, tipos de gasto, documentos, pólizas) guardan una copia por empresa: filtra siempre por <code>ctx.erp.OwnedBusinessEntityId</code>.</li><li><strong>Nada escrito a mano:</strong> los módulos se identifican por su naturaleza en <code>engModuleParameter</code> (tipo de documento, destinatario, si recibe XML, qué afecta), no por un <code>ModuleID</code> fijo; catálogos y valores fiscales se leen de la empresa.</li><li><strong>Lotes de altas por <code>ctx.OpenConn()</code></strong>, con <code>SET NOCOUNT ON</code> y SQL que no duplique si se repite.</li><li><strong>Refrescar el grid una vez al final</strong> con <code>ctx.erp.RefreshGrid()</code> y, si creaste un documento, abrirlo con <code>ctx.erp.AbrirDocumento(...)</code>.</li><li><strong>Confirma lo irreversible</strong> (timbrar, cancelar, borrar) con <code>ctx.Confirm(...)</code>.</li></ol></div>
+<h2 id="ref-cs">Referencia de C# <span class="aviso">(115)</span></h2><section data-cat="1" id="cat-cs-Selecci-n-y-datos"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Selección y datos</h3><article class="ficha" id="cs-GetSelectedIds" data-lang="cs" data-txt="getselectedids ids de los documentos seleccionados en la vista. selección y datos">
+<h3><span class="lg lg-cs">C#</span> GetSelectedIds</h3>
+<pre class="firma"><code>ctx.GetSelectedIds() : List&lt;long&gt;</code></pre>
+<p class="resumen">IDs de los documentos seleccionados en la vista.</p>
+<p>Devuelve los DocumentID (o el ID de la fila) de lo que el usuario tiene seleccionado en la LISTA de Comercial. Es lo primero que casi todo botón hace.</p>
+<p><strong>Devuelve:</strong> List&lt;long&gt; con los IDs; vacía si no hay selección.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Lee la selección de la lista de fondo: dentro de un documento abierto no sirve; usa ctx.ObtenerIdDeVentanaActiva().</li><li>Los IDs sirven directo en un IN de SQL con ctx.JoinIds(ids).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>var ids = ctx.GetSelectedIds();</code></pre>
+<p class="ej">Avisar si no hay selección <span class="lg lg-cs">C#</span></p><pre><code>var ids = ctx.GetSelectedIds();
+if (ids.Count == 0) { ctx.Msg("Selecciona al menos un documento."); return; }</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-get_selected_ids">ctx.get_selected_ids</a> · Ver también: <a href="#cs-JoinIds">JoinIds</a>, <a href="#cs-GetFilaActiva">GetFilaActiva</a>, <a href="#cs-ObtenerIdDeVentanaActiva">ObtenerIdDeVentanaActiva</a></p>
+</article>
+<article class="ficha" id="cs-GetFilaActiva" data-lang="cs" data-txt="getfilaactiva campos de la primera fila seleccionada del grid. selección y datos">
+<h3><span class="lg lg-cs">C#</span> GetFilaActiva</h3>
+<pre class="firma"><code>ctx.GetFilaActiva() : Dictionary&lt;string,object&gt;</code></pre>
+<p class="resumen">Campos de la primera fila seleccionada del grid.</p>
+<p>Devuelve las columnas de la primera fila seleccionada, tal como las muestra la lista (por su nombre de columna).</p>
+<p><strong>Devuelve:</strong> Dictionary&lt;string,object&gt; con el nombre de cada columna como clave.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Los nombres son los de la vista de la lista; no siempre coinciden con columnas reales de la tabla. Para un dato exacto, consulta SQL con el ID.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>var fila = ctx.GetFilaActiva();
+var folio = fila["Folio"];</code></pre>
+<p class="ej">Leer folio y total <span class="lg lg-cs">C#</span></p><pre><code>var fila = ctx.GetFilaActiva();
+ctx.Msg("Folio " + fila["Folio"] + " por " + fila["Total"]);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-fila">ctx.fila</a></p>
+</article>
+<article class="ficha" id="cs-JoinIds" data-lang="cs" data-txt="joinids convierte una lista de ids en "1,2,3" (para un in). selección y datos">
+<h3><span class="lg lg-cs">C#</span> JoinIds</h3>
+<pre class="firma"><code>ctx.JoinIds(ids) : string</code></pre>
+<p class="resumen">Convierte una lista de IDs en "1,2,3" (para un IN).</p>
+<p>Convierte una lista de IDs en el texto "1,2,3" para usarlo dentro de un IN de SQL.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>ids</code></td><td>IEnumerable&lt;long&gt;</td><td>Los IDs a unir.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> string, por ejemplo "12,15,20".</p>
+<p class="ej">Ejemplo</p><pre><code>var lista = ctx.JoinIds(ctx.GetSelectedIds());</code></pre>
+<p class="ej">Sumar lo seleccionado <span class="lg lg-cs">C#</span></p><pre><code>var total = ctx.Scalar("SELECT SUM(Total) FROM docDocument WHERE DocumentID IN (" + ctx.JoinIds(ctx.GetSelectedIds()) + ")");</code></pre>
+<p class="rel">Ver también: <a href="#cs-GetSelectedIds">GetSelectedIds</a>, <a href="#cs-Scalar">Scalar</a></p>
+</article>
+<article class="ficha" id="cs-ObtenerIdDeVentanaActiva" data-lang="cs" data-txt="obteneriddeventanaactiva id del documento guardado que está abierto en pantalla (getselectedids no sirve dentro de un documento). null si no aplica. selección y datos">
+<h3><span class="lg lg-cs">C#</span> ObtenerIdDeVentanaActiva</h3>
+<pre class="firma"><code>ctx.ObtenerIdDeVentanaActiva() : long?</code></pre>
+<p class="resumen">ID del documento GUARDADO que está abierto en pantalla (GetSelectedIds no sirve dentro de un documento). null si no aplica.</p>
+<p class="ej">Ejemplo</p><pre><code>var id = ctx.ObtenerIdDeVentanaActiva();
+if (id == null) { ctx.Msg("Guarda el documento primero."); return; }</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-Consultas-SQL"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Consultas SQL</h3><article class="ficha" id="cs-Scalar" data-lang="cs" data-txt="scalar ejecuta sql y devuelve un solo valor. consultas sql">
+<h3><span class="lg lg-cs">C#</span> Scalar</h3>
+<pre class="firma"><code>ctx.Scalar(sql) : object</code></pre>
+<p class="resumen">Ejecuta SQL y devuelve un solo valor.</p>
+<p>Ejecuta una consulta y devuelve solo la primera columna de la primera fila. Ideal para totales, conteos y buscar un dato.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>sql</code></td><td>string</td><td>La consulta. Escapa las comillas simples duplicándolas ('').</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> object (null si no hay filas). Conviértelo: Convert.ToDecimal(x), Convert.ToInt32(x).</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Usa la conexión viva de Comercial; si esa conexión falla, cae sola a una conexión propia.</li><li>Para varios INSERT en un solo texto NO uses Scalar/NonQuery: usa ctx.OpenConn() (a veces se reintenta y duplica).</li><li>Filtra siempre por la empresa activa cuando la tabla tiene OwnedBusinessEntityID (ctx.erp.OwnedBusinessEntityId).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>var total = ctx.Scalar("SELECT SUM(Total) FROM docDocument WHERE DocumentID IN (" + ctx.JoinIds(ctx.GetSelectedIds()) + ")");</code></pre>
+<p class="ej">Cuántos documentos hay <span class="lg lg-cs">C#</span></p><pre><code>int n = Convert.ToInt32(ctx.Scalar("SELECT COUNT(*) FROM docDocument"));
+ctx.Msg("Documentos: " + n);</code></pre>
+<p class="ej">Lo mismo en Python <span class="lg lg-py">Python</span></p><pre><code>n = ctx.scalar("SELECT COUNT(*) FROM docDocument")
+ctx.msg(f"Documentos: {n}")</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-scalar">ctx.scalar</a> · Ver también: <a href="#cs-Query">Query</a>, <a href="#cs-NonQuery">NonQuery</a>, <a href="#cs-OpenConn">OpenConn</a></p>
+</article>
+<article class="ficha" id="cs-Query" data-lang="cs" data-txt="query ejecuta sql y devuelve filas. consultas sql">
+<h3><span class="lg lg-cs">C#</span> Query</h3>
+<pre class="firma"><code>ctx.Query(sql) : List&lt;Dictionary&lt;string,object&gt;&gt;</code></pre>
+<p class="resumen">Ejecuta SQL y devuelve filas.</p>
+<p>Ejecuta una consulta y devuelve todas las filas. Cada fila es un diccionario: columna → valor.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>sql</code></td><td>string</td><td>La consulta SELECT.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> List&lt;Dictionary&lt;string,object&gt;&gt;; vacía si no hay filas. Los nombres de columna no distinguen mayúsculas.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Trae solo lo que necesitas (TOP, columnas concretas): todo se carga en memoria.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>var filas = ctx.Query("SELECT Folio, Total FROM docDocument WHERE DocumentID IN (" + ctx.JoinIds(ctx.GetSelectedIds()) + ")");</code></pre>
+<p class="ej">Recorrer filas <span class="lg lg-cs">C#</span></p><pre><code>var filas = ctx.Query("SELECT TOP 5 Folio, Total FROM docDocument ORDER BY DocumentID DESC");
+foreach (var f in filas)
+    ctx.Log(f["Folio"] + " → " + f["Total"]);</code></pre>
+<p class="ej">Lo mismo en Python (con parámetros) <span class="lg lg-py">Python</span></p><pre><code>filas = ctx.query("SELECT TOP 5 Folio, Total FROM docDocument WHERE ModuleID = @m", {"m": 152})
+for f in filas:
+    ctx.log(f"{f['Folio']} → {f['Total']}")</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-query">ctx.query</a> · Ver también: <a href="#cs-Scalar">Scalar</a>, <a href="#cs-NonQuery">NonQuery</a></p>
+</article>
+<article class="ficha" id="cs-NonQuery" data-lang="cs" data-txt="nonquery insert/update/delete. devuelve filas afectadas (respeta modo solo lectura). consultas sql">
+<h3><span class="lg lg-cs">C#</span> NonQuery</h3>
+<pre class="firma"><code>ctx.NonQuery(sql) : int</code></pre>
+<p class="resumen">INSERT/UPDATE/DELETE. Devuelve filas afectadas (respeta modo solo lectura).</p>
+<p>Ejecuta INSERT, UPDATE o DELETE y devuelve cuántas filas cambió.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>sql</code></td><td>string</td><td>La sentencia de modificación.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> int: filas afectadas.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Se bloquea en «Modo solo lectura» (lanza una excepción).</li><li>Para lotes de varios INSERT usa ctx.OpenConn(): por el puente COM se pierde el resultado y puede duplicar.</li><li>Un UPDATE/DELETE sin WHERE afecta toda la tabla: revísalo dos veces.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>int n = ctx.NonQuery("UPDATE docDocument SET Referencia='X' WHERE DocumentID IN (" + ctx.JoinIds(ctx.GetSelectedIds()) + ")");</code></pre>
+<p class="ej">Actualizar una referencia <span class="lg lg-cs">C#</span></p><pre><code>int n = ctx.NonQuery("UPDATE docDocument SET Referencia = 'Revisado' WHERE DocumentID IN (" + ctx.JoinIds(ctx.GetSelectedIds()) + ")");
+ctx.Msg("Actualizados: " + n);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-execute">ctx.execute</a> · Ver también: <a href="#cs-Scalar">Scalar</a>, <a href="#cs-OpenConn">OpenConn</a></p>
+</article>
+<article class="ficha" id="cs-EjecutarSql" data-lang="cs" data-txt="ejecutarsql corre t-sql crudo (resuelve tokens) y devuelve texto: filas o un ok. consultas sql">
+<h3><span class="lg lg-cs">C#</span> EjecutarSql</h3>
+<pre class="firma"><code>ctx.EjecutarSql(sql) : string</code></pre>
+<p class="resumen">Corre T-SQL crudo (resuelve tokens) y devuelve texto: filas o un OK.</p>
+<p>Corre T-SQL tal cual, resolviendo los tokens ({pID}, {pIDs}…), y regresa el resultado como texto.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>sqlCrudo</code></td><td>string</td><td>SQL con tokens opcionales.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> string: las filas si es SELECT, o un OK si es una modificación.</p>
+<p class="ej">Ejemplo</p><pre><code>var txt = ctx.EjecutarSql("SELECT Folio, Total FROM docDocument WHERE DocumentID IN ({pIDs})");
+ctx.Msg(txt);</code></pre>
+<p class="rel">Ver también: <a href="#cs-ResolverTokens">ResolverTokens</a></p>
+</article>
+<article class="ficha" id="cs-OpenConn" data-lang="cs" data-txt="openconn conexión sql propia (ya abierta), independiente de la de comercial. para lotes de altas y transacciones. consultas sql">
+<h3><span class="lg lg-cs">C#</span> OpenConn <span class="desde">desde 2.33.0</span></h3>
+<pre class="firma"><code>ctx.OpenConn() : SqlConnection</code></pre>
+<p class="resumen">Conexión SQL propia (ya abierta), independiente de la de Comercial. Para lotes de altas y transacciones.</p>
+<p>Abre una conexión SQL propia, independiente de la de Comercial. Es el camino correcto para lotes de altas, transacciones y cualquier cosa con varios INSERT.</p>
+<p><strong>Devuelve:</strong> SqlConnection ya abierta; ciérrala con using.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Usa siempre SET NOCOUNT ON al inicio del lote y haz el SQL idempotente (que repetirlo no duplique).</li><li>Con una transacción (cn.BeginTransaction()) o queda todo o no queda nada.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>using (var cn = ctx.OpenConn())
+using (var cmd = cn.CreateCommand())
+{
+    cmd.CommandText = "SET NOCOUNT ON; SELECT COUNT(*) FROM docDocument";
+    var n = cmd.ExecuteScalar();
+}</code></pre>
+<p class="ej">Insertar y leer el ID <span class="lg lg-cs">C#</span></p><pre><code>using (var cn = ctx.OpenConn())
+using (var cmd = cn.CreateCommand())
+{
+    cmd.CommandText = "SET NOCOUNT ON; INSERT INTO miTabla(Nombre) VALUES(@n); SELECT SCOPE_IDENTITY();";
+    cmd.Parameters.AddWithValue("@n", "Ejemplo");
+    var id = cmd.ExecuteScalar();
+}</code></pre>
+<p class="rel">Ver también: <a href="#cs-NonQuery">NonQuery</a>, <a href="#cs-CadenaSql">CadenaSql</a></p>
+</article></section><section data-cat="1" id="cat-cs-Tokens"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Tokens</h3><article class="ficha" id="cs-ResolverTokens" data-lang="cs" data-txt="resolvertokens sustituye {pid}, {pids}, {puserid}, {pmodulo}, {pempresa}, {datos:campo}. tokens">
+<h3><span class="lg lg-cs">C#</span> ResolverTokens</h3>
+<pre class="firma"><code>ctx.ResolverTokens(plantilla) : string</code></pre>
+<p class="resumen">Sustituye {pID}, {pIDs}, {pUserID}, {pModulo}, {pEmpresa}, {DATOS:Campo}.</p>
+<p>Sustituye los tokens de una plantilla de texto por los valores del contexto actual.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>plantilla</code></td><td>string</td><td>Texto con tokens.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> string con los valores ya puestos.</p>
+<table><thead><tr><th>Token</th><th>Valor</th></tr></thead><tbody><tr><td><code>{pID}</code></td><td>Primer ID seleccionado en la lista (0 si no hay)</td></tr><tr><td><code>{pIDs}</code></td><td>Todos los IDs seleccionados separados por coma</td></tr><tr><td><code>{pUserID}</code></td><td>Usuario activo</td></tr><tr><td><code>{pModulo}</code></td><td>Módulo activo</td></tr><tr><td><code>{pEmpresa}</code></td><td>Nombre de la base de datos activa</td></tr><tr><td><code>{DATOS:Campo}</code></td><td>Valor de ese campo en la primera fila seleccionada</td></tr></tbody></table>
+<div class="notas"><strong>Ojo</strong><ul><li>En scripts SQL puro los tokens se resuelven solos; en C# y Python usa esta función o las equivalentes (ctx.GetSelectedIds(), ctx.UserIDReal()…).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>var sql = ctx.ResolverTokens("SELECT * FROM docDocument WHERE DocumentID = {pID}");</code></pre>
+<p class="ej">SQL con selección <span class="lg lg-cs">C#</span></p><pre><code>var sql = ctx.ResolverTokens("SELECT Folio, Total FROM docDocument WHERE DocumentID IN ({pIDs})");
+var filas = ctx.Query(sql);</code></pre>
+<p class="rel">Ver también: <a href="#cs-EjecutarSql">EjecutarSql</a>, <a href="#cs-GetSelectedIds">GetSelectedIds</a></p>
+</article></section><section data-cat="1" id="cat-cs-Contexto"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Contexto</h3><article class="ficha" id="cs-Empresa" data-lang="cs" data-txt="empresa nombre de la base de datos de la empresa activa. contexto">
+<h3><span class="lg lg-cs">C#</span> Empresa</h3>
+<pre class="firma"><code>ctx.Empresa() : string</code></pre>
+<p class="resumen">Nombre de la base de datos de la empresa activa.</p>
+<p>Nombre de la base de datos de la empresa activa (por ejemplo MI_EMPRESA).</p>
+<p><strong>Devuelve:</strong> string.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Para filtrar por la empresa dentro de las tablas que guardan una copia por empresa usa ctx.erp.OwnedBusinessEntityId (OwnedBusinessEntityID).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>var bd = ctx.Empresa();</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-empresa">ctx.empresa</a></p>
+</article>
+<article class="ficha" id="cs-ServidorActivo" data-lang="cs" data-txt="servidoractivo servidor\instancia de sql de la empresa activa. contexto">
+<h3><span class="lg lg-cs">C#</span> ServidorActivo</h3>
+<pre class="firma"><code>ctx.ServidorActivo() : string</code></pre>
+<p class="resumen">Servidor\instancia de SQL de la empresa activa.</p>
+<p class="ej">Ejemplo</p><pre><code>var srv = ctx.ServidorActivo();</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-ModuloActivo" data-lang="cs" data-txt="moduloactivo id del módulo activo de contpaqi. contexto">
+<h3><span class="lg lg-cs">C#</span> ModuloActivo</h3>
+<pre class="firma"><code>ctx.ModuloActivo() : int</code></pre>
+<p class="resumen">ID del módulo activo de CONTPAQi.</p>
+<p class="ej">Ejemplo</p><pre><code>var mod = ctx.ModuloActivo();</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-UserID" data-lang="cs" data-txt="userid id de usuario del addon (suele venir 0; usa ctx.erp.userid). contexto">
+<h3><span class="lg lg-cs">C#</span> UserID</h3>
+<pre class="firma"><code>ctx.UserID : int</code></pre>
+<p class="resumen">ID de usuario del addon (suele venir 0; usa ctx.erp.UserId).</p>
+<p class="ej">Ejemplo</p><pre><code>var u = ctx.UserID;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-SoloLectura" data-lang="cs" data-txt="sololectura si es true, nonquery se bloquea (modo solo lectura). contexto">
+<h3><span class="lg lg-cs">C#</span> SoloLectura</h3>
+<pre class="firma"><code>ctx.SoloLectura : bool</code></pre>
+<p class="resumen">Si es true, NonQuery se bloquea (modo solo lectura).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.SoloLectura = true;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-FilasAfectadas" data-lang="cs" data-txt="filasafectadas acumulado de filas modificadas por nonquery (auditoría). contexto">
+<h3><span class="lg lg-cs">C#</span> FilasAfectadas</h3>
+<pre class="firma"><code>ctx.FilasAfectadas : int</code></pre>
+<p class="resumen">Acumulado de filas modificadas por NonQuery (auditoría).</p>
+<p class="ej">Ejemplo</p><pre><code>var n = ctx.FilasAfectadas;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-DiagConexion" data-lang="cs" data-txt="diagconexion diagnóstico de la conexión activa. contexto">
+<h3><span class="lg lg-cs">C#</span> DiagConexion</h3>
+<pre class="firma"><code>ctx.DiagConexion() : string</code></pre>
+<p class="resumen">Diagnóstico de la conexión activa.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.Msg(ctx.DiagConexion());</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-XEngineLib" data-lang="cs" data-txt="xenginelib objeto xengine crudo (escape hatch a com). contexto">
+<h3><span class="lg lg-cs">C#</span> XEngineLib</h3>
+<pre class="firma"><code>ctx.XEngineLib : object</code></pre>
+<p class="resumen">Objeto XEngine crudo (escape hatch a COM).</p>
+<p class="ej">Ejemplo</p><pre><code>var xe = ctx.XEngineLib;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp" data-lang="cs" data-txt="erp acceso tipado al motor de comercial (documentos, precios, folios, ui…). solo en c#; en python se usa ctx.erp.método(). contexto">
+<h3><span class="lg lg-cs">C#</span> erp</h3>
+<pre class="firma"><code>ctx.erp : ErpContext</code></pre>
+<p class="resumen">Acceso tipado al motor de Comercial (documentos, precios, folios, UI…). Solo en C#; en Python se usa ctx.erp.Método().</p>
+<p class="ej">Ejemplo</p><pre><code>var rfc = ctx.erp.ComercialRFC;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-UserIdReal" data-lang="cs" data-txt="useridreal id real del usuario (ctx.userid suele venir 0). contexto">
+<h3><span class="lg lg-cs">C#</span> UserIdReal</h3>
+<pre class="firma"><code>ctx.UserIdReal() : int</code></pre>
+<p class="resumen">ID real del usuario (ctx.UserID suele venir 0).</p>
+<p class="ej">Ejemplo</p><pre><code>var u = ctx.UserIdReal();</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-NombreUsuario" data-lang="cs" data-txt="nombreusuario nombre del usuario (enguser.username) o "" si no existe. nunca lanza. contexto">
+<h3><span class="lg lg-cs">C#</span> NombreUsuario</h3>
+<pre class="firma"><code>ctx.NombreUsuario(userId) : string</code></pre>
+<p class="resumen">Nombre del usuario (engUser.UserName) o "" si no existe. Nunca lanza.</p>
+<p class="ej">Ejemplo</p><pre><code>var n = ctx.NombreUsuario(ctx.UserIdReal());</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-Headless" data-lang="cs" data-txt="headless true cuando el script corre sin pantalla (runner): msg/confirm no abren diálogos. contexto">
+<h3><span class="lg lg-cs">C#</span> Headless</h3>
+<pre class="firma"><code>ctx.Headless : bool</code></pre>
+<p class="resumen">true cuando el script corre sin pantalla (Runner): Msg/Confirm no abren diálogos.</p>
+<p class="ej">Ejemplo</p><pre><code>if (!ctx.Headless) ctx.Msg("Listo");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-EventoId" data-lang="cs" data-txt="eventoid id que trae un evento nativo (función = "broslmv.&lt;script&gt;_[documentid]"); null si se ejecutó por botón o consola. contexto">
+<h3><span class="lg lg-cs">C#</span> EventoId</h3>
+<pre class="firma"><code>ctx.EventoId : long?</code></pre>
+<p class="resumen">ID que trae un evento nativo (Función = "BrosLMV.&lt;Script&gt;_[DocumentID]"); null si se ejecutó por botón o consola.</p>
+<p class="ej">Ejemplo</p><pre><code>var doc = ctx.EventoId;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-CadenaSql" data-lang="cs" data-txt="cadenasql cadena de conexión sqlclient resuelta. para abrir conexiones desde otro hilo (no llames com desde ahí). contexto">
+<h3><span class="lg lg-cs">C#</span> CadenaSql</h3>
+<pre class="firma"><code>ctx.CadenaSql() : string</code></pre>
+<p class="resumen">Cadena de conexión SqlClient resuelta. Para abrir conexiones desde otro hilo (no llames COM desde ahí).</p>
+<p class="ej">Ejemplo</p><pre><code>var cs = ctx.CadenaSql();</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-VersionProvisionada" data-lang="cs" data-txt="versionprovisionada versión de broslmv con que se provisionó la empresa ("" si no). contexto">
+<h3><span class="lg lg-cs">C#</span> VersionProvisionada</h3>
+<pre class="firma"><code>ctx.VersionProvisionada() : string</code></pre>
+<p class="resumen">Versión de BrosLMV con que se provisionó la empresa ("" si no).</p>
+<p class="ej">Ejemplo</p><pre><code>var v = ctx.VersionProvisionada();</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-Interacci-n"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Interacción</h3><article class="ficha" id="cs-Msg" data-lang="cs" data-txt="msg muestra un mensaje al usuario. interacción">
+<h3><span class="lg lg-cs">C#</span> Msg</h3>
+<pre class="firma"><code>ctx.Msg(texto, titulo?) : void</code></pre>
+<p class="resumen">Muestra un mensaje al usuario.</p>
+<p>Muestra un mensaje al usuario y espera a que lo cierre.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>texto</code></td><td>string</td><td>Lo que se muestra.</td></tr><tr><td><code>titulo</code></td><td>string</td><td>Título de la ventana (opcional).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>En ejecución sin pantalla (Runner) no abre nada: revisa ctx.Headless.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.Msg("Hola", "Aviso");</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-msg">ctx.msg</a></p>
+</article>
+<article class="ficha" id="cs-Confirm" data-lang="cs" data-txt="confirm pregunta sí/no. interacción">
+<h3><span class="lg lg-cs">C#</span> Confirm</h3>
+<pre class="firma"><code>ctx.Confirm(texto, titulo?) : bool</code></pre>
+<p class="resumen">Pregunta Sí/No.</p>
+<p>Pregunta Sí/No al usuario.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>texto</code></td><td>string</td><td>La pregunta.</td></tr><tr><td><code>titulo</code></td><td>string</td><td>Título (opcional).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> true si eligió Sí.</p>
+<p class="ej">Ejemplo</p><pre><code>if (ctx.Confirm("¿Seguro?")) { /* ... */ }</code></pre>
+<p class="ej">Confirmar antes de borrar <span class="lg lg-cs">C#</span></p><pre><code>if (!ctx.Confirm("¿Borrar los documentos seleccionados?")) return;</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-confirm">ctx.confirm</a></p>
+</article>
+<article class="ficha" id="cs-Log" data-lang="cs" data-txt="log escribe a la bitácora en c:\broslmv\logs. interacción">
+<h3><span class="lg lg-cs">C#</span> Log</h3>
+<pre class="firma"><code>ctx.Log(texto) : void</code></pre>
+<p class="resumen">Escribe a la bitácora en C:\BrosLMV\logs.</p>
+<p>Escribe una línea en la bitácora diaria de BrosLMV (C:\BrosLMV\logs). Útil para depurar sin molestar al usuario.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>texto</code></td><td>string</td><td>La línea.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.Log("Proceso terminado");</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-log">ctx.log</a></p>
+</article>
+<article class="ficha" id="cs-ShowHtml" data-lang="cs" data-txt="showhtml muestra una ventana con html/css/js real (webview2). interacción">
+<h3><span class="lg lg-cs">C#</span> ShowHtml</h3>
+<pre class="firma"><code>ctx.ShowHtml(html, titulo?, ancho?, alto?, modal?) : void</code></pre>
+<p class="resumen">Muestra una ventana con HTML/CSS/JS real (WebView2).</p>
+<p>Abre una ventana con una página HTML real (WebView2): reportes, tableros, formularios bonitos. Con modal=false no bloquea a Comercial.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>html</code></td><td>string</td><td>La página completa.</td></tr><tr><td><code>titulo</code></td><td>string</td><td>Título de la ventana.</td></tr><tr><td><code>ancho / alto</code></td><td>int</td><td>Tamaño en píxeles.</td></tr><tr><td><code>modal</code></td><td>bool</td><td>true = espera a que la cierren.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Para una página con formulario que devuelva datos usa ShowHtmlFormulario.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.ShowHtml("&lt;h1&gt;Hola&lt;/h1&gt;", "Reporte", 800, 600);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-show_html">ctx.show_html</a> · Ver también: <a href="#cs-ShowHtmlFormulario">ShowHtmlFormulario</a></p>
+</article>
+<article class="ficha" id="cs-ShowHtmlFormulario" data-lang="cs" data-txt="showhtmlformulario ventana html que devuelve lo que la página envíe con postmessage (formularios propios). interacción">
+<h3><span class="lg lg-cs">C#</span> ShowHtmlFormulario</h3>
+<pre class="firma"><code>ctx.ShowHtmlFormulario(html, titulo?, ancho?, alto?, timeoutMs?) : Dictionary&lt;string,object&gt;</code></pre>
+<p class="resumen">Ventana HTML que devuelve lo que la página envíe con postMessage (formularios propios).</p>
+<p>Como ShowHtml pero espera a que la página mande datos con window.chrome.webview.postMessage(JSON.stringify({...})) y los devuelve.</p>
+<p><strong>Devuelve:</strong> Dictionary con lo que envió la página más "submitted" (true si envió algo; false si cerró la ventana).</p>
+<p class="ej">Ejemplo</p><pre><code>var r = ctx.ShowHtmlFormulario(html, "Datos");
+if ((bool)r["submitted"]) { /* usa r["campo"] */ }</code></pre>
+<p class="rel">Ver también: <a href="#cs-ShowHtml">ShowHtml</a></p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Contexto"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Contexto</h3><article class="ficha" id="cs-erp-UserId" data-lang="cs" data-txt="erp.userid id real del usuario de contpaqi. erp · contexto">
+<h3><span class="lg lg-cs">C#</span> erp.UserId</h3>
+<pre class="firma"><code>ctx.erp.UserId : int</code></pre>
+<p class="resumen">ID real del usuario de CONTPAQi.</p>
+<p class="ej">Ejemplo</p><pre><code>var u = ctx.erp.UserId;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-UserName" data-lang="cs" data-txt="erp.username nombre del usuario activo. erp · contexto">
+<h3><span class="lg lg-cs">C#</span> erp.UserName</h3>
+<pre class="firma"><code>ctx.erp.UserName : string</code></pre>
+<p class="resumen">Nombre del usuario activo.</p>
+<p class="ej">Ejemplo</p><pre><code>var n = ctx.erp.UserName;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-OwnedBusinessEntityId" data-lang="cs" data-txt="erp.ownedbusinessentityid id de la empresa propia (orgbusinessentity isowned=1). erp · contexto">
+<h3><span class="lg lg-cs">C#</span> erp.OwnedBusinessEntityId</h3>
+<pre class="firma"><code>ctx.erp.OwnedBusinessEntityId : int</code></pre>
+<p class="resumen">ID de la empresa propia (orgBusinessEntity IsOwned=1).</p>
+<p>ID de la empresa propia (orgBusinessEntity con IsOwned=1). Es el valor de OwnedBusinessEntityID para filtrar tablas que guardan una copia por empresa.</p>
+<p><strong>Devuelve:</strong> int.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Filtra SIEMPRE por este valor en almacenes, proveedores, clientes, centros de costo, tipos de gasto, documentos y pólizas: si no, verás datos duplicados de otras empresas.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>var e = ctx.erp.OwnedBusinessEntityId;</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-OwnedBusinessEntityId">ctx.erp.OwnedBusinessEntityId</a></p>
+</article>
+<article class="ficha" id="cs-erp-ActiveModuleId" data-lang="cs" data-txt="erp.activemoduleid módulo activo (equivale a ctx.moduloactivo()). erp · contexto">
+<h3><span class="lg lg-cs">C#</span> erp.ActiveModuleId</h3>
+<pre class="firma"><code>ctx.erp.ActiveModuleId : int</code></pre>
+<p class="resumen">Módulo activo (equivale a ctx.ModuloActivo()).</p>
+<p class="ej">Ejemplo</p><pre><code>var m = ctx.erp.ActiveModuleId;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-CurrencyId" data-lang="cs" data-txt="erp.currencyid moneda activa. erp · contexto">
+<h3><span class="lg lg-cs">C#</span> erp.CurrencyId</h3>
+<pre class="firma"><code>ctx.erp.CurrencyId : int</code></pre>
+<p class="resumen">Moneda activa.</p>
+<p class="ej">Ejemplo</p><pre><code>var c = ctx.erp.CurrencyId;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-ComercialRFC" data-lang="cs" data-txt="erp.comercialrfc rfc de la empresa. erp · contexto">
+<h3><span class="lg lg-cs">C#</span> erp.ComercialRFC</h3>
+<pre class="firma"><code>ctx.erp.ComercialRFC : string</code></pre>
+<p class="resumen">RFC de la empresa.</p>
+<p class="ej">Ejemplo</p><pre><code>var rfc = ctx.erp.ComercialRFC;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-SoftwareVersion" data-lang="cs" data-txt="erp.softwareversion versión de contpaqi. erp · contexto">
+<h3><span class="lg lg-cs">C#</span> erp.SoftwareVersion</h3>
+<pre class="firma"><code>ctx.erp.SoftwareVersion : string</code></pre>
+<p class="resumen">Versión de CONTPAQi.</p>
+<p class="ej">Ejemplo</p><pre><code>var v = ctx.erp.SoftwareVersion;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Documento"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Documento</h3><article class="ficha" id="cs-erp-RecalcCompleto" data-lang="cs" data-txt="erp.recalccompleto recalcula totales + costos + saldo pagado. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.RecalcCompleto</h3>
+<pre class="firma"><code>ctx.erp.RecalcCompleto(documentId) : void</code></pre>
+<p class="resumen">Recalcula totales + costos + saldo pagado.</p>
+<p>Recalcula totales, impuestos, costos y saldo pagado del documento. Llámalo después de crear o cambiar partidas.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<p class="ej">Ejemplo</p><pre><code>var id = (int)ctx.GetSelectedIds()[0];
+ctx.erp.RecalcCompleto(id);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-RecalcCompleto">ctx.erp.RecalcCompleto</a> · Ver también: <a href="#cs-erp-AgregarArticulo">erp.AgregarArticulo</a></p>
+</article>
+<article class="ficha" id="cs-erp-RecalcDocument" data-lang="cs" data-txt="erp.recalcdocument recalcula totales (subtotal, iva, total). erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.RecalcDocument</h3>
+<pre class="firma"><code>ctx.erp.RecalcDocument(documentId) : void</code></pre>
+<p class="resumen">Recalcula totales (subtotal, IVA, total).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RecalcDocument(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-CalcularCostos" data-lang="cs" data-txt="erp.calcularcostos actualiza costos (promedio, peps...). erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.CalcularCostos</h3>
+<pre class="firma"><code>ctx.erp.CalcularCostos(documentId) : void</code></pre>
+<p class="resumen">Actualiza costos (promedio, PEPS...).</p>
+<p>Actualiza los costos del documento (promedio, PEPS…). Se usa junto con AffectStockNEW cuando el módulo afecta costos.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.CalcularCostos(id);</code></pre>
+<p class="rel">Ver también: <a href="#cs-erp-AffectStockNEW">erp.AffectStockNEW</a></p>
+</article>
+<article class="ficha" id="cs-erp-AffectStockNEW" data-lang="cs" data-txt="erp.affectstocknew afecta inventario (kardex) — módulos nuevos. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.AffectStockNEW</h3>
+<pre class="firma"><code>ctx.erp.AffectStockNEW(documentId) : void</code></pre>
+<p class="resumen">Afecta inventario (kardex) — módulos nuevos.</p>
+<p>Afecta el inventario (kardex) del documento con el motor nuevo. Úsalo solo si el módulo afecta inventario.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Decide según los parámetros del módulo (engModuleParameter: StockAffectation), no por el tipo de documento ni por un módulo escrito a mano.</li><li>Ya se conoce y funciona en Recepción, Factura y Gasto.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AffectStockNEW(id);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-AffectStockNEW">ctx.erp.AffectStockNEW</a> · Ver también: <a href="#cs-erp-CalcularCostos">erp.CalcularCostos</a>, <a href="#cs-erp-UpdateDocumentPaidInfo">erp.UpdateDocumentPaidInfo</a></p>
+</article>
+<article class="ficha" id="cs-erp-AffectStock" data-lang="cs" data-txt="erp.affectstock afecta inventario (versión clásica). erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.AffectStock</h3>
+<pre class="firma"><code>ctx.erp.AffectStock(documentId) : void</code></pre>
+<p class="resumen">Afecta inventario (versión clásica).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AffectStock(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-UpdateStatusDelivery" data-lang="cs" data-txt="erp.updatestatusdelivery actualiza el estatus de entrega del grid. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.UpdateStatusDelivery</h3>
+<pre class="firma"><code>ctx.erp.UpdateStatusDelivery(documentId) : void</code></pre>
+<p class="resumen">Actualiza el estatus de entrega del grid.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.UpdateStatusDelivery(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-UpdateDocumentPaidInfo" data-lang="cs" data-txt="erp.updatedocumentpaidinfo recalcula saldo pagado y balance. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.UpdateDocumentPaidInfo</h3>
+<pre class="firma"><code>ctx.erp.UpdateDocumentPaidInfo(documentId) : void</code></pre>
+<p class="resumen">Recalcula saldo pagado y balance.</p>
+<p>Recalcula el saldo pagado y el balance del documento. Úsalo si el módulo afecta saldos (cuentas por pagar/cobrar).</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.UpdateDocumentPaidInfo(id);</code></pre>
+</article>
+<article class="ficha" id="cs-erp-ActualizarParcialidad" data-lang="cs" data-txt="erp.actualizarparcialidad actualiza parcialidad en complementos de pago sat. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.ActualizarParcialidad</h3>
+<pre class="firma"><code>ctx.erp.ActualizarParcialidad(documentId) : void</code></pre>
+<p class="resumen">Actualiza parcialidad en complementos de pago SAT.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.ActualizarParcialidad(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-CancelDocument" data-lang="cs" data-txt="erp.canceldocument cancela el documento. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.CancelDocument</h3>
+<pre class="firma"><code>ctx.erp.CancelDocument(documentId) : void</code></pre>
+<p class="resumen">Cancela el documento.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.CancelDocument(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-ReactivateDocument" data-lang="cs" data-txt="erp.reactivatedocument reactiva un documento cancelado. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.ReactivateDocument</h3>
+<pre class="firma"><code>ctx.erp.ReactivateDocument(documentId) : void</code></pre>
+<p class="resumen">Reactiva un documento cancelado.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.ReactivateDocument(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-Save" data-lang="cs" data-txt="erp.save guarda el documento (xengine). erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.Save</h3>
+<pre class="firma"><code>ctx.erp.Save(documentId) : void</code></pre>
+<p class="resumen">Guarda el documento (XEngine).</p>
+<p>Guarda el documento con el motor de Comercial.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Revisa ctx.erp.LastError después de guardar.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.Save(id);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-Save">ctx.erp.Save</a> · Ver también: <a href="#cs-erp-LastError">erp.LastError</a></p>
+</article>
+<article class="ficha" id="cs-erp-Delete" data-lang="cs" data-txt="erp.delete elimina el documento (xengine). erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.Delete</h3>
+<pre class="firma"><code>ctx.erp.Delete(documentId) : void</code></pre>
+<p class="resumen">Elimina el documento (XEngine).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.Delete(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-AjustarSaldosInsolutos" data-lang="cs" data-txt="erp.ajustarsaldosinsolutos ajusta saldos insolutos. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.AjustarSaldosInsolutos</h3>
+<pre class="firma"><code>ctx.erp.AjustarSaldosInsolutos(documentId) : void</code></pre>
+<p class="resumen">Ajusta saldos insolutos.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AjustarSaldosInsolutos(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-RefreshDocumento" data-lang="cs" data-txt="erp.refreshdocumento refresca visualmente un documento abierto. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.RefreshDocumento</h3>
+<pre class="firma"><code>ctx.erp.RefreshDocumento(documentId) : void</code></pre>
+<p class="resumen">Refresca visualmente un documento abierto.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RefreshDocumento(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-NuevoDocumento" data-lang="cs" data-txt="erp.nuevodocumento crea el encabezado de un documento con los defaults del módulo (folio, tipo, moneda) y devuelve el documentid. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.NuevoDocumento <span class="desde">desde 2.18.0 (parámetros extra en 2.90.0)</span></h3>
+<pre class="firma"><code>ctx.erp.NuevoDocumento(moduleId, depotId, businessEntityId?, rate?, paymentTermId?, currencyId?, title?, sourceDocumentId?) : int</code></pre>
+<p class="resumen">Crea el encabezado de un documento con los defaults del módulo (folio, tipo, moneda) y devuelve el DocumentID.</p>
+<p>Crea el encabezado de un documento nuevo (folio automático) y devuelve su DocumentID. Después se le agregan partidas con AgregarArticulo.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>moduleId</code></td><td>int</td><td>Módulo del documento (por ejemplo Facturas de compra).</td></tr><tr><td><code>depotId</code></td><td>int</td><td>Almacén.</td></tr><tr><td><code>businessEntityId</code></td><td>int</td><td>Cliente o proveedor (0 = ninguno).</td></tr><tr><td><code>rate</code></td><td>double</td><td>Tipo de cambio (1 por omisión).</td></tr><tr><td><code>paymentTermId</code></td><td>int</td><td>Condición de pago.</td></tr><tr><td><code>currencyId</code></td><td>int</td><td>Moneda.</td></tr><tr><td><code>title</code></td><td>string</td><td>Título opcional.</td></tr><tr><td><code>sourceDocumentId</code></td><td>int</td><td>Documento de origen (0 = ninguno).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> int: DocumentID del nuevo documento.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>El documento existe solo dentro de esta ejecución hasta que lo guardas y recalculas; para uno que ya existe usa AgregarRenglonExistente.</li><li>Un documento creado por script NO genera póliza solo: ver la guía «Crear un documento».</li><li>Toma el módulo y el almacén de la empresa (no los escribas a mano en scripts para varios clientes).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>int id = ctx.erp.NuevoDocumento(183, 1, 162); // OC, almacén, proveedor</code></pre>
+<p class="ej">Factura de compra con una partida <span class="lg lg-cs">C#</span></p><pre><code>int doc = ctx.erp.NuevoDocumento(152, 1, 162);      // módulo, almacén, proveedor
+ctx.erp.AgregarArticulo(doc, 1, 2, 100);            // producto 1, cantidad 2, precio 100
+ctx.erp.RecalcCompleto(doc);                        // totales e impuestos
+ctx.erp.Save(doc);
+ctx.erp.RefreshGrid();</code></pre>
+<p class="ej">Lo mismo en Python <span class="lg lg-py">Python</span></p><pre><code>doc = ctx.erp.NuevoDocumento(152, 1, 162)
+ctx.erp.AgregarArticulo(doc, 1, 2, 100)
+ctx.erp.RecalcCompleto(doc)
+ctx.erp.Save(doc)
+ctx.erp.RefreshGrid()</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-NuevoDocumento">ctx.erp.NuevoDocumento</a> · Ver también: <a href="#cs-erp-AgregarArticulo">erp.AgregarArticulo</a>, <a href="#cs-erp-RecalcCompleto">erp.RecalcCompleto</a>, <a href="#cs-erp-Save">erp.Save</a>, <a href="#cs-erp-RefreshGrid">erp.RefreshGrid</a></p>
+</article>
+<article class="ficha" id="cs-erp-AgregarArticulo" data-lang="cs" data-txt="erp.agregararticulo agrega una partida (lee datos de orgproduct). tras agregar, llamar recalccompleto. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.AgregarArticulo</h3>
+<pre class="firma"><code>ctx.erp.AgregarArticulo(documentId, productId, cantidad?, precioUnitario?, costo?, taxTypeIdOverride?, descuentoPerc?, deliverDocumentItemId?, lote?, serialNumber?, comments?, sourceDocumentItemId?) : int</code></pre>
+<p class="resumen">Agrega una partida (lee datos de orgProduct). Tras agregar, llamar RecalcCompleto.</p>
+<p>Agrega una partida (producto) a un documento recién creado; toma los datos del producto de orgProduct.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento.</td></tr><tr><td><code>productId</code></td><td>int</td><td>El producto.</td></tr><tr><td><code>cantidad</code></td><td>double</td><td>Cantidad (1).</td></tr><tr><td><code>precioUnitario</code></td><td>double</td><td>Precio (-1 = sin precio).</td></tr><tr><td><code>costo</code></td><td>double</td><td>Costo de entrada (-1 = no poner).</td></tr><tr><td><code>taxTypeIdOverride</code></td><td>int</td><td>Sustituye el impuesto del producto (-1 = el del producto).</td></tr><tr><td><code>descuentoPerc</code></td><td>double</td><td>Descuento como fracción (0.05 = 5 %).</td></tr><tr><td><code>lote / serialNumber</code></td><td>string</td><td>Solo si el producto usa lote o serie.</td></tr><tr><td><code>comments</code></td><td>string</td><td>Observaciones de la partida.</td></tr><tr><td><code>sourceDocumentItemId</code></td><td>int</td><td>Partida de origen.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> int: DocumentItemID de la partida.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Al terminar de agregar partidas llama a RecalcCompleto: sin eso la partida queda con total 0 y sin impuesto.</li><li>Se crea en una transacción atómica.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AgregarArticulo(id, 1, 3, 100);
+ctx.erp.RecalcCompleto(id);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-AgregarArticulo">ctx.erp.AgregarArticulo</a> · Ver también: <a href="#cs-erp-NuevoDocumento">erp.NuevoDocumento</a>, <a href="#cs-erp-RecalcCompleto">erp.RecalcCompleto</a></p>
+</article>
+<article class="ficha" id="cs-erp-AbrirDocumento" data-lang="cs" data-txt="erp.abrirdocumento abre un documento ya guardado en su ventana real, como si el usuario lo abriera de la lista. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.AbrirDocumento <span class="desde">desde 2.86.0</span></h3>
+<pre class="firma"><code>ctx.erp.AbrirDocumento(documentId, moduleId) : void</code></pre>
+<p class="resumen">Abre un documento YA guardado en su ventana real, como si el usuario lo abriera de la lista.</p>
+<p>Abre un documento ya guardado en su ventana real, igual que si el usuario lo abriera desde la lista. Es la forma de terminar un botón que crea un documento.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento.</td></tr><tr><td><code>moduleId</code></td><td>int</td><td>Su módulo.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AbrirDocumento(docId, 152);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-AbrirDocumento">ctx.erp.AbrirDocumento</a></p>
+</article>
+<article class="ficha" id="cs-erp-AgregarRenglonExistente" data-lang="cs" data-txt="erp.agregarrenglonexistente agrega una partida a un documento que ya existe (de una ejecución anterior) y recalcula. erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.AgregarRenglonExistente</h3>
+<pre class="firma"><code>ctx.erp.AgregarRenglonExistente(documentId, moduleId, productId, cantidad, precio) : void</code></pre>
+<p class="resumen">Agrega una partida a un documento que ya existe (de una ejecución anterior) y recalcula.</p>
+<p>Agrega una partida a un documento que YA existía (guardado en otra ejecución) y recalcula al final.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento.</td></tr><tr><td><code>moduleId</code></td><td>int</td><td>Su módulo.</td></tr><tr><td><code>productId</code></td><td>int</td><td>El producto.</td></tr><tr><td><code>cantidad</code></td><td>double</td><td>Cantidad.</td></tr><tr><td><code>precio</code></td><td>double</td><td>Precio.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AgregarRenglonExistente(docId, 152, 1, 2, 100);</code></pre>
+</article>
+<article class="ficha" id="cs-erp-AgregarSerie" data-lang="cs" data-txt="erp.agregarserie registra un número de serie en una partida (quantity -1 = salida, 1 = entrada). erp · documento">
+<h3><span class="lg lg-cs">C#</span> erp.AgregarSerie</h3>
+<pre class="firma"><code>ctx.erp.AgregarSerie(documentId, documentItemId, productId, serialNumber, depotId, quantity?) : void</code></pre>
+<p class="resumen">Registra un número de serie en una partida (quantity -1 = salida, 1 = entrada).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AgregarSerie(docId, itemId, prodId, "SN-001", 1, 1);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---UI"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · UI</h3><article class="ficha" id="cs-erp-RefreshGrid" data-lang="cs" data-txt="erp.refreshgrid refresca el grid del módulo. erp · ui">
+<h3><span class="lg lg-cs">C#</span> erp.RefreshGrid <span class="desde">desde 2.94.0</span></h3>
+<pre class="firma"><code>ctx.erp.RefreshGrid() : void</code></pre>
+<p class="resumen">Refresca el grid del módulo.</p>
+<p>Refresca la lista de Comercial para que se vean los cambios, y regresa a la misma fila que tenía el usuario.</p>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Llámalo UNA sola vez, al final del script, después del último cambio (no en cada documento).</li><li>Desde la 2.94.0 conserva la fila y no manda la vista al principio; en versiones anteriores no refrescaba.</li><li>En Python es la misma llamada: ctx.erp.RefreshGrid().</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RefreshGrid();</code></pre>
+<p class="ej">Crear varios y refrescar una vez <span class="lg lg-py">Python</span></p><pre><code>from broslmv import ctx
+
+creados = []
+for proveedor in [162, 170, 205]:
+    doc_id = ctx.erp.NuevoDocumento(152, 1, proveedor)
+    ctx.erp.AgregarArticulo(doc_id, 1, 1, 100)
+    ctx.erp.RecalcCompleto(doc_id)
+    ctx.erp.Save(doc_id)
+    creados.append(doc_id)
+
+ctx.erp.RefreshGrid()   # UNA vez, ya con todo creado
+result = f"Se crearon {len(creados)} documento(s): {creados}"</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-RefreshGrid">ctx.erp.RefreshGrid</a> · Ver también: <a href="#cs-erp-RefreshRibbon">erp.RefreshRibbon</a></p>
+</article>
+<article class="ficha" id="cs-erp-RefreshRibbon" data-lang="cs" data-txt="erp.refreshribbon refresca el ribbon. erp · ui">
+<h3><span class="lg lg-cs">C#</span> erp.RefreshRibbon</h3>
+<pre class="firma"><code>ctx.erp.RefreshRibbon() : void</code></pre>
+<p class="resumen">Refresca el ribbon.</p>
+<p>Vuelve a leer los botones del ribbon de Comercial.</p>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Si un botón nuevo no aparece, cierra y vuelve a abrir Comercial.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RefreshRibbon();</code></pre>
+</article>
+<article class="ficha" id="cs-erp-GotoModuleID" data-lang="cs" data-txt="erp.gotomoduleid cambia al módulo indicado. erp · ui">
+<h3><span class="lg lg-cs">C#</span> erp.GotoModuleID</h3>
+<pre class="firma"><code>ctx.erp.GotoModuleID(moduleId) : void</code></pre>
+<p class="resumen">Cambia al módulo indicado.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GotoModuleID(183);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-OpenModule" data-lang="cs" data-txt="erp.openmodule abre un módulo. erp · ui">
+<h3><span class="lg lg-cs">C#</span> erp.OpenModule</h3>
+<pre class="firma"><code>ctx.erp.OpenModule(moduleId) : void</code></pre>
+<p class="resumen">Abre un módulo.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.OpenModule(183);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-OpenBrowser" data-lang="cs" data-txt="erp.openbrowser abre una url en el navegador. erp · ui">
+<h3><span class="lg lg-cs">C#</span> erp.OpenBrowser</h3>
+<pre class="firma"><code>ctx.erp.OpenBrowser(url) : void</code></pre>
+<p class="resumen">Abre una URL en el navegador.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.OpenBrowser("https://contpaqi.com");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-ShowMessage" data-lang="cs" data-txt="erp.showmessage mensaje nativo de contpaqi. erp · ui">
+<h3><span class="lg lg-cs">C#</span> erp.ShowMessage</h3>
+<pre class="firma"><code>ctx.erp.ShowMessage(msg) : void</code></pre>
+<p class="resumen">Mensaje nativo de CONTPAQi.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.ShowMessage("Listo");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Folio"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Folio</h3><article class="ficha" id="cs-erp-GetFolioPrefix" data-lang="cs" data-txt="erp.getfolioprefix prefijo (serie) configurado del módulo/almacén. erp · folio">
+<h3><span class="lg lg-cs">C#</span> erp.GetFolioPrefix</h3>
+<pre class="firma"><code>ctx.erp.GetFolioPrefix(moduleId, depotId) : string</code></pre>
+<p class="resumen">Prefijo (serie) configurado del módulo/almacén.</p>
+<p class="ej">Ejemplo</p><pre><code>var serie = ctx.erp.GetFolioPrefix(183, 1);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetNextFolio" data-lang="cs" data-txt="erp.getnextfolio siguiente folio disponible. erp · folio">
+<h3><span class="lg lg-cs">C#</span> erp.GetNextFolio</h3>
+<pre class="firma"><code>ctx.erp.GetNextFolio(moduleId, prefix, depotId) : string</code></pre>
+<p class="resumen">Siguiente folio disponible.</p>
+<p class="ej">Ejemplo</p><pre><code>var folio = ctx.erp.GetNextFolio(183, "OC", 1);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Precios-y-existencias"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Precios y existencias</h3><article class="ficha" id="cs-erp-GetProductStock" data-lang="cs" data-txt="erp.getproductstock existencia del producto en el almacén. erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.GetProductStock</h3>
+<pre class="firma"><code>ctx.erp.GetProductStock(productId, depotId) : double</code></pre>
+<p class="resumen">Existencia del producto en el almacén.</p>
+<p class="ej">Ejemplo</p><pre><code>double ex = ctx.erp.GetProductStock(1, 1);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetSalePrice" data-lang="cs" data-txt="erp.getsaleprice precio de venta (por cliente si se indica). erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.GetSalePrice</h3>
+<pre class="firma"><code>ctx.erp.GetSalePrice(productId, businessEntityId?) : double</code></pre>
+<p class="resumen">Precio de venta (por cliente si se indica).</p>
+<p class="ej">Ejemplo</p><pre><code>double p = ctx.erp.GetSalePrice(1);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetBusinessEntitySalePrice" data-lang="cs" data-txt="erp.getbusinessentitysaleprice precio de venta específico de un cliente. erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.GetBusinessEntitySalePrice</h3>
+<pre class="firma"><code>ctx.erp.GetBusinessEntitySalePrice(productId, businessEntityId) : double</code></pre>
+<p class="resumen">Precio de venta específico de un cliente.</p>
+<p class="ej">Ejemplo</p><pre><code>double p = ctx.erp.GetBusinessEntitySalePrice(1, 10);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetBuyPrice" data-lang="cs" data-txt="erp.getbuyprice precio de compra. erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.GetBuyPrice</h3>
+<pre class="firma"><code>ctx.erp.GetBuyPrice(productId) : double</code></pre>
+<p class="resumen">Precio de compra.</p>
+<p class="ej">Ejemplo</p><pre><code>double p = ctx.erp.GetBuyPrice(1);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetCostPrice" data-lang="cs" data-txt="erp.getcostprice costo del producto. erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.GetCostPrice</h3>
+<pre class="firma"><code>ctx.erp.GetCostPrice(productId) : double</code></pre>
+<p class="resumen">Costo del producto.</p>
+<p class="ej">Ejemplo</p><pre><code>double c = ctx.erp.GetCostPrice(1);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetPriceWithTaxes" data-lang="cs" data-txt="erp.getpricewithtaxes precio con impuestos incluidos. erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.GetPriceWithTaxes</h3>
+<pre class="firma"><code>ctx.erp.GetPriceWithTaxes(price, taxTypeId) : double</code></pre>
+<p class="resumen">Precio con impuestos incluidos.</p>
+<p class="ej">Ejemplo</p><pre><code>double t = ctx.erp.GetPriceWithTaxes(100, 1);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetCurrencyRate" data-lang="cs" data-txt="erp.getcurrencyrate tipo de cambio (respecto a mxn). erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.GetCurrencyRate</h3>
+<pre class="firma"><code>ctx.erp.GetCurrencyRate(currencyId) : double</code></pre>
+<p class="resumen">Tipo de cambio (respecto a MXN).</p>
+<p class="ej">Ejemplo</p><pre><code>double tc = ctx.erp.GetCurrencyRate(2);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetCurrencyRateBanxico" data-lang="cs" data-txt="erp.getcurrencyratebanxico tipo de cambio de banxico. erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.GetCurrencyRateBanxico</h3>
+<pre class="firma"><code>ctx.erp.GetCurrencyRateBanxico(currencyId) : double</code></pre>
+<p class="resumen">Tipo de cambio de Banxico.</p>
+<p class="ej">Ejemplo</p><pre><code>double tc = ctx.erp.GetCurrencyRateBanxico(2);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetCoefConversion" data-lang="cs" data-txt="erp.getcoefconversion coeficiente de conversión entre unidades. erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.GetCoefConversion</h3>
+<pre class="firma"><code>ctx.erp.GetCoefConversion(productId, fromUnit, toUnit) : double</code></pre>
+<p class="resumen">Coeficiente de conversión entre unidades.</p>
+<p class="ej">Ejemplo</p><pre><code>double k = ctx.erp.GetCoefConversion(1, "PZA", "CAJA");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-ProductIsKit" data-lang="cs" data-txt="erp.productiskit true si el producto es un kit. erp · precios y existencias">
+<h3><span class="lg lg-cs">C#</span> erp.ProductIsKit</h3>
+<pre class="firma"><code>ctx.erp.ProductIsKit(productId) : bool</code></pre>
+<p class="resumen">True si el producto es un kit.</p>
+<p class="ej">Ejemplo</p><pre><code>if (ctx.erp.ProductIsKit(1)) { /* ... */ }</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Cr-dito"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Crédito</h3><article class="ficha" id="cs-erp-VerifyCreditLimit" data-lang="cs" data-txt="erp.verifycreditlimit true si el importe entra en el límite de crédito. erp · crédito">
+<h3><span class="lg lg-cs">C#</span> erp.VerifyCreditLimit</h3>
+<pre class="firma"><code>ctx.erp.VerifyCreditLimit(businessEntityId, amount) : bool</code></pre>
+<p class="resumen">True si el importe entra en el límite de crédito.</p>
+<p class="ej">Ejemplo</p><pre><code>if (!ctx.erp.VerifyCreditLimit(10, 5000)) ctx.Msg("Excede crédito");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-VerifyCreditLimitOverdue" data-lang="cs" data-txt="erp.verifycreditlimitoverdue true si la entidad tiene documentos vencidos. erp · crédito">
+<h3><span class="lg lg-cs">C#</span> erp.VerifyCreditLimitOverdue</h3>
+<pre class="firma"><code>ctx.erp.VerifyCreditLimitOverdue(businessEntityId) : bool</code></pre>
+<p class="resumen">True si la entidad tiene documentos vencidos.</p>
+<p class="ej">Ejemplo</p><pre><code>if (ctx.erp.VerifyCreditLimitOverdue(10)) ctx.Msg("Tiene vencidos");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Par-metros"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Parámetros</h3><article class="ficha" id="cs-erp-GetModuleParameter" data-lang="cs" data-txt="erp.getmoduleparameter lee un parámetro del módulo. erp · parámetros">
+<h3><span class="lg lg-cs">C#</span> erp.GetModuleParameter</h3>
+<pre class="firma"><code>ctx.erp.GetModuleParameter(moduleId, key) : string</code></pre>
+<p class="resumen">Lee un parámetro del módulo.</p>
+<p>Lee un parámetro de un módulo (engModuleParameter). Así se sabe cómo se comporta el módulo sin escribir su ID a mano.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>moduleId</code></td><td>int</td><td>El módulo.</td></tr><tr><td><code>key</code></td><td>string</td><td>El nombre del parámetro.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> string (o null).</p>
+<p class="ej">Ejemplo</p><pre><code>var v = ctx.erp.GetModuleParameter(183, "MiParam");</code></pre>
+</article>
+<article class="ficha" id="cs-erp-SaveModuleParameter" data-lang="cs" data-txt="erp.savemoduleparameter guarda un parámetro del módulo. erp · parámetros">
+<h3><span class="lg lg-cs">C#</span> erp.SaveModuleParameter</h3>
+<pre class="firma"><code>ctx.erp.SaveModuleParameter(moduleId, key, value) : void</code></pre>
+<p class="resumen">Guarda un parámetro del módulo.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.SaveModuleParameter(183, "MiParam", "1");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetParameter" data-lang="cs" data-txt="erp.getparameter lee un parámetro global. erp · parámetros">
+<h3><span class="lg lg-cs">C#</span> erp.GetParameter</h3>
+<pre class="firma"><code>ctx.erp.GetParameter(key) : string</code></pre>
+<p class="resumen">Lee un parámetro global.</p>
+<p class="ej">Ejemplo</p><pre><code>var v = ctx.erp.GetParameter("MiParam");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Utilidades"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Utilidades</h3><article class="ficha" id="cs-erp-GetTotalLetter" data-lang="cs" data-txt="erp.gettotalletter importe con letra ("mil ... pesos 50/100 m.n."). currencyid 0 = moneda activa. erp · utilidades">
+<h3><span class="lg lg-cs">C#</span> erp.GetTotalLetter</h3>
+<pre class="firma"><code>ctx.erp.GetTotalLetter(amount, currencyId?) : string</code></pre>
+<p class="resumen">Importe con letra ("MIL ... PESOS 50/100 M.N."). currencyId 0 = moneda activa.</p>
+<p class="ej">Ejemplo</p><pre><code>var letra = ctx.erp.GetTotalLetter(1234.50);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetTotalLetterEN" data-lang="cs" data-txt="erp.gettotalletteren importe con letra en inglés (currencyid 0 = moneda activa). erp · utilidades">
+<h3><span class="lg lg-cs">C#</span> erp.GetTotalLetterEN</h3>
+<pre class="firma"><code>ctx.erp.GetTotalLetterEN(amount, currencyId?) : string</code></pre>
+<p class="resumen">Importe con letra en inglés (currencyId 0 = moneda activa).</p>
+<p class="ej">Ejemplo</p><pre><code>var letra = ctx.erp.GetTotalLetterEN(1234.50);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetBarCode" data-lang="cs" data-txt="erp.getbarcode código de barras codificado. erp · utilidades">
+<h3><span class="lg lg-cs">C#</span> erp.GetBarCode</h3>
+<pre class="firma"><code>ctx.erp.GetBarCode(value, barcodeType?) : string</code></pre>
+<p class="resumen">Código de barras codificado.</p>
+<p class="ej">Ejemplo</p><pre><code>var bc = ctx.erp.GetBarCode("12345");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-DecryptString" data-lang="cs" data-txt="erp.decryptstring descifra una cadena de contpaqi. erp · utilidades">
+<h3><span class="lg lg-cs">C#</span> erp.DecryptString</h3>
+<pre class="firma"><code>ctx.erp.DecryptString(encrypted) : string</code></pre>
+<p class="resumen">Descifra una cadena de CONTPAQi.</p>
+<p class="ej">Ejemplo</p><pre><code>var s = ctx.erp.DecryptString(enc);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-EncryptString" data-lang="cs" data-txt="erp.encryptstring cifra una cadena. erp · utilidades">
+<h3><span class="lg lg-cs">C#</span> erp.EncryptString</h3>
+<pre class="firma"><code>ctx.erp.EncryptString(plain) : string</code></pre>
+<p class="resumen">Cifra una cadena.</p>
+<p class="ej">Ejemplo</p><pre><code>var enc = ctx.erp.EncryptString("texto");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-ValidRFC" data-lang="cs" data-txt="erp.validrfc valida un rfc. erp · utilidades">
+<h3><span class="lg lg-cs">C#</span> erp.ValidRFC</h3>
+<pre class="firma"><code>ctx.erp.ValidRFC(rfc) : bool</code></pre>
+<p class="resumen">Valida un RFC.</p>
+<p class="ej">Ejemplo</p><pre><code>if (ctx.erp.ValidRFC("XAXX010101000")) { /* ... */ }</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-FormatCurrency" data-lang="cs" data-txt="erp.formatcurrency formatea un número como moneda. erp · utilidades">
+<h3><span class="lg lg-cs">C#</span> erp.FormatCurrency</h3>
+<pre class="firma"><code>ctx.erp.FormatCurrency(amount) : string</code></pre>
+<p class="resumen">Formatea un número como moneda.</p>
+<p class="ej">Ejemplo</p><pre><code>var s = ctx.erp.FormatCurrency(1234.5);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---DLookup"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · DLookup</h3><article class="ficha" id="cs-erp-DLookup" data-lang="cs" data-txt="erp.dlookup consulta puntual de un campo sin escribir sql. erp · dlookup">
+<h3><span class="lg lg-cs">C#</span> erp.DLookup</h3>
+<pre class="firma"><code>ctx.erp.DLookup(field, table, where?) : object</code></pre>
+<p class="resumen">Consulta puntual de un campo sin escribir SQL.</p>
+<p class="ej">Ejemplo</p><pre><code>var v = ctx.erp.DLookup("Total", "docDocument", "DocumentID=1");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-DLookupStr" data-lang="cs" data-txt="erp.dlookupstr dlookup como string. erp · dlookup">
+<h3><span class="lg lg-cs">C#</span> erp.DLookupStr</h3>
+<pre class="firma"><code>ctx.erp.DLookupStr(field, table, where?) : string</code></pre>
+<p class="resumen">DLookup como string.</p>
+<p class="ej">Ejemplo</p><pre><code>var s = ctx.erp.DLookupStr("Folio", "docDocument", "DocumentID=1");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-DLookupInt" data-lang="cs" data-txt="erp.dlookupint dlookup como int. erp · dlookup">
+<h3><span class="lg lg-cs">C#</span> erp.DLookupInt</h3>
+<pre class="firma"><code>ctx.erp.DLookupInt(field, table, where?) : int</code></pre>
+<p class="resumen">DLookup como int.</p>
+<p class="ej">Ejemplo</p><pre><code>var n = ctx.erp.DLookupInt("StatusID", "docDocument", "DocumentID=1");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Bit-cora"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Bitácora</h3><article class="ficha" id="cs-erp-WriteToLog" data-lang="cs" data-txt="erp.writetolog escribe al log de contpaqi. erp · bitácora">
+<h3><span class="lg lg-cs">C#</span> erp.WriteToLog</h3>
+<pre class="firma"><code>ctx.erp.WriteToLog(message) : void</code></pre>
+<p class="resumen">Escribe al log de CONTPAQi.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.WriteToLog("Proceso OK");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-WriteToTableLog" data-lang="cs" data-txt="erp.writetotablelog escribe a la bitácora en tabla. erp · bitácora">
+<h3><span class="lg lg-cs">C#</span> erp.WriteToTableLog</h3>
+<pre class="firma"><code>ctx.erp.WriteToTableLog(message, detail?) : void</code></pre>
+<p class="resumen">Escribe a la bitácora en tabla.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.WriteToTableLog("Acción", "detalle");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Impresi-n-y-export"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Impresión y export</h3><article class="ficha" id="cs-erp-PrintDoc" data-lang="cs" data-txt="erp.printdoc imprime el documento. erp · impresión y export">
+<h3><span class="lg lg-cs">C#</span> erp.PrintDoc</h3>
+<pre class="firma"><code>ctx.erp.PrintDoc(documentId) : void</code></pre>
+<p class="resumen">Imprime el documento.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.PrintDoc(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-PrintModule" data-lang="cs" data-txt="erp.printmodule imprime la vista del módulo. erp · impresión y export">
+<h3><span class="lg lg-cs">C#</span> erp.PrintModule</h3>
+<pre class="firma"><code>ctx.erp.PrintModule() : void</code></pre>
+<p class="resumen">Imprime la vista del módulo.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.PrintModule();</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-UpdatePrintedOn" data-lang="cs" data-txt="erp.updateprintedon marca el documento como impreso. erp · impresión y export">
+<h3><span class="lg lg-cs">C#</span> erp.UpdatePrintedOn</h3>
+<pre class="firma"><code>ctx.erp.UpdatePrintedOn(documentId) : void</code></pre>
+<p class="resumen">Marca el documento como impreso.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.UpdatePrintedOn(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-CreatePDF" data-lang="cs" data-txt="erp.createpdf genera el pdf del documento. erp · impresión y export">
+<h3><span class="lg lg-cs">C#</span> erp.CreatePDF</h3>
+<pre class="firma"><code>ctx.erp.CreatePDF(documentId, outputPath) : string</code></pre>
+<p class="resumen">Genera el PDF del documento.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.CreatePDF(id, @"C:\temp\doc.pdf");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-ExportQueryToExcel" data-lang="cs" data-txt="erp.exportquerytoexcel exporta el resultado de un sql a excel. erp · impresión y export">
+<h3><span class="lg lg-cs">C#</span> erp.ExportQueryToExcel</h3>
+<pre class="firma"><code>ctx.erp.ExportQueryToExcel(sql, outputPath?) : void</code></pre>
+<p class="resumen">Exporta el resultado de un SQL a Excel.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.ExportQueryToExcel("SELECT Folio, Total FROM docDocument");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-ExportJanusToExcel" data-lang="cs" data-txt="erp.exportjanustoexcel exporta la vista activa del módulo a excel. erp · impresión y export">
+<h3><span class="lg lg-cs">C#</span> erp.ExportJanusToExcel</h3>
+<pre class="firma"><code>ctx.erp.ExportJanusToExcel(outputPath?) : void</code></pre>
+<p class="resumen">Exporta la vista activa del módulo a Excel.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.ExportJanusToExcel();</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Correo"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Correo</h3><article class="ficha" id="cs-erp-SendMail" data-lang="cs" data-txt="erp.sendmail envía correo con la config de contpaqi. erp · correo">
+<h3><span class="lg lg-cs">C#</span> erp.SendMail</h3>
+<pre class="firma"><code>ctx.erp.SendMail(to, subject, body, attachmentPath?) : void</code></pre>
+<p class="resumen">Envía correo con la config de CONTPAQi.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.SendMail("a@b.com", "Asunto", "Cuerpo");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetEmailTemplateID" data-lang="cs" data-txt="erp.getemailtemplateid id de una plantilla de correo. erp · correo">
+<h3><span class="lg lg-cs">C#</span> erp.GetEmailTemplateID</h3>
+<pre class="firma"><code>ctx.erp.GetEmailTemplateID(templateKey) : string</code></pre>
+<p class="resumen">ID de una plantilla de correo.</p>
+<p class="ej">Ejemplo</p><pre><code>var id = ctx.erp.GetEmailTemplateID("Factura");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Web---sistema"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Web / sistema</h3><article class="ficha" id="cs-erp-GetWebContent" data-lang="cs" data-txt="erp.getwebcontent descarga el contenido de una url. erp · web / sistema">
+<h3><span class="lg lg-cs">C#</span> erp.GetWebContent</h3>
+<pre class="firma"><code>ctx.erp.GetWebContent(url) : string</code></pre>
+<p class="resumen">Descarga el contenido de una URL.</p>
+<p class="ej">Ejemplo</p><pre><code>var html = ctx.erp.GetWebContent("https://contpaqi.com");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetHTMLFromURL" data-lang="cs" data-txt="erp.gethtmlfromurl descarga el html de una url (variante). erp · web / sistema">
+<h3><span class="lg lg-cs">C#</span> erp.GetHTMLFromURL</h3>
+<pre class="firma"><code>ctx.erp.GetHTMLFromURL(url) : string</code></pre>
+<p class="resumen">Descarga el HTML de una URL (variante).</p>
+<p class="ej">Ejemplo</p><pre><code>var html = ctx.erp.GetHTMLFromURL("https://contpaqi.com");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-IsConnectedToInternet" data-lang="cs" data-txt="erp.isconnectedtointernet true si hay conexión a internet. erp · web / sistema">
+<h3><span class="lg lg-cs">C#</span> erp.IsConnectedToInternet</h3>
+<pre class="firma"><code>ctx.erp.IsConnectedToInternet() : bool</code></pre>
+<p class="resumen">True si hay conexión a internet.</p>
+<p class="ej">Ejemplo</p><pre><code>if (ctx.erp.IsConnectedToInternet()) { /* ... */ }</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-RunShellExecute" data-lang="cs" data-txt="erp.runshellexecute ejecuta un programa (shellexecute). erp · web / sistema">
+<h3><span class="lg lg-cs">C#</span> erp.RunShellExecute</h3>
+<pre class="firma"><code>ctx.erp.RunShellExecute(path, args?) : void</code></pre>
+<p class="resumen">Ejecuta un programa (ShellExecute).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RunShellExecute(@"C:\app.exe");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---CFDI"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · CFDI</h3><article class="ficha" id="cs-erp-AlreadyDocsSigned" data-lang="cs" data-txt="erp.alreadydocssigned true si el documento está timbrado y válido. erp · cfdi">
+<h3><span class="lg lg-cs">C#</span> erp.AlreadyDocsSigned</h3>
+<pre class="firma"><code>ctx.erp.AlreadyDocsSigned(documentId) : bool</code></pre>
+<p class="resumen">True si el documento está timbrado y válido.</p>
+<p class="ej">Ejemplo</p><pre><code>if (ctx.erp.AlreadyDocsSigned(id)) { /* ... */ }</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetStatusPaidID" data-lang="cs" data-txt="erp.getstatuspaidid estado de pago (0=sin, 1=parcial, 2=pagado). erp · cfdi">
+<h3><span class="lg lg-cs">C#</span> erp.GetStatusPaidID</h3>
+<pre class="firma"><code>ctx.erp.GetStatusPaidID(documentId) : int</code></pre>
+<p class="resumen">Estado de pago (0=sin, 1=parcial, 2=pagado).</p>
+<p class="ej">Ejemplo</p><pre><code>var st = ctx.erp.GetStatusPaidID(id);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-RelacionarCFDI" data-lang="cs" data-txt="erp.relacionarcfdi relaciona el cfdi de un documento con otro (catálogo sat c_tiporelacion: "01", "03", "07"…). erp · cfdi">
+<h3><span class="lg lg-cs">C#</span> erp.RelacionarCFDI</h3>
+<pre class="firma"><code>ctx.erp.RelacionarCFDI(documentId, sourceDocumentId, tipoRelacion) : void</code></pre>
+<p class="resumen">Relaciona el CFDI de un documento con otro (catálogo SAT c_TipoRelacion: "01", "03", "07"…).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RelacionarCFDI(docId, anticipoId, "07");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-Timbrar" data-lang="cs" data-txt="erp.timbrar timbra el documento con el motor nativo de comercial (cfdi3). pruebas=true usa el modo de pruebas del pac. erp · cfdi">
+<h3><span class="lg lg-cs">C#</span> erp.Timbrar</h3>
+<pre class="firma"><code>ctx.erp.Timbrar(documentId, pruebas?) : void</code></pre>
+<p class="resumen">Timbra el documento con el motor nativo de Comercial (CFDI3). pruebas=true usa el modo de pruebas del PAC.</p>
+<p>Timbra un documento con el motor nativo de Comercial (el mismo del módulo de facturación).</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento.</td></tr><tr><td><code>pruebas</code></td><td>bool</td><td>true = modo de pruebas del PAC (sin timbre fiscal real).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada; lanza una excepción con el detalle del PAC/SAT si falla.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Confirma con el usuario antes de timbrar: un timbre real no se deshace (solo se cancela).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.Timbrar(docId, false);</code></pre>
+<p class="ej">Timbrar con confirmación <span class="lg lg-cs">C#</span></p><pre><code>if (ctx.Confirm("¿Timbrar el documento?")) ctx.erp.Timbrar(docId, false);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-Timbrar">ctx.erp.Timbrar</a></p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Avanzado"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Avanzado</h3><article class="ficha" id="cs-erp-Call" data-lang="cs" data-txt="erp.call llama cualquier miembro de xengine por nombre (los 562). tú das los argumentos. erp · avanzado">
+<h3><span class="lg lg-cs">C#</span> erp.Call</h3>
+<pre class="firma"><code>ctx.erp.Call(metodo, args...) : object</code></pre>
+<p class="resumen">Llama CUALQUIER miembro de XEngine por nombre (los 562). Tú das los argumentos.</p>
+<p class="ej">Ejemplo</p><pre><code>var qr = ctx.erp.Call("GetQRCode", "datos");
+ctx.erp.Call("RecalcProductStock", 1);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-Get" data-lang="cs" data-txt="erp.get lee cualquier propiedad de xengine por nombre. erp · avanzado">
+<h3><span class="lg lg-cs">C#</span> erp.Get</h3>
+<pre class="firma"><code>ctx.erp.Get(propiedad) : object</code></pre>
+<p class="resumen">Lee CUALQUIER propiedad de XEngine por nombre.</p>
+<p class="ej">Ejemplo</p><pre><code>var rfc = (string)ctx.erp.Get("COMERCIAL_RFC");</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-CrearHelper" data-lang="cs" data-txt="erp.crearhelper crea un com auxiliar (doc.clsmain, lbs.clsmain) con xengine. erp · avanzado">
+<h3><span class="lg lg-cs">C#</span> erp.CrearHelper</h3>
+<pre class="firma"><code>ctx.erp.CrearHelper(progId) : object</code></pre>
+<p class="resumen">Crea un COM auxiliar (Doc.clsMain, LBS.clsMain) con XEngine.</p>
+<p>Crea un objeto COM auxiliar de Comercial (por ejemplo Doc.clsMain o Accounting.clsMain) con el motor ya asignado. Para llamar funciones nativas que ctx.erp aún no envuelve.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>progId</code></td><td>string</td><td>El ProgID del componente.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> object COM (llámalo con Com.Call / InvokeMember).</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Ejemplo real: la póliza de un documento creado por script se genera con Accounting.clsMain.CrearPolizasDocumento(documentId, false, "").</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>var doc = ctx.erp.CrearHelper("Doc.clsMain");</code></pre>
+<p class="ej">Generar la póliza de un documento <span class="lg lg-cs">C#</span></p><pre><code>var acc = ctx.erp.CrearHelper("Accounting.clsMain");
+var n = acc.GetType().InvokeMember("CrearPolizasDocumento", System.Reflection.BindingFlags.InvokeMethod, null, acc, new object[] { (long)docId, false, "" });</code></pre>
+</article>
+<article class="ficha" id="cs-erp-XE" data-lang="cs" data-txt="erp.xe xenginelib crudo (casos no cubiertos por ctx.erp.*). erp · avanzado">
+<h3><span class="lg lg-cs">C#</span> erp.XE</h3>
+<pre class="firma"><code>ctx.erp.XE : object</code></pre>
+<p class="resumen">XEngineLib crudo (casos no cubiertos por ctx.erp.*).</p>
+<p class="ej">Ejemplo</p><pre><code>var xe = ctx.erp.XE;</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-Set" data-lang="cs" data-txt="erp.set asigna una propiedad del motor xengine (escape a com). erp · avanzado">
+<h3><span class="lg lg-cs">C#</span> erp.Set</h3>
+<pre class="firma"><code>ctx.erp.Set(propiedad, valor) : bool</code></pre>
+<p class="resumen">Asigna una propiedad del motor XEngine (escape a COM).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.Set("MustRefreshGrid", true);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-LastError" data-lang="cs" data-txt="erp.lasterror último error de una llamada com al motor (null si la última fue bien). revísalo tras save, affectstocknew, canceldocument… erp · avanzado">
+<h3><span class="lg lg-cs">C#</span> erp.LastError</h3>
+<pre class="firma"><code>ctx.erp.LastError : string</code></pre>
+<p class="resumen">Último error de una llamada COM al motor (null si la última fue bien). Revísalo tras Save, AffectStockNEW, CancelDocument…</p>
+<p>Último error de una llamada COM al motor de Comercial; null si la última fue bien. Revísalo después de Save, AffectStockNEW, CancelDocument, Delete…</p>
+<p><strong>Devuelve:</strong> string o null.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.Save(docId);
+if (ctx.erp.LastError != null) ctx.Msg(ctx.erp.LastError);</code></pre>
+</article></section><section data-cat="1" id="cat-cs-Utilidades"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Utilidades</h3><article class="ficha" id="cs-HashPassword" data-lang="cs" data-txt="hashpassword hash de contraseña pbkdf2-hmac-sha256 (el mismo de la consola). utilidades">
+<h3><span class="lg lg-cs">C#</span> HashPassword</h3>
+<pre class="firma"><code>ctx.HashPassword(password, out sal, out hash, out iteraciones) : void</code></pre>
+<p class="resumen">Hash de contraseña PBKDF2-HMAC-SHA256 (el mismo de la Consola).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.HashPassword("clave", out var sal, out var hash, out var it);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-VerifyPassword" data-lang="cs" data-txt="verifypassword verifica una contraseña contra su hash. utilidades">
+<h3><span class="lg lg-cs">C#</span> VerifyPassword</h3>
+<pre class="firma"><code>ctx.VerifyPassword(password, sal, hash, iteraciones) : bool</code></pre>
+<p class="resumen">Verifica una contraseña contra su hash.</p>
+<p class="ej">Ejemplo</p><pre><code>bool ok = ctx.VerifyPassword("clave", sal, hash, it);</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><h2 id="ref-py">Referencia de Python <span class="aviso">(44)</span></h2><section data-cat="1" id="cat-py-Python"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Python</h3><article class="ficha" id="py-ctx-user_id" data-lang="py" data-txt="ctx.user_id id del usuario activo de contpaqi. python">
+<h3><span class="lg lg-py">Python</span> ctx.user_id</h3>
+<pre class="firma"><code>ctx.user_id : int</code></pre>
+<p class="resumen">ID del usuario activo de CONTPAQi.</p>
+<p class="ej">Ejemplo</p><pre><code>usr = ctx.user_id</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-module_id" data-lang="py" data-txt="ctx.module_id id del módulo activo. python">
+<h3><span class="lg lg-py">Python</span> ctx.module_id</h3>
+<pre class="firma"><code>ctx.module_id : int</code></pre>
+<p class="resumen">ID del módulo activo.</p>
+<p class="ej">Ejemplo</p><pre><code>mod = ctx.module_id</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-empresa" data-lang="py" data-txt="ctx.empresa base de datos de la empresa activa. python">
+<h3><span class="lg lg-py">Python</span> ctx.empresa</h3>
+<pre class="firma"><code>ctx.empresa : str</code></pre>
+<p class="resumen">Base de datos de la empresa activa.</p>
+<p class="ej">Ejemplo</p><pre><code>bd = ctx.empresa</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-app_key" data-lang="py" data-txt="ctx.app_key appkey del botón en ejecución. python">
+<h3><span class="lg lg-py">Python</span> ctx.app_key</h3>
+<pre class="firma"><code>ctx.app_key : str</code></pre>
+<p class="resumen">AppKey del botón en ejecución.</p>
+<p class="ej">Ejemplo</p><pre><code>clave = ctx.app_key</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-fila" data-lang="py" data-txt="ctx.fila campos de la primera fila seleccionada del grid. python">
+<h3><span class="lg lg-py">Python</span> ctx.fila</h3>
+<pre class="firma"><code>ctx.fila : dict</code></pre>
+<p class="resumen">Campos de la primera fila seleccionada del grid.</p>
+<p class="ej">Ejemplo</p><pre><code>folio = ctx.fila.get("Folio")</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-context" data-lang="py" data-txt="ctx.context todo el contexto vivo como diccionario. python">
+<h3><span class="lg lg-py">Python</span> ctx.context</h3>
+<pre class="firma"><code>ctx.context() : dict</code></pre>
+<p class="resumen">Todo el contexto vivo como diccionario.</p>
+<p class="ej">Ejemplo</p><pre><code>info = ctx.context()</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-get_selected_ids" data-lang="py" data-txt="ctx.get_selected_ids ids de los documentos seleccionados en la vista. python">
+<h3><span class="lg lg-py">Python</span> ctx.get_selected_ids</h3>
+<pre class="firma"><code>ctx.get_selected_ids() : list[int]</code></pre>
+<p class="resumen">IDs de los documentos seleccionados en la vista.</p>
+<p>IDs seleccionados en la lista de Comercial.</p>
+<p><strong>Devuelve:</strong> list[int].</p>
+<p class="ej">Ejemplo</p><pre><code>ids = ctx.get_selected_ids()</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-GetSelectedIds">GetSelectedIds</a></p>
+</article>
+<article class="ficha" id="py-ctx-query" data-lang="py" data-txt="ctx.query ejecuta sql y devuelve una lista de diccionarios. parámetros con @nombre. python">
+<h3><span class="lg lg-py">Python</span> ctx.query</h3>
+<pre class="firma"><code>ctx.query(sql, params=None) : list[dict]</code></pre>
+<p class="resumen">Ejecuta SQL y devuelve una lista de diccionarios. Parámetros con @nombre.</p>
+<p>Ejecuta una consulta y devuelve la lista de filas como diccionarios. Acepta parámetros con @nombre y un diccionario.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>sql</code></td><td>str</td><td>La consulta.</td></tr><tr><td><code>params</code></td><td>dict</td><td>Valores para @nombre (opcional).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> list[dict].</p>
+<p class="ej">Ejemplo</p><pre><code>ids = ctx.get_selected_ids()
+filas = ctx.query("SELECT Folio, Total FROM docDocument WHERE DocumentID = @id", {"id": ids[0]})</code></pre>
+<p class="ej">Con parámetros <span class="lg lg-py">Python</span></p><pre><code>filas = ctx.query("SELECT TOP 5 Folio, Total FROM docDocument WHERE ModuleID = @m", {"m": 152})
+for f in filas:
+    print(f["Folio"], f["Total"])</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-Query">Query</a></p>
+</article>
+<article class="ficha" id="py-ctx-scalar" data-lang="py" data-txt="ctx.scalar ejecuta sql y devuelve el primer valor. python">
+<h3><span class="lg lg-py">Python</span> ctx.scalar</h3>
+<pre class="firma"><code>ctx.scalar(sql, params=None) : Any</code></pre>
+<p class="resumen">Ejecuta SQL y devuelve el primer valor.</p>
+<p>Ejecuta una consulta y devuelve la primera columna de la primera fila.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>sql</code></td><td>str</td><td>La consulta.</td></tr><tr><td><code>params</code></td><td>dict</td><td>Valores para @nombre (opcional).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> El valor (o None).</p>
+<p class="ej">Ejemplo</p><pre><code>total = ctx.scalar("SELECT SUM(Total) FROM docDocument WHERE DeletedOn IS NULL")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-Scalar">Scalar</a></p>
+</article>
+<article class="ficha" id="py-ctx-execute" data-lang="py" data-txt="ctx.execute ejecuta insert/update/delete. devuelve filas afectadas. python">
+<h3><span class="lg lg-py">Python</span> ctx.execute</h3>
+<pre class="firma"><code>ctx.execute(sql, params=None) : int</code></pre>
+<p class="resumen">Ejecuta INSERT/UPDATE/DELETE. Devuelve filas afectadas.</p>
+<p>Ejecuta INSERT/UPDATE/DELETE y devuelve las filas afectadas.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>sql</code></td><td>str</td><td>La sentencia.</td></tr><tr><td><code>params</code></td><td>dict</td><td>Valores para @nombre (opcional).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> int.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Se bloquea en modo solo lectura.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>n = ctx.execute("UPDATE docDocument SET Referencia = @r WHERE DocumentID = @id", {"r": "X", "id": ctx.get_selected_ids()[0]})</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-NonQuery">NonQuery</a></p>
+</article>
+<article class="ficha" id="py-ctx-msg" data-lang="py" data-txt="ctx.msg muestra un mensaje al usuario. python">
+<h3><span class="lg lg-py">Python</span> ctx.msg</h3>
+<pre class="firma"><code>ctx.msg(texto, titulo="BrosLMV")</code></pre>
+<p class="resumen">Muestra un mensaje al usuario.</p>
+<p>Muestra un mensaje al usuario.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>texto</code></td><td>str</td><td>El mensaje.</td></tr><tr><td><code>titulo</code></td><td>str</td><td>Título (opcional).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> None.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.msg("Proceso terminado", "Aviso")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-Msg">Msg</a></p>
+</article>
+<article class="ficha" id="py-ctx-confirm" data-lang="py" data-txt="ctx.confirm pregunta sí/no y bloquea hasta que el usuario responda. python">
+<h3><span class="lg lg-py">Python</span> ctx.confirm</h3>
+<pre class="firma"><code>ctx.confirm(texto, titulo="Confirmar") : bool</code></pre>
+<p class="resumen">Pregunta Sí/No y bloquea hasta que el usuario responda.</p>
+<p class="ej">Ejemplo</p><pre><code>if ctx.confirm("¿Continuar?"):
+    ctx.msg("Confirmado")</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-log" data-lang="py" data-txt="ctx.log escribe a la bitácora/auditoría. python">
+<h3><span class="lg lg-py">Python</span> ctx.log</h3>
+<pre class="firma"><code>ctx.log(texto, nivel="INFO")</code></pre>
+<p class="resumen">Escribe a la bitácora/auditoría.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.log("Actualizados {} docs".format(n))</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-progress" data-lang="py" data-txt="ctx.progress actualiza el progreso de la ejecución. python">
+<h3><span class="lg lg-py">Python</span> ctx.progress</h3>
+<pre class="firma"><code>ctx.progress(texto="", porcentaje=0)</code></pre>
+<p class="resumen">Actualiza el progreso de la ejecución.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.progress("Procesando...", 50)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-form" data-lang="py" data-txt="ctx.form formulario con campos y/o grid editable. ver docs/python.md.py. python">
+<h3><span class="lg lg-py">Python</span> ctx.form</h3>
+<pre class="firma"><code>ctx.form(spec) : dict</code></pre>
+<p class="resumen">Formulario con campos y/o grid editable. Ver docs/PYTHON.md.py.</p>
+<p>Formulario nativo definido con un diccionario (campos, combos, tablas editables). Devuelve lo que el usuario captura.</p>
+<p><strong>Devuelve:</strong> dict con "submitted" y "values".</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Los campos simples llegan en r["values"][nombre]; las tablas editables en r["grid_rows"].</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>r = ctx.form({
+    "title": "Datos",
+    "fields": [{"name": "nota", "label": "Nota", "type": "text"}],
+})
+if r["submitted"]:
+    ctx.msg(r["values"]["nota"])</code></pre>
+</article>
+<article class="ficha" id="py-ctx-show_html" data-lang="py" data-txt="ctx.show_html ventana con html/css/js real (webview2). ver plantilla_ejemplo_dashboard_ventas_python.py. python">
+<h3><span class="lg lg-py">Python</span> ctx.show_html</h3>
+<pre class="firma"><code>ctx.show_html(html, titulo="BrosLMV", ancho=800, alto=600, modal=True)</code></pre>
+<p class="resumen">Ventana con HTML/CSS/JS real (WebView2). Ver PLANTILLA_EJEMPLO_DASHBOARD_VENTAS_PYTHON.py.</p>
+<p>Ventana con HTML/CSS/JS real (WebView2).</p>
+<p><strong>Devuelve:</strong> None.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.show_html("&lt;h1&gt;Hola&lt;/h1&gt;", "Reporte")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-ShowHtml">ShowHtml</a></p>
+</article>
+<article class="ficha" id="py-ctx-select_file" data-lang="py" data-txt="ctx.select_file diálogo nativo para elegir archivo. "" si canceló. python">
+<h3><span class="lg lg-py">Python</span> ctx.select_file</h3>
+<pre class="firma"><code>ctx.select_file(titulo="...", filtro="Excel|*.xlsx", guardar=False) : str</code></pre>
+<p class="resumen">Diálogo nativo para elegir archivo. "" si canceló.</p>
+<p class="ej">Ejemplo</p><pre><code>ruta = ctx.select_file("Elegir Excel", "Excel|*.xlsx")</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-select_folder" data-lang="py" data-txt="ctx.select_folder diálogo nativo para elegir carpeta. "" si canceló. python">
+<h3><span class="lg lg-py">Python</span> ctx.select_folder</h3>
+<pre class="firma"><code>ctx.select_folder(titulo="...") : str</code></pre>
+<p class="resumen">Diálogo nativo para elegir carpeta. "" si canceló.</p>
+<p class="ej">Ejemplo</p><pre><code>carpeta = ctx.select_folder("Elegir destino")</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-read_excel" data-lang="py" data-txt="ctx.read_excel lee un .xlsx como lista de dict (encabezados = 1ª fila). no requiere excel instalado. python">
+<h3><span class="lg lg-py">Python</span> ctx.read_excel</h3>
+<pre class="firma"><code>ctx.read_excel(ruta, hoja=None) : list[dict]</code></pre>
+<p class="resumen">Lee un .xlsx como lista de dict (encabezados = 1ª fila). No requiere Excel instalado.</p>
+<p class="ej">Ejemplo</p><pre><code>filas = ctx.read_excel(ctx.select_file())</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-write_excel" data-lang="py" data-txt="ctx.write_excel escribe una lista de dict a .xlsx. python">
+<h3><span class="lg lg-py">Python</span> ctx.write_excel</h3>
+<pre class="firma"><code>ctx.write_excel(filas, ruta, hoja="Hoja1")</code></pre>
+<p class="resumen">Escribe una lista de dict a .xlsx.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.write_excel([{"Producto": "X", "Cant": 10}], r"C:\reporte.xlsx")</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-result" data-lang="py" data-txt="result variable global que devuelve el script (se muestra al usuario). python">
+<h3><span class="lg lg-py">Python</span> result</h3>
+<pre class="firma"><code>result = &lt;valor&gt;</code></pre>
+<p class="resumen">Variable global que devuelve el script (se muestra al usuario).</p>
+<p class="ej">Ejemplo</p><pre><code>result = f"Empresa={ctx.empresa}, seleccionados={ctx.get_selected_ids()}"</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-UserId" data-lang="py" data-txt="ctx.erp.userid usuario real de contpaqi (propiedad → con paréntesis). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.UserId</h3>
+<pre class="firma"><code>ctx.erp.UserId() : int</code></pre>
+<p class="resumen">Usuario real de CONTPAQi (propiedad → con paréntesis).</p>
+<p class="ej">Ejemplo</p><pre><code>u = ctx.erp.UserId()</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-ComercialRFC" data-lang="py" data-txt="ctx.erp.comercialrfc rfc de la empresa (propiedad → con paréntesis). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.ComercialRFC</h3>
+<pre class="firma"><code>ctx.erp.ComercialRFC() : str</code></pre>
+<p class="resumen">RFC de la empresa (propiedad → con paréntesis).</p>
+<p class="ej">Ejemplo</p><pre><code>rfc = ctx.erp.ComercialRFC()</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetProductStock" data-lang="py" data-txt="ctx.erp.getproductstock existencia del producto (depot 0 = todos). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetProductStock</h3>
+<pre class="firma"><code>ctx.erp.GetProductStock(productID, depotID) : float</code></pre>
+<p class="resumen">Existencia del producto (depot 0 = todos).</p>
+<p class="ej">Ejemplo</p><pre><code>ex = ctx.erp.GetProductStock(125, 0)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetSalePrice" data-lang="py" data-txt="ctx.erp.getsaleprice precio de venta del producto. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetSalePrice</h3>
+<pre class="firma"><code>ctx.erp.GetSalePrice(productID) : float</code></pre>
+<p class="resumen">Precio de venta del producto.</p>
+<p class="ej">Ejemplo</p><pre><code>pv = ctx.erp.GetSalePrice(125)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetCostPrice" data-lang="py" data-txt="ctx.erp.getcostprice costo del producto. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetCostPrice</h3>
+<pre class="firma"><code>ctx.erp.GetCostPrice(productID) : float</code></pre>
+<p class="resumen">Costo del producto.</p>
+<p class="ej">Ejemplo</p><pre><code>c = ctx.erp.GetCostPrice(125)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetPriceWithTaxes" data-lang="py" data-txt="ctx.erp.getpricewithtaxes precio con impuestos incluidos. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetPriceWithTaxes</h3>
+<pre class="firma"><code>ctx.erp.GetPriceWithTaxes(precio, taxTypeID) : float</code></pre>
+<p class="resumen">Precio con impuestos incluidos.</p>
+<p class="ej">Ejemplo</p><pre><code>t = ctx.erp.GetPriceWithTaxes(100, 1)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetTotalLetter" data-lang="py" data-txt="ctx.erp.gettotalletter importe con letra (moneda activa). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetTotalLetter</h3>
+<pre class="firma"><code>ctx.erp.GetTotalLetter(importe) : str</code></pre>
+<p class="resumen">Importe con letra (moneda activa).</p>
+<p class="ej">Ejemplo</p><pre><code>letra = ctx.erp.GetTotalLetter(1234.50)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetNextFolio" data-lang="py" data-txt="ctx.erp.getnextfolio siguiente folio disponible. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetNextFolio</h3>
+<pre class="firma"><code>ctx.erp.GetNextFolio(moduleID, serie, depotID) : str</code></pre>
+<p class="resumen">Siguiente folio disponible.</p>
+<p class="ej">Ejemplo</p><pre><code>f = ctx.erp.GetNextFolio(183, "OC", 1)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-RecalcDocument" data-lang="py" data-txt="ctx.erp.recalcdocument recalcula totales del documento (escritura). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.RecalcDocument</h3>
+<pre class="firma"><code>ctx.erp.RecalcDocument(documentID)</code></pre>
+<p class="resumen">Recalcula totales del documento (escritura).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RecalcDocument(ctx.get_selected_ids()[0])</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-RecalcCompleto" data-lang="py" data-txt="ctx.erp.recalccompleto recalcula totales + costos del documento. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.RecalcCompleto</h3>
+<pre class="firma"><code>ctx.erp.RecalcCompleto(documentID)</code></pre>
+<p class="resumen">Recalcula totales + costos del documento.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RecalcCompleto(doc_id)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-OwnedBusinessEntityId" data-lang="py" data-txt="ctx.erp.ownedbusinessentityid empresa propia (propiedad → con paréntesis). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.OwnedBusinessEntityId</h3>
+<pre class="firma"><code>ctx.erp.OwnedBusinessEntityId() : int</code></pre>
+<p class="resumen">Empresa propia (propiedad → con paréntesis).</p>
+<p class="ej">Ejemplo</p><pre><code>be = ctx.erp.OwnedBusinessEntityId()</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-NuevoDocumento" data-lang="py" data-txt="ctx.erp.nuevodocumento crea el encabezado de un documento con los defaults del módulo y devuelve el documentid. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.NuevoDocumento</h3>
+<pre class="firma"><code>ctx.erp.NuevoDocumento(moduleID, depotID, businessEntityID=0) : int</code></pre>
+<p class="resumen">Crea el encabezado de un documento con los defaults del módulo y devuelve el DocumentID.</p>
+<p>Crea el encabezado de un documento nuevo y devuelve su ID. Mismos parámetros que en C#.</p>
+<p><strong>Devuelve:</strong> int.</p>
+<p class="ej">Ejemplo</p><pre><code>doc_id = ctx.erp.NuevoDocumento(183, 1, 162)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-NuevoDocumento">erp.NuevoDocumento</a></p>
+</article>
+<article class="ficha" id="py-ctx-erp-AgregarArticulo" data-lang="py" data-txt="ctx.erp.agregararticulo agrega una partida (lee orgproduct). tras agregar, llamar recalccompleto. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.AgregarArticulo</h3>
+<pre class="firma"><code>ctx.erp.AgregarArticulo(documentID, productID, cantidad=1, precio=-1) : int</code></pre>
+<p class="resumen">Agrega una partida (lee orgProduct). Tras agregar, llamar RecalcCompleto.</p>
+<p>Agrega una partida a un documento nuevo. Después: RecalcCompleto.</p>
+<p><strong>Devuelve:</strong> int (DocumentItemID).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AgregarArticulo(doc_id, 1, 3, 100)
+ctx.erp.RecalcCompleto(doc_id)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-AgregarArticulo">erp.AgregarArticulo</a></p>
+</article>
+<article class="ficha" id="py-ctx-erp-Timbrar" data-lang="py" data-txt="ctx.erp.timbrar timbra el documento (motor nativo de comercial). operación fiscal real. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.Timbrar</h3>
+<pre class="firma"><code>ctx.erp.Timbrar(documentID, pruebas=False)</code></pre>
+<p class="resumen">Timbra el documento (motor nativo de Comercial). Operación fiscal real.</p>
+<p class="ej">Ejemplo</p><pre><code>if ctx.confirm("¿Timbrar?"):
+    ctx.erp.Timbrar(doc_id, False)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-RelacionarCFDI" data-lang="py" data-txt="ctx.erp.relacionarcfdi liga un cfdi con otro (nc, devolución, anticipo). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.RelacionarCFDI</h3>
+<pre class="firma"><code>ctx.erp.RelacionarCFDI(documentID, sourceDocumentID, tipoRelacion)</code></pre>
+<p class="resumen">Liga un CFDI con otro (NC, devolución, anticipo).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RelacionarCFDI(doc_id, oc_id, "07")</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-Call" data-lang="py" data-txt="ctx.erp.call llama cualquier miembro de xengine por nombre. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.Call</h3>
+<pre class="firma"><code>ctx.erp.Call(metodo, *args)</code></pre>
+<p class="resumen">Llama CUALQUIER miembro de XEngine por nombre.</p>
+<p class="ej">Ejemplo</p><pre><code>qr = ctx.erp.Call("GetQRCode", "datos")</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-Get" data-lang="py" data-txt="ctx.erp.get lee cualquier propiedad de xengine por nombre. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.Get</h3>
+<pre class="firma"><code>ctx.erp.Get(propiedad)</code></pre>
+<p class="resumen">Lee CUALQUIER propiedad de XEngine por nombre.</p>
+<p class="ej">Ejemplo</p><pre><code>rfc = ctx.erp.Get("COMERCIAL_RFC")</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-nuevo" data-lang="py" data-txt="ctx.nuevo crea un registro para insert en cualquier tabla. set() campos, guardar() devuelve el id. python">
+<h3><span class="lg lg-py">Python</span> ctx.nuevo</h3>
+<pre class="firma"><code>ctx.nuevo(tabla) : Record</code></pre>
+<p class="resumen">Crea un registro para INSERT en cualquier tabla. set() campos, guardar() devuelve el ID.</p>
+<p class="ej">Ejemplo</p><pre><code>it = ctx.nuevo("docDocumentItem")
+it["DocumentID"] = doc_id
+it["ProductID"] = 1
+it["Quantity"] = 2
+it.guardar()</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-registro" data-lang="py" data-txt="ctx.registro carga un registro existente por su pk. modificar campos y actualizar() solo envía los cambios. python">
+<h3><span class="lg lg-py">Python</span> ctx.registro</h3>
+<pre class="firma"><code>ctx.registro(tabla, pk) : Record</code></pre>
+<p class="resumen">Carga un registro existente por su PK. Modificar campos y actualizar() solo envía los cambios.</p>
+<p class="ej">Ejemplo</p><pre><code>doc = ctx.registro("docDocument", 11556)
+doc["Comments"] = "Modificado"
+doc.actualizar()</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-py-ctx-erp--Comercial-"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ctx.erp (Comercial)</h3><article class="ficha" id="py-ctx-erp-RefreshGrid" data-lang="py" data-txt="ctx.erp.refreshgrid refresca la lista de comercial y conserva la fila seleccionada. una sola vez, al final. ctx.erp (comercial)">
+<h3><span class="lg lg-py">Python</span> ctx.erp.RefreshGrid <span class="desde">desde 2.94.0</span></h3>
+<pre class="firma"><code>ctx.erp.RefreshGrid() : None</code></pre>
+<p class="resumen">Refresca la lista de Comercial y conserva la fila seleccionada. Una sola vez, al final.</p>
+<p>Refresca la lista de Comercial una sola vez, al final, y conserva la fila.</p>
+<p><strong>Devuelve:</strong> None.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RefreshGrid()</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-RefreshGrid">erp.RefreshGrid</a></p>
+</article>
+<article class="ficha" id="py-ctx-erp-AbrirDocumento" data-lang="py" data-txt="ctx.erp.abrirdocumento abre un documento ya guardado en su ventana. ctx.erp (comercial)">
+<h3><span class="lg lg-py">Python</span> ctx.erp.AbrirDocumento</h3>
+<pre class="firma"><code>ctx.erp.AbrirDocumento(documentID, moduleID) : None</code></pre>
+<p class="resumen">Abre un documento ya guardado en su ventana.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AbrirDocumento(doc_id, 152)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-Save" data-lang="py" data-txt="ctx.erp.save guarda el documento. ctx.erp (comercial)">
+<h3><span class="lg lg-py">Python</span> ctx.erp.Save</h3>
+<pre class="firma"><code>ctx.erp.Save(documentID) : None</code></pre>
+<p class="resumen">Guarda el documento.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.Save(doc_id)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-AffectStockNEW" data-lang="py" data-txt="ctx.erp.affectstocknew afecta inventario (kardex) del documento. ctx.erp (comercial)">
+<h3><span class="lg lg-py">Python</span> ctx.erp.AffectStockNEW</h3>
+<pre class="firma"><code>ctx.erp.AffectStockNEW(documentID) : None</code></pre>
+<p class="resumen">Afecta inventario (kardex) del documento.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AffectStockNEW(doc_id)</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><h2 id="ref-sql">Referencia de SQL <span class="aviso">(11)</span></h2><section data-cat="1" id="cat-sql-Sentencias"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Sentencias</h3><article class="ficha" id="sql-SELECT" data-lang="sql" data-txt="select consulta de datos (devuelve filas). sentencias">
+<h3><span class="lg lg-sql">SQL</span> SELECT</h3>
+<pre class="firma"><code>SELECT ...</code></pre>
+<p class="resumen">Consulta de datos (devuelve filas).</p>
+<p class="ej">Ejemplo</p><pre><code>SELECT DocumentID, Folio, Total FROM docDocument
+WHERE DocumentID IN ({pIDs}) AND DeletedOn IS NULL</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="sql-EXEC" data-lang="sql" data-txt="exec llama un procedimiento almacenado. sentencias">
+<h3><span class="lg lg-sql">SQL</span> EXEC</h3>
+<pre class="firma"><code>EXEC &lt;sp&gt; @p = ...</code></pre>
+<p class="resumen">Llama un procedimiento almacenado.</p>
+<p class="ej">Ejemplo</p><pre><code>EXEC NombreDelSP @DocumentID = {pID}</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="sql-UPDATE" data-lang="sql" data-txt="update actualiza datos (bloqueado en solo lectura). sentencias">
+<h3><span class="lg lg-sql">SQL</span> UPDATE</h3>
+<pre class="firma"><code>UPDATE ...</code></pre>
+<p class="resumen">Actualiza datos (bloqueado en SOLO LECTURA).</p>
+<p class="ej">Ejemplo</p><pre><code>UPDATE docDocument SET Referencia = '{DATOS:Folio}'
+WHERE DocumentID = {pID}</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="sql-INSERT" data-lang="sql" data-txt="insert inserta filas (bloqueado en solo lectura). sentencias">
+<h3><span class="lg lg-sql">SQL</span> INSERT</h3>
+<pre class="firma"><code>INSERT ...</code></pre>
+<p class="resumen">Inserta filas (bloqueado en SOLO LECTURA).</p>
+<p class="ej">Ejemplo</p><pre><code>INSERT INTO miTabla (DocumentID, UserID) VALUES ({pID}, {pUserID})</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="sql-DELETE" data-lang="sql" data-txt="delete borra filas (bloqueado en solo lectura). sentencias">
+<h3><span class="lg lg-sql">SQL</span> DELETE</h3>
+<pre class="firma"><code>DELETE ...</code></pre>
+<p class="resumen">Borra filas (bloqueado en SOLO LECTURA).</p>
+<p class="ej">Ejemplo</p><pre><code>DELETE FROM miTabla WHERE DocumentID = {pID}</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-sql-Tokens"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Tokens</h3><article class="ficha" id="sql--pID-" data-lang="sql" data-txt="{pid} primer id seleccionado en el grid (0 si no hay). tokens">
+<h3><span class="lg lg-sql">SQL</span> {pID}</h3>
+<pre class="firma"><code>{pID}</code></pre>
+<p class="resumen">Primer ID seleccionado en el grid (0 si no hay).</p>
+<p class="ej">Ejemplo</p><pre><code>WHERE DocumentID = {pID}</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="sql--pIDs-" data-lang="sql" data-txt="{pids} todos los ids seleccionados, separados por coma. tokens">
+<h3><span class="lg lg-sql">SQL</span> {pIDs}</h3>
+<pre class="firma"><code>{pIDs}</code></pre>
+<p class="resumen">Todos los IDs seleccionados, separados por coma.</p>
+<p class="ej">Ejemplo</p><pre><code>WHERE DocumentID IN ({pIDs})</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="sql--pUserID-" data-lang="sql" data-txt="{puserid} id del usuario activo. tokens">
+<h3><span class="lg lg-sql">SQL</span> {pUserID}</h3>
+<pre class="firma"><code>{pUserID}</code></pre>
+<p class="resumen">ID del usuario activo.</p>
+<p class="ej">Ejemplo</p><pre><code>SET ModifiedUserID = {pUserID}</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="sql--pModulo-" data-lang="sql" data-txt="{pmodulo} id del módulo activo. tokens">
+<h3><span class="lg lg-sql">SQL</span> {pModulo}</h3>
+<pre class="firma"><code>{pModulo}</code></pre>
+<p class="resumen">ID del módulo activo.</p>
+<p class="ej">Ejemplo</p><pre><code>WHERE ModuleID = {pModulo}</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="sql--pEmpresa-" data-lang="sql" data-txt="{pempresa} nombre de la bd de la empresa activa. tokens">
+<h3><span class="lg lg-sql">SQL</span> {pEmpresa}</h3>
+<pre class="firma"><code>{pEmpresa}</code></pre>
+<p class="resumen">Nombre de la BD de la empresa activa.</p>
+<p class="ej">Ejemplo</p><pre><code>-- empresa activa: {pEmpresa}</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="sql--DATOS-x-" data-lang="sql" data-txt="{datos:x} valor del campo en la fila seleccionada del grid. tokens">
+<h3><span class="lg lg-sql">SQL</span> {DATOS:x}</h3>
+<pre class="firma"><code>{DATOS:Campo}</code></pre>
+<p class="resumen">Valor del campo en la fila seleccionada del grid.</p>
+<p class="ej">Ejemplo</p><pre><code>WHERE Folio = '{DATOS:Folio}'</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><h2 id="internas">Funciones internas</h2><details class="interno"><summary>Uso interno de la Consola (no son para scripts de usuario)</summary><ul><li><code>ctx.BrosAprobar(…)</code></li><li><code>ctx.BrosAsegurarTablas(…)</code></li><li><code>ctx.BrosAuditoriaListar(…)</code></li><li><code>ctx.BrosBorrar(…)</code></li><li><code>ctx.BrosCargar(…)</code></li><li><code>ctx.BrosCategorizar(…)</code></li><li><code>ctx.BrosConsolaPasswordRequerida(…)</code></li><li><code>ctx.BrosGuardar(…)</code></li><li><code>ctx.BrosHistEtiquetar(…)</code></li><li><code>ctx.BrosHistLeer(…)</code></li><li><code>ctx.BrosHistListar(…)</code></li><li><code>ctx.BrosHistPurgar(…)</code></li><li><code>ctx.BrosListar(…)</code></li><li><code>ctx.BrosObtenerParaExportar(…)</code></li><li><code>ctx.BrosScriptsDisponible(…)</code></li><li><code>ctx.BrosSoloLecturaForzada(…)</code></li><li><code>ctx.BrosVerificarConsolaPassword(…)</code></li><li><code>ctx.BrosVerificarIntegridad(…)</code></li><li><code>ScriptContext.CalcularHashSHA256(texto) : string</code></li><li><code>ScriptContext.ResolverTokensCore(plantilla, ids, userId, …) : string</code></li></ul></details>
+</main></div><script>
+const q=document.getElementById('q'),fichas=[...document.querySelectorAll('.ficha')];let lang='todos';
+function filtra(){const t=q.value.trim().toLowerCase();fichas.forEach(f=>{const okL=lang==='todos'||f.dataset.lang===lang;const okT=!t||f.dataset.txt.includes(t);f.classList.toggle('oculta',!(okL&&okT))});
+ document.querySelectorAll('section[data-cat]').forEach(s=>{s.style.display=[...s.querySelectorAll('.ficha')].some(f=>!f.classList.contains('oculta'))?'':'none'})}
+q.oninput=filtra;
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.seg button').forEach(x=>x.classList.toggle('on',x===b));lang=b.dataset.l;filtra()});
+if(location.hash){const e=document.getElementById(decodeURIComponent(location.hash.slice(1)));if(e){e.scrollIntoView();}}
+</script></body></html>
