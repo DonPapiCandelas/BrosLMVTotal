@@ -56,7 +56,27 @@ namespace BrosLMV.Empresas
 
             // --- SCRIPTS primero: es lo critico para que los botones funcionen; no debe
             //     quedar bloqueado por una copia opcional (htmlpdf/formatos) que falle. ---
-            var coreScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Cotizador.ctx", "ConfiguracionFormato.ctx" };
+            // 2.94.0: la UNICA plantilla es CREAR_DOC_DESDE_XML.ctx. Las anteriores (PLANTILLA_*, EJEMPLO_*, PRUEBA_*, REQUISICION, SOLICITUD_COMPRA) se
+            // MUEVEN (no se borran) a scripts\_archivo\plantillas_anteriores_<fecha>\ para no perder cambios propios. Solo la raiz de scripts\
+            // (los scripts de cada empresa viven en scripts\<EMPRESA>\ y no se tocan).
+            try
+            {
+                string raizScripts = Path.Combine(Base, "scripts");
+                var obsoletas = new List<string>();
+                foreach (var patron in new[] { "PLANTILLA_*", "EJEMPLO_*", "PRUEBA_*", "REQUISICION.ctx", "SOLICITUD_COMPRA.ctx" })
+                    obsoletas.AddRange(Directory.GetFiles(raizScripts, patron));
+                if (obsoletas.Count > 0)
+                {
+                    string arch = Path.Combine(raizScripts, "_archivo", "plantillas_anteriores_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+                    Directory.CreateDirectory(arch);
+                    foreach (var f in obsoletas)
+                        try { File.Move(f, Path.Combine(arch, Path.GetFileName(f))); } catch { }
+                    sb.Append("Plantillas anteriores retiradas (" + obsoletas.Count + "). ");
+                }
+            }
+            catch { }
+
+            var coreScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Cotizador.ctx", "ConfiguracionFormato.ctx", "CREAR_DOC_DESDE_XML.ctx" };
             string srcScripts = Path.Combine(tmp, "scripts");
             if (Directory.Exists(srcScripts))
                 foreach (var f in Directory.GetFiles(srcScripts))
@@ -99,6 +119,30 @@ namespace BrosLMV.Empresas
                     }
                     catch { }
                 }
+
+            // 2.95.0: catalogo de iconos BrosLMV (BrosLMV_*.ico) a la carpeta Icons de Comercial (ahi los lee el ribbon) + catalogo y licencia a C:\BrosLMV\iconos.
+            try
+            {
+                string srcIco = Path.Combine(tmp, "iconos");
+                if (Directory.Exists(srcIco))
+                {
+                    string dstIco = Path.Combine(Base, "iconos");
+                    Directory.CreateDirectory(dstIco);
+                    foreach (var n in new[] { "iconos.json", "LICENCIA_Lucide.txt" })
+                        if (File.Exists(Path.Combine(srcIco, n))) File.Copy(Path.Combine(srcIco, n), Path.Combine(dstIco, n), true);
+                    int copiados = 0;
+                    foreach (var root in new[] { @"C:\Program Files (x86)\Compac\ComercialSP", @"C:\Program Files\Compac\ComercialSP" })
+                    {
+                        if (!Directory.Exists(root)) continue;
+                        string icons = Path.Combine(root, "Icons");
+                        Directory.CreateDirectory(icons);
+                        foreach (var f in Directory.GetFiles(srcIco, "BrosLMV_*.ico"))
+                            try { File.Copy(f, Path.Combine(icons, Path.GetFileName(f)), true); copiados++; } catch { }
+                    }
+                    sb.Append("Iconos BrosLMV instalados (" + copiados + "). ");
+                }
+            }
+            catch { }
 
             // Plantilla de conexion de respaldo: solo si no existe (no pisar credenciales).
             try

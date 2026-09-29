@@ -25,6 +25,10 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ### Cambiado
 - `generar_instalador.ps1` genera la guía HTML y el catálogo de íconos antes de compilar; `Instalar.ps1` instala los íconos y el catálogo.
+- **El instalador `.exe` (`instaladores/Empresas/RuntimeInstaller.cs`) hace ahora lo mismo que `Instalar.ps1`:** instala el catálogo de íconos, refresca
+  la plantilla vigente `CREAR_DOC_DESDE_XML.ctx` y **mueve** las plantillas anteriores (PLANTILLA_*, EJEMPLO_*, PRUEBA_*, REQUISICION, SOLICITUD_COMPRA) a
+  `scripts\_archivo\plantillas_anteriores_<fecha>\`. Antes solo lo hacía el script `.ps1`, así que quien actualizaba con el `.exe` no recibía esos cambios de la 2.94.0.
+  `generar_exes.ps1` incluye la carpeta `iconos` en el paquete embebido.
 - Solo se modifican botones `BrosLMV.*`; los nativos de Comercial no se tocan.
 
 ### Pendiente de verificar en Comercial
