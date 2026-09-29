@@ -71,7 +71,7 @@ $docNativo = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentID)
 # que aqui se sustituyen a mano por los MISMOS valores default que antes traia el archivo
 # (proveedorBE=2, almacen=1, productoID=1, cantidad=3), simulando lo que el formulario hubiera
 # capturado.
-$codigoSqlPuro = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_REQUISICION_SQL_PURO.sql") -Raw
+$codigoSqlPuro = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_REQUISICION_SQL_PURO.sql") -Raw
 $codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'

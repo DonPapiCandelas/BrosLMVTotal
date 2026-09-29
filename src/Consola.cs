@@ -268,7 +268,7 @@ namespace BrosLMV
             new MetodoCtx("ctx.confirm", "ctx.confirm(texto, titulo=\"Confirmar\") : bool", "Pregunta Sí/No y bloquea hasta que el usuario responda.", "if ctx.confirm(\"¿Continuar?\"):\r\n    ctx.msg(\"Confirmado\")"),
             new MetodoCtx("ctx.log", "ctx.log(texto, nivel=\"INFO\")", "Escribe a la bitácora/auditoría.", "ctx.log(\"Actualizados {} docs\".format(n))"),
             new MetodoCtx("ctx.progress", "ctx.progress(texto=\"\", porcentaje=0)", "Actualiza el progreso de la ejecución.", "ctx.progress(\"Procesando...\", 50)"),
-            new MetodoCtx("ctx.form", "ctx.form(spec) : dict", "Formulario con campos y/o grid editable. Ver plantilla PLANTILLA_EJEMPLO_CONTEO_GRID_PYTHON.py.", "r = ctx.form({\r\n    \"title\": \"Datos\",\r\n    \"fields\": [{\"name\": \"nota\", \"label\": \"Nota\", \"type\": \"text\"}],\r\n})\r\nif r[\"submitted\"]:\r\n    ctx.msg(r[\"values\"][\"nota\"])"),
+            new MetodoCtx("ctx.form", "ctx.form(spec) : dict", "Formulario con campos y/o grid editable. Ver docs/PYTHON.md.py.", "r = ctx.form({\r\n    \"title\": \"Datos\",\r\n    \"fields\": [{\"name\": \"nota\", \"label\": \"Nota\", \"type\": \"text\"}],\r\n})\r\nif r[\"submitted\"]:\r\n    ctx.msg(r[\"values\"][\"nota\"])"),
             new MetodoCtx("ctx.show_html", "ctx.show_html(html, titulo=\"BrosLMV\", ancho=800, alto=600, modal=True)", "Ventana con HTML/CSS/JS real (WebView2). Ver PLANTILLA_EJEMPLO_DASHBOARD_VENTAS_PYTHON.py.", "ctx.show_html(\"<h1>Hola</h1>\", \"Reporte\")"),
             new MetodoCtx("ctx.select_file", "ctx.select_file(titulo=\"...\", filtro=\"Excel|*.xlsx\", guardar=False) : str", "Diálogo nativo para elegir archivo. \"\" si canceló.", "ruta = ctx.select_file(\"Elegir Excel\", \"Excel|*.xlsx\")"),
             new MetodoCtx("ctx.select_folder", "ctx.select_folder(titulo=\"...\") : str", "Diálogo nativo para elegir carpeta. \"\" si canceló.", "carpeta = ctx.select_folder(\"Elegir destino\")"),
@@ -325,238 +325,45 @@ namespace BrosLMV
             new MetodoCtx("{DATOS:x}", "{DATOS:Campo}", "Valor del campo en la fila seleccionada del grid.", "WHERE Folio = '{DATOS:Folio}'"),
         };
 
-        // ---- Plantillas / ejemplos, organizadas por lenguaje (2026-07-30) ----
-        // Antes era una lista plana ("Ejemplo Premium · X", "Nuevo · Y") sin orden claro y
-        // con documentación mínima (banners decorativos, sin explicar el por qué). Ahora
-        // cada plantilla trae categoría (para agruparse en el árbol, ver CargarArbol) y
-        // vive en su propio archivo con comentarios que ENSEÑAN, no solo documentan.
-        //
-        // Las plantillas viejas (WinForms genéricas, Orden de Compra, Recepción, Factura,
-        // Python Web genérico) se quitaron de este menú a propósito -- van a rehacerse con
-        // el mismo criterio (documentación real + versión Forms/WebView2 según aplique).
-        // SUS ARCHIVOS NO SE BORRARON de instalador\scripts\, solo dejaron de listarse aquí.
+        // ---- Plantillas (v2.94.0) ----
+        // Desde la 2.94.0 hay UNA sola plantilla: «Crear documentos desde XML». Las anteriores (Orden de Compra, Recepción, Factura, Requisición,
+        // extracción de datos, dashboards…) se retiraron por estar desactualizadas (usaban métodos que hoy sabemos que no hacen lo que decían o
+        // dejaban documentos sin póliza ni refresco de grid). Se conservan archivadas en docs\archivo\plantillas_2.93.0\ y se irán rehaciendo.
+        // Cada plantilla trae su documentación completa aparte (instalador\docs\plantillas\<archivo>.html): clic secundario → «Ver documentación».
         private class PlantillaDef
         {
-            public string Categoria, Nombre, Codigo;
-            public PlantillaDef(string cat, string n, string c) { Categoria = cat; Nombre = n; Codigo = c; }
+            public string Categoria, Nombre, Codigo, Documentacion;
+            public PlantillaDef(string cat, string n, string c, string doc = null) { Categoria = cat; Nombre = n; Codigo = c; Documentacion = doc; }
         }
         private static readonly PlantillaDef[] PLANTILLAS_DEF = new[]
         {
-            // -- Extracción de datos: la plantilla más simple posible, mismo resultado en
-            //    los 3 lenguajes, para ver de un vistazo qué cambia entre ellos.
-            new PlantillaDef("SQL", "Extracción de datos",
-                CargarPlantillaArchivo("PLANTILLA_EXTRACCION_DATOS_SQL.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Extracción de datos",
-                CargarPlantillaArchivo("PLANTILLA_EXTRACCION_DATOS_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Extracción de datos",
-                CargarPlantillaArchivo("PLANTILLA_EXTRACCION_DATOS_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            // -- Modificar título: mismo criterio, pero de ESCRITURA (UPDATE/NonQuery/execute).
-            new PlantillaDef("SQL", "Modificar título del documento",
-                CargarPlantillaArchivo("PLANTILLA_MODIFICAR_TITULO_SQL.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Modificar título del documento",
-                CargarPlantillaArchivo("PLANTILLA_MODIFICAR_TITULO_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Modificar título del documento",
-                CargarPlantillaArchivo("PLANTILLA_MODIFICAR_TITULO_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            // -- Adjuntos del Documento (v2.72.0): gestor de archivos adjuntos por documento
-            //    sobre engModuleFile (tabla nativa), combinando lo mejor de 2 implementaciones
-            //    reales de cliente ya analizadas (cliente A/CargaArch: copia a carpeta propia +
-            //    control de propiedad; cliente B/AdjuntarArch: UI de 5 botones más
-            //    simple) -- ver comentario largo al inicio del .ctx para la comparación
-            //    completa y la decisión de diseño. Solo existe en Forms (necesita selector de
-            //    archivos, grid y botones reales; no tiene sentido como SQL puro sin UI).
-            new PlantillaDef("C#", "Adjuntos del Documento — Forms (WinForms nativo)",
-                CargarPlantillaArchivo("PLANTILLA_ADJUNTOS_DOCUMENTO_FORMS_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-
-            // -- Requisición de Compra: las 5 variantes completas (v2.56.0/v2.57.0) --
-            //    mismo resultado final en Comercial, 5 formas distintas de construirlo.
-            //    SQL puro validado campo por campo contra un documento nativo (caso 14 del
-            //    arnés); WebView2 (C#/Python) usan ctx.ShowHtmlFormulario/
-            //    ctx.show_html_formulario (v2.54.0/v2.56.0); Forms Python usa pythonnet
-            //    (WinForms real, no una aproximación).
-            new PlantillaDef("SQL", "Requisición de Compra — SQL puro (INSERT directo)",
-                CargarPlantillaArchivo("PLANTILLA_REQUISICION_SQL_PURO.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Requisición de Compra — Forms (WinForms nativo)",
-                CargarPlantillaArchivo("PLANTILLA_REQUISICION_FORMS_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Requisición de Compra — WebView2 (HTML)",
-                CargarPlantillaArchivo("PLANTILLA_REQUISICION_WEBVIEW2_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Requisición de Compra — Forms (WinForms vía pythonnet)",
-                CargarPlantillaArchivo("PLANTILLA_REQUISICION_FORMS_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Requisición de Compra — WebView2 (HTML)",
-                CargarPlantillaArchivo("PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            // Ventana WinForms real (mismo grid/buscador que la versión ctx.erp) pero que
-            // crea el documento con INSERT directo, sin ctx.erp -- para quien quiere ver una
-            // ventana normal sin editar @parámetros a mano, sin dejar la ruta SQL puro.
-            new PlantillaDef("C#", "Requisición de Compra — Forms + SQL puro (sin ctx.erp)",
-                CargarPlantillaArchivo("PLANTILLA_REQUISICION_FORMS_SQL_PURO_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-
-            // -- Orden de Compra: las mismas 5 variantes (v2.58.0). A diferencia de
-            //    Requisición, SÍ captura precio/costo por partida, fecha de entrega, IVA, y
-            //    SÍ llama AffectStockNEW (compromete inventario sin moverlo). Las versiones
-            //    Forms corrigen un bug real que traía la plantilla comunitaria anterior
-            //    (decía "no afecta inventario" y por eso no llamaba AffectStockNEW).
-            new PlantillaDef("SQL", "Orden de Compra — SQL puro (INSERT directo)",
-                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Orden de Compra — Forms (WinForms nativo)",
-                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_FORMS_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Orden de Compra — WebView2 (HTML)",
-                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_WEBVIEW2_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Orden de Compra — Forms (WinForms vía pythonnet)",
-                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_FORMS_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Orden de Compra — WebView2 (HTML)",
-                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_WEBVIEW2_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            // Ventana WinForms real (mismo grid/impuesto/descuento que la versión ctx.erp)
-            // pero que crea el documento con INSERT directo, sin ctx.erp.
-            new PlantillaDef("C#", "Orden de Compra — Forms + SQL puro (sin ctx.erp)",
-                CargarPlantillaArchivo("PLANTILLA_ORDEN_COMPRA_FORMS_SQL_PURO_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-
-            // -- Recepción de Compra: documento DERIVADO (N Órdenes de Compra -> 1 Recepción),
-            //    consolida partidas por producto, captura lote/número de serie, SÍ afecta
-            //    inventario (a diferencia de OC/Requisición). Validado campo por campo contra
-            //    un documento nativo real creado en este sandbox (rutas lote y serie).
-            new PlantillaDef("SQL", "Recepción de Compra — SQL puro (INSERT directo)",
-                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Recepción de Compra — Forms (WinForms nativo)",
-                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_FORMS_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Recepción de Compra — WebView2 (HTML)",
-                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_WEBVIEW2_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Recepción de Compra — Forms + SQL puro (sin ctx.erp)",
-                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_FORMS_SQL_PURO_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Recepción de Compra — Forms (WinForms vía pythonnet)",
-                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_FORMS_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Recepción de Compra — WebView2 (HTML)",
-                CargarPlantillaArchivo("PLANTILLA_RECEPCION_COMPRA_WEBVIEW2_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            // -- Factura de Compra: documento DERIVADO desde 1+ OC ya seleccionadas en el
-            //    grid nativo. NO afecta inventario, SÍ genera póliza contable (si tu
-            //    instalación tiene la contabilidad configurada). Corrige un bug real de la
-            //    plantilla comunitaria anterior (SourceDocumentItemID mal puesto).
-            new PlantillaDef("SQL", "Factura de Compra — SQL puro (INSERT directo)",
-                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Factura de Compra — Forms (WinForms nativo)",
-                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_FORMS_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Factura de Compra — WebView2 (HTML)",
-                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_WEBVIEW2_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Factura de Compra — Forms + SQL puro (sin ctx.erp)",
-                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_FORMS_SQL_PURO_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Factura de Compra — Forms (WinForms vía pythonnet)",
-                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_FORMS_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Factura de Compra — WebView2 (HTML)",
-                CargarPlantillaArchivo("PLANTILLA_FACTURA_COMPRA_WEBVIEW2_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            // -- Cancelar Documento: deshace lo que las plantillas SQL_PURO de arriba crean.
-            //    Cancela el documento indicado Y toda su cadena derivada (SourceDocumentID,
-            //    recursivo -- no solo un nivel) y revierte el kardex de cada uno marcando
-            //    Cancelled=1 (v2.67.0, hueco encontrado analizando un SP real de producción
-            //    -- ver material interno).
-            new PlantillaDef("SQL", "Cancelar Documento (y su cadena derivada) — SQL puro",
-                CargarPlantillaArchivo("PLANTILLA_CANCELAR_DOCUMENTO_SQL_PURO.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-
-            // -- El resto del catálogo anterior que SÍ seguía siendo útil y no tenía la
-            //    queja de documentación confusa -- se mantiene, solo se le puso categoría.
-            new PlantillaDef("Python", "Timbrar CFDI",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_TIMBRAR_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Grid editable — conteo físico",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_CONTEO_GRID_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Dashboard HTML de ventas",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_DASHBOARD_VENTAS_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Importar Excel → Requisición",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_IMPORTAR_EXCEL_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            new PlantillaDef("Python", "Vincular XML CFDI al documento (Gastos y compras)",
-                CargarPlantillaArchivo("PLANTILLA_VINCULAR_XML_GASTOS_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-            new PlantillaDef("C#", "Importador masivo de documentos desde XML",
-                CargarPlantillaArchivo("IMPORTADOR_XML_MASIVO_CSHARP.ctx",
-                    "// No se encontró la plantilla.\r\n")),
-            new PlantillaDef("SQL", "Dashboard",
-                CargarPlantillaArchivo("PLANTILLA_EJEMPLO_SQL.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-
-            // -- Diseñador visual de formularios: existía en instalador\scripts\ desde hace
-            //    tiempo pero nunca se conectó al menú. Genera código ctx.form({...}) listo
-            //    para pegar -- confirmado que el spec que produce (title/fields/name/label/
-            //    type/required/read_only/default/options/ok_label/cancel_label/width/height)
-            //    coincide exactamente con lo que espera RelayingCallbackSink.ToUiForm() en
-            //    el host, y que los 7 tipos de campo (text/number/decimal/date/bool/combo/
-            //    memo) mapean a un FieldType válido -- no genera código que truene.
-            //    v2.78.0: agrega un 2do modo ("Datos {DATOS}") en el MISMO archivo -- navega
-            //    el esquema real de la base (tablas/columnas en vivo) para armar tokens
-            //    {DATOS:Tabla.Columna} sin escribir nombres de memoria. Ver CHANGELOG.md.
-            new PlantillaDef("Python", "Diseñador visual de formularios (ctx.form + {DATOS:Tabla.Columna})",
-                CargarPlantillaArchivo("PLANTILLA_DISENADOR_FORMULARIOS_PYTHON.py",
-                    "# lang: python\r\n# No se encontró la plantilla.\r\n")),
-
-            // -- Autorización por monto: Comercial Pro solo ofrece autorizado sí/no (2
-            //    niveles nativos, sin límite de importe configurable por firmante).
-            //    Agrega esa capa con una tabla propia dbo.BrosAutorizaciones (UserID, Nivel,
-            //    ImporteMax) -- basado en 2 SP de producción real de un cliente (ZLCAUTODG/
-            //    ZLCAUTOOP), corrigiendo su defecto: el original hacía TOGGLE (la misma
-            //    llamada autorizaba/desautorizaba); esta plantilla separa AUTORIZAR de
-            //    REVOCAR con el parámetro @accion, nunca alterna sola.
-            new PlantillaDef("SQL", "Autorización por monto — SQL puro (INSERT directo)",
-                CargarPlantillaArchivo("PLANTILLA_AUTORIZACION_POR_MONTO_SQL_PURO.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-
-            // -- Generar Series Auto: utilidad complementaria a Recepción de Compra. Cuando
-            //    el cliente no trae sus propios números de serie para capturar en
-            //    @seriesCSV, esta plantilla se corre DESPUÉS de crear el documento y
-            //    autonumera consecutivos por producto (v2.69.0, basado en un SP de
-            //    producción real LCCREASeries -- ver
-            //    material interno). Corrige la
-            //    condición de carrera del original (cursor fila-por-fila) con un cálculo
-            //    100% set-based (ROW_NUMBER()) más un sp_getapplock exclusivo, y ancla el
-            //    máximo existente al formato exacto en vez del match laxo original.
-            //    Idempotente: correrla dos veces sobre el mismo documento no duplica series.
-            new PlantillaDef("SQL", "Generar Series Auto (post-documento) — SQL puro",
-                CargarPlantillaArchivo("PLANTILLA_GENERAR_SERIES_AUTO_SQL.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
-
-            // -- Requisición → N Órdenes de Compra por proveedor: dada una Requisición ya
-            //    validada (ValidatedOn IS NOT NULL -- primera plantilla SQL_PURO que usa ese
-            //    flag nativo como precondición), genera 1 OC por cada proveedor distinto de
-            //    sus renglones, sin duplicar (v2.71.0, basado en un SP de producción real
-            //    ZLCGENERA_OC -- ver material interno).
-            new PlantillaDef("SQL", "Requisición → N Órdenes de Compra por proveedor — SQL puro",
-                CargarPlantillaArchivo("PLANTILLA_REQUISICION_A_OC_MULTIPROVEEDOR_SQL_PURO.sql",
-                    "-- lang: sql\r\n-- No se encontró la plantilla.\r\n")),
+            new PlantillaDef("C#", "Crear documentos desde XML",
+                CargarPlantillaArchivo("CREAR_DOC_DESDE_XML.ctx", "// No se encontró la plantilla.\r\n"),
+                "CREAR_DOC_DESDE_XML.html"),
         };
+
+        // Busca la documentación HTML de una plantilla (instalada en C:\BrosLMV\docs\plantillas o junto a la DLL) y la muestra en una ventana.
+        private void MostrarDocumentacionPlantilla(string nombre, string archivoHtml)
+        {
+            string html = null;
+            foreach (var ruta in new[]
+            {
+                Path.Combine(Rutas.Base, "docs", "plantillas", archivoHtml),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "docs", "plantillas", archivoHtml),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "docs", "plantillas", archivoHtml),
+            })
+            {
+                try
+                {
+                    string full = Path.GetFullPath(ruta);
+                    if (File.Exists(full)) { html = File.ReadAllText(full, Encoding.UTF8); break; }
+                }
+                catch { }
+            }
+            if (html == null) { MessageBox.Show("No se encontró la documentación de esta plantilla (" + archivoHtml + ").", "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            try { _ctx.ShowHtml(html, "Documentación — " + nombre, 1100, 780, false); }
+            catch (Exception ex) { MessageBox.Show("No se pudo abrir la documentación: " + ex.Message, "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        }
 
         private static string CargarPlantillaArchivo(string nombreArchivo, string fallback)
         {
@@ -1005,7 +812,12 @@ namespace BrosLMV
                 else if (e.Node.Tag is KeyValuePair<string, string> p) InsertarEnEditor(p.Value);
                 else { _tree.ExpandAll(); e.Node.EnsureVisible(); }   // doble clic en carpeta: despliega todo
             };
-            _tree.NodeMouseClick += (s, e) => { if (e.Button == MouseButtons.Right && e.Node.Tag is string tg && tg.StartsWith("sql:")) { _tree.SelectedNode = e.Node; TreeMenu(e.Node); } };
+            _tree.NodeMouseClick += (s, e) =>
+            {
+                if (e.Button != MouseButtons.Right) return;
+                if (e.Node.Tag is string tg && tg.StartsWith("sql:")) { _tree.SelectedNode = e.Node; TreeMenu(e.Node); }
+                else if (e.Node.Tag is KeyValuePair<string, string> kv) { _tree.SelectedNode = e.Node; TemplateMenu(e.Node, kv); }
+            };
 
             var btnNuevo = new IconButton { Glyph = Glyph.Add, Text = "Nuevo script", Kind = BtnKind.Primary, Accent = AppTheme.Primary, Dock = DockStyle.Bottom, Height = 38, Margin = new Padding(0, 10, 0, 0) };
             btnNuevo.Click += (s, e) => NuevoScript();
@@ -1735,7 +1547,7 @@ namespace BrosLMV
                     gruposPlant[p.Categoria] = nCat;
                     nPlant.Nodes.Add(nCat);
                 }
-                nCat.Nodes.Add(new TreeNode(p.Nombre) { Tag = new KeyValuePair<string, string>(p.Nombre, p.Codigo), ImageKey = "template", SelectedImageKey = "template" });
+                nCat.Nodes.Add(new TreeNode(p.Nombre) { Tag = new KeyValuePair<string, string>(p.Nombre, p.Codigo), Name = p.Documentacion ?? "", ImageKey = "template", SelectedImageKey = "template" });
             }
             _tree.Nodes.Add(nPlant);
 
@@ -1743,6 +1555,16 @@ namespace BrosLMV
             // Sin buscar: TODO contraído por default, sin excepción -- el usuario decide qué abrir.
             if (filtrando) _tree.ExpandAll();
             _tree.EndUpdate();
+        }
+
+        // Menú contextual sobre una plantilla: insertarla o ver su documentación completa.
+        private void TemplateMenu(TreeNode nodo, KeyValuePair<string, string> plantilla)
+        {
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("Insertar en el editor", null, (s, e) => InsertarEnEditor(plantilla.Value));
+            if (!string.IsNullOrEmpty(nodo.Name))
+                menu.Items.Add("Ver documentación", null, (s, e) => MostrarDocumentacionPlantilla(plantilla.Key, nodo.Name));
+            menu.Show(_tree, _tree.PointToClient(Cursor.Position));
         }
 
         // Menú contextual sobre un script (en SQL).

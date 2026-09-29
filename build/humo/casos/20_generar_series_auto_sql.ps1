@@ -57,7 +57,7 @@ if ([string]::IsNullOrWhiteSpace($prodId)) { Write-Host "  [ERROR] No existe el 
 # automatico) en vez de literales -- el Runner headless no los resuelve, se sustituyen a mano
 # (productoID=$prodId/cantidad=3 son los que este caso necesita variar; el resto usa los MISMOS
 # defaults que antes traia el archivo: proveedorBE=2, almacen=1, precio=80, condicionPago=4).
-$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
+$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
 $codigoOC = $codigoOC -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoOC = $codigoOC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoOC = $codigoOC -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', "$prodId"
@@ -73,7 +73,7 @@ $ocItemId = Escalar "SELECT DocumentItemID FROM docDocumentItem WHERE DocumentID
 
 # 2) Recepcion de Compra (SQL puro) derivada de esa OC, SIN @seriesCSV -- deja el kardex
 #    pendiente de serie a proposito (el caso que esta plantilla nueva resuelve).
-$codigoRC = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
+$codigoRC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
 $codigoRC = $codigoRC -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$ocId"
 $codigoRC = $codigoRC -replace '\{DATOS:docDocumentItem\.DocumentItemID[^}]*\}', "$ocItemId"
 $codigoRC = $codigoRC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
@@ -92,7 +92,7 @@ $pendientesAntes = Escalar "SELECT COUNT(*) FROM orgProductKardex K INNER JOIN o
 if ($pendientesAntes -ne "1") { Write-Host "  [ERROR] Se esperaba 1 renglon de kardex pendiente de serie en la Recepcion $rcId, hay $pendientesAntes." -ForegroundColor Red; exit 1 }
 
 # 3) Correr la plantilla nueva -- primera vez: debe generar 3 series.
-$codigoGS = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_GENERAR_SERIES_AUTO_SQL.sql") -Raw
+$codigoGS = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_GENERAR_SERIES_AUTO_SQL.sql") -Raw
 $codigoGS = $codigoGS -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$rcId"
 $codigoGS = "-- job: safe-offline`n" + $codigoGS
 if (-not (Upsert-Boton "HUMO20_GENSERIES" "Humo 20 - generar series auto" $codigoGS)) { exit 1 }

@@ -58,18 +58,36 @@ if (Test-Path "$pkg\lib") {
     Write-Host "Librerias externas copiadas a $base\lib : $nLib"
 }
 
-# 4) Copiar scripts de ejemplo (sin sobrescribir los que ya existan)
-# BUG real encontrado 2026-07-30: solo copiaba .ctx/.csx -- las plantillas Python (.py) y
-# SQL (.sql) que ya vivian en instalador\scripts\ (varias PLANTILLA_*_PYTHON.py, GESTOR_RIBBON.py
-# desde T1.2, PLANTILLA_EJEMPLO_SQL.sql) nunca llegaban a una instalacion nueva por este camino.
+# 4) Plantillas y scripts compartidos de la carpeta raiz de scripts.
+# 4a) A partir de la 2.94.0 la UNICA plantilla es CREAR_DOC_DESDE_XML.ctx. Las plantillas anteriores (PLANTILLA_*, EJEMPLO_*, PRUEBA_*,
+#     REQUISICION.ctx, SOLICITUD_COMPRA.ctx) estan desactualizadas y se RETIRAN de una instalacion existente: se mueven (no se borran) a
+#     scripts\_archivo\plantillas_anteriores_<fecha>\ para no perder cambios propios ni romper un boton que aun las llame. Solo se tocan
+#     los archivos de la raiz de scripts\ (los scripts de cada empresa viven en scripts\<EMPRESA>\ y NO se tocan).
+$obsoletas = @()
+foreach ($patron in "PLANTILLA_*","EJEMPLO_*","PRUEBA_*","REQUISICION.ctx","SOLICITUD_COMPRA.ctx") {
+    $obsoletas += Get-ChildItem (Join-Path "$base\scripts" $patron) -File -ErrorAction SilentlyContinue
+}
+if ($obsoletas.Count -gt 0) {
+    $arch = Join-Path "$base\scripts" ("_archivo\plantillas_anteriores_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+    New-Item -ItemType Directory -Force $arch | Out-Null
+    $obsoletas | ForEach-Object { Move-Item $_.FullName (Join-Path $arch $_.Name) -Force }
+    Write-Host ("Plantillas anteriores retiradas ({0}): movidas a {1}" -f $obsoletas.Count, $arch)
+}
+
+# 4b) Scripts CORE de BrosLMV y la plantilla vigente: SI se refrescan en cada instalacion.
+foreach ($core in "Cotizador.ctx","ConfiguracionFormato.ctx","CREAR_DOC_DESDE_XML.ctx") {
+    if (Test-Path "$pkg\scripts\$core") { Copy-Item "$pkg\scripts\$core" (Join-Path "$base\scripts" $core) -Force }
+}
+# Resto de scripts del paquete (herramientas como GESTOR_RIBBON.py, DIAGNOSTICO.csx): sin sobrescribir los que ya existan.
 Get-ChildItem "$pkg\scripts\*.ctx","$pkg\scripts\*.csx","$pkg\scripts\*.py","$pkg\scripts\*.sql" -ErrorAction SilentlyContinue | ForEach-Object {
     $dst = Join-Path "$base\scripts" $_.Name
     if (-not (Test-Path $dst)) { Copy-Item $_.FullName $dst }
 }
 
-# 4b) Scripts CORE de BrosLMV: SI se refrescan en cada instalacion (a diferencia de los de ejemplo).
-foreach ($core in "Cotizador.ctx","ConfiguracionFormato.ctx") {
-    if (Test-Path "$pkg\scripts\$core") { Copy-Item "$pkg\scripts\$core" (Join-Path "$base\scripts" $core) -Force }
+# 4b-bis) Documentacion completa de las plantillas (clic secundario en la plantilla -> "Ver documentacion"): siempre se refresca.
+if (Test-Path "$pkg\docs\plantillas") {
+    New-Item -ItemType Directory -Force "$base\docs\plantillas" | Out-Null
+    Copy-Item "$pkg\docs\plantillas\*" "$base\docs\plantillas" -Recurse -Force
 }
 
 # 4c) BrosLMV.HtmlToPdf: motor HTML->PDF (WebView2) de "Generar documento (PDF)" y

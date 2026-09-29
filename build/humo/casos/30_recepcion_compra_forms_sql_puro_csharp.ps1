@@ -68,7 +68,7 @@ EXEC sp_executesql @sql;
 # v2.77.0: los parametros de la plantilla ahora son tokens {DATOS:Tabla.Columna:*} (formulario
 # automatico) -- el Runner headless no los resuelve, se sustituyen a mano por los MISMOS
 # valores default que antes traia el archivo.
-$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
+$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
 $codigoOC = $codigoOC -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoOC = $codigoOC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoOC = $codigoOC -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'

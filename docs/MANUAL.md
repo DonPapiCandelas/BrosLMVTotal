@@ -1978,7 +1978,7 @@ void RefrescarGrid()
     catch { }
 }
 ```
-Plantilla de referencia: `instalador/scripts/IMPORTADOR_XML_MASIVO_CSHARP.ctx` (función `RefrescarGridNativo`).
+Plantilla de referencia: `instalador/scripts/CREAR_DOC_DESDE_XML.ctx` (función `RefrescarGridNativo`).
 
 ### ⚠️ Filtra SIEMPRE por la empresa activa (`OwnedBusinessEntityID`)
 - Varias tablas guardan una copia por empresa: `engRefExpense` (tipos de gasto: `-1` = plantilla de fábrica, `1`, `2`…

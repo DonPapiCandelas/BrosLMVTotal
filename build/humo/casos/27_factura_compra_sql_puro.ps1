@@ -66,7 +66,7 @@ EXEC sp_executesql @sql;
 # v2.77.0: los parametros de la plantilla ahora son tokens {DATOS:Tabla.Columna:*} (formulario
 # automatico) -- el Runner headless no los resuelve, se sustituyen a mano por los MISMOS
 # valores default que antes traia el archivo.
-$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
+$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
 $codigoOC = $codigoOC -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoOC = $codigoOC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoOC = $codigoOC -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'
@@ -122,7 +122,7 @@ $docNativo = Exec-Q "SELECT MAX(DocumentID) FROM docDocument WHERE ModuleID=152"
 Write-Host "  Factura nativa de referencia: DocumentID=$docNativo"
 
 # 4) Documento con la plantilla SQL puro real.
-$plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql") -Raw
+$plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_FACTURA_COMPRA_SQL_PURO.sql") -Raw
 $plantilla = $plantilla -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$docOC2"
 $plantilla = $plantilla -replace '\{DATOS:docDocumentItem\.DocumentItemID[^}]*\}', "$itemOC2"
 $plantilla = $plantilla -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'

@@ -45,7 +45,7 @@ function Borrar-Boton([string]$appKey) {
 # v2.77.0: los parametros de la plantilla ahora son tokens {DATOS:Tabla.Columna:*} (formulario
 # automatico) -- el Runner headless no los resuelve, se sustituyen a mano por los MISMOS
 # valores default que antes traia el archivo.
-$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
+$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
 $codigoOC = $codigoOC -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoOC = $codigoOC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoOC = $codigoOC -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'
@@ -60,7 +60,7 @@ $docOC = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentID) FRO
 $itemOC = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentItemID) FROM docDocumentItem WHERE DocumentID=$docOC" -W 2>&1 | Select-Object -First 1).Trim()
 
 # 2) Crear una Recepción derivada de esa OC (módulo 184) -- cadena real de 2 documentos.
-$plantillaRecepcion = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
+$plantillaRecepcion = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
 $plantillaRecepcion = $plantillaRecepcion -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$docOC"
 $plantillaRecepcion = $plantillaRecepcion -replace '\{DATOS:docDocumentItem\.DocumentItemID[^}]*\}', "$itemOC"
 $plantillaRecepcion = $plantillaRecepcion -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
@@ -76,7 +76,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "  [ERROR] No se pudo crear la Recepcion:"
 $docRec = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentID) FROM docDocument WHERE ModuleID=184 AND SourceDocumentID=$docOC" -W 2>&1 | Select-Object -First 1).Trim()
 
 # 3) Cancelar SOLO el documento raiz (la OC) con la plantilla nueva -- debe cascadear a la Recepcion.
-$plantillaCancelar = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_CANCELAR_DOCUMENTO_SQL_PURO.sql") -Raw
+$plantillaCancelar = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_CANCELAR_DOCUMENTO_SQL_PURO.sql") -Raw
 $plantillaCancelar = $plantillaCancelar -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$docOC"
 $plantillaCancelar = $plantillaCancelar -replace '\{DATOS:docDocument\.CancellationReasonID[^}]*\}', '1'
 $codigoCancelar = "-- job: safe-offline`n" + $plantillaCancelar
