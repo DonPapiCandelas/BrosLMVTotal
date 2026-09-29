@@ -8,6 +8,23 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.98.0] — 2026-09-29 — Manual y catálogo del SDK
+
+### Agregado
+- **Catálogo del SDK como única fuente** (`src/assets/sdk_catalogo.json`, incrustado en la DLL): 170 funciones públicas de `ctx.*` y `ctx.erp.*` (C#), del SDK de Python y de SQL/tokens,
+  cada una con firma, descripción y ejemplo; **41 con ficha completa** (parámetros, qué devuelve, ejemplos en C# y Python, avisos y funciones relacionadas): consultas (`Scalar`, `Query`, `NonQuery`,
+  `OpenConn`), `NuevoDocumento`, `AgregarArticulo`, `RecalcCompleto`, `Save`, `AffectStockNEW`, `RefreshGrid`, `AbrirDocumento`, `Timbrar`, `ShowHtml`, tokens y más. Se agregaron las 20 funciones
+  públicas que no estaban documentadas (`OpenConn`, `ShowHtml`, `ShowHtmlFormulario`, `AbrirDocumento`, `Timbrar`, `RelacionarCFDI`…).
+- **Manual del SDK** (HTML formal con buscador, filtro por lenguaje, guías y fichas): *Más opciones → Manual del SDK…*; también `docs/SDK_REFERENCIA.md` para leerlo en GitHub.
+- **Guías** (`docs/SDK_GUIAS.md`): primer script en C#/Python/SQL, `Scalar`/`Query`/`NonQuery`/`OpenConn`, crear un documento paso a paso (con inventario, costos, saldos y póliza), refrescar el grid,
+  tokens, ventanas y las reglas de BrosLMV para scripts que van a más de un cliente.
+- **Panel de referencias de la Consola:** clic derecho sobre una función → *Ver ficha* (abre el manual justo ahí) o *Insertar ejemplo*. El panel ahora se llena del catálogo, no de listas en el código.
+- **`build/sdk/verificar_catalogo_sdk.ps1`** (se corre en `generar_instalador.ps1`): el instalador no se genera si una función pública de `ctx`/`ctx.erp` no tiene entrada en el catálogo, o si una referencia
+  cruzada está rota. Así el manual no se desactualiza. `build/sdk/generar_referencia_sdk.py` genera el manual desde el catálogo.
+
+### Cambiado
+- Para documentar una función nueva ya no se edita `Consola.cs`: se agrega su entrada a `src/assets/sdk_catalogo.json` (regla nueva en `AGENTS.md`).
+
 ## [2.97.1] — 2026-09-29 — Las claves no distinguen mayúsculas de minúsculas
 
 ### Corregido
