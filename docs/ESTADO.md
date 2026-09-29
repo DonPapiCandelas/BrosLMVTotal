@@ -22,11 +22,11 @@ real: `build/generar_instalador.ps1` (mata `ComercialSP.exe` a la fuerza — avi
 demo en curso) + `build/generar_exes.ps1`. Ya pasó de verdad: se hizo una demo con un cliente
 con una versión semanas más vieja que la de GitHub porque nadie regeneró el instalador.
 
-## Estado actual (2026-09-27, addon v2.93.0)
+## Estado actual (2026-09-29, addon v2.98.0)
 
 | Pieza | Estado | Dónde leer más |
 |---|---|---|
-| **Addon** (botones + Consola, C#/Python/SQL en `zzBrosScript`) | En producción en varias empresas. Últimos cambios: correcciones reales salidas del barrido de clientes (2.92.0–2.93.0) | `CHANGELOG.md`, `MANUAL.md` |
+| **Addon** (botones + Consola, C#/Python/SQL en `zzBrosScript`) | En producción en varias empresas. Últimos cambios (2.94.0–2.98.0): plantilla **Crear documentos desde XML** (única plantilla), asistente **Crear/Editar botón** con catálogo de más de 2,000 íconos, selector de lenguaje, respaldo de scripts y **manual del SDK** (catálogo único de 170 funciones) | `CHANGELOG.md`, `MANUAL.md`, `CREAR_DOC_DESDE_XML.md`, `CREAR_BOTON.md`, `SDK_REFERENCIA.md` |
 | **Python** | En producción desde v2.6.0: host x64 fuera de proceso por Named Pipe + SQL por la conexión viva de Comercial. Pendiente: host persistente (C6d) | `PYTHON.md`, `ARQUITECTURA_V3.md`, `host/README.md` |
 | **PDF de documentos + correo** (`htmlpdf/`) | En producción (2.87.0–2.89.0), 10 formatos genéricos. Paginación real con Paged.js disponible (2.91.0), sin aplicar a las plantillas todavía | `PAGINACION_PDF.md` |
 | **`BrosLMV.Runner`** (headless) | Funciona, lo usan integraciones externas en producción (colas de documentos) y el instalador lo copia a `C:\BrosLMV\runner` (al menos desde v2.90.0). Pendiente: política de escrituras sin supervisión y reintentos | `MANUAL.md` §12 "Integraciones externas vía BrosLMV.Runner" |
@@ -41,10 +41,12 @@ terminó y lo genérico ya está en `MANUAL.md` (§10.5 vínculos entre document
 operaciones financieras, §12 advertencias), `DASHBOARDS_HTML.md` y `MIGRAR_BOTONES_RT.md`.
 La documentación vieja o superada se movió a `docs/archivo/`.
 
-**Último release publicado:** [v2.93.0](https://github.com/DonPapiCandelas/BrosLMVTotal/releases/tag/v2.93.0)
-(2026-09-28), con las notas de 2.91.0–2.93.0. Las empresas ya provisionadas conservan su
-propia copia de las plantillas de fábrica en `zzBrosScript`: el arreglo de vencimientos de
-2.93.0 solo les llega si se actualiza esa copia.
+**Último release publicado:** [v2.98.0](https://github.com/DonPapiCandelas/BrosLMVTotal/releases/tag/v2.98.0)
+(2026-09-29), con las notas de 2.94.0–2.98.0 (el anterior era v2.93.0). Las empresas ya provisionadas conservan su
+propia copia de las plantillas de fábrica en `zzBrosScript`; el instalador `.exe` refresca la plantilla vigente y
+mueve las anteriores a `scripts\_archivo\`. Pendiente de verificar en Comercial por quien lo use: el filtro por usuario
+del asistente de botones (`IfUserIDIs`) y las funciones nuevas de la Consola (selector de lenguaje, respaldo de scripts,
+manual del SDK).
 
 ## Qué sigue
 
