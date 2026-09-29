@@ -92,3 +92,7 @@ __pycache__/
 
 # === Config local del panel de vista previa (no compartir) ===
 .claude/
+
+# Catalogo de iconos BrosLMV: se genera al compilar (Node.js + Lucide); no se versiona
+/build/iconos/node_modules/
+/instalador/iconos/
