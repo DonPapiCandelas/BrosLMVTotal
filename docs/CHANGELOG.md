@@ -8,6 +8,15 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.97.1] — 2026-09-29 — Las claves no distinguen mayúsculas de minúsculas
+
+### Corregido
+- **`broslmv.mi_script`, `BrosLMV.Mi_Script` y `BROSLMV.MI_SCRIPT` son el mismo botón y el mismo script.** Antes la Consola conservaba la escritura tal cual y algunas comparaciones sí distinguían
+  mayúsculas (los nombres reservados `CONSOLA`/`PRUEBA` del botón, favoritos y recientes de la Consola, y la lista de la biblioteca), así que dos escrituras de la misma clave podían tratarse como scripts distintos.
+  Ahora todas esas comparaciones ignoran mayúsculas. Al guardar, si ya existe una clave igual con otra escritura no se duplica: se pregunta si reemplazarla y se conserva la escritura ya guardada.
+  `CONSOLA` y `PRUEBA` quedan reservadas para guardar, sin importar cómo se escriban. El cuadro de guardar lo indica: «(no distingue mayúsculas)».
+  (SQL y el sistema de archivos de Windows ya comparaban sin distinguir mayúsculas; por eso el botón siempre corrió el script correcto.)
+
 ## [2.97.0] — 2026-09-29 — Lenguaje sin recordar «lang:», clave siempre visible y respaldo de scripts
 
 ### Agregado
