@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crear botón — maqueta</title>
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--tx:#1b2433;--mut:#6b7788;--lin:#dde3ec;--ac:#1f5fd6;--acs:#e8f0fe;--ok:#12805c;--warn:#b45309;--warns:#fff4e0;--ribbon:#eef2f8;}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1520;--card:#182131;--tx:#e6ebf3;--mut:#92a0b5;--lin:#2a3648;--ac:#6ea2ff;--acs:#1d2b47;--ok:#4ad0a0;--warn:#f0b35a;--warns:#3a2c12;--ribbon:#1c2638;}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 "Segoe UI",system-ui,sans-serif}
+.win{max-width:1180px;margin:18px auto;background:var(--card);border:1px solid var(--lin);border-radius:10px;overflow:hidden}
+header{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--lin)}
+header h1{font-size:17px;margin:0}
+header .sub{color:var(--mut);font-size:13px}
+.badge{margin-left:auto;font-size:12px;background:var(--acs);color:var(--ac);padding:3px 9px;border-radius:99px}
+.body{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr)}
+.form{padding:18px 22px;border-right:1px solid var(--lin);display:flex;flex-direction:column;gap:18px}
+.side{padding:18px 22px;background:var(--bg);display:flex;flex-direction:column;gap:14px}
+@media (max-width:900px){.body{grid-template-columns:1fr}.form{border-right:0}}
+h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:0 0 8px}
+label.f{display:block;font-size:13px;margin-bottom:4px}
+input[type=text],select{width:100%;padding:8px 10px;border:1px solid var(--lin);border-radius:6px;background:var(--card);color:var(--tx);font:inherit}
+input:focus,select:focus{outline:2px solid var(--ac);outline-offset:-1px}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.seg{display:inline-flex;border:1px solid var(--lin);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:var(--card);color:var(--tx);padding:7px 14px;font:inherit;cursor:pointer;border-right:1px solid var(--lin)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--ac);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{border:1px solid var(--lin);background:var(--card);color:var(--tx);border-radius:99px;padding:4px 11px;font-size:12.5px;cursor:pointer}
+.chip.on{background:var(--acs);border-color:var(--ac);color:var(--ac)}
+.icons{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:8px}
+.icons button{aspect-ratio:1;border:1px solid var(--lin);border-radius:7px;background:var(--card);color:var(--tx);cursor:pointer;display:grid;place-items:center}
+.icons button.on{border-color:var(--ac);background:var(--acs);color:var(--ac)}
+.icons svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.hint{color:var(--mut);font-size:12.5px;margin-top:4px}
+.note{background:var(--warns);color:var(--warn);border-radius:7px;padding:8px 11px;font-size:12.5px}
+.who-list{border:1px solid var(--lin);border-radius:7px;max-height:120px;overflow:auto;margin-top:8px}
+.who-list label{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--lin);cursor:pointer}
+.who-list label:last-child{border-bottom:0}
+footer{display:flex;align-items:center;gap:10px;padding:14px 22px;border-top:1px solid var(--lin)}
+footer .sp{flex:1;color:var(--mut);font-size:12.5px}
+.btn{border:1px solid var(--lin);background:var(--card);color:var(--tx);padding:8px 18px;border-radius:7px;font:inherit;cursor:pointer}
+.btn.p{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:600}
+/* vista previa del ribbon */
+.ribbon{background:var(--ribbon);border:1px solid var(--lin);border-radius:8px;overflow:hidden}
+.tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--lin);overflow:auto}
+.tab{padding:6px 12px;font-size:12.5px;color:var(--mut);border-radius:6px 6px 0 0;white-space:nowrap}
+.tab.on{background:var(--card);color:var(--tx);font-weight:600;border:1px solid var(--lin);border-bottom:0;margin-bottom:-1px}
+.tab.nuevo{outline:2px dashed var(--ac);outline-offset:-2px;color:var(--ac)}
+.groups{display:flex;gap:0;background:var(--card);padding:8px 4px;min-height:96px;overflow:auto}
+.grp{padding:0 12px;border-right:1px solid var(--lin);display:flex;flex-direction:column;justify-content:space-between;min-width:96px}
+.grp:last-child{border-right:0}
+.grp .btns{display:flex;gap:8px;align-items:flex-start}
+.grp .gn{font-size:11.5px;color:var(--mut);text-align:center;margin-top:6px}
+.grp.nuevo .gn{color:var(--ac);font-weight:600}
+.b{width:58px;text-align:center;font-size:11.5px;color:var(--tx)}
+.b i{display:block;width:34px;height:34px;margin:0 auto 3px;border-radius:7px;background:var(--bg);border:1px solid var(--lin);display:grid;place-items:center;color:var(--mut)}
+.b svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.b.mio i{background:var(--acs);border-color:var(--ac);color:var(--ac)}
+.b.mio{font-weight:600;color:var(--ac)}
+.sum{background:var(--card);border:1px solid var(--lin);border-radius:8px;padding:12px 14px;font-size:13px}
+.sum b{font-weight:600}
+.sum ul{margin:6px 0 0;padding-left:18px;color:var(--mut)}
+.mods{display:flex;flex-wrap:wrap;gap:6px}
+.hide{display:none!important}
+</style></head><body>
+<div class="win">
+<header>
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--ac)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><path d="M15 16h6M18 13v6"/></svg>
+  <div><h1>Crear botón</h1><div class="sub">Script: <b>Crear documentos desde XML</b> · <code>BrosLMV.CREAR_DOC_DESDE_XML</code></div></div>
+  <span class="badge">Maqueta · Consola v3</span>
+</header>
+
+<div class="body">
+<div class="form">
+
+  <section><h2>1 · Nombre</h2>
+    <label class="f" for="nom">Texto del botón</label>
+    <input id="nom" type="text" value="Crear documentos desde XML" oninput="draw()">
+    <div class="hint">Puede llevar espacios y acentos. La clave técnica se genera sola.</div>
+  </section>
+
+  <section><h2>2 · Ícono</h2>
+    <div class="icons" id="icons"></div>
+    <div class="row" style="margin-top:8px"><input type="text" placeholder="Buscar ícono…"><button class="btn" style="flex:0 0 auto">Elegir archivo…</button></div>
+  </section>
+
+  <section><h2>3 · ¿En qué módulos aparece?</h2>
+    <div class="seg" id="segMod"><button class="on" data-v="g">Todos (global)</button><button data-v="m">Solo algunos</button></div>
+    <div id="modBox" class="hide">
+      <div class="chips" id="mods"></div>
+      <div class="hint">Agrupados por naturaleza (compras, ventas, inventarios…), leídos de los módulos de la empresa.</div>
+    </div>
+  </section>
+
+  <section><h2>4 · Pestaña y sección</h2>
+    <div class="row">
+      <div><label class="f" for="tab">Pestaña</label>
+        <select id="tab" onchange="onTab()"><option>BrosLMV</option><option>General</option><option>Lista</option><option>Reporte</option><option>Contabilidad</option><option value="+">＋ Nueva pestaña…</option></select>
+        <input id="tabNew" type="text" class="hide" placeholder="Nombre de la pestaña (ej. Reportes)" style="margin-top:6px" oninput="draw()"></div>
+      <div><label class="f" for="sec">Sección</label>
+        <select id="sec" onchange="onSec()"></select>
+        <input id="secNew" type="text" class="hide" placeholder="Nombre de la sección (ej. Herramientas)" style="margin-top:6px" oninput="draw()"></div>
+    </div>
+  </section>
+
+  <section><h2>5 · ¿Quién lo ve?</h2>
+    <div class="seg" id="segWho"><button class="on" data-v="t">Todos los usuarios</button><button data-v="g">Grupos</button><button data-v="u">Usuarios</button></div>
+    <div id="whoBox" class="hide">
+      <div class="who-list" id="whoList"></div>
+      <div class="hint" id="whoHint"></div>
+    </div>
+    <div class="note" style="margin-top:8px">Un solo paso: el botón queda habilitado para esos usuarios al crearlo; ya no hay que ir usuario por usuario. Si más adelante entra un usuario a un grupo, basta «Actualizar quién lo ve».</div>
+  </section>
+
+  <section><h2>6 · Empresas</h2>
+    <div class="chips" id="emps"></div>
+    <div class="hint">El botón se crea en la empresa activa; marca otras para crearlo en todas de una vez.</div>
+  </section>
+</div>
+
+<div class="side">
+  <div><h2>Vista previa en el ribbon</h2>
+    <div class="ribbon"><div class="tabs" id="pvTabs"></div><div class="groups" id="pvGroups"></div></div>
+  </div>
+  <div class="sum" id="sum"></div>
+  <div class="note">Los cambios se guardan de inmediato. Si Comercial no muestra el botón al momento, reinicia Comercial (el asistente te lo avisa).</div>
+</div>
+</div>
+
+<footer>
+  <span class="sp">Solo modifica botones <code>BrosLMV.*</code>; guarda copia para «Deshacer».</span>
+  <button class="btn">Cancelar</button><button class="btn">Quitar de…</button><button class="btn p">Crear botón</button>
+</footer>
+</div>
+
+<script>
+const ICONS={doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',xml:'<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 6l-3 12"/>',chart:'<path d="M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-3"/>',print:'<path d="M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z"/>',mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',money:'<circle cx="12" cy="12" r="9"/><path d="M14.5 9.5c-.5-1-1.5-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1 0-2-.5-2.5-1.5M12 6.5V8M12 16v1.5"/>',box:'<path d="M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8"/>',tool:'<path d="M14 6a4 4 0 0 0 4 4l-9 9a2 2 0 0 1-3-3l9-9a4 4 0 0 0-1-1z"/>',users:'<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M16 5a3 3 0 0 1 0 6M18 15c2 .6 3 2 3 5"/>',search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',bolt:'<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',check:'<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',cal:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',cloud:'<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/>',star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',gear:'<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'};
+const MODS=[['Compras',['Factura de compra','Gastos','Orden de compra','Devolución de compra']],['Ventas',['Factura cliente','Pedido','Cotización','Remisión']],['Inventarios',['Traspaso','Ajuste','Entrada de producto terminado']]];
+const GRUPOS=['Admin','Ventas'],USUARIOS=['Admin','Cristofer Candelas'],EMPS=['BROSLMV_DESARROLLO','(otra empresa)','(otra empresa 2)'];
+const SECS={BrosLMV:['BrosLMV'],General:['Documento','Portapapeles','Vista'],Lista:['CFDI','Filtro','Exportar'],Reporte:['Impresión','Reportes'],Contabilidad:['Pólizas','Herramientas']};
+let ico='xml',modo='g',quien='t',mods=new Set(),grupos=new Set(['Ventas']),usuarios=new Set(),emps=new Set([EMPS[0]]);
+const $=id=>document.getElementById(id);
+const svg=k=>'<svg viewBox="0 0 24 24">'+ICONS[k]+'</svg>';
+// iconos
+$('icons').innerHTML=Object.keys(ICONS).map(k=>`<button data-k="${k}" class="${k==ico?'on':''}" title="${k}">${svg(k)}</button>`).join('');
+$('icons').onclick=e=>{const b=e.target.closest('button');if(!b)return;ico=b.dataset.k;[...$('icons').children].forEach(x=>x.classList.toggle('on',x===b));draw()};
+// modulos
+$('mods').innerHTML=MODS.map(([g,l])=>l.map(m=>`<span class="chip" data-m="${m}">${g} · ${m}</span>`).join('')).join('');
+$('mods').onclick=e=>{const c=e.target.closest('.chip');if(!c)return;const m=c.dataset.m;mods.has(m)?mods.delete(m):mods.add(m);c.classList.toggle('on');draw()};
+// empresas
+$('emps').innerHTML=EMPS.map(x=>`<span class="chip ${emps.has(x)?'on':''}" data-e="${x}">${x}</span>`).join('');
+$('emps').onclick=e=>{const c=e.target.closest('.chip');if(!c)return;const m=c.dataset.e;emps.has(m)?emps.delete(m):emps.add(m);c.classList.toggle('on');draw()};
+// segmentos
+function seg(id,fn){$(id).onclick=e=>{const b=e.target.closest('button');if(!b)return;[...$(id).children].forEach(x=>x.classList.toggle('on',x===b));fn(b.dataset.v)}}
+seg('segMod',v=>{modo=v;$('modBox').classList.toggle('hide',v==='g');draw()});
+seg('segWho',v=>{quien=v;drawWho();draw()});
+function drawWho(){
+  $('whoBox').classList.toggle('hide',quien==='t');
+  if(quien==='t')return;
+  const lista=quien==='g'?GRUPOS:USUARIOS,set=quien==='g'?grupos:usuarios;
+  $('whoList').innerHTML=lista.map(x=>`<label><input type="checkbox" ${set.has(x)?'checked':''} data-w="${x}"> ${x}</label>`).join('');
+  $('whoHint').textContent=quien==='g'?'Se habilita a todos los usuarios que pertenezcan a cada grupo elegido.':'Solo estos usuarios verán el botón.';
+  $('whoList').onchange=e=>{const c=e.target;c.checked?set.add(c.dataset.w):set.delete(c.dataset.w);draw()};
+}
+function onTab(){const v=$('tab').value;$('tabNew').classList.toggle('hide',v!=='+');fillSec();draw()}
+function fillSec(){const v=$('tab').value,l=v==='+'?[]:SECS[v];$('sec').innerHTML=l.map(x=>`<option>${x}</option>`).join('')+'<option value="+">＋ Nueva sección…</option>';onSec(true)}
+function onSec(q){$('secNew').classList.toggle('hide',$('sec').value!=='+');if(!q)draw()}
+function estado(){
+  const tabNueva=$('tab').value==='+',tab=tabNueva?($('tabNew').value||'Nueva pestaña'):$('tab').value;
+  const secNueva=tabNueva||$('sec').value==='+',sec=secNueva?($('secNew').value||'Nueva sección'):$('sec').value;
+  return{tab,tabNueva,sec,secNueva,nom:$('nom').value||'(sin nombre)'};
+}
+function draw(){
+  const s=estado();
+  const tabs=Object.keys(SECS).slice(0,4);if(!s.tabNueva&&!tabs.includes(s.tab))tabs.push(s.tab);if(s.tabNueva)tabs.push(s.tab);
+  $('pvTabs').innerHTML=tabs.map(t=>`<div class="tab ${t===s.tab?'on':''} ${s.tabNueva&&t===s.tab?'nuevo':''}">${t}</div>`).join('');
+  const secs=s.tabNueva?[]:(SECS[s.tab]||[]).slice();if(s.secNueva&&!secs.includes(s.sec))secs.push(s.sec);
+  const otros=['Documento','Portapapeles','Vista','Filtro','Exportar','Impresión','Reportes','Pólizas','Herramientas'];
+  $('pvGroups').innerHTML=secs.map(g=>{
+    const mio=g===s.sec,nuevo=mio&&s.secNueva;
+    return`<div class="grp ${nuevo?'nuevo':''}"><div class="btns">`+(g==='Filtro'||g==='Documento'||g==='Impresión'?`<div class="b"><i>${svg('doc')}</i>Existente</div>`:'')+(mio?`<div class="b mio"><i>${svg(ico)}</i>${s.nom.length>22?s.nom.slice(0,21)+'…':s.nom}</div>`:'')+`</div><div class="gn">${g}${nuevo?' (nueva)':''}</div></div>`}).join('');
+  const dondeMod=modo==='g'?'Todos los módulos':(mods.size?[...mods].join(', '):'⚠ elige al menos un módulo');
+  const quienTxt=quien==='t'?'Todos los usuarios':quien==='g'?(grupos.size?'Grupos: '+[...grupos].join(', '):'⚠ elige un grupo'):(usuarios.size?'Usuarios: '+[...usuarios].join(', '):'⚠ elige un usuario');
+  $('sum').innerHTML=`<b>Se va a crear</b><ul><li>Botón «${s.nom}» → <code>BrosLMV.CREAR_DOC_DESDE_XML</code></li><li>Pestaña <b>${s.tab}</b>${s.tabNueva?' (nueva)':''} · sección <b>${s.sec}</b>${s.secNueva?' (nueva)':''}</li><li>Módulos: ${dondeMod}</li><li>Visible para: ${quienTxt}</li><li>Empresas: ${[...emps].join(', ')||'⚠ elige una'}</li></ul>`;
+}
+fillSec();drawWho();draw();
+</script>
+</body></html>
