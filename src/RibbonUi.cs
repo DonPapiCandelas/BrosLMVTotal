@@ -39,6 +39,7 @@ namespace BrosLMV
         public bool Publicado;    // se creó/actualizó el botón en la empresa activa
         public string AppKey;     // clave técnica del botón
         public string Caption;    // texto del botón (para crear el script si aún no existe)
+        public bool SoloPropiedades; // se editó un botón existente sin tocar su ubicación (no hay que crear script)
     }
 
     internal static class CrearBotonForm
@@ -54,7 +55,7 @@ namespace BrosLMV
         }
 
         // Muestra el asistente (bloquea hasta que se cierra). appKey vacío = botón nuevo sin script todavía.
-        public static BotonResultado Mostrar(ScriptContext ctx, string appKey, string nombreSugerido)
+        public static BotonResultado Mostrar(ScriptContext ctx, string appKey, string nombreSugerido, bool modoBuscar = false)
         {
             var resultado = new BotonResultado { AppKey = appKey };
             var admin = new RibbonAdmin(ctx);
@@ -80,7 +81,7 @@ namespace BrosLMV
                             string dirIconos = RibbonAdmin.CarpetaIconos();
                             if (dirIconos != null)
                                 web.CoreWebView2.SetVirtualHostNameToFolderMapping("iconos.local", dirIconos, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
-                            web.CoreWebView2.WebMessageReceived += (s2, e2) => Atender(web, frm, ctx, admin, resultado, appKey, nombreSugerido, e2.TryGetWebMessageAsString());
+                            web.CoreWebView2.WebMessageReceived += (s2, e2) => Atender(web, frm, ctx, admin, resultado, appKey, nombreSugerido, modoBuscar, e2.TryGetWebMessageAsString());
                             web.CoreWebView2.NavigateToString(html);
                         }
                         catch (Exception ex) { hiloEx = ex; frm.Close(); }
@@ -106,7 +107,7 @@ namespace BrosLMV
             try { web.CoreWebView2.PostWebMessageAsString(Json.Serialize(r)); } catch { }
         }
 
-        private static void Atender(Microsoft.Web.WebView2.WinForms.WebView2 web, Form frm, ScriptContext ctx, RibbonAdmin admin, BotonResultado res, string appKeyInicial, string nombreInicial, string mensaje)
+        private static void Atender(Microsoft.Web.WebView2.WinForms.WebView2 web, Form frm, ScriptContext ctx, RibbonAdmin admin, BotonResultado res, string appKeyInicial, string nombreInicial, bool modoBuscar, string mensaje)
         {
             object id = null;
             try
@@ -118,13 +119,19 @@ namespace BrosLMV
                 switch (op)
                 {
                     case "init":
-                        Responder(web, id, new Dictionary<string, object> { { "ctx", admin.Contexto(appKeyInicial) }, { "appKey", appKeyInicial }, { "nombre", nombreInicial } }, null);
+                        Responder(web, id, new Dictionary<string, object> { { "ctx", admin.Contexto(appKeyInicial) }, { "appKey", appKeyInicial }, { "nombre", nombreInicial }, { "modoBuscar", modoBuscar } }, null);
+                        break;
+                    case "listar":
+                        Responder(web, id, admin.ListarBotones(Convert.ToString(a.ContainsKey("q") ? a["q"] : ""), a.ContainsKey("todos") && Convert.ToBoolean(a["todos"])), null);
+                        break;
+                    case "buscar":
+                        Responder(web, id, new Dictionary<string, object> { { "boton", admin.Buscar(Convert.ToString(a["ejecuta"])) } }, null);
                         break;
                     case "publicar":
                     {
                         var spec = LeerSpec(a);
                         var r = admin.Publicar(spec);
-                        if (r.Count > 0 && r[0].ContainsKey("ok") && (bool)r[0]["ok"]) { res.Publicado = true; res.AppKey = spec.AppKey; res.Caption = spec.Caption; }
+                        if (r.Count > 0 && r[0].ContainsKey("ok") && (bool)r[0]["ok"]) { res.Publicado = true; res.AppKey = spec.AppKey; res.Caption = spec.Caption; res.SoloPropiedades = spec.SoloPropiedades; }
                         Responder(web, id, new Dictionary<string, object> { { "resultados", r } }, null);
                         break;
                     }
@@ -174,6 +181,9 @@ namespace BrosLMV
             s.Modules = Lista<long>(a, "modules");
             s.Users = Lista<long>(a, "users");
             s.Empresas = Lista<string>(a, "empresas");
+            s.EjecutaNuevo = a.ContainsKey("ejecutaNuevo") ? Convert.ToString(a["ejecutaNuevo"]) : null;
+            s.PermitirAjeno = a.ContainsKey("permitirAjeno") && Convert.ToBoolean(a["permitirAjeno"]);
+            s.SoloPropiedades = a.ContainsKey("soloPropiedades") && Convert.ToBoolean(a["soloPropiedades"]);
             return s;
         }
 

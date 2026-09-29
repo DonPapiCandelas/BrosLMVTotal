@@ -47,6 +47,9 @@ namespace BrosLMV
         public List<long> Modules = new List<long>();  // vacío = todos los módulos
         public List<long> Users = new List<long>();    // vacío = todos los usuarios
         public List<string> Empresas = new List<string>(); // vacío = solo la empresa activa
+        public string EjecutaNuevo;      // cambiar la función que ejecuta el botón (p. ej. de OtroProducto.X a BrosLMV.X); vacío = no cambia
+        public bool PermitirAjeno;       // el usuario confirmó que edita un botón que NO es de BrosLMV
+        public bool SoloPropiedades;     // solo nombre/descripción/ícono/función; NO toca dónde aparece (obligatorio para botones ajenos)
     }
 
     internal class RibbonAdmin
@@ -69,7 +72,9 @@ namespace BrosLMV
         private SqlConnection Abrir() { var c = new SqlConnection(_cs); c.Open(); return c; }
 
         // ---------------------------------------------------------------- utilidades
-        public static string Ejecuta(string appKey) { return "BrosLMV." + appKey; }
+        // Una clave sin punto (CREAR_DOC_XML) es un script de BrosLMV -> «BrosLMV.CREAR_DOC_XML»; algo con punto (Document.AbrirX, CFDI3.Y) ya es la función completa.
+        public static string Ejecuta(string clave) { return (clave ?? "").Contains(".") ? clave : "BrosLMV." + clave; }
+        public static bool EsBros(string ejecuta) { return (ejecuta ?? "").StartsWith("BrosLMV.", StringComparison.OrdinalIgnoreCase); }
 
         // Carpeta donde Comercial lee los íconos del ribbon (x86 primero: Comercial es de 32 bits).
         public static string CarpetaIconos()
@@ -246,18 +251,39 @@ namespace BrosLMV
                 "SELECT m.RibbonGroupID, g.GroupCaption, t.TabCaption, m.ExtraMenuModuleID, m.IfUserIDIs FROM engRibbonMenu m " +
                 "LEFT JOIN engRibbonGroup g ON g.RibbonGroupID=m.RibbonGroupID LEFT JOIN engRibbonTab t ON t.RibbonTabID=g.RibbonTabID WHERE m.ControlID=@i", null, "@i", id);
             var r = new Dictionary<string, object> {
-                { "controlId", id }, { "caption", ctl[0]["ControlCaption"] }, { "description", ctl[0]["ControlDescription"] }, { "icon", ctl[0]["IconFile"] },
+                { "controlId", id }, { "ejecuta", Ejecuta(appKey) }, { "ajeno", !EsBros(Ejecuta(appKey)) }, { "caption", ctl[0]["ControlCaption"] }, { "description", ctl[0]["ControlDescription"] }, { "icon", ctl[0]["IconFile"] },
                 { "tab", filas.Count > 0 ? filas[0]["TabCaption"] : null }, { "group", filas.Count > 0 ? filas[0]["GroupCaption"] : null },
                 { "modules", filas.Where(f => L(f["ExtraMenuModuleID"]) != 0).Select(f => L(f["ExtraMenuModuleID"])).Distinct().ToList() },
                 { "users", filas.Where(f => L(f["IfUserIDIs"]) != 0).Select(f => L(f["IfUserIDIs"])).Distinct().ToList() } };
             return r;
         }
 
+        // Botones del ribbon para elegir uno a editar. Por defecto solo los de BrosLMV; «todos» incluye los nativos de Comercial y de otros productos.
+        public Dictionary<string, object> ListarBotones(string q, bool todos)
+        {
+            using (var c = Abrir())
+            {
+                q = (q ?? "").Trim();
+                var filas = Filas(c,
+                    "SELECT TOP 200 k.ControlID AS id, k.ControlCaption AS caption, k.ControlDescription AS descr, k.ControlExecute AS ejecuta, k.IconFile AS icon, " +
+                    "(SELECT TOP 1 t.TabCaption + N' › ' + g.GroupCaption FROM engRibbonMenu m JOIN engRibbonGroup g ON g.RibbonGroupID=m.RibbonGroupID JOIN engRibbonTab t ON t.RibbonTabID=g.RibbonTabID WHERE m.ControlID=k.ControlID) AS ubic " +
+                    "FROM engRibbonControl k WHERE k.ControlExecute IS NOT NULL AND k.ControlExecute<>'' AND (@todos=1 OR k.ControlExecute LIKE 'BrosLMV.%') " +
+                    "AND (@q='' OR k.ControlCaption LIKE '%'+@q+'%' OR k.ControlExecute LIKE '%'+@q+'%' OR k.ControlDescription LIKE '%'+@q+'%') " +
+                    "ORDER BY CASE WHEN k.ControlExecute LIKE 'BrosLMV.%' THEN 0 ELSE 1 END, k.ControlCaption", null,
+                    "@todos", todos ? 1 : 0, "@q", q);
+                return new Dictionary<string, object> {
+                    { "items", filas.Select(f => new Dictionary<string, object> {
+                        { "caption", f["caption"] }, { "descr", f["descr"] }, { "ejecuta", f["ejecuta"] }, { "icon", f["icon"] }, { "ubic", f["ubic"] }, { "ajeno", !EsBros(Convert.ToString(f["ejecuta"])) } }).ToList() },
+                    { "tope", filas.Count >= 200 } };
+            }
+        }
+
         // ---------------------------------------------------------------- publicar / quitar / deshacer
         private const string SqlCrearHist =
             "IF OBJECT_ID('zzBrosRibbonHist') IS NULL CREATE TABLE zzBrosRibbonHist(" +
             "HistID INT IDENTITY(1,1) PRIMARY KEY, Fecha DATETIME NOT NULL DEFAULT GETDATE(), UserID INT NULL, Ejecuta NVARCHAR(200) NOT NULL, " +
-            "Accion NVARCHAR(20) NOT NULL, Antes NVARCHAR(MAX) NULL, Deshecho BIT NOT NULL DEFAULT 0)";
+            "Accion NVARCHAR(20) NOT NULL, Antes NVARCHAR(MAX) NULL, Deshecho BIT NOT NULL DEFAULT 0, ControlID BIGINT NULL); " +
+            "IF COL_LENGTH('zzBrosRibbonHist','ControlID') IS NULL ALTER TABLE zzBrosRibbonHist ADD ControlID BIGINT NULL";
 
         public List<Dictionary<string, object>> Publicar(BotonSpec s)
         {
@@ -288,11 +314,27 @@ namespace BrosLMV
         private static void Validar(BotonSpec s)
         {
             if (s == null) throw new Exception("Faltan los datos del botón.");
-            if (string.IsNullOrWhiteSpace(s.AppKey) || s.AppKey.Any(ch => !(ch < 128 && (char.IsLetterOrDigit(ch) || ch == '_'))))
+            string ej = Ejecuta(s.AppKey);
+            if (string.IsNullOrWhiteSpace(s.AppKey)) throw new Exception("Falta la clave del botón.");
+            if (!EsBros(ej))
+            {
+                if (!s.PermitirAjeno) throw new Exception("Este botón no es de BrosLMV: confirma que quieres modificarlo.");
+                if (!s.SoloPropiedades) throw new Exception("Un botón que no es de BrosLMV solo puede cambiar nombre, descripción, ícono o función (no su ubicación).");
+            }
+            else if (s.AppKey.Contains(".") ? false : s.AppKey.Any(ch => !(ch < 128 && (char.IsLetterOrDigit(ch) || ch == '_'))))
                 throw new Exception("La clave del botón solo puede llevar letras, números y guion bajo.");
+            if (!string.IsNullOrWhiteSpace(s.EjecutaNuevo))
+            {
+                string en = s.EjecutaNuevo.Trim();
+                if (en.Any(ch => char.IsWhiteSpace(ch))) throw new Exception("La función del botón no puede llevar espacios.");
+                if (!en.Contains(".")) throw new Exception("La función debe llevar un punto, por ejemplo BrosLMV.MI_SCRIPT.");
+            }
             if (string.IsNullOrWhiteSpace(s.Caption)) throw new Exception("Escribe el nombre del botón.");
-            if (string.IsNullOrWhiteSpace(s.TabCaption)) throw new Exception("Elige la pestaña.");
-            if (string.IsNullOrWhiteSpace(s.GroupCaption)) throw new Exception("Elige la sección.");
+            if (!s.SoloPropiedades)
+            {
+                if (string.IsNullOrWhiteSpace(s.TabCaption)) throw new Exception("Elige la pestaña.");
+                if (string.IsNullOrWhiteSpace(s.GroupCaption)) throw new Exception("Elige la sección.");
+            }
             if (s.Modules.Count * Math.Max(1, s.Users.Count) > 400) throw new Exception("Demasiadas combinaciones de módulos y usuarios; elige grupos o menos módulos.");
         }
 
@@ -305,7 +347,7 @@ namespace BrosLMV
                 {
                     Exec(c, tx, SqlCrearHist);
                     string ejecuta = Ejecuta(s.AppKey);
-                    GuardarCopia(c, tx, ejecuta, "publicar");
+                    GuardarCopia(c, tx, ejecuta, s.SoloPropiedades ? "propiedades" : "publicar");
 
                     // el botón: se actualiza si ya existe (mismo Ejecutar), si no se crea
                     object ctlId = Escalar(c, tx, "SELECT TOP 1 ControlID FROM engRibbonControl WHERE ControlExecute=@e", "@e", ejecuta);
@@ -324,6 +366,16 @@ namespace BrosLMV
                             "@c", s.Caption.Trim(), "@d", desc, "@e", ejecuta, "@i", string.IsNullOrWhiteSpace(s.Icon) ? null : s.Icon);
                         ctlId = Escalar(c, tx, "SELECT TOP 1 ControlID FROM engRibbonControl WHERE ControlExecute=@e", "@e", ejecuta);
                     }
+
+                    // cambiar la función que ejecuta (p. ej. OtroProducto.X -> BrosLMV.X): en su lugar, sin tocar el ControlID
+                    if (!string.IsNullOrWhiteSpace(s.EjecutaNuevo) && !string.Equals(s.EjecutaNuevo.Trim(), ejecuta, StringComparison.Ordinal))
+                    {
+                        string nuevoEj = s.EjecutaNuevo.Trim();
+                        if (Escalar(c, tx, "SELECT TOP 1 1 FROM engRibbonControl WHERE ControlExecute=@e AND ControlID<>@id", "@e", nuevoEj, "@id", ctlId) != null)
+                            throw new Exception("Ya existe otro botón que ejecuta " + nuevoEj + ".");
+                        Exec(c, tx, "UPDATE engRibbonControl SET ControlExecute=@e WHERE ControlID=@id", "@e", nuevoEj, "@id", ctlId);
+                    }
+                    if (s.SoloPropiedades) { tx.Commit(); return Convert.ToInt64(ctlId); }
 
                     // dónde aparece: se reemplazan TODAS sus filas por una por (módulo x usuario).
                     // La pestaña y la sección se resuelven POR MÓDULO: una pestaña propia de un módulo (p. ej. «General» de Facturas de compra) solo
@@ -378,13 +430,15 @@ namespace BrosLMV
         private void GuardarCopia(SqlConnection c, SqlTransaction tx, string ejecuta, string accion)
         {
             string antes = null;
+            object ctlIdCopia = null;
             var ctl = Filas(c, "SELECT * FROM engRibbonControl WHERE ControlExecute=@e", tx, "@e", ejecuta);
             if (ctl.Count > 0)
             {
                 var menu = Filas(c, "SELECT * FROM engRibbonMenu WHERE ControlID=@i", tx, "@i", ctl[0]["ControlID"]);
+                ctlIdCopia = ctl[0]["ControlID"];
                 antes = Json.Serialize(new Dictionary<string, object> { { "control", ctl[0] }, { "menu", menu } });
             }
-            Exec(c, tx, "INSERT zzBrosRibbonHist(UserID,Ejecuta,Accion,Antes) VALUES(@u,@e,@a,@b)", "@u", _userId, "@e", ejecuta, "@a", accion, "@b", antes);
+            Exec(c, tx, "INSERT zzBrosRibbonHist(UserID,Ejecuta,Accion,Antes,ControlID) VALUES(@u,@e,@a,@b,@i)", "@u", _userId, "@e", ejecuta, "@a", accion, "@b", antes, "@i", ctlIdCopia);
         }
 
         public List<Dictionary<string, object>> Quitar(string appKey, List<string> empresas)
@@ -407,6 +461,7 @@ namespace BrosLMV
                             {
                                 Exec(c, tx, SqlCrearHist);
                                 string ejecuta = Ejecuta(appKey);
+                                if (!EsBros(ejecuta)) throw new Exception("Solo se pueden quitar botones de BrosLMV.");
                                 GuardarCopia(c, tx, ejecuta, "quitar");
                                 Exec(c, tx, "DELETE m FROM engRibbonMenu m JOIN engRibbonControl k ON k.ControlID=m.ControlID WHERE k.ControlExecute=@e", "@e", ejecuta);
                                 Exec(c, tx, "DELETE FROM engRibbonControl WHERE ControlExecute=@e", "@e", ejecuta);
@@ -434,8 +489,20 @@ namespace BrosLMV
                 {
                     Exec(c, tx, SqlCrearHist);
                     string ejecuta = Ejecuta(appKey);
-                    var h = Filas(c, "SELECT TOP 1 HistID, Antes, Accion FROM zzBrosRibbonHist WHERE Ejecuta=@e AND Deshecho=0 ORDER BY HistID DESC", tx, "@e", ejecuta);
+                    // por función (Ejecuta) o por el ControlID actual de esa función: sirve aunque después se haya cambiado la función del botón
+                    var h = Filas(c, "SELECT TOP 1 HistID, Antes, Accion, ControlID FROM zzBrosRibbonHist WHERE Deshecho=0 AND (Ejecuta=@e OR ControlID=(SELECT TOP 1 ControlID FROM engRibbonControl WHERE ControlExecute=@e)) ORDER BY HistID DESC", tx, "@e", ejecuta);
                     if (h.Count == 0) { tx.Rollback(); return "No hay cambios que deshacer para este botón."; }
+                    if (Convert.ToString(h[0]["Accion"]) == "propiedades")
+                    {
+                        // edición de propiedades: se restauran en su lugar (el ControlID no cambia, otras tablas de Comercial lo referencian)
+                        var jp = Json.Deserialize<Dictionary<string, object>>(h[0]["Antes"] as string);
+                        var cp = (Dictionary<string, object>)jp["control"];
+                        Exec(c, tx, "UPDATE engRibbonControl SET ControlCaption=@c, ControlDescription=@d, ControlExecute=@e, IconFile=@i WHERE ControlID=@id",
+                            "@c", cp["ControlCaption"], "@d", cp["ControlDescription"], "@e", cp["ControlExecute"], "@i", cp["IconFile"], "@id", h[0]["ControlID"]);
+                        Exec(c, tx, "UPDATE zzBrosRibbonHist SET Deshecho=1 WHERE HistID=@h", "@h", h[0]["HistID"]);
+                        tx.Commit();
+                        return "Listo: se restauraron el nombre, la descripción, el ícono y la función anteriores.";
+                    }
                     Exec(c, tx, "DELETE m FROM engRibbonMenu m JOIN engRibbonControl k ON k.ControlID=m.ControlID WHERE k.ControlExecute=@e", "@e", ejecuta);
                     Exec(c, tx, "DELETE FROM engRibbonControl WHERE ControlExecute=@e", "@e", ejecuta);
                     string antes = h[0]["Antes"] as string;

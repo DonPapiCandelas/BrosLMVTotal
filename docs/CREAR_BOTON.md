@@ -39,6 +39,17 @@
 
 A la derecha ves siempre **cómo quedará en el ribbon** (con el globo de la descripción) y un resumen de lo que se va a crear.
 
+## Editar un botón que ya existe
+
+**Más opciones → Botones del ribbon…** lista los botones del ribbon. Por defecto salen los de BrosLMV; marca **Incluir los de Comercial y otros productos** para ver los demás.
+Busca por nombre, descripción o función y haz clic en el botón.
+
+- **Botón de BrosLMV:** se abre el asistente completo con lo que tiene hoy (lugar, módulos, usuarios). En *Avanzado: función que ejecuta* puedes apuntarlo a otro script.
+- **Botón de Comercial o de otro producto** (por ejemplo `OtroProducto.X`): solo se cambian **nombre, descripción, ícono y función**. Su ubicación en el ribbon y sus módulos
+  **no se tocan** (esos botones viven en muchos módulos a la vez). Se pide confirmación y se guarda copia.
+  Para pasar un botón de otro producto a BrosLMV, escribe en *función* `BrosLMV.NOMBRE_DEL_SCRIPT`.
+- **Deshacer último cambio** devuelve el nombre, la descripción, el ícono y la función anteriores.
+
 ## Después de crear
 - Si no ves el botón de inmediato, **cierra y vuelve a abrir Comercial**: el ribbon se lee al iniciar.
 - **Editar botón…** cambia nombre, descripción, ícono, lugar, módulos y usuarios de un botón BrosLMV. **Quitar botón** lo saca del ribbon (el script no se borra).

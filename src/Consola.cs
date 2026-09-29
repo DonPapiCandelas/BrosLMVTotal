@@ -650,6 +650,7 @@ namespace BrosLMV
             ctxMore.Items.Add(new ToolStripMenuItem("Nueva acción", null, (s, e) => { using (var f = new NuevaAccionForm(_ctx)) f.ShowDialog(this); }));
             ctxMore.Items.Add(new ToolStripMenuItem("Nuevo script", null, (s, e) => NuevoScript()));
             ctxMore.Items.Add(new ToolStripMenuItem("Nuevo botón…", null, (s, e) => CrearBoton("")));
+            ctxMore.Items.Add(new ToolStripMenuItem("Botones del ribbon…", null, (s, e) => CrearBoton("", true)));
             ctxMore.Items.Add(new ToolStripSeparator());
             ctxMore.Items.Add(new ToolStripMenuItem("Duplicar", null, (s, e) => Duplicar()));
             ctxMore.Items.Add(new ToolStripMenuItem("Aprobar", null, (s, e) => Aprobar()));
@@ -1617,13 +1618,15 @@ namespace BrosLMV
         }
 
         // Asistente «Crear botón…» (v2.95.0). appKey vacío = botón nuevo SIN script: al terminar se crea un script mínimo con esa clave y se abre.
-        private void CrearBoton(string appKey)
+        private void CrearBoton(string appKey, bool modoBuscar = false)
         {
             BotonResultado r;
-            try { r = CrearBotonForm.Mostrar(_ctx, appKey, NombreLegible(appKey)); }
+            try { r = CrearBotonForm.Mostrar(_ctx, appKey, NombreLegible(appKey), modoBuscar); }
             catch (Exception ex) { ctxError("No se pudo abrir el asistente de botones: " + ex.Message); return; }
             if (r == null || !r.Publicado) return;
             try { _ctx.erp.RefreshRibbon(); } catch { }
+            // edición de un botón existente (sobre todo si no es de BrosLMV): no hay script que crear
+            if (r.SoloPropiedades || (r.AppKey ?? "").Contains(".")) { _status.Text = "Botón actualizado: " + r.Caption; return; }
             bool scriptNuevo = false;
             try
             {
