@@ -41,7 +41,7 @@ La pantalla será **HTML dentro de WebView2**, con puente de mensajes (`postMess
 ## 4. Implementación
 
 - Clase `RibbonAdmin` (C#, en el addon) con `Listar()`, `CrearTab()`, `CrearSeccion()`, `PublicarBoton()`, `QuitarBoton()`, `Deshacer()`; ejecuta todo con `ctx.OpenConn()` en una **transacción** (lección de 2.94.0: no usar `ctx.NonQuery` para lotes).
-- Pantalla WinForms con el mismo estilo de la Consola; el mismo motor lo usa `GESTOR_RIBBON.py` (que queda como herramienta avanzada) y luego el SDK (`ctx.ribbon.*`).
+- Pantalla HTML en WebView2 (ver §3), con el estilo de la Consola; el mismo motor lo usa `GESTOR_RIBBON.py` (que queda como herramienta avanzada) y luego el SDK (`ctx.ribbon.*`).
 - Al terminar llama a `ctx.erp.RefreshRibbon()` si el ribbon se actualiza sin reiniciar; si no, avisa «reinicia Comercial para ver el botón».
 
 ## 5. Pruebas previas en el laboratorio (antes de programar la pantalla)
