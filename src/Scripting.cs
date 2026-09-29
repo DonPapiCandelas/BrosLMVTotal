@@ -1582,7 +1582,36 @@ namespace BrosLMV
         }
 
         // ---- UI de CONTPAQi ----
-        public void RefreshGrid()                   { Com.CallConMissing(_xe, "RefreshGrid"); }
+        // Refresca el grid de la lista activa de Comercial. XEngine.RefreshGrid(jgd, [Redraw]) EXIGE el grid como primer parametro (llamarlo sin
+        // parametros falla con DISP_E_PARAMNOTOPTIONAL: el metodo llevaba siempre roto). Se le pasa el grid actual (propiedad janusGrid).
+        // Como recarga todo y deja la vista al principio, se lee la fila actual del grid (Janus GridEX: Row) antes y se restaura despues
+        // (Row + EnsureVisible). Nunca pasar Redraw=false: trabo el sistema. Ver MANUAL "Refrescar el grid (estandar)".
+        public void RefreshGrid()
+        {
+            try
+            {
+                object g = Com.GetProp(_xe, "janusGrid");
+                if (g != null)
+                {
+                    int fila = -1;
+                    object f = Com.GetProp(g, "Row");
+                    if (f != null) fila = Com.ToInt(f);
+                    Com.Call(_xe, "RefreshGrid", new object[] { g });
+                    if (string.IsNullOrEmpty(Com.LastError))
+                    {
+                        if (fila > 0)
+                        {
+                            Com.SetProp(g, "Row", fila);
+                            Com.Call(g, "EnsureVisible", new object[] { fila, Type.Missing });
+                        }
+                        Com.LastError = null;
+                        return;
+                    }
+                }
+            }
+            catch { /* cae al camino anterior */ }
+            Com.CallConMissing(_xe, "RefreshGrid");
+        }
         public void RefreshRibbon()                 { Com.CallConMissing(_xe, "RefreshRibbon"); }
         public void GotoModuleID(int moduleId)      { Com.SetProp(_xe, "GotoModuleID", moduleId); }   // es PROPIEDAD-put, no método (verificado en dump)
         public void OpenModule(int moduleId)        { Com.Call(_xe, "OpenModule",    new object[] { moduleId }); }

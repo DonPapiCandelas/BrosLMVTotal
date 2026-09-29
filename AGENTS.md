@@ -57,7 +57,10 @@ puntual (buscar una versión o un tema), no contexto de arranque — son miles d
    prohibidos vive en `.terminos_prohibidos.local` (raíz, no versionado);
    `build/publicar_release.ps1` escanea el contenido de los instaladores contra ella antes
    de publicar.
-6. **GPL-3.0**: todo lo que se aporte se publica bajo la misma licencia.
+6. **Todo script que cambie datos que se ven en una lista de Comercial (crear, modificar, cancelar, timbrar, vincular…) termina
+   refrescando el grid** con `ctx.erp.RefreshGrid()` — una vez, después del último cambio. Desde v2.94.0 conserva la fila y la vista.
+   Detalle y la función para versiones anteriores: `docs/MANUAL.md`, «Refrescar el grid (estándar)».
+7. **GPL-3.0**: todo lo que se aporte se publica bajo la misma licencia.
 
 ## 4. Mapa del repo
 
