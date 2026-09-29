@@ -1559,9 +1559,10 @@ namespace BrosLMV
             var todos = new List<Dictionary<string, object>>();
             if (disponible) { try { todos = _ctx.BrosListar(); } catch { } }
             var appKeys = todos.Select(r => Convert.ToString(r["AppKey"])).ToList();
+            var appKeySet = new HashSet<string>(appKeys, StringComparer.OrdinalIgnoreCase);   // las claves no distinguen mayúsculas
 
             // ---- ★ Favoritos (por terminal; solo los que sigan existiendo en esta empresa) ----
-            var favoritos = Datos.Favoritos().Where(f => appKeys.Contains(f))
+            var favoritos = Datos.Favoritos().Where(f => appKeySet.Contains(f))
                 .Where(f => !filtrando || f.ToLower().Contains(filtro)).ToList();
             if (favoritos.Count > 0)
             {
@@ -1573,7 +1574,7 @@ namespace BrosLMV
             // ---- 🕐 Recientes (últimos 8 abiertos/ejecutados en ESTE equipo) ----
             if (!filtrando)
             {
-                var recientes = Datos.Recientes(8).Where(r => appKeys.Contains(r)).ToList();
+                var recientes = Datos.Recientes(8).Where(r => appKeySet.Contains(r)).ToList();
                 if (recientes.Count > 0)
                 {
                     var nRec = new TreeNode("🕐 Recientes") { ImageKey = "folder", SelectedImageKey = "folder" };
@@ -2652,6 +2653,18 @@ private void Guardar(bool comoNuevo)
                 if (string.IsNullOrEmpty(ak)) return;
                 ak = NormalizarAppKey(ak);
                 if (string.IsNullOrEmpty(ak)) return;
+                // Las claves NO distinguen mayúsculas de minúsculas (broslmv.mi_script == BrosLMV.Mi_Script): CONSOLA y PRUEBA son reservadas
+                // y si ya existe un script con la misma clave (con otra escritura) no se duplica: se pregunta y se conserva la escritura guardada.
+                if (ak.Equals("CONSOLA", StringComparison.OrdinalIgnoreCase) || ak.Equals("PRUEBA", StringComparison.OrdinalIgnoreCase))
+                { ctxError("«" + ak + "» es un nombre reservado de BrosLMV; elige otro."); return; }
+                string existente = ClaveExistente(ak);
+                if (existente != null)
+                {
+                    if (!string.Equals(existente, _appKey, StringComparison.OrdinalIgnoreCase) &&
+                        MessageBox.Show("Ya existe el script «" + existente + "» (las claves no distinguen mayúsculas de minúsculas).\n\n¿Reemplazarlo con este código? Su historial de versiones conserva lo anterior.",
+                            "BrosLMV", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+                    ak = existente;
+                }
             }
             try
             {
@@ -2750,6 +2763,17 @@ private void Guardar(bool comoNuevo)
             }
         }
 
+        // Clave tal como está guardada en zzBrosScript (la comparación no distingue mayúsculas), o null si no existe.
+        private string ClaveExistente(string appKey)
+        {
+            try
+            {
+                var r = _ctx.Query("SELECT TOP 1 AppKey FROM zzBrosScript WHERE AppKey=" + "N'" + appKey.Replace("'", "''") + "'");
+                return r.Count == 0 ? null : Convert.ToString(r[0]["AppKey"]);
+            }
+            catch { return null; }
+        }
+
         // Nombre + categoria en un solo dialogo, al guardar un script nuevo (T2.5, pedido
         // explicito: "que al momento de guardar el nuevo script ya se vaya a una categoria").
         // El combo de categoria es editable (DropDown, no DropDownList): se puede escribir una
@@ -2772,7 +2796,7 @@ private void Guardar(bool comoNuevo)
                 var lbl = new Label { Text = prompt, Left = 22, Top = 22, Width = 430, Height = 40, ForeColor = AppTheme.TextMain, BackColor = Color.Transparent };
                 var txt = new TextBox { Left = 22, Top = 66, Width = 430, Text = valorNombre ?? "", BorderStyle = BorderStyle.FixedSingle, Font = AppTheme.FontMain };
                 var lblClave = new Label { Left = 22, Top = 94, Width = 430, Height = 18, ForeColor = AppTheme.Primary, BackColor = Color.Transparent, Font = AppTheme.FontSmall };
-                Action actualizaClave = () => lblClave.Text = "Se guardará como:  BrosLMV." + (NormalizarAppKey(txt.Text) is string k && k.Length > 0 ? k : "…");
+                Action actualizaClave = () => lblClave.Text = "Se guardará como:  BrosLMV." + (NormalizarAppKey(txt.Text) is string k && k.Length > 0 ? k : "…") + "   (no distingue mayúsculas)";
                 txt.TextChanged += (s2, e2) => actualizaClave();
                 actualizaClave();
 

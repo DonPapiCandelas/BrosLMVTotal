@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("2.97.0.0")]
+[assembly: AssemblyVersion("2.97.1.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV
@@ -82,7 +82,7 @@ namespace BrosLMV
                 Com.DiagLog("ExecuteFunction: appKey=" + appKey + " UserID=" + UserID + " ModuleID=" + ModuleID +
                     " proceso=" + System.Diagnostics.Process.GetCurrentProcess().ProcessName + " pid=" + System.Diagnostics.Process.GetCurrentProcess().Id);
                 UiPump.Asegurar(); // deja lista la bomba de marshaling para botones Python
-                switch (appKey)
+                switch ((appKey ?? "").ToUpperInvariant())   // las claves no distinguen mayúsculas: broslmv.consola == BrosLMV.CONSOLA
                 {
                     case "CONSOLA":
                         // Abre la consola de scripts MODELESS: se puede minimizar y seguir
