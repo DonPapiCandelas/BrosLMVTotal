@@ -43,6 +43,7 @@ $py = Get-Command python -ErrorAction SilentlyContinue
 if ($py) {
     & python (Join-Path $root "build\md_a_html.py") (Join-Path $root "docs\CREAR_DOC_DESDE_XML.md") (Join-Path $docsPlant "CREAR_DOC_DESDE_XML.html")
     & python (Join-Path $root "build\md_a_html.py") (Join-Path $root "docs\CREAR_BOTON.md") (Join-Path $docsPlant "CREAR_BOTON.html")
+    & python (Join-Path $root "build\sdk\generar_referencia_sdk.py")
 } else {
     Write-Host "   AVISO: no hay Python; se usa el HTML ya versionado en instalador\docs\plantillas." -ForegroundColor Yellow
 }
@@ -66,6 +67,10 @@ if ($node) {
 Write-Host "1) Compilando addon..." -ForegroundColor Cyan
 dotnet build (Join-Path $src "BrosLMV.csproj") -c Release -o $out
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR DE COMPILACION" -ForegroundColor Red; exit 1 }
+
+Write-Host "1b) Verificando que el catalogo del SDK cubra toda funcion publica..." -ForegroundColor Cyan
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root "build\sdk\verificar_catalogo_sdk.ps1") -Dll (Join-Path $out "BrosLMVClsMain.dll")
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: el catalogo del SDK no cubre todas las funciones publicas (ver arriba)." -ForegroundColor Red; exit 1 }
 
 Write-Host "2) Actualizando instalador\bin..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force (Join-Path $bin "x86") | Out-Null

@@ -25,6 +25,7 @@
     <Compile Include="Recetas.cs" />
     <Compile Include="RibbonAdmin.cs" />
     <Compile Include="RibbonUi.cs" />
+    <Compile Include="SdkCatalogo.cs" />
     <Compile Include="EstructurasDocumento.cs" />
     <Compile Include="ConsolaPasswordHash.cs" />
     <Compile Include="ConsolaPasswordPromptForm.cs" />
@@ -36,6 +37,7 @@
     <EmbeddedResource Include="assets\BrosLMV.ico" />
     <EmbeddedResource Include="assets\notas_version.html" />
     <EmbeddedResource Include="assets\crear_boton_app.html" />
+    <EmbeddedResource Include="assets\sdk_catalogo.json" />
     <EmbeddedResource Include="..\instalador\docs\plantillas\*.html"><LogicalName>doc_%(Filename)%(Extension)</LogicalName></EmbeddedResource>
   </ItemGroup>
 

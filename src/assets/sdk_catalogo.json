@@ -1,0 +1,2473 @@
+{
+ "version": 1,
+ "nota": "Fuente de verdad del catálogo del SDK de BrosLMV. Se edita a mano; build/sdk/generar_referencia_sdk.py genera de aquí el manual HTML y la Consola lo lee para el panel de referencias.",
+ "entradas": [
+  {
+   "id": "cs:GetSelectedIds",
+   "lang": "cs",
+   "cat": "Selección y datos",
+   "nombre": "GetSelectedIds",
+   "firma": "ctx.GetSelectedIds() : List<long>",
+   "resumen": "IDs de los documentos seleccionados en la vista.",
+   "ejemplo": "var ids = ctx.GetSelectedIds();",
+   "detalle": "Devuelve los DocumentID (o el ID de la fila) de lo que el usuario tiene seleccionado en la LISTA de Comercial. Es lo primero que casi todo botón hace.",
+   "retorna": "List<long> con los IDs; vacía si no hay selección.",
+   "params": [],
+   "notas": [
+    "Lee la selección de la lista de fondo: dentro de un documento abierto no sirve; usa ctx.ObtenerIdDeVentanaActiva().",
+    "Los IDs sirven directo en un IN de SQL con ctx.JoinIds(ids)."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Avisar si no hay selección",
+     "lang": "cs",
+     "codigo": "var ids = ctx.GetSelectedIds();\r\nif (ids.Count == 0) { ctx.Msg(\"Selecciona al menos un documento.\"); return; }"
+    }
+   ],
+   "equiv": "py:ctx.get_selected_ids",
+   "ver": [
+    "cs:JoinIds",
+    "cs:GetFilaActiva",
+    "cs:ObtenerIdDeVentanaActiva"
+   ]
+  },
+  {
+   "id": "cs:GetFilaActiva",
+   "lang": "cs",
+   "cat": "Selección y datos",
+   "nombre": "GetFilaActiva",
+   "firma": "ctx.GetFilaActiva() : Dictionary<string,object>",
+   "resumen": "Campos de la primera fila seleccionada del grid.",
+   "ejemplo": "var fila = ctx.GetFilaActiva();\r\nvar folio = fila[\"Folio\"];",
+   "detalle": "Devuelve las columnas de la primera fila seleccionada, tal como las muestra la lista (por su nombre de columna).",
+   "retorna": "Dictionary<string,object> con el nombre de cada columna como clave.",
+   "notas": [
+    "Los nombres son los de la vista de la lista; no siempre coinciden con columnas reales de la tabla. Para un dato exacto, consulta SQL con el ID."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Leer folio y total",
+     "lang": "cs",
+     "codigo": "var fila = ctx.GetFilaActiva();\r\nctx.Msg(\"Folio \" + fila[\"Folio\"] + \" por \" + fila[\"Total\"]);"
+    }
+   ],
+   "equiv": "py:ctx.fila"
+  },
+  {
+   "id": "cs:JoinIds",
+   "lang": "cs",
+   "cat": "Selección y datos",
+   "nombre": "JoinIds",
+   "firma": "ctx.JoinIds(ids) : string",
+   "resumen": "Convierte una lista de IDs en \"1,2,3\" (para un IN).",
+   "ejemplo": "var lista = ctx.JoinIds(ctx.GetSelectedIds());",
+   "detalle": "Convierte una lista de IDs en el texto \"1,2,3\" para usarlo dentro de un IN de SQL.",
+   "params": [
+    [
+     "ids",
+     "IEnumerable<long>",
+     "Los IDs a unir."
+    ]
+   ],
+   "retorna": "string, por ejemplo \"12,15,20\".",
+   "ejemplo_extra": [
+    {
+     "titulo": "Sumar lo seleccionado",
+     "lang": "cs",
+     "codigo": "var total = ctx.Scalar(\"SELECT SUM(Total) FROM docDocument WHERE DocumentID IN (\" + ctx.JoinIds(ctx.GetSelectedIds()) + \")\");"
+    }
+   ],
+   "ver": [
+    "cs:GetSelectedIds",
+    "cs:Scalar"
+   ]
+  },
+  {
+   "id": "cs:Scalar",
+   "lang": "cs",
+   "cat": "Consultas SQL",
+   "nombre": "Scalar",
+   "firma": "ctx.Scalar(sql) : object",
+   "resumen": "Ejecuta SQL y devuelve un solo valor.",
+   "ejemplo": "var total = ctx.Scalar(\"SELECT SUM(Total) FROM docDocument WHERE DocumentID IN (\" + ctx.JoinIds(ctx.GetSelectedIds()) + \")\");",
+   "detalle": "Ejecuta una consulta y devuelve solo la primera columna de la primera fila. Ideal para totales, conteos y buscar un dato.",
+   "params": [
+    [
+     "sql",
+     "string",
+     "La consulta. Escapa las comillas simples duplicándolas ('')."
+    ]
+   ],
+   "retorna": "object (null si no hay filas). Conviértelo: Convert.ToDecimal(x), Convert.ToInt32(x).",
+   "notas": [
+    "Usa la conexión viva de Comercial; si esa conexión falla, cae sola a una conexión propia.",
+    "Para varios INSERT en un solo texto NO uses Scalar/NonQuery: usa ctx.OpenConn() (a veces se reintenta y duplica).",
+    "Filtra siempre por la empresa activa cuando la tabla tiene OwnedBusinessEntityID (ctx.erp.OwnedBusinessEntityId)."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Cuántos documentos hay",
+     "lang": "cs",
+     "codigo": "int n = Convert.ToInt32(ctx.Scalar(\"SELECT COUNT(*) FROM docDocument\"));\r\nctx.Msg(\"Documentos: \" + n);"
+    },
+    {
+     "titulo": "Lo mismo en Python",
+     "lang": "py",
+     "codigo": "n = ctx.scalar(\"SELECT COUNT(*) FROM docDocument\")\r\nctx.msg(f\"Documentos: {n}\")"
+    }
+   ],
+   "equiv": "py:ctx.scalar",
+   "ver": [
+    "cs:Query",
+    "cs:NonQuery",
+    "cs:OpenConn"
+   ]
+  },
+  {
+   "id": "cs:Query",
+   "lang": "cs",
+   "cat": "Consultas SQL",
+   "nombre": "Query",
+   "firma": "ctx.Query(sql) : List<Dictionary<string,object>>",
+   "resumen": "Ejecuta SQL y devuelve filas.",
+   "ejemplo": "var filas = ctx.Query(\"SELECT Folio, Total FROM docDocument WHERE DocumentID IN (\" + ctx.JoinIds(ctx.GetSelectedIds()) + \")\");",
+   "detalle": "Ejecuta una consulta y devuelve todas las filas. Cada fila es un diccionario: columna → valor.",
+   "params": [
+    [
+     "sql",
+     "string",
+     "La consulta SELECT."
+    ]
+   ],
+   "retorna": "List<Dictionary<string,object>>; vacía si no hay filas. Los nombres de columna no distinguen mayúsculas.",
+   "notas": [
+    "Trae solo lo que necesitas (TOP, columnas concretas): todo se carga en memoria."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Recorrer filas",
+     "lang": "cs",
+     "codigo": "var filas = ctx.Query(\"SELECT TOP 5 Folio, Total FROM docDocument ORDER BY DocumentID DESC\");\r\nforeach (var f in filas)\r\n    ctx.Log(f[\"Folio\"] + \" → \" + f[\"Total\"]);"
+    },
+    {
+     "titulo": "Lo mismo en Python (con parámetros)",
+     "lang": "py",
+     "codigo": "filas = ctx.query(\"SELECT TOP 5 Folio, Total FROM docDocument WHERE ModuleID = @m\", {\"m\": 152})\r\nfor f in filas:\r\n    ctx.log(f\"{f['Folio']} → {f['Total']}\")"
+    }
+   ],
+   "equiv": "py:ctx.query",
+   "ver": [
+    "cs:Scalar",
+    "cs:NonQuery"
+   ]
+  },
+  {
+   "id": "cs:NonQuery",
+   "lang": "cs",
+   "cat": "Consultas SQL",
+   "nombre": "NonQuery",
+   "firma": "ctx.NonQuery(sql) : int",
+   "resumen": "INSERT/UPDATE/DELETE. Devuelve filas afectadas (respeta modo solo lectura).",
+   "ejemplo": "int n = ctx.NonQuery(\"UPDATE docDocument SET Referencia='X' WHERE DocumentID IN (\" + ctx.JoinIds(ctx.GetSelectedIds()) + \")\");",
+   "detalle": "Ejecuta INSERT, UPDATE o DELETE y devuelve cuántas filas cambió.",
+   "params": [
+    [
+     "sql",
+     "string",
+     "La sentencia de modificación."
+    ]
+   ],
+   "retorna": "int: filas afectadas.",
+   "notas": [
+    "Se bloquea en «Modo solo lectura» (lanza una excepción).",
+    "Para lotes de varios INSERT usa ctx.OpenConn(): por el puente COM se pierde el resultado y puede duplicar.",
+    "Un UPDATE/DELETE sin WHERE afecta toda la tabla: revísalo dos veces."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Actualizar una referencia",
+     "lang": "cs",
+     "codigo": "int n = ctx.NonQuery(\"UPDATE docDocument SET Referencia = 'Revisado' WHERE DocumentID IN (\" + ctx.JoinIds(ctx.GetSelectedIds()) + \")\");\r\nctx.Msg(\"Actualizados: \" + n);"
+    }
+   ],
+   "equiv": "py:ctx.execute",
+   "ver": [
+    "cs:Scalar",
+    "cs:OpenConn"
+   ]
+  },
+  {
+   "id": "cs:EjecutarSql",
+   "lang": "cs",
+   "cat": "Consultas SQL",
+   "nombre": "EjecutarSql",
+   "firma": "ctx.EjecutarSql(sql) : string",
+   "resumen": "Corre T-SQL crudo (resuelve tokens) y devuelve texto: filas o un OK.",
+   "ejemplo": "var txt = ctx.EjecutarSql(\"SELECT Folio, Total FROM docDocument WHERE DocumentID IN ({pIDs})\");\r\nctx.Msg(txt);",
+   "detalle": "Corre T-SQL tal cual, resolviendo los tokens ({pID}, {pIDs}…), y regresa el resultado como texto.",
+   "params": [
+    [
+     "sqlCrudo",
+     "string",
+     "SQL con tokens opcionales."
+    ]
+   ],
+   "retorna": "string: las filas si es SELECT, o un OK si es una modificación.",
+   "ver": [
+    "cs:ResolverTokens"
+   ]
+  },
+  {
+   "id": "cs:ResolverTokens",
+   "lang": "cs",
+   "cat": "Tokens",
+   "nombre": "ResolverTokens",
+   "firma": "ctx.ResolverTokens(plantilla) : string",
+   "resumen": "Sustituye {pID}, {pIDs}, {pUserID}, {pModulo}, {pEmpresa}, {DATOS:Campo}.",
+   "ejemplo": "var sql = ctx.ResolverTokens(\"SELECT * FROM docDocument WHERE DocumentID = {pID}\");",
+   "detalle": "Sustituye los tokens de una plantilla de texto por los valores del contexto actual.",
+   "params": [
+    [
+     "plantilla",
+     "string",
+     "Texto con tokens."
+    ]
+   ],
+   "retorna": "string con los valores ya puestos.",
+   "tokens": [
+    [
+     "{pID}",
+     "Primer ID seleccionado en la lista (0 si no hay)"
+    ],
+    [
+     "{pIDs}",
+     "Todos los IDs seleccionados separados por coma"
+    ],
+    [
+     "{pUserID}",
+     "Usuario activo"
+    ],
+    [
+     "{pModulo}",
+     "Módulo activo"
+    ],
+    [
+     "{pEmpresa}",
+     "Nombre de la base de datos activa"
+    ],
+    [
+     "{DATOS:Campo}",
+     "Valor de ese campo en la primera fila seleccionada"
+    ]
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "SQL con selección",
+     "lang": "cs",
+     "codigo": "var sql = ctx.ResolverTokens(\"SELECT Folio, Total FROM docDocument WHERE DocumentID IN ({pIDs})\");\r\nvar filas = ctx.Query(sql);"
+    }
+   ],
+   "notas": [
+    "En scripts SQL puro los tokens se resuelven solos; en C# y Python usa esta función o las equivalentes (ctx.GetSelectedIds(), ctx.UserIDReal()…)."
+   ],
+   "ver": [
+    "cs:EjecutarSql",
+    "cs:GetSelectedIds"
+   ]
+  },
+  {
+   "id": "cs:Empresa",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "Empresa",
+   "firma": "ctx.Empresa() : string",
+   "resumen": "Nombre de la base de datos de la empresa activa.",
+   "ejemplo": "var bd = ctx.Empresa();",
+   "detalle": "Nombre de la base de datos de la empresa activa (por ejemplo MI_EMPRESA).",
+   "retorna": "string.",
+   "notas": [
+    "Para filtrar por la empresa dentro de las tablas que guardan una copia por empresa usa ctx.erp.OwnedBusinessEntityId (OwnedBusinessEntityID)."
+   ],
+   "equiv": "py:ctx.empresa"
+  },
+  {
+   "id": "cs:ServidorActivo",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "ServidorActivo",
+   "firma": "ctx.ServidorActivo() : string",
+   "resumen": "Servidor\\instancia de SQL de la empresa activa.",
+   "ejemplo": "var srv = ctx.ServidorActivo();"
+  },
+  {
+   "id": "cs:ModuloActivo",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "ModuloActivo",
+   "firma": "ctx.ModuloActivo() : int",
+   "resumen": "ID del módulo activo de CONTPAQi.",
+   "ejemplo": "var mod = ctx.ModuloActivo();"
+  },
+  {
+   "id": "cs:UserID",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "UserID",
+   "firma": "ctx.UserID : int",
+   "resumen": "ID de usuario del addon (suele venir 0; usa ctx.erp.UserId).",
+   "ejemplo": "var u = ctx.UserID;"
+  },
+  {
+   "id": "cs:SoloLectura",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "SoloLectura",
+   "firma": "ctx.SoloLectura : bool",
+   "resumen": "Si es true, NonQuery se bloquea (modo solo lectura).",
+   "ejemplo": "ctx.SoloLectura = true;"
+  },
+  {
+   "id": "cs:FilasAfectadas",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "FilasAfectadas",
+   "firma": "ctx.FilasAfectadas : int",
+   "resumen": "Acumulado de filas modificadas por NonQuery (auditoría).",
+   "ejemplo": "var n = ctx.FilasAfectadas;"
+  },
+  {
+   "id": "cs:DiagConexion",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "DiagConexion",
+   "firma": "ctx.DiagConexion() : string",
+   "resumen": "Diagnóstico de la conexión activa.",
+   "ejemplo": "ctx.Msg(ctx.DiagConexion());"
+  },
+  {
+   "id": "cs:XEngineLib",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "XEngineLib",
+   "firma": "ctx.XEngineLib : object",
+   "resumen": "Objeto XEngine crudo (escape hatch a COM).",
+   "ejemplo": "var xe = ctx.XEngineLib;"
+  },
+  {
+   "id": "cs:Msg",
+   "lang": "cs",
+   "cat": "Interacción",
+   "nombre": "Msg",
+   "firma": "ctx.Msg(texto, titulo?) : void",
+   "resumen": "Muestra un mensaje al usuario.",
+   "ejemplo": "ctx.Msg(\"Hola\", \"Aviso\");",
+   "detalle": "Muestra un mensaje al usuario y espera a que lo cierre.",
+   "params": [
+    [
+     "texto",
+     "string",
+     "Lo que se muestra."
+    ],
+    [
+     "titulo",
+     "string",
+     "Título de la ventana (opcional)."
+    ]
+   ],
+   "retorna": "nada.",
+   "notas": [
+    "En ejecución sin pantalla (Runner) no abre nada: revisa ctx.Headless."
+   ],
+   "equiv": "py:ctx.msg"
+  },
+  {
+   "id": "cs:Confirm",
+   "lang": "cs",
+   "cat": "Interacción",
+   "nombre": "Confirm",
+   "firma": "ctx.Confirm(texto, titulo?) : bool",
+   "resumen": "Pregunta Sí/No.",
+   "ejemplo": "if (ctx.Confirm(\"¿Seguro?\")) { /* ... */ }",
+   "detalle": "Pregunta Sí/No al usuario.",
+   "params": [
+    [
+     "texto",
+     "string",
+     "La pregunta."
+    ],
+    [
+     "titulo",
+     "string",
+     "Título (opcional)."
+    ]
+   ],
+   "retorna": "true si eligió Sí.",
+   "ejemplo_extra": [
+    {
+     "titulo": "Confirmar antes de borrar",
+     "lang": "cs",
+     "codigo": "if (!ctx.Confirm(\"¿Borrar los documentos seleccionados?\")) return;"
+    }
+   ],
+   "equiv": "py:ctx.confirm"
+  },
+  {
+   "id": "cs:Log",
+   "lang": "cs",
+   "cat": "Interacción",
+   "nombre": "Log",
+   "firma": "ctx.Log(texto) : void",
+   "resumen": "Escribe a la bitácora en C:\\BrosLMV\\logs.",
+   "ejemplo": "ctx.Log(\"Proceso terminado\");",
+   "detalle": "Escribe una línea en la bitácora diaria de BrosLMV (C:\\BrosLMV\\logs). Útil para depurar sin molestar al usuario.",
+   "params": [
+    [
+     "texto",
+     "string",
+     "La línea."
+    ]
+   ],
+   "retorna": "nada.",
+   "equiv": "py:ctx.log"
+  },
+  {
+   "id": "cs:erp.UserId",
+   "lang": "cs",
+   "cat": "ERP · Contexto",
+   "nombre": "erp.UserId",
+   "firma": "ctx.erp.UserId : int",
+   "resumen": "ID real del usuario de CONTPAQi.",
+   "ejemplo": "var u = ctx.erp.UserId;"
+  },
+  {
+   "id": "cs:erp.UserName",
+   "lang": "cs",
+   "cat": "ERP · Contexto",
+   "nombre": "erp.UserName",
+   "firma": "ctx.erp.UserName : string",
+   "resumen": "Nombre del usuario activo.",
+   "ejemplo": "var n = ctx.erp.UserName;"
+  },
+  {
+   "id": "cs:erp.OwnedBusinessEntityId",
+   "lang": "cs",
+   "cat": "ERP · Contexto",
+   "nombre": "erp.OwnedBusinessEntityId",
+   "firma": "ctx.erp.OwnedBusinessEntityId : int",
+   "resumen": "ID de la empresa propia (orgBusinessEntity IsOwned=1).",
+   "ejemplo": "var e = ctx.erp.OwnedBusinessEntityId;",
+   "detalle": "ID de la empresa propia (orgBusinessEntity con IsOwned=1). Es el valor de OwnedBusinessEntityID para filtrar tablas que guardan una copia por empresa.",
+   "retorna": "int.",
+   "notas": [
+    "Filtra SIEMPRE por este valor en almacenes, proveedores, clientes, centros de costo, tipos de gasto, documentos y pólizas: si no, verás datos duplicados de otras empresas."
+   ],
+   "equiv": "py:ctx.erp.OwnedBusinessEntityId"
+  },
+  {
+   "id": "cs:erp.ActiveModuleId",
+   "lang": "cs",
+   "cat": "ERP · Contexto",
+   "nombre": "erp.ActiveModuleId",
+   "firma": "ctx.erp.ActiveModuleId : int",
+   "resumen": "Módulo activo (equivale a ctx.ModuloActivo()).",
+   "ejemplo": "var m = ctx.erp.ActiveModuleId;"
+  },
+  {
+   "id": "cs:erp.CurrencyId",
+   "lang": "cs",
+   "cat": "ERP · Contexto",
+   "nombre": "erp.CurrencyId",
+   "firma": "ctx.erp.CurrencyId : int",
+   "resumen": "Moneda activa.",
+   "ejemplo": "var c = ctx.erp.CurrencyId;"
+  },
+  {
+   "id": "cs:erp.ComercialRFC",
+   "lang": "cs",
+   "cat": "ERP · Contexto",
+   "nombre": "erp.ComercialRFC",
+   "firma": "ctx.erp.ComercialRFC : string",
+   "resumen": "RFC de la empresa.",
+   "ejemplo": "var rfc = ctx.erp.ComercialRFC;"
+  },
+  {
+   "id": "cs:erp.SoftwareVersion",
+   "lang": "cs",
+   "cat": "ERP · Contexto",
+   "nombre": "erp.SoftwareVersion",
+   "firma": "ctx.erp.SoftwareVersion : string",
+   "resumen": "Versión de CONTPAQi.",
+   "ejemplo": "var v = ctx.erp.SoftwareVersion;"
+  },
+  {
+   "id": "cs:erp.RecalcCompleto",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.RecalcCompleto",
+   "firma": "ctx.erp.RecalcCompleto(documentId) : void",
+   "resumen": "Recalcula totales + costos + saldo pagado.",
+   "ejemplo": "var id = (int)ctx.GetSelectedIds()[0];\r\nctx.erp.RecalcCompleto(id);",
+   "detalle": "Recalcula totales, impuestos, costos y saldo pagado del documento. Llámalo después de crear o cambiar partidas.",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento."
+    ]
+   ],
+   "retorna": "nada.",
+   "equiv": "py:ctx.erp.RecalcCompleto",
+   "ver": [
+    "cs:erp.AgregarArticulo"
+   ]
+  },
+  {
+   "id": "cs:erp.RecalcDocument",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.RecalcDocument",
+   "firma": "ctx.erp.RecalcDocument(documentId) : void",
+   "resumen": "Recalcula totales (subtotal, IVA, total).",
+   "ejemplo": "ctx.erp.RecalcDocument(id);"
+  },
+  {
+   "id": "cs:erp.CalcularCostos",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.CalcularCostos",
+   "firma": "ctx.erp.CalcularCostos(documentId) : void",
+   "resumen": "Actualiza costos (promedio, PEPS...).",
+   "ejemplo": "ctx.erp.CalcularCostos(id);",
+   "detalle": "Actualiza los costos del documento (promedio, PEPS…). Se usa junto con AffectStockNEW cuando el módulo afecta costos.",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento."
+    ]
+   ],
+   "retorna": "nada.",
+   "ver": [
+    "cs:erp.AffectStockNEW"
+   ]
+  },
+  {
+   "id": "cs:erp.AffectStockNEW",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.AffectStockNEW",
+   "firma": "ctx.erp.AffectStockNEW(documentId) : void",
+   "resumen": "Afecta inventario (kardex) — módulos nuevos.",
+   "ejemplo": "ctx.erp.AffectStockNEW(id);",
+   "detalle": "Afecta el inventario (kardex) del documento con el motor nuevo. Úsalo solo si el módulo afecta inventario.",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento."
+    ]
+   ],
+   "retorna": "nada.",
+   "notas": [
+    "Decide según los parámetros del módulo (engModuleParameter: StockAffectation), no por el tipo de documento ni por un módulo escrito a mano.",
+    "Ya se conoce y funciona en Recepción, Factura y Gasto."
+   ],
+   "equiv": "py:ctx.erp.AffectStockNEW",
+   "ver": [
+    "cs:erp.CalcularCostos",
+    "cs:erp.UpdateDocumentPaidInfo"
+   ]
+  },
+  {
+   "id": "cs:erp.AffectStock",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.AffectStock",
+   "firma": "ctx.erp.AffectStock(documentId) : void",
+   "resumen": "Afecta inventario (versión clásica).",
+   "ejemplo": "ctx.erp.AffectStock(id);"
+  },
+  {
+   "id": "cs:erp.UpdateStatusDelivery",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.UpdateStatusDelivery",
+   "firma": "ctx.erp.UpdateStatusDelivery(documentId) : void",
+   "resumen": "Actualiza el estatus de entrega del grid.",
+   "ejemplo": "ctx.erp.UpdateStatusDelivery(id);"
+  },
+  {
+   "id": "cs:erp.UpdateDocumentPaidInfo",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.UpdateDocumentPaidInfo",
+   "firma": "ctx.erp.UpdateDocumentPaidInfo(documentId) : void",
+   "resumen": "Recalcula saldo pagado y balance.",
+   "ejemplo": "ctx.erp.UpdateDocumentPaidInfo(id);",
+   "detalle": "Recalcula el saldo pagado y el balance del documento. Úsalo si el módulo afecta saldos (cuentas por pagar/cobrar).",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento."
+    ]
+   ],
+   "retorna": "nada."
+  },
+  {
+   "id": "cs:erp.ActualizarParcialidad",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.ActualizarParcialidad",
+   "firma": "ctx.erp.ActualizarParcialidad(documentId) : void",
+   "resumen": "Actualiza parcialidad en complementos de pago SAT.",
+   "ejemplo": "ctx.erp.ActualizarParcialidad(id);"
+  },
+  {
+   "id": "cs:erp.CancelDocument",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.CancelDocument",
+   "firma": "ctx.erp.CancelDocument(documentId) : void",
+   "resumen": "Cancela el documento.",
+   "ejemplo": "ctx.erp.CancelDocument(id);"
+  },
+  {
+   "id": "cs:erp.ReactivateDocument",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.ReactivateDocument",
+   "firma": "ctx.erp.ReactivateDocument(documentId) : void",
+   "resumen": "Reactiva un documento cancelado.",
+   "ejemplo": "ctx.erp.ReactivateDocument(id);"
+  },
+  {
+   "id": "cs:erp.Save",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.Save",
+   "firma": "ctx.erp.Save(documentId) : void",
+   "resumen": "Guarda el documento (XEngine).",
+   "ejemplo": "ctx.erp.Save(id);",
+   "detalle": "Guarda el documento con el motor de Comercial.",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento."
+    ]
+   ],
+   "retorna": "nada.",
+   "notas": [
+    "Revisa ctx.erp.LastError después de guardar."
+   ],
+   "equiv": "py:ctx.erp.Save",
+   "ver": [
+    "cs:erp.LastError"
+   ]
+  },
+  {
+   "id": "cs:erp.Delete",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.Delete",
+   "firma": "ctx.erp.Delete(documentId) : void",
+   "resumen": "Elimina el documento (XEngine).",
+   "ejemplo": "ctx.erp.Delete(id);"
+  },
+  {
+   "id": "cs:erp.AjustarSaldosInsolutos",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.AjustarSaldosInsolutos",
+   "firma": "ctx.erp.AjustarSaldosInsolutos(documentId) : void",
+   "resumen": "Ajusta saldos insolutos.",
+   "ejemplo": "ctx.erp.AjustarSaldosInsolutos(id);"
+  },
+  {
+   "id": "cs:erp.RefreshDocumento",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.RefreshDocumento",
+   "firma": "ctx.erp.RefreshDocumento(documentId) : void",
+   "resumen": "Refresca visualmente un documento abierto.",
+   "ejemplo": "ctx.erp.RefreshDocumento(id);"
+  },
+  {
+   "id": "cs:erp.NuevoDocumento",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.NuevoDocumento",
+   "firma": "ctx.erp.NuevoDocumento(moduleId, depotId, businessEntityId?, rate?, paymentTermId?, currencyId?, title?, sourceDocumentId?) : int",
+   "resumen": "Crea el encabezado de un documento con los defaults del módulo (folio, tipo, moneda) y devuelve el DocumentID.",
+   "ejemplo": "int id = ctx.erp.NuevoDocumento(183, 1, 162); // OC, almacén, proveedor",
+   "detalle": "Crea el encabezado de un documento nuevo (folio automático) y devuelve su DocumentID. Después se le agregan partidas con AgregarArticulo.",
+   "params": [
+    [
+     "moduleId",
+     "int",
+     "Módulo del documento (por ejemplo Facturas de compra)."
+    ],
+    [
+     "depotId",
+     "int",
+     "Almacén."
+    ],
+    [
+     "businessEntityId",
+     "int",
+     "Cliente o proveedor (0 = ninguno)."
+    ],
+    [
+     "rate",
+     "double",
+     "Tipo de cambio (1 por omisión)."
+    ],
+    [
+     "paymentTermId",
+     "int",
+     "Condición de pago."
+    ],
+    [
+     "currencyId",
+     "int",
+     "Moneda."
+    ],
+    [
+     "title",
+     "string",
+     "Título opcional."
+    ],
+    [
+     "sourceDocumentId",
+     "int",
+     "Documento de origen (0 = ninguno)."
+    ]
+   ],
+   "retorna": "int: DocumentID del nuevo documento.",
+   "notas": [
+    "El documento existe solo dentro de esta ejecución hasta que lo guardas y recalculas; para uno que ya existe usa AgregarRenglonExistente.",
+    "Un documento creado por script NO genera póliza solo: ver la guía «Crear un documento».",
+    "Toma el módulo y el almacén de la empresa (no los escribas a mano en scripts para varios clientes)."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Factura de compra con una partida",
+     "lang": "cs",
+     "codigo": "int doc = ctx.erp.NuevoDocumento(152, 1, 162);      // módulo, almacén, proveedor\r\nctx.erp.AgregarArticulo(doc, 1, 2, 100);            // producto 1, cantidad 2, precio 100\r\nctx.erp.RecalcCompleto(doc);                        // totales e impuestos\r\nctx.erp.Save(doc);\r\nctx.erp.RefreshGrid();"
+    },
+    {
+     "titulo": "Lo mismo en Python",
+     "lang": "py",
+     "codigo": "doc = ctx.erp.NuevoDocumento(152, 1, 162)\r\nctx.erp.AgregarArticulo(doc, 1, 2, 100)\r\nctx.erp.RecalcCompleto(doc)\r\nctx.erp.Save(doc)\r\nctx.erp.RefreshGrid()"
+    }
+   ],
+   "desde": "2.18.0 (parámetros extra en 2.90.0)",
+   "equiv": "py:ctx.erp.NuevoDocumento",
+   "ver": [
+    "cs:erp.AgregarArticulo",
+    "cs:erp.RecalcCompleto",
+    "cs:erp.Save",
+    "cs:erp.RefreshGrid"
+   ]
+  },
+  {
+   "id": "cs:erp.AgregarArticulo",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.AgregarArticulo",
+   "firma": "ctx.erp.AgregarArticulo(documentId, productId, cantidad?, precioUnitario?, costo?, taxTypeIdOverride?, descuentoPerc?, deliverDocumentItemId?, lote?, serialNumber?, comments?, sourceDocumentItemId?) : int",
+   "resumen": "Agrega una partida (lee datos de orgProduct). Tras agregar, llamar RecalcCompleto.",
+   "ejemplo": "ctx.erp.AgregarArticulo(id, 1, 3, 100);\r\nctx.erp.RecalcCompleto(id);",
+   "detalle": "Agrega una partida (producto) a un documento recién creado; toma los datos del producto de orgProduct.",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento."
+    ],
+    [
+     "productId",
+     "int",
+     "El producto."
+    ],
+    [
+     "cantidad",
+     "double",
+     "Cantidad (1)."
+    ],
+    [
+     "precioUnitario",
+     "double",
+     "Precio (-1 = sin precio)."
+    ],
+    [
+     "costo",
+     "double",
+     "Costo de entrada (-1 = no poner)."
+    ],
+    [
+     "taxTypeIdOverride",
+     "int",
+     "Sustituye el impuesto del producto (-1 = el del producto)."
+    ],
+    [
+     "descuentoPerc",
+     "double",
+     "Descuento como fracción (0.05 = 5 %)."
+    ],
+    [
+     "lote / serialNumber",
+     "string",
+     "Solo si el producto usa lote o serie."
+    ],
+    [
+     "comments",
+     "string",
+     "Observaciones de la partida."
+    ],
+    [
+     "sourceDocumentItemId",
+     "int",
+     "Partida de origen."
+    ]
+   ],
+   "retorna": "int: DocumentItemID de la partida.",
+   "notas": [
+    "Al terminar de agregar partidas llama a RecalcCompleto: sin eso la partida queda con total 0 y sin impuesto.",
+    "Se crea en una transacción atómica."
+   ],
+   "equiv": "py:ctx.erp.AgregarArticulo",
+   "ver": [
+    "cs:erp.NuevoDocumento",
+    "cs:erp.RecalcCompleto"
+   ]
+  },
+  {
+   "id": "cs:erp.RefreshGrid",
+   "lang": "cs",
+   "cat": "ERP · UI",
+   "nombre": "erp.RefreshGrid",
+   "firma": "ctx.erp.RefreshGrid() : void",
+   "resumen": "Refresca el grid del módulo.",
+   "ejemplo": "ctx.erp.RefreshGrid();",
+   "detalle": "Refresca la lista de Comercial para que se vean los cambios, y regresa a la misma fila que tenía el usuario.",
+   "retorna": "nada.",
+   "notas": [
+    "Llámalo UNA sola vez, al final del script, después del último cambio (no en cada documento).",
+    "Desde la 2.94.0 conserva la fila y no manda la vista al principio; en versiones anteriores no refrescaba.",
+    "En Python es la misma llamada: ctx.erp.RefreshGrid()."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Crear varios y refrescar una vez",
+     "lang": "py",
+     "codigo": "from broslmv import ctx\r\n\r\ncreados = []\r\nfor proveedor in [162, 170, 205]:\r\n    doc_id = ctx.erp.NuevoDocumento(152, 1, proveedor)\r\n    ctx.erp.AgregarArticulo(doc_id, 1, 1, 100)\r\n    ctx.erp.RecalcCompleto(doc_id)\r\n    ctx.erp.Save(doc_id)\r\n    creados.append(doc_id)\r\n\r\nctx.erp.RefreshGrid()   # UNA vez, ya con todo creado\r\nresult = f\"Se crearon {len(creados)} documento(s): {creados}\""
+    }
+   ],
+   "desde": "2.94.0",
+   "equiv": "py:ctx.erp.RefreshGrid",
+   "ver": [
+    "cs:erp.RefreshRibbon"
+   ]
+  },
+  {
+   "id": "cs:erp.RefreshRibbon",
+   "lang": "cs",
+   "cat": "ERP · UI",
+   "nombre": "erp.RefreshRibbon",
+   "firma": "ctx.erp.RefreshRibbon() : void",
+   "resumen": "Refresca el ribbon.",
+   "ejemplo": "ctx.erp.RefreshRibbon();",
+   "detalle": "Vuelve a leer los botones del ribbon de Comercial.",
+   "retorna": "nada.",
+   "notas": [
+    "Si un botón nuevo no aparece, cierra y vuelve a abrir Comercial."
+   ]
+  },
+  {
+   "id": "cs:erp.GotoModuleID",
+   "lang": "cs",
+   "cat": "ERP · UI",
+   "nombre": "erp.GotoModuleID",
+   "firma": "ctx.erp.GotoModuleID(moduleId) : void",
+   "resumen": "Cambia al módulo indicado.",
+   "ejemplo": "ctx.erp.GotoModuleID(183);"
+  },
+  {
+   "id": "cs:erp.OpenModule",
+   "lang": "cs",
+   "cat": "ERP · UI",
+   "nombre": "erp.OpenModule",
+   "firma": "ctx.erp.OpenModule(moduleId) : void",
+   "resumen": "Abre un módulo.",
+   "ejemplo": "ctx.erp.OpenModule(183);"
+  },
+  {
+   "id": "cs:erp.OpenBrowser",
+   "lang": "cs",
+   "cat": "ERP · UI",
+   "nombre": "erp.OpenBrowser",
+   "firma": "ctx.erp.OpenBrowser(url) : void",
+   "resumen": "Abre una URL en el navegador.",
+   "ejemplo": "ctx.erp.OpenBrowser(\"https://contpaqi.com\");"
+  },
+  {
+   "id": "cs:erp.ShowMessage",
+   "lang": "cs",
+   "cat": "ERP · UI",
+   "nombre": "erp.ShowMessage",
+   "firma": "ctx.erp.ShowMessage(msg) : void",
+   "resumen": "Mensaje nativo de CONTPAQi.",
+   "ejemplo": "ctx.erp.ShowMessage(\"Listo\");"
+  },
+  {
+   "id": "cs:erp.GetFolioPrefix",
+   "lang": "cs",
+   "cat": "ERP · Folio",
+   "nombre": "erp.GetFolioPrefix",
+   "firma": "ctx.erp.GetFolioPrefix(moduleId, depotId) : string",
+   "resumen": "Prefijo (serie) configurado del módulo/almacén.",
+   "ejemplo": "var serie = ctx.erp.GetFolioPrefix(183, 1);"
+  },
+  {
+   "id": "cs:erp.GetNextFolio",
+   "lang": "cs",
+   "cat": "ERP · Folio",
+   "nombre": "erp.GetNextFolio",
+   "firma": "ctx.erp.GetNextFolio(moduleId, prefix, depotId) : string",
+   "resumen": "Siguiente folio disponible.",
+   "ejemplo": "var folio = ctx.erp.GetNextFolio(183, \"OC\", 1);"
+  },
+  {
+   "id": "cs:erp.GetProductStock",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.GetProductStock",
+   "firma": "ctx.erp.GetProductStock(productId, depotId) : double",
+   "resumen": "Existencia del producto en el almacén.",
+   "ejemplo": "double ex = ctx.erp.GetProductStock(1, 1);"
+  },
+  {
+   "id": "cs:erp.GetSalePrice",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.GetSalePrice",
+   "firma": "ctx.erp.GetSalePrice(productId, businessEntityId?) : double",
+   "resumen": "Precio de venta (por cliente si se indica).",
+   "ejemplo": "double p = ctx.erp.GetSalePrice(1);"
+  },
+  {
+   "id": "cs:erp.GetBusinessEntitySalePrice",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.GetBusinessEntitySalePrice",
+   "firma": "ctx.erp.GetBusinessEntitySalePrice(productId, businessEntityId) : double",
+   "resumen": "Precio de venta específico de un cliente.",
+   "ejemplo": "double p = ctx.erp.GetBusinessEntitySalePrice(1, 10);"
+  },
+  {
+   "id": "cs:erp.GetBuyPrice",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.GetBuyPrice",
+   "firma": "ctx.erp.GetBuyPrice(productId) : double",
+   "resumen": "Precio de compra.",
+   "ejemplo": "double p = ctx.erp.GetBuyPrice(1);"
+  },
+  {
+   "id": "cs:erp.GetCostPrice",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.GetCostPrice",
+   "firma": "ctx.erp.GetCostPrice(productId) : double",
+   "resumen": "Costo del producto.",
+   "ejemplo": "double c = ctx.erp.GetCostPrice(1);"
+  },
+  {
+   "id": "cs:erp.GetPriceWithTaxes",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.GetPriceWithTaxes",
+   "firma": "ctx.erp.GetPriceWithTaxes(price, taxTypeId) : double",
+   "resumen": "Precio con impuestos incluidos.",
+   "ejemplo": "double t = ctx.erp.GetPriceWithTaxes(100, 1);"
+  },
+  {
+   "id": "cs:erp.GetCurrencyRate",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.GetCurrencyRate",
+   "firma": "ctx.erp.GetCurrencyRate(currencyId) : double",
+   "resumen": "Tipo de cambio (respecto a MXN).",
+   "ejemplo": "double tc = ctx.erp.GetCurrencyRate(2);"
+  },
+  {
+   "id": "cs:erp.GetCurrencyRateBanxico",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.GetCurrencyRateBanxico",
+   "firma": "ctx.erp.GetCurrencyRateBanxico(currencyId) : double",
+   "resumen": "Tipo de cambio de Banxico.",
+   "ejemplo": "double tc = ctx.erp.GetCurrencyRateBanxico(2);"
+  },
+  {
+   "id": "cs:erp.GetCoefConversion",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.GetCoefConversion",
+   "firma": "ctx.erp.GetCoefConversion(productId, fromUnit, toUnit) : double",
+   "resumen": "Coeficiente de conversión entre unidades.",
+   "ejemplo": "double k = ctx.erp.GetCoefConversion(1, \"PZA\", \"CAJA\");"
+  },
+  {
+   "id": "cs:erp.ProductIsKit",
+   "lang": "cs",
+   "cat": "ERP · Precios y existencias",
+   "nombre": "erp.ProductIsKit",
+   "firma": "ctx.erp.ProductIsKit(productId) : bool",
+   "resumen": "True si el producto es un kit.",
+   "ejemplo": "if (ctx.erp.ProductIsKit(1)) { /* ... */ }"
+  },
+  {
+   "id": "cs:erp.VerifyCreditLimit",
+   "lang": "cs",
+   "cat": "ERP · Crédito",
+   "nombre": "erp.VerifyCreditLimit",
+   "firma": "ctx.erp.VerifyCreditLimit(businessEntityId, amount) : bool",
+   "resumen": "True si el importe entra en el límite de crédito.",
+   "ejemplo": "if (!ctx.erp.VerifyCreditLimit(10, 5000)) ctx.Msg(\"Excede crédito\");"
+  },
+  {
+   "id": "cs:erp.VerifyCreditLimitOverdue",
+   "lang": "cs",
+   "cat": "ERP · Crédito",
+   "nombre": "erp.VerifyCreditLimitOverdue",
+   "firma": "ctx.erp.VerifyCreditLimitOverdue(businessEntityId) : bool",
+   "resumen": "True si la entidad tiene documentos vencidos.",
+   "ejemplo": "if (ctx.erp.VerifyCreditLimitOverdue(10)) ctx.Msg(\"Tiene vencidos\");"
+  },
+  {
+   "id": "cs:erp.GetModuleParameter",
+   "lang": "cs",
+   "cat": "ERP · Parámetros",
+   "nombre": "erp.GetModuleParameter",
+   "firma": "ctx.erp.GetModuleParameter(moduleId, key) : string",
+   "resumen": "Lee un parámetro del módulo.",
+   "ejemplo": "var v = ctx.erp.GetModuleParameter(183, \"MiParam\");",
+   "detalle": "Lee un parámetro de un módulo (engModuleParameter). Así se sabe cómo se comporta el módulo sin escribir su ID a mano.",
+   "params": [
+    [
+     "moduleId",
+     "int",
+     "El módulo."
+    ],
+    [
+     "key",
+     "string",
+     "El nombre del parámetro."
+    ]
+   ],
+   "retorna": "string (o null)."
+  },
+  {
+   "id": "cs:erp.SaveModuleParameter",
+   "lang": "cs",
+   "cat": "ERP · Parámetros",
+   "nombre": "erp.SaveModuleParameter",
+   "firma": "ctx.erp.SaveModuleParameter(moduleId, key, value) : void",
+   "resumen": "Guarda un parámetro del módulo.",
+   "ejemplo": "ctx.erp.SaveModuleParameter(183, \"MiParam\", \"1\");"
+  },
+  {
+   "id": "cs:erp.GetParameter",
+   "lang": "cs",
+   "cat": "ERP · Parámetros",
+   "nombre": "erp.GetParameter",
+   "firma": "ctx.erp.GetParameter(key) : string",
+   "resumen": "Lee un parámetro global.",
+   "ejemplo": "var v = ctx.erp.GetParameter(\"MiParam\");"
+  },
+  {
+   "id": "cs:erp.GetTotalLetter",
+   "lang": "cs",
+   "cat": "ERP · Utilidades",
+   "nombre": "erp.GetTotalLetter",
+   "firma": "ctx.erp.GetTotalLetter(amount, currencyId?) : string",
+   "resumen": "Importe con letra (\"MIL ... PESOS 50/100 M.N.\"). currencyId 0 = moneda activa.",
+   "ejemplo": "var letra = ctx.erp.GetTotalLetter(1234.50);"
+  },
+  {
+   "id": "cs:erp.GetTotalLetterEN",
+   "lang": "cs",
+   "cat": "ERP · Utilidades",
+   "nombre": "erp.GetTotalLetterEN",
+   "firma": "ctx.erp.GetTotalLetterEN(amount, currencyId?) : string",
+   "resumen": "Importe con letra en inglés (currencyId 0 = moneda activa).",
+   "ejemplo": "var letra = ctx.erp.GetTotalLetterEN(1234.50);"
+  },
+  {
+   "id": "cs:erp.GetBarCode",
+   "lang": "cs",
+   "cat": "ERP · Utilidades",
+   "nombre": "erp.GetBarCode",
+   "firma": "ctx.erp.GetBarCode(value, barcodeType?) : string",
+   "resumen": "Código de barras codificado.",
+   "ejemplo": "var bc = ctx.erp.GetBarCode(\"12345\");"
+  },
+  {
+   "id": "cs:erp.DecryptString",
+   "lang": "cs",
+   "cat": "ERP · Utilidades",
+   "nombre": "erp.DecryptString",
+   "firma": "ctx.erp.DecryptString(encrypted) : string",
+   "resumen": "Descifra una cadena de CONTPAQi.",
+   "ejemplo": "var s = ctx.erp.DecryptString(enc);"
+  },
+  {
+   "id": "cs:erp.EncryptString",
+   "lang": "cs",
+   "cat": "ERP · Utilidades",
+   "nombre": "erp.EncryptString",
+   "firma": "ctx.erp.EncryptString(plain) : string",
+   "resumen": "Cifra una cadena.",
+   "ejemplo": "var enc = ctx.erp.EncryptString(\"texto\");"
+  },
+  {
+   "id": "cs:erp.ValidRFC",
+   "lang": "cs",
+   "cat": "ERP · Utilidades",
+   "nombre": "erp.ValidRFC",
+   "firma": "ctx.erp.ValidRFC(rfc) : bool",
+   "resumen": "Valida un RFC.",
+   "ejemplo": "if (ctx.erp.ValidRFC(\"XAXX010101000\")) { /* ... */ }"
+  },
+  {
+   "id": "cs:erp.FormatCurrency",
+   "lang": "cs",
+   "cat": "ERP · Utilidades",
+   "nombre": "erp.FormatCurrency",
+   "firma": "ctx.erp.FormatCurrency(amount) : string",
+   "resumen": "Formatea un número como moneda.",
+   "ejemplo": "var s = ctx.erp.FormatCurrency(1234.5);"
+  },
+  {
+   "id": "cs:erp.DLookup",
+   "lang": "cs",
+   "cat": "ERP · DLookup",
+   "nombre": "erp.DLookup",
+   "firma": "ctx.erp.DLookup(field, table, where?) : object",
+   "resumen": "Consulta puntual de un campo sin escribir SQL.",
+   "ejemplo": "var v = ctx.erp.DLookup(\"Total\", \"docDocument\", \"DocumentID=1\");"
+  },
+  {
+   "id": "cs:erp.DLookupStr",
+   "lang": "cs",
+   "cat": "ERP · DLookup",
+   "nombre": "erp.DLookupStr",
+   "firma": "ctx.erp.DLookupStr(field, table, where?) : string",
+   "resumen": "DLookup como string.",
+   "ejemplo": "var s = ctx.erp.DLookupStr(\"Folio\", \"docDocument\", \"DocumentID=1\");"
+  },
+  {
+   "id": "cs:erp.DLookupInt",
+   "lang": "cs",
+   "cat": "ERP · DLookup",
+   "nombre": "erp.DLookupInt",
+   "firma": "ctx.erp.DLookupInt(field, table, where?) : int",
+   "resumen": "DLookup como int.",
+   "ejemplo": "var n = ctx.erp.DLookupInt(\"StatusID\", \"docDocument\", \"DocumentID=1\");"
+  },
+  {
+   "id": "cs:erp.WriteToLog",
+   "lang": "cs",
+   "cat": "ERP · Bitácora",
+   "nombre": "erp.WriteToLog",
+   "firma": "ctx.erp.WriteToLog(message) : void",
+   "resumen": "Escribe al log de CONTPAQi.",
+   "ejemplo": "ctx.erp.WriteToLog(\"Proceso OK\");"
+  },
+  {
+   "id": "cs:erp.WriteToTableLog",
+   "lang": "cs",
+   "cat": "ERP · Bitácora",
+   "nombre": "erp.WriteToTableLog",
+   "firma": "ctx.erp.WriteToTableLog(message, detail?) : void",
+   "resumen": "Escribe a la bitácora en tabla.",
+   "ejemplo": "ctx.erp.WriteToTableLog(\"Acción\", \"detalle\");"
+  },
+  {
+   "id": "cs:erp.PrintDoc",
+   "lang": "cs",
+   "cat": "ERP · Impresión y export",
+   "nombre": "erp.PrintDoc",
+   "firma": "ctx.erp.PrintDoc(documentId) : void",
+   "resumen": "Imprime el documento.",
+   "ejemplo": "ctx.erp.PrintDoc(id);"
+  },
+  {
+   "id": "cs:erp.PrintModule",
+   "lang": "cs",
+   "cat": "ERP · Impresión y export",
+   "nombre": "erp.PrintModule",
+   "firma": "ctx.erp.PrintModule() : void",
+   "resumen": "Imprime la vista del módulo.",
+   "ejemplo": "ctx.erp.PrintModule();"
+  },
+  {
+   "id": "cs:erp.UpdatePrintedOn",
+   "lang": "cs",
+   "cat": "ERP · Impresión y export",
+   "nombre": "erp.UpdatePrintedOn",
+   "firma": "ctx.erp.UpdatePrintedOn(documentId) : void",
+   "resumen": "Marca el documento como impreso.",
+   "ejemplo": "ctx.erp.UpdatePrintedOn(id);"
+  },
+  {
+   "id": "cs:erp.CreatePDF",
+   "lang": "cs",
+   "cat": "ERP · Impresión y export",
+   "nombre": "erp.CreatePDF",
+   "firma": "ctx.erp.CreatePDF(documentId, outputPath) : string",
+   "resumen": "Genera el PDF del documento.",
+   "ejemplo": "ctx.erp.CreatePDF(id, @\"C:\\temp\\doc.pdf\");"
+  },
+  {
+   "id": "cs:erp.ExportQueryToExcel",
+   "lang": "cs",
+   "cat": "ERP · Impresión y export",
+   "nombre": "erp.ExportQueryToExcel",
+   "firma": "ctx.erp.ExportQueryToExcel(sql, outputPath?) : void",
+   "resumen": "Exporta el resultado de un SQL a Excel.",
+   "ejemplo": "ctx.erp.ExportQueryToExcel(\"SELECT Folio, Total FROM docDocument\");"
+  },
+  {
+   "id": "cs:erp.ExportJanusToExcel",
+   "lang": "cs",
+   "cat": "ERP · Impresión y export",
+   "nombre": "erp.ExportJanusToExcel",
+   "firma": "ctx.erp.ExportJanusToExcel(outputPath?) : void",
+   "resumen": "Exporta la vista activa del módulo a Excel.",
+   "ejemplo": "ctx.erp.ExportJanusToExcel();"
+  },
+  {
+   "id": "cs:erp.SendMail",
+   "lang": "cs",
+   "cat": "ERP · Correo",
+   "nombre": "erp.SendMail",
+   "firma": "ctx.erp.SendMail(to, subject, body, attachmentPath?) : void",
+   "resumen": "Envía correo con la config de CONTPAQi.",
+   "ejemplo": "ctx.erp.SendMail(\"a@b.com\", \"Asunto\", \"Cuerpo\");"
+  },
+  {
+   "id": "cs:erp.GetEmailTemplateID",
+   "lang": "cs",
+   "cat": "ERP · Correo",
+   "nombre": "erp.GetEmailTemplateID",
+   "firma": "ctx.erp.GetEmailTemplateID(templateKey) : string",
+   "resumen": "ID de una plantilla de correo.",
+   "ejemplo": "var id = ctx.erp.GetEmailTemplateID(\"Factura\");"
+  },
+  {
+   "id": "cs:erp.GetWebContent",
+   "lang": "cs",
+   "cat": "ERP · Web / sistema",
+   "nombre": "erp.GetWebContent",
+   "firma": "ctx.erp.GetWebContent(url) : string",
+   "resumen": "Descarga el contenido de una URL.",
+   "ejemplo": "var html = ctx.erp.GetWebContent(\"https://contpaqi.com\");"
+  },
+  {
+   "id": "cs:erp.GetHTMLFromURL",
+   "lang": "cs",
+   "cat": "ERP · Web / sistema",
+   "nombre": "erp.GetHTMLFromURL",
+   "firma": "ctx.erp.GetHTMLFromURL(url) : string",
+   "resumen": "Descarga el HTML de una URL (variante).",
+   "ejemplo": "var html = ctx.erp.GetHTMLFromURL(\"https://contpaqi.com\");"
+  },
+  {
+   "id": "cs:erp.IsConnectedToInternet",
+   "lang": "cs",
+   "cat": "ERP · Web / sistema",
+   "nombre": "erp.IsConnectedToInternet",
+   "firma": "ctx.erp.IsConnectedToInternet() : bool",
+   "resumen": "True si hay conexión a internet.",
+   "ejemplo": "if (ctx.erp.IsConnectedToInternet()) { /* ... */ }"
+  },
+  {
+   "id": "cs:erp.RunShellExecute",
+   "lang": "cs",
+   "cat": "ERP · Web / sistema",
+   "nombre": "erp.RunShellExecute",
+   "firma": "ctx.erp.RunShellExecute(path, args?) : void",
+   "resumen": "Ejecuta un programa (ShellExecute).",
+   "ejemplo": "ctx.erp.RunShellExecute(@\"C:\\app.exe\");"
+  },
+  {
+   "id": "cs:erp.AlreadyDocsSigned",
+   "lang": "cs",
+   "cat": "ERP · CFDI",
+   "nombre": "erp.AlreadyDocsSigned",
+   "firma": "ctx.erp.AlreadyDocsSigned(documentId) : bool",
+   "resumen": "True si el documento está timbrado y válido.",
+   "ejemplo": "if (ctx.erp.AlreadyDocsSigned(id)) { /* ... */ }"
+  },
+  {
+   "id": "cs:erp.GetStatusPaidID",
+   "lang": "cs",
+   "cat": "ERP · CFDI",
+   "nombre": "erp.GetStatusPaidID",
+   "firma": "ctx.erp.GetStatusPaidID(documentId) : int",
+   "resumen": "Estado de pago (0=sin, 1=parcial, 2=pagado).",
+   "ejemplo": "var st = ctx.erp.GetStatusPaidID(id);"
+  },
+  {
+   "id": "cs:erp.Call",
+   "lang": "cs",
+   "cat": "ERP · Avanzado",
+   "nombre": "erp.Call",
+   "firma": "ctx.erp.Call(metodo, args...) : object",
+   "resumen": "Llama CUALQUIER miembro de XEngine por nombre (los 562). Tú das los argumentos.",
+   "ejemplo": "var qr = ctx.erp.Call(\"GetQRCode\", \"datos\");\r\nctx.erp.Call(\"RecalcProductStock\", 1);"
+  },
+  {
+   "id": "cs:erp.Get",
+   "lang": "cs",
+   "cat": "ERP · Avanzado",
+   "nombre": "erp.Get",
+   "firma": "ctx.erp.Get(propiedad) : object",
+   "resumen": "Lee CUALQUIER propiedad de XEngine por nombre.",
+   "ejemplo": "var rfc = (string)ctx.erp.Get(\"COMERCIAL_RFC\");"
+  },
+  {
+   "id": "cs:erp.CrearHelper",
+   "lang": "cs",
+   "cat": "ERP · Avanzado",
+   "nombre": "erp.CrearHelper",
+   "firma": "ctx.erp.CrearHelper(progId) : object",
+   "resumen": "Crea un COM auxiliar (Doc.clsMain, LBS.clsMain) con XEngine.",
+   "ejemplo": "var doc = ctx.erp.CrearHelper(\"Doc.clsMain\");",
+   "detalle": "Crea un objeto COM auxiliar de Comercial (por ejemplo Doc.clsMain o Accounting.clsMain) con el motor ya asignado. Para llamar funciones nativas que ctx.erp aún no envuelve.",
+   "params": [
+    [
+     "progId",
+     "string",
+     "El ProgID del componente."
+    ]
+   ],
+   "retorna": "object COM (llámalo con Com.Call / InvokeMember).",
+   "notas": [
+    "Ejemplo real: la póliza de un documento creado por script se genera con Accounting.clsMain.CrearPolizasDocumento(documentId, false, \"\")."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Generar la póliza de un documento",
+     "lang": "cs",
+     "codigo": "var acc = ctx.erp.CrearHelper(\"Accounting.clsMain\");\r\nvar n = acc.GetType().InvokeMember(\"CrearPolizasDocumento\", System.Reflection.BindingFlags.InvokeMethod, null, acc, new object[] { (long)docId, false, \"\" });"
+    }
+   ]
+  },
+  {
+   "id": "cs:erp.XE",
+   "lang": "cs",
+   "cat": "ERP · Avanzado",
+   "nombre": "erp.XE",
+   "firma": "ctx.erp.XE : object",
+   "resumen": "XEngineLib crudo (casos no cubiertos por ctx.erp.*).",
+   "ejemplo": "var xe = ctx.erp.XE;"
+  },
+  {
+   "id": "py:ctx.user_id",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.user_id",
+   "firma": "ctx.user_id : int",
+   "resumen": "ID del usuario activo de CONTPAQi.",
+   "ejemplo": "usr = ctx.user_id"
+  },
+  {
+   "id": "py:ctx.module_id",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.module_id",
+   "firma": "ctx.module_id : int",
+   "resumen": "ID del módulo activo.",
+   "ejemplo": "mod = ctx.module_id"
+  },
+  {
+   "id": "py:ctx.empresa",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.empresa",
+   "firma": "ctx.empresa : str",
+   "resumen": "Base de datos de la empresa activa.",
+   "ejemplo": "bd = ctx.empresa"
+  },
+  {
+   "id": "py:ctx.app_key",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.app_key",
+   "firma": "ctx.app_key : str",
+   "resumen": "AppKey del botón en ejecución.",
+   "ejemplo": "clave = ctx.app_key"
+  },
+  {
+   "id": "py:ctx.fila",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.fila",
+   "firma": "ctx.fila : dict",
+   "resumen": "Campos de la primera fila seleccionada del grid.",
+   "ejemplo": "folio = ctx.fila.get(\"Folio\")"
+  },
+  {
+   "id": "py:ctx.context",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.context",
+   "firma": "ctx.context() : dict",
+   "resumen": "Todo el contexto vivo como diccionario.",
+   "ejemplo": "info = ctx.context()"
+  },
+  {
+   "id": "py:ctx.get_selected_ids",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.get_selected_ids",
+   "firma": "ctx.get_selected_ids() : list[int]",
+   "resumen": "IDs de los documentos seleccionados en la vista.",
+   "ejemplo": "ids = ctx.get_selected_ids()",
+   "detalle": "IDs seleccionados en la lista de Comercial.",
+   "retorna": "list[int].",
+   "equiv": "cs:GetSelectedIds"
+  },
+  {
+   "id": "py:ctx.query",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.query",
+   "firma": "ctx.query(sql, params=None) : list[dict]",
+   "resumen": "Ejecuta SQL y devuelve una lista de diccionarios. Parámetros con @nombre.",
+   "ejemplo": "ids = ctx.get_selected_ids()\r\nfilas = ctx.query(\"SELECT Folio, Total FROM docDocument WHERE DocumentID = @id\", {\"id\": ids[0]})",
+   "detalle": "Ejecuta una consulta y devuelve la lista de filas como diccionarios. Acepta parámetros con @nombre y un diccionario.",
+   "params": [
+    [
+     "sql",
+     "str",
+     "La consulta."
+    ],
+    [
+     "params",
+     "dict",
+     "Valores para @nombre (opcional)."
+    ]
+   ],
+   "retorna": "list[dict].",
+   "ejemplo_extra": [
+    {
+     "titulo": "Con parámetros",
+     "lang": "py",
+     "codigo": "filas = ctx.query(\"SELECT TOP 5 Folio, Total FROM docDocument WHERE ModuleID = @m\", {\"m\": 152})\r\nfor f in filas:\r\n    print(f[\"Folio\"], f[\"Total\"])"
+    }
+   ],
+   "equiv": "cs:Query"
+  },
+  {
+   "id": "py:ctx.scalar",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.scalar",
+   "firma": "ctx.scalar(sql, params=None) : Any",
+   "resumen": "Ejecuta SQL y devuelve el primer valor.",
+   "ejemplo": "total = ctx.scalar(\"SELECT SUM(Total) FROM docDocument WHERE DeletedOn IS NULL\")",
+   "detalle": "Ejecuta una consulta y devuelve la primera columna de la primera fila.",
+   "params": [
+    [
+     "sql",
+     "str",
+     "La consulta."
+    ],
+    [
+     "params",
+     "dict",
+     "Valores para @nombre (opcional)."
+    ]
+   ],
+   "retorna": "El valor (o None).",
+   "equiv": "cs:Scalar"
+  },
+  {
+   "id": "py:ctx.execute",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.execute",
+   "firma": "ctx.execute(sql, params=None) : int",
+   "resumen": "Ejecuta INSERT/UPDATE/DELETE. Devuelve filas afectadas.",
+   "ejemplo": "n = ctx.execute(\"UPDATE docDocument SET Referencia = @r WHERE DocumentID = @id\", {\"r\": \"X\", \"id\": ctx.get_selected_ids()[0]})",
+   "detalle": "Ejecuta INSERT/UPDATE/DELETE y devuelve las filas afectadas.",
+   "params": [
+    [
+     "sql",
+     "str",
+     "La sentencia."
+    ],
+    [
+     "params",
+     "dict",
+     "Valores para @nombre (opcional)."
+    ]
+   ],
+   "retorna": "int.",
+   "notas": [
+    "Se bloquea en modo solo lectura."
+   ],
+   "equiv": "cs:NonQuery"
+  },
+  {
+   "id": "py:ctx.msg",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.msg",
+   "firma": "ctx.msg(texto, titulo=\"BrosLMV\")",
+   "resumen": "Muestra un mensaje al usuario.",
+   "ejemplo": "ctx.msg(\"Proceso terminado\", \"Aviso\")",
+   "detalle": "Muestra un mensaje al usuario.",
+   "params": [
+    [
+     "texto",
+     "str",
+     "El mensaje."
+    ],
+    [
+     "titulo",
+     "str",
+     "Título (opcional)."
+    ]
+   ],
+   "retorna": "None.",
+   "equiv": "cs:Msg"
+  },
+  {
+   "id": "py:ctx.confirm",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.confirm",
+   "firma": "ctx.confirm(texto, titulo=\"Confirmar\") : bool",
+   "resumen": "Pregunta Sí/No y bloquea hasta que el usuario responda.",
+   "ejemplo": "if ctx.confirm(\"¿Continuar?\"):\r\n    ctx.msg(\"Confirmado\")"
+  },
+  {
+   "id": "py:ctx.log",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.log",
+   "firma": "ctx.log(texto, nivel=\"INFO\")",
+   "resumen": "Escribe a la bitácora/auditoría.",
+   "ejemplo": "ctx.log(\"Actualizados {} docs\".format(n))"
+  },
+  {
+   "id": "py:ctx.progress",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.progress",
+   "firma": "ctx.progress(texto=\"\", porcentaje=0)",
+   "resumen": "Actualiza el progreso de la ejecución.",
+   "ejemplo": "ctx.progress(\"Procesando...\", 50)"
+  },
+  {
+   "id": "py:ctx.form",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.form",
+   "firma": "ctx.form(spec) : dict",
+   "resumen": "Formulario con campos y/o grid editable. Ver docs/PYTHON.md.py.",
+   "ejemplo": "r = ctx.form({\r\n    \"title\": \"Datos\",\r\n    \"fields\": [{\"name\": \"nota\", \"label\": \"Nota\", \"type\": \"text\"}],\r\n})\r\nif r[\"submitted\"]:\r\n    ctx.msg(r[\"values\"][\"nota\"])",
+   "detalle": "Formulario nativo definido con un diccionario (campos, combos, tablas editables). Devuelve lo que el usuario captura.",
+   "retorna": "dict con \"submitted\" y \"values\".",
+   "notas": [
+    "Los campos simples llegan en r[\"values\"][nombre]; las tablas editables en r[\"grid_rows\"]."
+   ]
+  },
+  {
+   "id": "py:ctx.show_html",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.show_html",
+   "firma": "ctx.show_html(html, titulo=\"BrosLMV\", ancho=800, alto=600, modal=True)",
+   "resumen": "Ventana con HTML/CSS/JS real (WebView2). Ver PLANTILLA_EJEMPLO_DASHBOARD_VENTAS_PYTHON.py.",
+   "ejemplo": "ctx.show_html(\"<h1>Hola</h1>\", \"Reporte\")",
+   "detalle": "Ventana con HTML/CSS/JS real (WebView2).",
+   "retorna": "None.",
+   "equiv": "cs:ShowHtml"
+  },
+  {
+   "id": "py:ctx.select_file",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.select_file",
+   "firma": "ctx.select_file(titulo=\"...\", filtro=\"Excel|*.xlsx\", guardar=False) : str",
+   "resumen": "Diálogo nativo para elegir archivo. \"\" si canceló.",
+   "ejemplo": "ruta = ctx.select_file(\"Elegir Excel\", \"Excel|*.xlsx\")"
+  },
+  {
+   "id": "py:ctx.select_folder",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.select_folder",
+   "firma": "ctx.select_folder(titulo=\"...\") : str",
+   "resumen": "Diálogo nativo para elegir carpeta. \"\" si canceló.",
+   "ejemplo": "carpeta = ctx.select_folder(\"Elegir destino\")"
+  },
+  {
+   "id": "py:ctx.read_excel",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.read_excel",
+   "firma": "ctx.read_excel(ruta, hoja=None) : list[dict]",
+   "resumen": "Lee un .xlsx como lista de dict (encabezados = 1ª fila). No requiere Excel instalado.",
+   "ejemplo": "filas = ctx.read_excel(ctx.select_file())"
+  },
+  {
+   "id": "py:ctx.write_excel",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.write_excel",
+   "firma": "ctx.write_excel(filas, ruta, hoja=\"Hoja1\")",
+   "resumen": "Escribe una lista de dict a .xlsx.",
+   "ejemplo": "ctx.write_excel([{\"Producto\": \"X\", \"Cant\": 10}], r\"C:\\reporte.xlsx\")"
+  },
+  {
+   "id": "py:result",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "result",
+   "firma": "result = <valor>",
+   "resumen": "Variable global que devuelve el script (se muestra al usuario).",
+   "ejemplo": "result = f\"Empresa={ctx.empresa}, seleccionados={ctx.get_selected_ids()}\""
+  },
+  {
+   "id": "py:ctx.erp.UserId",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.UserId",
+   "firma": "ctx.erp.UserId() : int",
+   "resumen": "Usuario real de CONTPAQi (propiedad → con paréntesis).",
+   "ejemplo": "u = ctx.erp.UserId()"
+  },
+  {
+   "id": "py:ctx.erp.ComercialRFC",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.ComercialRFC",
+   "firma": "ctx.erp.ComercialRFC() : str",
+   "resumen": "RFC de la empresa (propiedad → con paréntesis).",
+   "ejemplo": "rfc = ctx.erp.ComercialRFC()"
+  },
+  {
+   "id": "py:ctx.erp.GetProductStock",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetProductStock",
+   "firma": "ctx.erp.GetProductStock(productID, depotID) : float",
+   "resumen": "Existencia del producto (depot 0 = todos).",
+   "ejemplo": "ex = ctx.erp.GetProductStock(125, 0)"
+  },
+  {
+   "id": "py:ctx.erp.GetSalePrice",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetSalePrice",
+   "firma": "ctx.erp.GetSalePrice(productID) : float",
+   "resumen": "Precio de venta del producto.",
+   "ejemplo": "pv = ctx.erp.GetSalePrice(125)"
+  },
+  {
+   "id": "py:ctx.erp.GetCostPrice",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetCostPrice",
+   "firma": "ctx.erp.GetCostPrice(productID) : float",
+   "resumen": "Costo del producto.",
+   "ejemplo": "c = ctx.erp.GetCostPrice(125)"
+  },
+  {
+   "id": "py:ctx.erp.GetPriceWithTaxes",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetPriceWithTaxes",
+   "firma": "ctx.erp.GetPriceWithTaxes(precio, taxTypeID) : float",
+   "resumen": "Precio con impuestos incluidos.",
+   "ejemplo": "t = ctx.erp.GetPriceWithTaxes(100, 1)"
+  },
+  {
+   "id": "py:ctx.erp.GetTotalLetter",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetTotalLetter",
+   "firma": "ctx.erp.GetTotalLetter(importe) : str",
+   "resumen": "Importe con letra (moneda activa).",
+   "ejemplo": "letra = ctx.erp.GetTotalLetter(1234.50)"
+  },
+  {
+   "id": "py:ctx.erp.GetNextFolio",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetNextFolio",
+   "firma": "ctx.erp.GetNextFolio(moduleID, serie, depotID) : str",
+   "resumen": "Siguiente folio disponible.",
+   "ejemplo": "f = ctx.erp.GetNextFolio(183, \"OC\", 1)"
+  },
+  {
+   "id": "py:ctx.erp.RecalcDocument",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.RecalcDocument",
+   "firma": "ctx.erp.RecalcDocument(documentID)",
+   "resumen": "Recalcula totales del documento (escritura).",
+   "ejemplo": "ctx.erp.RecalcDocument(ctx.get_selected_ids()[0])"
+  },
+  {
+   "id": "py:ctx.erp.RecalcCompleto",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.RecalcCompleto",
+   "firma": "ctx.erp.RecalcCompleto(documentID)",
+   "resumen": "Recalcula totales + costos del documento.",
+   "ejemplo": "ctx.erp.RecalcCompleto(doc_id)"
+  },
+  {
+   "id": "py:ctx.erp.OwnedBusinessEntityId",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.OwnedBusinessEntityId",
+   "firma": "ctx.erp.OwnedBusinessEntityId() : int",
+   "resumen": "Empresa propia (propiedad → con paréntesis).",
+   "ejemplo": "be = ctx.erp.OwnedBusinessEntityId()"
+  },
+  {
+   "id": "py:ctx.erp.NuevoDocumento",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.NuevoDocumento",
+   "firma": "ctx.erp.NuevoDocumento(moduleID, depotID, businessEntityID=0) : int",
+   "resumen": "Crea el encabezado de un documento con los defaults del módulo y devuelve el DocumentID.",
+   "ejemplo": "doc_id = ctx.erp.NuevoDocumento(183, 1, 162)",
+   "detalle": "Crea el encabezado de un documento nuevo y devuelve su ID. Mismos parámetros que en C#.",
+   "retorna": "int.",
+   "equiv": "cs:erp.NuevoDocumento"
+  },
+  {
+   "id": "py:ctx.erp.AgregarArticulo",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.AgregarArticulo",
+   "firma": "ctx.erp.AgregarArticulo(documentID, productID, cantidad=1, precio=-1) : int",
+   "resumen": "Agrega una partida (lee orgProduct). Tras agregar, llamar RecalcCompleto.",
+   "ejemplo": "ctx.erp.AgregarArticulo(doc_id, 1, 3, 100)\r\nctx.erp.RecalcCompleto(doc_id)",
+   "detalle": "Agrega una partida a un documento nuevo. Después: RecalcCompleto.",
+   "retorna": "int (DocumentItemID).",
+   "equiv": "cs:erp.AgregarArticulo"
+  },
+  {
+   "id": "py:ctx.erp.Timbrar",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.Timbrar",
+   "firma": "ctx.erp.Timbrar(documentID, pruebas=False)",
+   "resumen": "Timbra el documento (motor nativo de Comercial). Operación fiscal real.",
+   "ejemplo": "if ctx.confirm(\"¿Timbrar?\"):\r\n    ctx.erp.Timbrar(doc_id, False)"
+  },
+  {
+   "id": "py:ctx.erp.RelacionarCFDI",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.RelacionarCFDI",
+   "firma": "ctx.erp.RelacionarCFDI(documentID, sourceDocumentID, tipoRelacion)",
+   "resumen": "Liga un CFDI con otro (NC, devolución, anticipo).",
+   "ejemplo": "ctx.erp.RelacionarCFDI(doc_id, oc_id, \"07\")"
+  },
+  {
+   "id": "py:ctx.erp.Call",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.Call",
+   "firma": "ctx.erp.Call(metodo, *args)",
+   "resumen": "Llama CUALQUIER miembro de XEngine por nombre.",
+   "ejemplo": "qr = ctx.erp.Call(\"GetQRCode\", \"datos\")"
+  },
+  {
+   "id": "py:ctx.erp.Get",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.Get",
+   "firma": "ctx.erp.Get(propiedad)",
+   "resumen": "Lee CUALQUIER propiedad de XEngine por nombre.",
+   "ejemplo": "rfc = ctx.erp.Get(\"COMERCIAL_RFC\")"
+  },
+  {
+   "id": "py:ctx.nuevo",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.nuevo",
+   "firma": "ctx.nuevo(tabla) : Record",
+   "resumen": "Crea un registro para INSERT en cualquier tabla. set() campos, guardar() devuelve el ID.",
+   "ejemplo": "it = ctx.nuevo(\"docDocumentItem\")\r\nit[\"DocumentID\"] = doc_id\r\nit[\"ProductID\"] = 1\r\nit[\"Quantity\"] = 2\r\nit.guardar()"
+  },
+  {
+   "id": "py:ctx.registro",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.registro",
+   "firma": "ctx.registro(tabla, pk) : Record",
+   "resumen": "Carga un registro existente por su PK. Modificar campos y actualizar() solo envía los cambios.",
+   "ejemplo": "doc = ctx.registro(\"docDocument\", 11556)\r\ndoc[\"Comments\"] = \"Modificado\"\r\ndoc.actualizar()"
+  },
+  {
+   "id": "sql:SELECT",
+   "lang": "sql",
+   "cat": "Sentencias",
+   "nombre": "SELECT",
+   "firma": "SELECT ...",
+   "resumen": "Consulta de datos (devuelve filas).",
+   "ejemplo": "SELECT DocumentID, Folio, Total FROM docDocument\r\nWHERE DocumentID IN ({pIDs}) AND DeletedOn IS NULL"
+  },
+  {
+   "id": "sql:EXEC",
+   "lang": "sql",
+   "cat": "Sentencias",
+   "nombre": "EXEC",
+   "firma": "EXEC <sp> @p = ...",
+   "resumen": "Llama un procedimiento almacenado.",
+   "ejemplo": "EXEC NombreDelSP @DocumentID = {pID}"
+  },
+  {
+   "id": "sql:UPDATE",
+   "lang": "sql",
+   "cat": "Sentencias",
+   "nombre": "UPDATE",
+   "firma": "UPDATE ...",
+   "resumen": "Actualiza datos (bloqueado en SOLO LECTURA).",
+   "ejemplo": "UPDATE docDocument SET Referencia = '{DATOS:Folio}'\r\nWHERE DocumentID = {pID}"
+  },
+  {
+   "id": "sql:INSERT",
+   "lang": "sql",
+   "cat": "Sentencias",
+   "nombre": "INSERT",
+   "firma": "INSERT ...",
+   "resumen": "Inserta filas (bloqueado en SOLO LECTURA).",
+   "ejemplo": "INSERT INTO miTabla (DocumentID, UserID) VALUES ({pID}, {pUserID})"
+  },
+  {
+   "id": "sql:DELETE",
+   "lang": "sql",
+   "cat": "Sentencias",
+   "nombre": "DELETE",
+   "firma": "DELETE ...",
+   "resumen": "Borra filas (bloqueado en SOLO LECTURA).",
+   "ejemplo": "DELETE FROM miTabla WHERE DocumentID = {pID}"
+  },
+  {
+   "id": "sql:{pID}",
+   "lang": "sql",
+   "cat": "Tokens",
+   "nombre": "{pID}",
+   "firma": "{pID}",
+   "resumen": "Primer ID seleccionado en el grid (0 si no hay).",
+   "ejemplo": "WHERE DocumentID = {pID}"
+  },
+  {
+   "id": "sql:{pIDs}",
+   "lang": "sql",
+   "cat": "Tokens",
+   "nombre": "{pIDs}",
+   "firma": "{pIDs}",
+   "resumen": "Todos los IDs seleccionados, separados por coma.",
+   "ejemplo": "WHERE DocumentID IN ({pIDs})"
+  },
+  {
+   "id": "sql:{pUserID}",
+   "lang": "sql",
+   "cat": "Tokens",
+   "nombre": "{pUserID}",
+   "firma": "{pUserID}",
+   "resumen": "ID del usuario activo.",
+   "ejemplo": "SET ModifiedUserID = {pUserID}"
+  },
+  {
+   "id": "sql:{pModulo}",
+   "lang": "sql",
+   "cat": "Tokens",
+   "nombre": "{pModulo}",
+   "firma": "{pModulo}",
+   "resumen": "ID del módulo activo.",
+   "ejemplo": "WHERE ModuleID = {pModulo}"
+  },
+  {
+   "id": "sql:{pEmpresa}",
+   "lang": "sql",
+   "cat": "Tokens",
+   "nombre": "{pEmpresa}",
+   "firma": "{pEmpresa}",
+   "resumen": "Nombre de la BD de la empresa activa.",
+   "ejemplo": "-- empresa activa: {pEmpresa}"
+  },
+  {
+   "id": "sql:{DATOS:x}",
+   "lang": "sql",
+   "cat": "Tokens",
+   "nombre": "{DATOS:x}",
+   "firma": "{DATOS:Campo}",
+   "resumen": "Valor del campo en la fila seleccionada del grid.",
+   "ejemplo": "WHERE Folio = '{DATOS:Folio}'"
+  },
+  {
+   "id": "cs:OpenConn",
+   "lang": "cs",
+   "cat": "Consultas SQL",
+   "nombre": "OpenConn",
+   "firma": "ctx.OpenConn() : SqlConnection",
+   "resumen": "Conexión SQL propia (ya abierta), independiente de la de Comercial. Para lotes de altas y transacciones.",
+   "ejemplo": "using (var cn = ctx.OpenConn())\r\nusing (var cmd = cn.CreateCommand())\r\n{\r\n    cmd.CommandText = \"SET NOCOUNT ON; SELECT COUNT(*) FROM docDocument\";\r\n    var n = cmd.ExecuteScalar();\r\n}",
+   "detalle": "Abre una conexión SQL propia, independiente de la de Comercial. Es el camino correcto para lotes de altas, transacciones y cualquier cosa con varios INSERT.",
+   "retorna": "SqlConnection ya abierta; ciérrala con using.",
+   "notas": [
+    "Usa siempre SET NOCOUNT ON al inicio del lote y haz el SQL idempotente (que repetirlo no duplique).",
+    "Con una transacción (cn.BeginTransaction()) o queda todo o no queda nada."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Insertar y leer el ID",
+     "lang": "cs",
+     "codigo": "using (var cn = ctx.OpenConn())\r\nusing (var cmd = cn.CreateCommand())\r\n{\r\n    cmd.CommandText = \"SET NOCOUNT ON; INSERT INTO miTabla(Nombre) VALUES(@n); SELECT SCOPE_IDENTITY();\";\r\n    cmd.Parameters.AddWithValue(\"@n\", \"Ejemplo\");\r\n    var id = cmd.ExecuteScalar();\r\n}"
+    }
+   ],
+   "desde": "2.33.0",
+   "ver": [
+    "cs:NonQuery",
+    "cs:CadenaSql"
+   ]
+  },
+  {
+   "id": "cs:ShowHtml",
+   "lang": "cs",
+   "cat": "Interacción",
+   "nombre": "ShowHtml",
+   "firma": "ctx.ShowHtml(html, titulo?, ancho?, alto?, modal?) : void",
+   "resumen": "Muestra una ventana con HTML/CSS/JS real (WebView2).",
+   "ejemplo": "ctx.ShowHtml(\"<h1>Hola</h1>\", \"Reporte\", 800, 600);",
+   "detalle": "Abre una ventana con una página HTML real (WebView2): reportes, tableros, formularios bonitos. Con modal=false no bloquea a Comercial.",
+   "params": [
+    [
+     "html",
+     "string",
+     "La página completa."
+    ],
+    [
+     "titulo",
+     "string",
+     "Título de la ventana."
+    ],
+    [
+     "ancho / alto",
+     "int",
+     "Tamaño en píxeles."
+    ],
+    [
+     "modal",
+     "bool",
+     "true = espera a que la cierren."
+    ]
+   ],
+   "retorna": "nada.",
+   "notas": [
+    "Para una página con formulario que devuelva datos usa ShowHtmlFormulario."
+   ],
+   "equiv": "py:ctx.show_html",
+   "ver": [
+    "cs:ShowHtmlFormulario"
+   ]
+  },
+  {
+   "id": "cs:ShowHtmlFormulario",
+   "lang": "cs",
+   "cat": "Interacción",
+   "nombre": "ShowHtmlFormulario",
+   "firma": "ctx.ShowHtmlFormulario(html, titulo?, ancho?, alto?, timeoutMs?) : Dictionary<string,object>",
+   "resumen": "Ventana HTML que devuelve lo que la página envíe con postMessage (formularios propios).",
+   "ejemplo": "var r = ctx.ShowHtmlFormulario(html, \"Datos\");\r\nif ((bool)r[\"submitted\"]) { /* usa r[\"campo\"] */ }",
+   "detalle": "Como ShowHtml pero espera a que la página mande datos con window.chrome.webview.postMessage(JSON.stringify({...})) y los devuelve.",
+   "retorna": "Dictionary con lo que envió la página más \"submitted\" (true si envió algo; false si cerró la ventana).",
+   "ver": [
+    "cs:ShowHtml"
+   ]
+  },
+  {
+   "id": "cs:erp.AbrirDocumento",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.AbrirDocumento",
+   "firma": "ctx.erp.AbrirDocumento(documentId, moduleId) : void",
+   "resumen": "Abre un documento YA guardado en su ventana real, como si el usuario lo abriera de la lista.",
+   "ejemplo": "ctx.erp.AbrirDocumento(docId, 152);",
+   "detalle": "Abre un documento ya guardado en su ventana real, igual que si el usuario lo abriera desde la lista. Es la forma de terminar un botón que crea un documento.",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento."
+    ],
+    [
+     "moduleId",
+     "int",
+     "Su módulo."
+    ]
+   ],
+   "retorna": "nada.",
+   "desde": "2.86.0",
+   "equiv": "py:ctx.erp.AbrirDocumento"
+  },
+  {
+   "id": "cs:erp.AgregarRenglonExistente",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.AgregarRenglonExistente",
+   "firma": "ctx.erp.AgregarRenglonExistente(documentId, moduleId, productId, cantidad, precio) : void",
+   "resumen": "Agrega una partida a un documento que ya existe (de una ejecución anterior) y recalcula.",
+   "ejemplo": "ctx.erp.AgregarRenglonExistente(docId, 152, 1, 2, 100);",
+   "detalle": "Agrega una partida a un documento que YA existía (guardado en otra ejecución) y recalcula al final.",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento."
+    ],
+    [
+     "moduleId",
+     "int",
+     "Su módulo."
+    ],
+    [
+     "productId",
+     "int",
+     "El producto."
+    ],
+    [
+     "cantidad",
+     "double",
+     "Cantidad."
+    ],
+    [
+     "precio",
+     "double",
+     "Precio."
+    ]
+   ],
+   "retorna": "nada."
+  },
+  {
+   "id": "cs:erp.AgregarSerie",
+   "lang": "cs",
+   "cat": "ERP · Documento",
+   "nombre": "erp.AgregarSerie",
+   "firma": "ctx.erp.AgregarSerie(documentId, documentItemId, productId, serialNumber, depotId, quantity?) : void",
+   "resumen": "Registra un número de serie en una partida (quantity -1 = salida, 1 = entrada).",
+   "ejemplo": "ctx.erp.AgregarSerie(docId, itemId, prodId, \"SN-001\", 1, 1);"
+  },
+  {
+   "id": "cs:erp.RelacionarCFDI",
+   "lang": "cs",
+   "cat": "ERP · CFDI",
+   "nombre": "erp.RelacionarCFDI",
+   "firma": "ctx.erp.RelacionarCFDI(documentId, sourceDocumentId, tipoRelacion) : void",
+   "resumen": "Relaciona el CFDI de un documento con otro (catálogo SAT c_TipoRelacion: \"01\", \"03\", \"07\"…).",
+   "ejemplo": "ctx.erp.RelacionarCFDI(docId, anticipoId, \"07\");"
+  },
+  {
+   "id": "cs:erp.Timbrar",
+   "lang": "cs",
+   "cat": "ERP · CFDI",
+   "nombre": "erp.Timbrar",
+   "firma": "ctx.erp.Timbrar(documentId, pruebas?) : void",
+   "resumen": "Timbra el documento con el motor nativo de Comercial (CFDI3). pruebas=true usa el modo de pruebas del PAC.",
+   "ejemplo": "ctx.erp.Timbrar(docId, false);",
+   "detalle": "Timbra un documento con el motor nativo de Comercial (el mismo del módulo de facturación).",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento."
+    ],
+    [
+     "pruebas",
+     "bool",
+     "true = modo de pruebas del PAC (sin timbre fiscal real)."
+    ]
+   ],
+   "retorna": "nada; lanza una excepción con el detalle del PAC/SAT si falla.",
+   "notas": [
+    "Confirma con el usuario antes de timbrar: un timbre real no se deshace (solo se cancela)."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Timbrar con confirmación",
+     "lang": "cs",
+     "codigo": "if (ctx.Confirm(\"¿Timbrar el documento?\")) ctx.erp.Timbrar(docId, false);"
+    }
+   ],
+   "equiv": "py:ctx.erp.Timbrar"
+  },
+  {
+   "id": "cs:erp.Set",
+   "lang": "cs",
+   "cat": "ERP · Avanzado",
+   "nombre": "erp.Set",
+   "firma": "ctx.erp.Set(propiedad, valor) : bool",
+   "resumen": "Asigna una propiedad del motor XEngine (escape a COM).",
+   "ejemplo": "ctx.erp.Set(\"MustRefreshGrid\", true);"
+  },
+  {
+   "id": "cs:erp.LastError",
+   "lang": "cs",
+   "cat": "ERP · Avanzado",
+   "nombre": "erp.LastError",
+   "firma": "ctx.erp.LastError : string",
+   "resumen": "Último error de una llamada COM al motor (null si la última fue bien). Revísalo tras Save, AffectStockNEW, CancelDocument…",
+   "ejemplo": "ctx.erp.Save(docId);\r\nif (ctx.erp.LastError != null) ctx.Msg(ctx.erp.LastError);",
+   "detalle": "Último error de una llamada COM al motor de Comercial; null si la última fue bien. Revísalo después de Save, AffectStockNEW, CancelDocument, Delete…",
+   "retorna": "string o null."
+  },
+  {
+   "id": "cs:erp",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "erp",
+   "firma": "ctx.erp : ErpContext",
+   "resumen": "Acceso tipado al motor de Comercial (documentos, precios, folios, UI…). Solo en C#; en Python se usa ctx.erp.Método().",
+   "ejemplo": "var rfc = ctx.erp.ComercialRFC;"
+  },
+  {
+   "id": "cs:UserIdReal",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "UserIdReal",
+   "firma": "ctx.UserIdReal() : int",
+   "resumen": "ID real del usuario (ctx.UserID suele venir 0).",
+   "ejemplo": "var u = ctx.UserIdReal();"
+  },
+  {
+   "id": "cs:NombreUsuario",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "NombreUsuario",
+   "firma": "ctx.NombreUsuario(userId) : string",
+   "resumen": "Nombre del usuario (engUser.UserName) o \"\" si no existe. Nunca lanza.",
+   "ejemplo": "var n = ctx.NombreUsuario(ctx.UserIdReal());"
+  },
+  {
+   "id": "cs:ObtenerIdDeVentanaActiva",
+   "lang": "cs",
+   "cat": "Selección y datos",
+   "nombre": "ObtenerIdDeVentanaActiva",
+   "firma": "ctx.ObtenerIdDeVentanaActiva() : long?",
+   "resumen": "ID del documento GUARDADO que está abierto en pantalla (GetSelectedIds no sirve dentro de un documento). null si no aplica.",
+   "ejemplo": "var id = ctx.ObtenerIdDeVentanaActiva();\r\nif (id == null) { ctx.Msg(\"Guarda el documento primero.\"); return; }"
+  },
+  {
+   "id": "cs:Headless",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "Headless",
+   "firma": "ctx.Headless : bool",
+   "resumen": "true cuando el script corre sin pantalla (Runner): Msg/Confirm no abren diálogos.",
+   "ejemplo": "if (!ctx.Headless) ctx.Msg(\"Listo\");"
+  },
+  {
+   "id": "cs:EventoId",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "EventoId",
+   "firma": "ctx.EventoId : long?",
+   "resumen": "ID que trae un evento nativo (Función = \"BrosLMV.<Script>_[DocumentID]\"); null si se ejecutó por botón o consola.",
+   "ejemplo": "var doc = ctx.EventoId;"
+  },
+  {
+   "id": "cs:CadenaSql",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "CadenaSql",
+   "firma": "ctx.CadenaSql() : string",
+   "resumen": "Cadena de conexión SqlClient resuelta. Para abrir conexiones desde otro hilo (no llames COM desde ahí).",
+   "ejemplo": "var cs = ctx.CadenaSql();"
+  },
+  {
+   "id": "cs:VersionProvisionada",
+   "lang": "cs",
+   "cat": "Contexto",
+   "nombre": "VersionProvisionada",
+   "firma": "ctx.VersionProvisionada() : string",
+   "resumen": "Versión de BrosLMV con que se provisionó la empresa (\"\" si no).",
+   "ejemplo": "var v = ctx.VersionProvisionada();"
+  },
+  {
+   "id": "cs:HashPassword",
+   "lang": "cs",
+   "cat": "Utilidades",
+   "nombre": "HashPassword",
+   "firma": "ctx.HashPassword(password, out sal, out hash, out iteraciones) : void",
+   "resumen": "Hash de contraseña PBKDF2-HMAC-SHA256 (el mismo de la Consola).",
+   "ejemplo": "ctx.HashPassword(\"clave\", out var sal, out var hash, out var it);"
+  },
+  {
+   "id": "cs:VerifyPassword",
+   "lang": "cs",
+   "cat": "Utilidades",
+   "nombre": "VerifyPassword",
+   "firma": "ctx.VerifyPassword(password, sal, hash, iteraciones) : bool",
+   "resumen": "Verifica una contraseña contra su hash.",
+   "ejemplo": "bool ok = ctx.VerifyPassword(\"clave\", sal, hash, it);"
+  },
+  {
+   "id": "cs:BrosAprobar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosAprobar",
+   "firma": "ctx.BrosAprobar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosAsegurarTablas",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosAsegurarTablas",
+   "firma": "ctx.BrosAsegurarTablas(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosAuditoriaListar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosAuditoriaListar",
+   "firma": "ctx.BrosAuditoriaListar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosBorrar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosBorrar",
+   "firma": "ctx.BrosBorrar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosCargar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosCargar",
+   "firma": "ctx.BrosCargar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosCategorizar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosCategorizar",
+   "firma": "ctx.BrosCategorizar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosConsolaPasswordRequerida",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosConsolaPasswordRequerida",
+   "firma": "ctx.BrosConsolaPasswordRequerida(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosGuardar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosGuardar",
+   "firma": "ctx.BrosGuardar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosHistEtiquetar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosHistEtiquetar",
+   "firma": "ctx.BrosHistEtiquetar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosHistLeer",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosHistLeer",
+   "firma": "ctx.BrosHistLeer(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosHistListar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosHistListar",
+   "firma": "ctx.BrosHistListar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosHistPurgar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosHistPurgar",
+   "firma": "ctx.BrosHistPurgar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosListar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosListar",
+   "firma": "ctx.BrosListar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosObtenerParaExportar",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosObtenerParaExportar",
+   "firma": "ctx.BrosObtenerParaExportar(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosScriptsDisponible",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosScriptsDisponible",
+   "firma": "ctx.BrosScriptsDisponible(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosSoloLecturaForzada",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosSoloLecturaForzada",
+   "firma": "ctx.BrosSoloLecturaForzada(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosVerificarConsolaPassword",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosVerificarConsolaPassword",
+   "firma": "ctx.BrosVerificarConsolaPassword(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:BrosVerificarIntegridad",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "BrosVerificarIntegridad",
+   "firma": "ctx.BrosVerificarIntegridad(…)",
+   "resumen": "Uso interno de la Consola (biblioteca de scripts en SQL). No es para scripts de usuario.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "py:ctx.erp.RefreshGrid",
+   "lang": "py",
+   "cat": "ctx.erp (Comercial)",
+   "nombre": "ctx.erp.RefreshGrid",
+   "firma": "ctx.erp.RefreshGrid() : None",
+   "resumen": "Refresca la lista de Comercial y conserva la fila seleccionada. Una sola vez, al final.",
+   "ejemplo": "ctx.erp.RefreshGrid()",
+   "detalle": "Refresca la lista de Comercial una sola vez, al final, y conserva la fila.",
+   "retorna": "None.",
+   "desde": "2.94.0",
+   "equiv": "cs:erp.RefreshGrid"
+  },
+  {
+   "id": "py:ctx.erp.AbrirDocumento",
+   "lang": "py",
+   "cat": "ctx.erp (Comercial)",
+   "nombre": "ctx.erp.AbrirDocumento",
+   "firma": "ctx.erp.AbrirDocumento(documentID, moduleID) : None",
+   "resumen": "Abre un documento ya guardado en su ventana.",
+   "ejemplo": "ctx.erp.AbrirDocumento(doc_id, 152)"
+  },
+  {
+   "id": "py:ctx.erp.Save",
+   "lang": "py",
+   "cat": "ctx.erp (Comercial)",
+   "nombre": "ctx.erp.Save",
+   "firma": "ctx.erp.Save(documentID) : None",
+   "resumen": "Guarda el documento.",
+   "ejemplo": "ctx.erp.Save(doc_id)"
+  },
+  {
+   "id": "py:ctx.erp.AffectStockNEW",
+   "lang": "py",
+   "cat": "ctx.erp (Comercial)",
+   "nombre": "ctx.erp.AffectStockNEW",
+   "firma": "ctx.erp.AffectStockNEW(documentID) : None",
+   "resumen": "Afecta inventario (kardex) del documento.",
+   "ejemplo": "ctx.erp.AffectStockNEW(doc_id)"
+  },
+  {
+   "id": "cs:CalcularHashSHA256",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "CalcularHashSHA256",
+   "firma": "ScriptContext.CalcularHashSHA256(texto) : string",
+   "resumen": "Hash SHA-256 del código de un script (integridad de la biblioteca). Uso interno de la Consola.",
+   "ejemplo": "",
+   "interno": true
+  },
+  {
+   "id": "cs:ResolverTokensCore",
+   "lang": "cs",
+   "cat": "Interno",
+   "nombre": "ResolverTokensCore",
+   "firma": "ScriptContext.ResolverTokensCore(plantilla, ids, userId, …) : string",
+   "resumen": "Núcleo estático de ResolverTokens (para pruebas sin conexión). Usa ctx.ResolverTokens.",
+   "ejemplo": "",
+   "interno": true
+  }
+ ]
+}

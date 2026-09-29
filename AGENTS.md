@@ -60,7 +60,10 @@ puntual (buscar una versión o un tema), no contexto de arranque — son miles d
 6. **Todo script que cambie datos que se ven en una lista de Comercial (crear, modificar, cancelar, timbrar, vincular…) termina
    refrescando el grid** con `ctx.erp.RefreshGrid()` — una vez, después del último cambio. Desde v2.94.0 conserva la fila y la vista.
    Detalle y la función para versiones anteriores: `docs/MANUAL.md`, «Refrescar el grid (estándar)».
-7. **GPL-3.0**: todo lo que se aporte se publica bajo la misma licencia.
+7. **Toda función pública de `ctx`/`ctx.erp` se documenta en el catálogo del SDK** (`src/assets/sdk_catalogo.json`): firma, resumen y ejemplo (y ficha completa si es de uso común). Si no,
+   `build/sdk/verificar_catalogo_sdk.ps1` — que corre dentro de `generar_instalador.ps1` — no deja generar el instalador. El manual (`docs/SDK_REFERENCIA.md` + HTML) se regenera con
+   `python build/sdk/generar_referencia_sdk.py`. Nunca listes funciones a mano en `Consola.cs`.
+8. **GPL-3.0**: todo lo que se aporte se publica bajo la misma licencia.
 
 ## 4. Mapa del repo
 

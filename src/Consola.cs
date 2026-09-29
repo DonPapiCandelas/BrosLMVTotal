@@ -97,7 +97,7 @@ namespace BrosLMV
         // ---- Metadata de ctx (ayuda + autocompletado) ----
         private class MetodoCtx
         {
-            public string Nombre, Firma, Desc, Ejemplo, Cat;
+            public string Nombre, Firma, Desc, Ejemplo, Cat, Id;
             public MetodoCtx(string n, string f, string d, string e, string cat = "") { Nombre = n; Firma = f; Desc = d; Ejemplo = e; Cat = cat; }
         }
 
@@ -121,210 +121,16 @@ namespace BrosLMV
             new TokenFijo("{pModulo}", "módulo activo", "{pModulo}", "ctx.ModuloActivo()", "ctx.module_id"),
             new TokenFijo("{pEmpresa}", "empresa (BD) activa", "{pEmpresa}", "ctx.Empresa()", "ctx.empresa"),
         };
-        // Referencias C#: reflejan el API REAL de ScriptContext (ctx.*) y ErpContext (ctx.erp.*)
-        // en src/Scripting.cs. Verificadas 2026-06-27. Cat = grupo en el panel de referencias.
-        private static readonly MetodoCtx[] METODOS = new[]
+        // Referencias (C#, Python, SQL): salen del catálogo del SDK (src\assets\sdk_catalogo.json, incrustado), la MISMA fuente del manual HTML.
+        // Para agregar o cambiar una función edita el JSON (no este archivo) y regenera el manual con build\sdk\generar_referencia_sdk.py.
+        private static MetodoCtx[] DesdeCatalogo(string lang)
         {
-            // ---- ctx base ----
-            new MetodoCtx("GetSelectedIds", "ctx.GetSelectedIds() : List<long>", "IDs de los documentos seleccionados en la vista.", "var ids = ctx.GetSelectedIds();", "Selección y datos"),
-            new MetodoCtx("GetFilaActiva", "ctx.GetFilaActiva() : Dictionary<string,object>", "Campos de la primera fila seleccionada del grid.", "var fila = ctx.GetFilaActiva();\r\nvar folio = fila[\"Folio\"];", "Selección y datos"),
-            new MetodoCtx("JoinIds", "ctx.JoinIds(ids) : string", "Convierte una lista de IDs en \"1,2,3\" (para un IN).", "var lista = ctx.JoinIds(ctx.GetSelectedIds());", "Selección y datos"),
-
-            new MetodoCtx("Scalar", "ctx.Scalar(sql) : object", "Ejecuta SQL y devuelve un solo valor.", "var total = ctx.Scalar(\"SELECT SUM(Total) FROM docDocument WHERE DocumentID IN (\" + ctx.JoinIds(ctx.GetSelectedIds()) + \")\");", "Consultas SQL"),
-            new MetodoCtx("Query", "ctx.Query(sql) : List<Dictionary<string,object>>", "Ejecuta SQL y devuelve filas.", "var filas = ctx.Query(\"SELECT Folio, Total FROM docDocument WHERE DocumentID IN (\" + ctx.JoinIds(ctx.GetSelectedIds()) + \")\");", "Consultas SQL"),
-            new MetodoCtx("NonQuery", "ctx.NonQuery(sql) : int", "INSERT/UPDATE/DELETE. Devuelve filas afectadas (respeta modo solo lectura).", "int n = ctx.NonQuery(\"UPDATE docDocument SET Referencia='X' WHERE DocumentID IN (\" + ctx.JoinIds(ctx.GetSelectedIds()) + \")\");", "Consultas SQL"),
-            new MetodoCtx("EjecutarSql", "ctx.EjecutarSql(sql) : string", "Corre T-SQL crudo (resuelve tokens) y devuelve texto: filas o un OK.", "var txt = ctx.EjecutarSql(\"SELECT Folio, Total FROM docDocument WHERE DocumentID IN ({pIDs})\");\r\nctx.Msg(txt);", "Consultas SQL"),
-
-            new MetodoCtx("ResolverTokens", "ctx.ResolverTokens(plantilla) : string", "Sustituye {pID}, {pIDs}, {pUserID}, {pModulo}, {pEmpresa}, {DATOS:Campo}.", "var sql = ctx.ResolverTokens(\"SELECT * FROM docDocument WHERE DocumentID = {pID}\");", "Tokens"),
-
-            new MetodoCtx("Empresa", "ctx.Empresa() : string", "Nombre de la base de datos de la empresa activa.", "var bd = ctx.Empresa();", "Contexto"),
-            new MetodoCtx("ServidorActivo", "ctx.ServidorActivo() : string", "Servidor\\instancia de SQL de la empresa activa.", "var srv = ctx.ServidorActivo();", "Contexto"),
-            new MetodoCtx("ModuloActivo", "ctx.ModuloActivo() : int", "ID del módulo activo de CONTPAQi.", "var mod = ctx.ModuloActivo();", "Contexto"),
-            new MetodoCtx("UserID", "ctx.UserID : int", "ID de usuario del addon (suele venir 0; usa ctx.erp.UserId).", "var u = ctx.UserID;", "Contexto"),
-            new MetodoCtx("SoloLectura", "ctx.SoloLectura : bool", "Si es true, NonQuery se bloquea (modo solo lectura).", "ctx.SoloLectura = true;", "Contexto"),
-            new MetodoCtx("FilasAfectadas", "ctx.FilasAfectadas : int", "Acumulado de filas modificadas por NonQuery (auditoría).", "var n = ctx.FilasAfectadas;", "Contexto"),
-            new MetodoCtx("DiagConexion", "ctx.DiagConexion() : string", "Diagnóstico de la conexión activa.", "ctx.Msg(ctx.DiagConexion());", "Contexto"),
-            new MetodoCtx("XEngineLib", "ctx.XEngineLib : object", "Objeto XEngine crudo (escape hatch a COM).", "var xe = ctx.XEngineLib;", "Contexto"),
-
-            new MetodoCtx("Msg", "ctx.Msg(texto, titulo?) : void", "Muestra un mensaje al usuario.", "ctx.Msg(\"Hola\", \"Aviso\");", "Interacción"),
-            new MetodoCtx("Confirm", "ctx.Confirm(texto, titulo?) : bool", "Pregunta Sí/No.", "if (ctx.Confirm(\"¿Seguro?\")) { /* ... */ }", "Interacción"),
-            new MetodoCtx("Log", "ctx.Log(texto) : void", "Escribe a la bitácora en C:\\BrosLMV\\logs.", "ctx.Log(\"Proceso terminado\");", "Interacción"),
-
-            // ---- ctx.erp.* (wrapper tipado de XEngine) ----
-            new MetodoCtx("erp.UserId", "ctx.erp.UserId : int", "ID real del usuario de CONTPAQi.", "var u = ctx.erp.UserId;", "ERP · Contexto"),
-            new MetodoCtx("erp.UserName", "ctx.erp.UserName : string", "Nombre del usuario activo.", "var n = ctx.erp.UserName;", "ERP · Contexto"),
-            new MetodoCtx("erp.OwnedBusinessEntityId", "ctx.erp.OwnedBusinessEntityId : int", "ID de la empresa propia (orgBusinessEntity IsOwned=1).", "var e = ctx.erp.OwnedBusinessEntityId;", "ERP · Contexto"),
-            new MetodoCtx("erp.ActiveModuleId", "ctx.erp.ActiveModuleId : int", "Módulo activo (equivale a ctx.ModuloActivo()).", "var m = ctx.erp.ActiveModuleId;", "ERP · Contexto"),
-            new MetodoCtx("erp.CurrencyId", "ctx.erp.CurrencyId : int", "Moneda activa.", "var c = ctx.erp.CurrencyId;", "ERP · Contexto"),
-            new MetodoCtx("erp.ComercialRFC", "ctx.erp.ComercialRFC : string", "RFC de la empresa.", "var rfc = ctx.erp.ComercialRFC;", "ERP · Contexto"),
-            new MetodoCtx("erp.SoftwareVersion", "ctx.erp.SoftwareVersion : string", "Versión de CONTPAQi.", "var v = ctx.erp.SoftwareVersion;", "ERP · Contexto"),
-
-            new MetodoCtx("erp.RecalcCompleto", "ctx.erp.RecalcCompleto(documentId) : void", "Recalcula totales + costos + saldo pagado.", "var id = (int)ctx.GetSelectedIds()[0];\r\nctx.erp.RecalcCompleto(id);", "ERP · Documento"),
-            new MetodoCtx("erp.RecalcDocument", "ctx.erp.RecalcDocument(documentId) : void", "Recalcula totales (subtotal, IVA, total).", "ctx.erp.RecalcDocument(id);", "ERP · Documento"),
-            new MetodoCtx("erp.CalcularCostos", "ctx.erp.CalcularCostos(documentId) : void", "Actualiza costos (promedio, PEPS...).", "ctx.erp.CalcularCostos(id);", "ERP · Documento"),
-            new MetodoCtx("erp.AffectStockNEW", "ctx.erp.AffectStockNEW(documentId) : void", "Afecta inventario (kardex) — módulos nuevos.", "ctx.erp.AffectStockNEW(id);", "ERP · Documento"),
-            new MetodoCtx("erp.AffectStock", "ctx.erp.AffectStock(documentId) : void", "Afecta inventario (versión clásica).", "ctx.erp.AffectStock(id);", "ERP · Documento"),
-            new MetodoCtx("erp.UpdateStatusDelivery", "ctx.erp.UpdateStatusDelivery(documentId) : void", "Actualiza el estatus de entrega del grid.", "ctx.erp.UpdateStatusDelivery(id);", "ERP · Documento"),
-            new MetodoCtx("erp.UpdateDocumentPaidInfo", "ctx.erp.UpdateDocumentPaidInfo(documentId) : void", "Recalcula saldo pagado y balance.", "ctx.erp.UpdateDocumentPaidInfo(id);", "ERP · Documento"),
-            new MetodoCtx("erp.ActualizarParcialidad", "ctx.erp.ActualizarParcialidad(documentId) : void", "Actualiza parcialidad en complementos de pago SAT.", "ctx.erp.ActualizarParcialidad(id);", "ERP · Documento"),
-            new MetodoCtx("erp.CancelDocument", "ctx.erp.CancelDocument(documentId) : void", "Cancela el documento.", "ctx.erp.CancelDocument(id);", "ERP · Documento"),
-            new MetodoCtx("erp.ReactivateDocument", "ctx.erp.ReactivateDocument(documentId) : void", "Reactiva un documento cancelado.", "ctx.erp.ReactivateDocument(id);", "ERP · Documento"),
-            new MetodoCtx("erp.Save", "ctx.erp.Save(documentId) : void", "Guarda el documento (XEngine).", "ctx.erp.Save(id);", "ERP · Documento"),
-            new MetodoCtx("erp.Delete", "ctx.erp.Delete(documentId) : void", "Elimina el documento (XEngine).", "ctx.erp.Delete(id);", "ERP · Documento"),
-            new MetodoCtx("erp.AjustarSaldosInsolutos", "ctx.erp.AjustarSaldosInsolutos(documentId) : void", "Ajusta saldos insolutos.", "ctx.erp.AjustarSaldosInsolutos(id);", "ERP · Documento"),
-            new MetodoCtx("erp.RefreshDocumento", "ctx.erp.RefreshDocumento(documentId) : void", "Refresca visualmente un documento abierto.", "ctx.erp.RefreshDocumento(id);", "ERP · Documento"),
-            new MetodoCtx("erp.NuevoDocumento", "ctx.erp.NuevoDocumento(moduleId, depotId, businessEntityId?) : int", "Crea el encabezado de un documento con los defaults del módulo (folio, tipo, moneda) y devuelve el DocumentID.", "int id = ctx.erp.NuevoDocumento(183, 1, 162); // OC, almacén, proveedor", "ERP · Documento"),
-            new MetodoCtx("erp.AgregarArticulo", "ctx.erp.AgregarArticulo(documentId, productId, cantidad?, precio?) : int", "Agrega una partida (lee datos de orgProduct). Tras agregar, llamar RecalcCompleto.", "ctx.erp.AgregarArticulo(id, 1, 3, 100);\r\nctx.erp.RecalcCompleto(id);", "ERP · Documento"),
-
-            new MetodoCtx("erp.RefreshGrid", "ctx.erp.RefreshGrid() : void", "Refresca el grid del módulo.", "ctx.erp.RefreshGrid();", "ERP · UI"),
-            new MetodoCtx("erp.RefreshRibbon", "ctx.erp.RefreshRibbon() : void", "Refresca el ribbon.", "ctx.erp.RefreshRibbon();", "ERP · UI"),
-            new MetodoCtx("erp.GotoModuleID", "ctx.erp.GotoModuleID(moduleId) : void", "Cambia al módulo indicado.", "ctx.erp.GotoModuleID(183);", "ERP · UI"),
-            new MetodoCtx("erp.OpenModule", "ctx.erp.OpenModule(moduleId) : void", "Abre un módulo.", "ctx.erp.OpenModule(183);", "ERP · UI"),
-            new MetodoCtx("erp.OpenBrowser", "ctx.erp.OpenBrowser(url) : void", "Abre una URL en el navegador.", "ctx.erp.OpenBrowser(\"https://contpaqi.com\");", "ERP · UI"),
-            new MetodoCtx("erp.ShowMessage", "ctx.erp.ShowMessage(msg) : void", "Mensaje nativo de CONTPAQi.", "ctx.erp.ShowMessage(\"Listo\");", "ERP · UI"),
-
-            new MetodoCtx("erp.GetFolioPrefix", "ctx.erp.GetFolioPrefix(moduleId, depotId) : string", "Prefijo (serie) configurado del módulo/almacén.", "var serie = ctx.erp.GetFolioPrefix(183, 1);", "ERP · Folio"),
-            new MetodoCtx("erp.GetNextFolio", "ctx.erp.GetNextFolio(moduleId, prefix, depotId) : string", "Siguiente folio disponible.", "var folio = ctx.erp.GetNextFolio(183, \"OC\", 1);", "ERP · Folio"),
-
-            new MetodoCtx("erp.GetProductStock", "ctx.erp.GetProductStock(productId, depotId) : double", "Existencia del producto en el almacén.", "double ex = ctx.erp.GetProductStock(1, 1);", "ERP · Precios y existencias"),
-            new MetodoCtx("erp.GetSalePrice", "ctx.erp.GetSalePrice(productId, businessEntityId?) : double", "Precio de venta (por cliente si se indica).", "double p = ctx.erp.GetSalePrice(1);", "ERP · Precios y existencias"),
-            new MetodoCtx("erp.GetBusinessEntitySalePrice", "ctx.erp.GetBusinessEntitySalePrice(productId, businessEntityId) : double", "Precio de venta específico de un cliente.", "double p = ctx.erp.GetBusinessEntitySalePrice(1, 10);", "ERP · Precios y existencias"),
-            new MetodoCtx("erp.GetBuyPrice", "ctx.erp.GetBuyPrice(productId) : double", "Precio de compra.", "double p = ctx.erp.GetBuyPrice(1);", "ERP · Precios y existencias"),
-            new MetodoCtx("erp.GetCostPrice", "ctx.erp.GetCostPrice(productId) : double", "Costo del producto.", "double c = ctx.erp.GetCostPrice(1);", "ERP · Precios y existencias"),
-            new MetodoCtx("erp.GetPriceWithTaxes", "ctx.erp.GetPriceWithTaxes(price, taxTypeId) : double", "Precio con impuestos incluidos.", "double t = ctx.erp.GetPriceWithTaxes(100, 1);", "ERP · Precios y existencias"),
-            new MetodoCtx("erp.GetCurrencyRate", "ctx.erp.GetCurrencyRate(currencyId) : double", "Tipo de cambio (respecto a MXN).", "double tc = ctx.erp.GetCurrencyRate(2);", "ERP · Precios y existencias"),
-            new MetodoCtx("erp.GetCurrencyRateBanxico", "ctx.erp.GetCurrencyRateBanxico(currencyId) : double", "Tipo de cambio de Banxico.", "double tc = ctx.erp.GetCurrencyRateBanxico(2);", "ERP · Precios y existencias"),
-            new MetodoCtx("erp.GetCoefConversion", "ctx.erp.GetCoefConversion(productId, fromUnit, toUnit) : double", "Coeficiente de conversión entre unidades.", "double k = ctx.erp.GetCoefConversion(1, \"PZA\", \"CAJA\");", "ERP · Precios y existencias"),
-            new MetodoCtx("erp.ProductIsKit", "ctx.erp.ProductIsKit(productId) : bool", "True si el producto es un kit.", "if (ctx.erp.ProductIsKit(1)) { /* ... */ }", "ERP · Precios y existencias"),
-
-            new MetodoCtx("erp.VerifyCreditLimit", "ctx.erp.VerifyCreditLimit(businessEntityId, amount) : bool", "True si el importe entra en el límite de crédito.", "if (!ctx.erp.VerifyCreditLimit(10, 5000)) ctx.Msg(\"Excede crédito\");", "ERP · Crédito"),
-            new MetodoCtx("erp.VerifyCreditLimitOverdue", "ctx.erp.VerifyCreditLimitOverdue(businessEntityId) : bool", "True si la entidad tiene documentos vencidos.", "if (ctx.erp.VerifyCreditLimitOverdue(10)) ctx.Msg(\"Tiene vencidos\");", "ERP · Crédito"),
-
-            new MetodoCtx("erp.GetModuleParameter", "ctx.erp.GetModuleParameter(moduleId, key) : string", "Lee un parámetro del módulo.", "var v = ctx.erp.GetModuleParameter(183, \"MiParam\");", "ERP · Parámetros"),
-            new MetodoCtx("erp.SaveModuleParameter", "ctx.erp.SaveModuleParameter(moduleId, key, value) : void", "Guarda un parámetro del módulo.", "ctx.erp.SaveModuleParameter(183, \"MiParam\", \"1\");", "ERP · Parámetros"),
-            new MetodoCtx("erp.GetParameter", "ctx.erp.GetParameter(key) : string", "Lee un parámetro global.", "var v = ctx.erp.GetParameter(\"MiParam\");", "ERP · Parámetros"),
-
-            new MetodoCtx("erp.GetTotalLetter", "ctx.erp.GetTotalLetter(amount, currencyId?) : string", "Importe con letra (\"MIL ... PESOS 50/100 M.N.\"). currencyId 0 = moneda activa.", "var letra = ctx.erp.GetTotalLetter(1234.50);", "ERP · Utilidades"),
-            new MetodoCtx("erp.GetTotalLetterEN", "ctx.erp.GetTotalLetterEN(amount, currencyId?) : string", "Importe con letra en inglés (currencyId 0 = moneda activa).", "var letra = ctx.erp.GetTotalLetterEN(1234.50);", "ERP · Utilidades"),
-            new MetodoCtx("erp.GetBarCode", "ctx.erp.GetBarCode(value, barcodeType?) : string", "Código de barras codificado.", "var bc = ctx.erp.GetBarCode(\"12345\");", "ERP · Utilidades"),
-            new MetodoCtx("erp.DecryptString", "ctx.erp.DecryptString(encrypted) : string", "Descifra una cadena de CONTPAQi.", "var s = ctx.erp.DecryptString(enc);", "ERP · Utilidades"),
-            new MetodoCtx("erp.EncryptString", "ctx.erp.EncryptString(plain) : string", "Cifra una cadena.", "var enc = ctx.erp.EncryptString(\"texto\");", "ERP · Utilidades"),
-            new MetodoCtx("erp.ValidRFC", "ctx.erp.ValidRFC(rfc) : bool", "Valida un RFC.", "if (ctx.erp.ValidRFC(\"XAXX010101000\")) { /* ... */ }", "ERP · Utilidades"),
-            new MetodoCtx("erp.FormatCurrency", "ctx.erp.FormatCurrency(amount) : string", "Formatea un número como moneda.", "var s = ctx.erp.FormatCurrency(1234.5);", "ERP · Utilidades"),
-
-            new MetodoCtx("erp.DLookup", "ctx.erp.DLookup(field, table, where?) : object", "Consulta puntual de un campo sin escribir SQL.", "var v = ctx.erp.DLookup(\"Total\", \"docDocument\", \"DocumentID=1\");", "ERP · DLookup"),
-            new MetodoCtx("erp.DLookupStr", "ctx.erp.DLookupStr(field, table, where?) : string", "DLookup como string.", "var s = ctx.erp.DLookupStr(\"Folio\", \"docDocument\", \"DocumentID=1\");", "ERP · DLookup"),
-            new MetodoCtx("erp.DLookupInt", "ctx.erp.DLookupInt(field, table, where?) : int", "DLookup como int.", "var n = ctx.erp.DLookupInt(\"StatusID\", \"docDocument\", \"DocumentID=1\");", "ERP · DLookup"),
-
-            new MetodoCtx("erp.WriteToLog", "ctx.erp.WriteToLog(message) : void", "Escribe al log de CONTPAQi.", "ctx.erp.WriteToLog(\"Proceso OK\");", "ERP · Bitácora"),
-            new MetodoCtx("erp.WriteToTableLog", "ctx.erp.WriteToTableLog(message, detail?) : void", "Escribe a la bitácora en tabla.", "ctx.erp.WriteToTableLog(\"Acción\", \"detalle\");", "ERP · Bitácora"),
-
-            new MetodoCtx("erp.PrintDoc", "ctx.erp.PrintDoc(documentId) : void", "Imprime el documento.", "ctx.erp.PrintDoc(id);", "ERP · Impresión y export"),
-            new MetodoCtx("erp.PrintModule", "ctx.erp.PrintModule() : void", "Imprime la vista del módulo.", "ctx.erp.PrintModule();", "ERP · Impresión y export"),
-            new MetodoCtx("erp.UpdatePrintedOn", "ctx.erp.UpdatePrintedOn(documentId) : void", "Marca el documento como impreso.", "ctx.erp.UpdatePrintedOn(id);", "ERP · Impresión y export"),
-            new MetodoCtx("erp.CreatePDF", "ctx.erp.CreatePDF(documentId, outputPath) : string", "Genera el PDF del documento.", "ctx.erp.CreatePDF(id, @\"C:\\temp\\doc.pdf\");", "ERP · Impresión y export"),
-            new MetodoCtx("erp.ExportQueryToExcel", "ctx.erp.ExportQueryToExcel(sql, outputPath?) : void", "Exporta el resultado de un SQL a Excel.", "ctx.erp.ExportQueryToExcel(\"SELECT Folio, Total FROM docDocument\");", "ERP · Impresión y export"),
-            new MetodoCtx("erp.ExportJanusToExcel", "ctx.erp.ExportJanusToExcel(outputPath?) : void", "Exporta la vista activa del módulo a Excel.", "ctx.erp.ExportJanusToExcel();", "ERP · Impresión y export"),
-
-            new MetodoCtx("erp.SendMail", "ctx.erp.SendMail(to, subject, body, attachmentPath?) : void", "Envía correo con la config de CONTPAQi.", "ctx.erp.SendMail(\"a@b.com\", \"Asunto\", \"Cuerpo\");", "ERP · Correo"),
-            new MetodoCtx("erp.GetEmailTemplateID", "ctx.erp.GetEmailTemplateID(templateKey) : string", "ID de una plantilla de correo.", "var id = ctx.erp.GetEmailTemplateID(\"Factura\");", "ERP · Correo"),
-
-            new MetodoCtx("erp.GetWebContent", "ctx.erp.GetWebContent(url) : string", "Descarga el contenido de una URL.", "var html = ctx.erp.GetWebContent(\"https://contpaqi.com\");", "ERP · Web / sistema"),
-            new MetodoCtx("erp.GetHTMLFromURL", "ctx.erp.GetHTMLFromURL(url) : string", "Descarga el HTML de una URL (variante).", "var html = ctx.erp.GetHTMLFromURL(\"https://contpaqi.com\");", "ERP · Web / sistema"),
-            new MetodoCtx("erp.IsConnectedToInternet", "ctx.erp.IsConnectedToInternet() : bool", "True si hay conexión a internet.", "if (ctx.erp.IsConnectedToInternet()) { /* ... */ }", "ERP · Web / sistema"),
-            new MetodoCtx("erp.RunShellExecute", "ctx.erp.RunShellExecute(path, args?) : void", "Ejecuta un programa (ShellExecute).", "ctx.erp.RunShellExecute(@\"C:\\app.exe\");", "ERP · Web / sistema"),
-
-            new MetodoCtx("erp.AlreadyDocsSigned", "ctx.erp.AlreadyDocsSigned(documentId) : bool", "True si el documento está timbrado y válido.", "if (ctx.erp.AlreadyDocsSigned(id)) { /* ... */ }", "ERP · CFDI"),
-            new MetodoCtx("erp.GetStatusPaidID", "ctx.erp.GetStatusPaidID(documentId) : int", "Estado de pago (0=sin, 1=parcial, 2=pagado).", "var st = ctx.erp.GetStatusPaidID(id);", "ERP · CFDI"),
-
-            new MetodoCtx("erp.Call", "ctx.erp.Call(metodo, args...) : object", "Llama CUALQUIER miembro de XEngine por nombre (los 562). Tú das los argumentos.", "var qr = ctx.erp.Call(\"GetQRCode\", \"datos\");\r\nctx.erp.Call(\"RecalcProductStock\", 1);", "ERP · Avanzado"),
-            new MetodoCtx("erp.Get", "ctx.erp.Get(propiedad) : object", "Lee CUALQUIER propiedad de XEngine por nombre.", "var rfc = (string)ctx.erp.Get(\"COMERCIAL_RFC\");", "ERP · Avanzado"),
-            new MetodoCtx("erp.CrearHelper", "ctx.erp.CrearHelper(progId) : object", "Crea un COM auxiliar (Doc.clsMain, LBS.clsMain) con XEngine.", "var doc = ctx.erp.CrearHelper(\"Doc.clsMain\");", "ERP · Avanzado"),
-            new MetodoCtx("erp.XE", "ctx.erp.XE : object", "XEngineLib crudo (casos no cubiertos por ctx.erp.*).", "var xe = ctx.erp.XE;", "ERP · Avanzado"),
-        };
-
-        // Python: API real del paquete `broslmv` (workers/python/broslmv/ctx.py). El SDK Python
-        // expone SOLO `ctx` (NO hay `ctx.erp` en Python; eso es exclusivo de C#). El SQL viaja por
-        // la conexión viva (relay) con parámetros estilo @nombre + dict. Ver docs/PYTHON.md.
-        private static readonly MetodoCtx[] METODOS_PYTHON = new[]
-        {
-            // Contexto vivo del botón (propiedades)
-            new MetodoCtx("ctx.user_id", "ctx.user_id : int", "ID del usuario activo de CONTPAQi.", "usr = ctx.user_id"),
-            new MetodoCtx("ctx.module_id", "ctx.module_id : int", "ID del módulo activo.", "mod = ctx.module_id"),
-            new MetodoCtx("ctx.empresa", "ctx.empresa : str", "Base de datos de la empresa activa.", "bd = ctx.empresa"),
-            new MetodoCtx("ctx.app_key", "ctx.app_key : str", "AppKey del botón en ejecución.", "clave = ctx.app_key"),
-            new MetodoCtx("ctx.fila", "ctx.fila : dict", "Campos de la primera fila seleccionada del grid.", "folio = ctx.fila.get(\"Folio\")"),
-            new MetodoCtx("ctx.context", "ctx.context() : dict", "Todo el contexto vivo como diccionario.", "info = ctx.context()"),
-
-            // Selección
-            new MetodoCtx("ctx.get_selected_ids", "ctx.get_selected_ids() : list[int]", "IDs de los documentos seleccionados en la vista.", "ids = ctx.get_selected_ids()"),
-
-            // SQL por la conexión viva (parámetros con @nombre + dict, igual que el host)
-            new MetodoCtx("ctx.query", "ctx.query(sql, params=None) : list[dict]", "Ejecuta SQL y devuelve una lista de diccionarios. Parámetros con @nombre.", "ids = ctx.get_selected_ids()\r\nfilas = ctx.query(\"SELECT Folio, Total FROM docDocument WHERE DocumentID = @id\", {\"id\": ids[0]})"),
-            new MetodoCtx("ctx.scalar", "ctx.scalar(sql, params=None) : Any", "Ejecuta SQL y devuelve el primer valor.", "total = ctx.scalar(\"SELECT SUM(Total) FROM docDocument WHERE DeletedOn IS NULL\")"),
-            new MetodoCtx("ctx.execute", "ctx.execute(sql, params=None) : int", "Ejecuta INSERT/UPDATE/DELETE. Devuelve filas afectadas.", "n = ctx.execute(\"UPDATE docDocument SET Referencia = @r WHERE DocumentID = @id\", {\"r\": \"X\", \"id\": ctx.get_selected_ids()[0]})"),
-
-            // Interacción
-            new MetodoCtx("ctx.msg", "ctx.msg(texto, titulo=\"BrosLMV\")", "Muestra un mensaje al usuario.", "ctx.msg(\"Proceso terminado\", \"Aviso\")"),
-            new MetodoCtx("ctx.confirm", "ctx.confirm(texto, titulo=\"Confirmar\") : bool", "Pregunta Sí/No y bloquea hasta que el usuario responda.", "if ctx.confirm(\"¿Continuar?\"):\r\n    ctx.msg(\"Confirmado\")"),
-            new MetodoCtx("ctx.log", "ctx.log(texto, nivel=\"INFO\")", "Escribe a la bitácora/auditoría.", "ctx.log(\"Actualizados {} docs\".format(n))"),
-            new MetodoCtx("ctx.progress", "ctx.progress(texto=\"\", porcentaje=0)", "Actualiza el progreso de la ejecución.", "ctx.progress(\"Procesando...\", 50)"),
-            new MetodoCtx("ctx.form", "ctx.form(spec) : dict", "Formulario con campos y/o grid editable. Ver docs/PYTHON.md.py.", "r = ctx.form({\r\n    \"title\": \"Datos\",\r\n    \"fields\": [{\"name\": \"nota\", \"label\": \"Nota\", \"type\": \"text\"}],\r\n})\r\nif r[\"submitted\"]:\r\n    ctx.msg(r[\"values\"][\"nota\"])"),
-            new MetodoCtx("ctx.show_html", "ctx.show_html(html, titulo=\"BrosLMV\", ancho=800, alto=600, modal=True)", "Ventana con HTML/CSS/JS real (WebView2). Ver PLANTILLA_EJEMPLO_DASHBOARD_VENTAS_PYTHON.py.", "ctx.show_html(\"<h1>Hola</h1>\", \"Reporte\")"),
-            new MetodoCtx("ctx.select_file", "ctx.select_file(titulo=\"...\", filtro=\"Excel|*.xlsx\", guardar=False) : str", "Diálogo nativo para elegir archivo. \"\" si canceló.", "ruta = ctx.select_file(\"Elegir Excel\", \"Excel|*.xlsx\")"),
-            new MetodoCtx("ctx.select_folder", "ctx.select_folder(titulo=\"...\") : str", "Diálogo nativo para elegir carpeta. \"\" si canceló.", "carpeta = ctx.select_folder(\"Elegir destino\")"),
-            new MetodoCtx("ctx.read_excel", "ctx.read_excel(ruta, hoja=None) : list[dict]", "Lee un .xlsx como lista de dict (encabezados = 1ª fila). No requiere Excel instalado.", "filas = ctx.read_excel(ctx.select_file())"),
-            new MetodoCtx("ctx.write_excel", "ctx.write_excel(filas, ruta, hoja=\"Hoja1\")", "Escribe una lista de dict a .xlsx.", "ctx.write_excel([{\"Producto\": \"X\", \"Cant\": 10}], r\"C:\\reporte.xlsx\")"),
-
-            // Valor de retorno
-            new MetodoCtx("result", "result = <valor>", "Variable global que devuelve el script (se muestra al usuario).", "result = f\"Empresa={ctx.empresa}, seleccionados={ctx.get_selected_ids()}\""),
-
-            // ctx.erp — operaciones de CONTPAQi (relay al addon). Mismos nombres que C#.
-            // OJO: las PROPIEDADES se llaman con () en Python: ctx.erp.UserId().
-            new MetodoCtx("ctx.erp.UserId", "ctx.erp.UserId() : int", "Usuario real de CONTPAQi (propiedad → con paréntesis).", "u = ctx.erp.UserId()"),
-            new MetodoCtx("ctx.erp.ComercialRFC", "ctx.erp.ComercialRFC() : str", "RFC de la empresa (propiedad → con paréntesis).", "rfc = ctx.erp.ComercialRFC()"),
-            new MetodoCtx("ctx.erp.GetProductStock", "ctx.erp.GetProductStock(productID, depotID) : float", "Existencia del producto (depot 0 = todos).", "ex = ctx.erp.GetProductStock(125, 0)"),
-            new MetodoCtx("ctx.erp.GetSalePrice", "ctx.erp.GetSalePrice(productID) : float", "Precio de venta del producto.", "pv = ctx.erp.GetSalePrice(125)"),
-            new MetodoCtx("ctx.erp.GetCostPrice", "ctx.erp.GetCostPrice(productID) : float", "Costo del producto.", "c = ctx.erp.GetCostPrice(125)"),
-            new MetodoCtx("ctx.erp.GetPriceWithTaxes", "ctx.erp.GetPriceWithTaxes(precio, taxTypeID) : float", "Precio con impuestos incluidos.", "t = ctx.erp.GetPriceWithTaxes(100, 1)"),
-            new MetodoCtx("ctx.erp.GetTotalLetter", "ctx.erp.GetTotalLetter(importe) : str", "Importe con letra (moneda activa).", "letra = ctx.erp.GetTotalLetter(1234.50)"),
-            new MetodoCtx("ctx.erp.GetNextFolio", "ctx.erp.GetNextFolio(moduleID, serie, depotID) : str", "Siguiente folio disponible.", "f = ctx.erp.GetNextFolio(183, \"OC\", 1)"),
-            new MetodoCtx("ctx.erp.RecalcDocument", "ctx.erp.RecalcDocument(documentID)", "Recalcula totales del documento (escritura).", "ctx.erp.RecalcDocument(ctx.get_selected_ids()[0])"),
-            new MetodoCtx("ctx.erp.RecalcCompleto", "ctx.erp.RecalcCompleto(documentID)", "Recalcula totales + costos del documento.", "ctx.erp.RecalcCompleto(doc_id)"),
-            new MetodoCtx("ctx.erp.OwnedBusinessEntityId", "ctx.erp.OwnedBusinessEntityId() : int", "Empresa propia (propiedad → con paréntesis).", "be = ctx.erp.OwnedBusinessEntityId()"),
-            new MetodoCtx("ctx.erp.NuevoDocumento", "ctx.erp.NuevoDocumento(moduleID, depotID, businessEntityID=0) : int", "Crea el encabezado de un documento con los defaults del módulo y devuelve el DocumentID.", "doc_id = ctx.erp.NuevoDocumento(183, 1, 162)"),
-            new MetodoCtx("ctx.erp.AgregarArticulo", "ctx.erp.AgregarArticulo(documentID, productID, cantidad=1, precio=-1) : int", "Agrega una partida (lee orgProduct). Tras agregar, llamar RecalcCompleto.", "ctx.erp.AgregarArticulo(doc_id, 1, 3, 100)\r\nctx.erp.RecalcCompleto(doc_id)"),
-            new MetodoCtx("ctx.erp.Timbrar", "ctx.erp.Timbrar(documentID, pruebas=False)", "Timbra el documento (motor nativo de Comercial). Operación fiscal real.", "if ctx.confirm(\"¿Timbrar?\"):\r\n    ctx.erp.Timbrar(doc_id, False)"),
-            new MetodoCtx("ctx.erp.RelacionarCFDI", "ctx.erp.RelacionarCFDI(documentID, sourceDocumentID, tipoRelacion)", "Liga un CFDI con otro (NC, devolución, anticipo).", "ctx.erp.RelacionarCFDI(doc_id, oc_id, \"07\")"),
-            new MetodoCtx("ctx.erp.Call", "ctx.erp.Call(metodo, *args)", "Llama CUALQUIER miembro de XEngine por nombre.", "qr = ctx.erp.Call(\"GetQRCode\", \"datos\")"),
-            new MetodoCtx("ctx.erp.Get", "ctx.erp.Get(propiedad)", "Lee CUALQUIER propiedad de XEngine por nombre.", "rfc = ctx.erp.Get(\"COMERCIAL_RFC\")"),
-
-            // Active-record genérico: ctx.nuevo(tabla) -> registro con guardar()/actualizar()/eliminar()
-            new MetodoCtx("ctx.nuevo", "ctx.nuevo(tabla) : Record", "Crea un registro para INSERT en cualquier tabla. set() campos, guardar() devuelve el ID.", "it = ctx.nuevo(\"docDocumentItem\")\r\nit[\"DocumentID\"] = doc_id\r\nit[\"ProductID\"] = 1\r\nit[\"Quantity\"] = 2\r\nit.guardar()"),
-            new MetodoCtx("ctx.registro", "ctx.registro(tabla, pk) : Record", "Carga un registro existente por su PK. Modificar campos y actualizar() solo envía los cambios.", "doc = ctx.registro(\"docDocument\", 11556)\r\ndoc[\"Comments\"] = \"Modificado\"\r\ndoc.actualizar()"),
-        };
-
-        // SQL: T-SQL crudo por la conexión viva (ScriptContext.EjecutarSql). Resuelve los tokens
-        // de ResolverTokensCore (Scripting.cs) y corre contra la empresa activa (BD ComercialSP).
-        // SELECT/EXEC devuelven filas; DML (INSERT/UPDATE/DELETE/EXEC...) se bloquea en SOLO LECTURA.
-        // Esquema real: tablas doc*/org*/eng*, soft delete con DeletedOn IS NULL (ver docs/PYTHON.md).
-        private static readonly MetodoCtx[] METODOS_SQL = new[]
-        {
-            // Sentencias
-            new MetodoCtx("SELECT", "SELECT ...", "Consulta de datos (devuelve filas).", "SELECT DocumentID, Folio, Total FROM docDocument\r\nWHERE DocumentID IN ({pIDs}) AND DeletedOn IS NULL"),
-            new MetodoCtx("EXEC", "EXEC <sp> @p = ...", "Llama un procedimiento almacenado.", "EXEC NombreDelSP @DocumentID = {pID}"),
-            new MetodoCtx("UPDATE", "UPDATE ...", "Actualiza datos (bloqueado en SOLO LECTURA).", "UPDATE docDocument SET Referencia = '{DATOS:Folio}'\r\nWHERE DocumentID = {pID}"),
-            new MetodoCtx("INSERT", "INSERT ...", "Inserta filas (bloqueado en SOLO LECTURA).", "INSERT INTO miTabla (DocumentID, UserID) VALUES ({pID}, {pUserID})"),
-            new MetodoCtx("DELETE", "DELETE ...", "Borra filas (bloqueado en SOLO LECTURA).", "DELETE FROM miTabla WHERE DocumentID = {pID}"),
-
-            // Tokens (se sustituyen antes de ejecutar — ResolverTokensCore)
-            new MetodoCtx("{pID}", "{pID}", "Primer ID seleccionado en el grid (0 si no hay).", "WHERE DocumentID = {pID}"),
-            new MetodoCtx("{pIDs}", "{pIDs}", "Todos los IDs seleccionados, separados por coma.", "WHERE DocumentID IN ({pIDs})"),
-            new MetodoCtx("{pUserID}", "{pUserID}", "ID del usuario activo.", "SET ModifiedUserID = {pUserID}"),
-            new MetodoCtx("{pModulo}", "{pModulo}", "ID del módulo activo.", "WHERE ModuleID = {pModulo}"),
-            new MetodoCtx("{pEmpresa}", "{pEmpresa}", "Nombre de la BD de la empresa activa.", "-- empresa activa: {pEmpresa}"),
-            new MetodoCtx("{DATOS:x}", "{DATOS:Campo}", "Valor del campo en la fila seleccionada del grid.", "WHERE Folio = '{DATOS:Folio}'"),
-        };
+            return SdkCatalogo.Todas().Where(e => e.Lang == lang && !e.Interno)
+                .Select(e => new MetodoCtx(e.Nombre, e.Firma, e.Resumen, e.Ejemplo, e.Cat) { Id = e.Id }).ToArray();
+        }
+        private static readonly MetodoCtx[] METODOS = DesdeCatalogo("cs");
+        private static readonly MetodoCtx[] METODOS_PYTHON = DesdeCatalogo("py");
+        private static readonly MetodoCtx[] METODOS_SQL = DesdeCatalogo("sql");
 
         // ---- Plantillas (v2.94.0) ----
         // Desde la 2.94.0 hay UNA sola plantilla: «Crear documentos desde XML». Las anteriores (Orden de Compra, Recepción, Factura, Requisición,
@@ -658,6 +464,7 @@ namespace BrosLMV
             ctxMore.Items.Add(new ToolStripSeparator());
             ctxMore.Items.Add(new ToolStripMenuItem("Historial", null, (s, e) => VerHistorial()));
             ctxMore.Items.Add(new ToolStripSeparator());
+            ctxMore.Items.Add(new ToolStripMenuItem("Manual del SDK…", null, (s, e) => MostrarManualSdk()));
             ctxMore.Items.Add(new ToolStripMenuItem("Respaldar todos los scripts…", null, (s, e) => RespaldarTodos()));
             ctxMore.Items.Add(new ToolStripMenuItem("Reparar biblioteca de scripts", null, (s, e) => RepararBibliotecaScripts()));
             ctxMore.Items.Add(new ToolStripMenuItem("Acerca de", null, (s, e) => AcercaDe()));
@@ -1035,7 +842,7 @@ namespace BrosLMV
             var espCtx = new Panel { Dock = DockStyle.Top, Height = 14, BackColor = AppTheme.BgMain };
 
             // --- Tarjeta de referencias ---
-            var lblMet = new Label { Text = "REFERENCIAS  ·  doble clic para insertar", Dock = DockStyle.Top, Height = 26, ForeColor = AppTheme.Primary, Font = AppTheme.FontTitle, TextAlign = ContentAlignment.BottomLeft, Padding = new Padding(0, 0, 0, 6) };
+            var lblMet = new Label { Text = "REFERENCIAS  ·  doble clic: insertar  ·  clic derecho: ver ficha", Dock = DockStyle.Top, Height = 26, ForeColor = AppTheme.Primary, Font = AppTheme.FontTitle, TextAlign = ContentAlignment.BottomLeft, Padding = new Padding(0, 0, 0, 6) };
 
             var pnlRefsCard = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgSurface };
             pnlRefsCard.Paint += (s, e) => BordeTarjeta(e.Graphics, pnlRefsCard);
@@ -1049,14 +856,17 @@ namespace BrosLMV
 
             _lstMetodosCSharp = NuevaListaRef("Método", "Descripción");
             _lstMetodosCSharp.DoubleClick += (s, e) => { if (_lstMetodosCSharp.SelectedItems.Count > 0) InsertarEnEditor(((MetodoCtx)_lstMetodosCSharp.SelectedItems[0].Tag).Ejemplo + "\r\n"); };
+            AgregarMenuFicha(_lstMetodosCSharp);
             pnlHost.Controls.Add(_lstMetodosCSharp);
 
             _lstMetodosPython = NuevaListaRef("Método", "Descripción");
             _lstMetodosPython.DoubleClick += (s, e) => { if (_lstMetodosPython.SelectedItems.Count > 0) InsertarEnEditor(((MetodoCtx)_lstMetodosPython.SelectedItems[0].Tag).Ejemplo + "\r\n"); };
+            AgregarMenuFicha(_lstMetodosPython);
             pnlHost.Controls.Add(_lstMetodosPython);
 
             _lstMetodosSql = NuevaListaRef("Token/SQL", "Descripción");
             _lstMetodosSql.DoubleClick += (s, e) => { if (_lstMetodosSql.SelectedItems.Count > 0) InsertarEnEditor(((MetodoCtx)_lstMetodosSql.SelectedItems[0].Tag).Ejemplo + "\r\n"); };
+            AgregarMenuFicha(_lstMetodosSql);
             pnlHost.Controls.Add(_lstMetodosSql);
 
             _lstSeleccion = NuevaListaRef("Campo", "Valor");
@@ -2060,6 +1870,34 @@ namespace BrosLMV
             tabs.SelectedIndexChanged += (s, e) => { if (tabs.SelectedTab == tabCentral && lvCentral.Items.Count == 0 && !lblSinDatos.Visible) Recargar(); };
             Recargar(); // primera carga con el rango default (últimos 7 días)
             frm.ShowDialog(this);
+        }
+
+        // Clic derecho sobre una referencia: «Ver ficha» abre el manual del SDK justo en esa función.
+        private void AgregarMenuFicha(ListView lv)
+        {
+            lv.MouseUp += (s, e) =>
+            {
+                if (e.Button != MouseButtons.Right) return;
+                var it = lv.GetItemAt(e.X, e.Y);
+                if (it == null || !(it.Tag is MetodoCtx m)) return;
+                lv.SelectedItems.Clear(); it.Selected = true;
+                var menu = new ContextMenuStrip { Font = AppTheme.FontMain };
+                menu.Items.Add("Ver ficha de «" + m.Nombre + "»", null, (s2, e2) => MostrarManualSdk(m.Id));
+                menu.Items.Add("Insertar ejemplo en el editor", null, (s2, e2) => InsertarEnEditor(m.Ejemplo + "\r\n"));
+                menu.Show(lv, e.Location);
+            };
+        }
+
+        // Manual del SDK (HTML incrustado): buscador, guías y fichas por función. Con id abre directo en esa ficha.
+        private void MostrarManualSdk(string id = null)
+        {
+            string html = SdkCatalogo.ManualHtml();
+            if (html == null) { MessageBox.Show(this, "No se encontró el manual del SDK dentro de BrosLMV.", "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            if (!string.IsNullOrEmpty(id))
+                html = html.Replace("</body>", "<script>window.addEventListener('load',function(){var e=document.getElementById('" + SdkCatalogo.Slug(id) +
+                    "');if(e){e.scrollIntoView();e.style.outline='2px solid #1f5fd6';}});</script></body>");
+            try { _ctx.ShowHtml(html, "Manual del SDK de BrosLMV", 1200, 820, false); }
+            catch (Exception ex) { ctxError("No se pudo abrir el manual del SDK: " + ex.Message); }
         }
 
         private void CargarMetodos()
