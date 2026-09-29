@@ -129,8 +129,9 @@ namespace BrosLMV
                 res["empresa"] = db;
                 res["usuarioId"] = _userId;
 
-                res["tabs"] = Filas(c, "SELECT RibbonTabID AS id, TabCaption AS caption, TabOrder AS orden FROM engRibbonTab ORDER BY TabOrder, TabCaption")
-                    .Select(t => new Dictionary<string, object> { { "id", L(t["id"]) }, { "caption", t["caption"] }, { "orden", t["orden"] } }).ToList();
+                // ModuleID = pestaña propia de un módulo (0 = compartida); DRL = tipo de vista donde se muestra (drlGrid = listas, NULL = siempre).
+                res["tabs"] = Filas(c, "SELECT RibbonTabID AS id, TabCaption AS caption, TabOrder AS orden, ModuleID AS modulo, DRL AS drl FROM engRibbonTab ORDER BY TabOrder, TabCaption")
+                    .Select(t => new Dictionary<string, object> { { "id", L(t["id"]) }, { "caption", t["caption"] }, { "orden", t["orden"] }, { "modulo", L(t["modulo"]) }, { "drl", t["drl"] } }).ToList();
 
                 // Sección sugerida: donde ya viven más botones BrosLMV.* (si no hay, la pantalla propone la primera pestaña).
                 var sug = Filas(c, "SELECT TOP 1 t.TabCaption AS tab, g.GroupCaption AS grupo FROM engRibbonMenu m JOIN engRibbonControl k ON k.ControlID=m.ControlID " +
@@ -148,10 +149,10 @@ namespace BrosLMV
                         { "botones", porGrupo.ContainsKey(L(g["id"])) ? (object)porGrupo[L(g["id"])] : new List<object>() } }).ToList();
 
                 // Módulos con lista (grid) agrupados por su módulo padre (compras, ventas, inventarios…): salen de engModule, no de una lista escrita a mano.
-                var mods = Filas(c, "SELECT ModuleID AS id, ModuleName AS nombre, ParentModuleID AS padre FROM engModule WHERE DeletedOn IS NULL AND Drl='drlGrid' ORDER BY ModuleOrder, ModuleName");
+                var mods = Filas(c, "SELECT ModuleID AS id, ModuleName AS nombre, ParentModuleID AS padre, Drl AS drl FROM engModule WHERE DeletedOn IS NULL AND Drl='drlGrid' ORDER BY ModuleOrder, ModuleName");
                 var nombres = Filas(c, "SELECT ModuleID AS id, ModuleName AS nombre FROM engModule WHERE DeletedOn IS NULL").ToDictionary(x => L(x["id"]), x => Convert.ToString(x["nombre"]));
                 res["modulos"] = mods.Select(m => new Dictionary<string, object> {
-                    { "id", L(m["id"]) }, { "nombre", m["nombre"] },
+                    { "id", L(m["id"]) }, { "nombre", m["nombre"] }, { "drl", m["drl"] },
                     { "grupo", nombres.ContainsKey(L(m["padre"])) ? nombres[L(m["padre"])] : "Otros" } }).ToList();
 
                 res["usuarios"] = Filas(c, "SELECT UserID AS id, UserName AS nombre, UserGroupID AS grupo FROM engUser ORDER BY UserName")
@@ -306,24 +307,6 @@ namespace BrosLMV
                     string ejecuta = Ejecuta(s.AppKey);
                     GuardarCopia(c, tx, ejecuta, "publicar");
 
-                    // pestaña y sección: por nombre; se crean solo si no existen
-                    object tabId = Escalar(c, tx, "SELECT TOP 1 RibbonTabID FROM engRibbonTab WHERE TabCaption=@c ORDER BY TabOrder", "@c", s.TabCaption.Trim());
-                    if (tabId == null)
-                    {
-                        Exec(c, tx,
-                            "INSERT engRibbonTab(RibbonTabIDBase,ProductID,ModuleID,TabCaption,TabOrder,DRL,Color,ContextCaption,ExtraMenuModuleID,ShowIfSectionModuleIDIs,ResID,IfUserIDIs) " +
-                            "VALUES(0,1,0,@c,(SELECT ISNULL(MAX(TabOrder),0)+1 FROM engRibbonTab WHERE TabOrder>=101 OR TabOrder IS NULL),NULL,0,NULL,0,0,0,0)", "@c", s.TabCaption.Trim());
-                        tabId = Escalar(c, tx, "SELECT TOP 1 RibbonTabID FROM engRibbonTab WHERE TabCaption=@c ORDER BY RibbonTabID DESC", "@c", s.TabCaption.Trim());
-                    }
-                    object grpId = Escalar(c, tx, "SELECT TOP 1 RibbonGroupID FROM engRibbonGroup WHERE RibbonTabID=@t AND GroupCaption=@g ORDER BY GroupOrder", "@t", tabId, "@g", s.GroupCaption.Trim());
-                    if (grpId == null)
-                    {
-                        Exec(c, tx,
-                            "INSERT engRibbonGroup(RibbonGroupIDBase,RibbonTabID,GroupCaption,GroupOrder,ShowOptionButton,ToolTipText,IconFile,ExtraMenuModuleID,IfFieldsExist,ResID,IfUserIDIs) " +
-                            "VALUES(0,@t,@g,(SELECT ISNULL(MAX(GroupOrder),0)+1 FROM engRibbonGroup WHERE RibbonTabID=@t),0,NULL,NULL,0,NULL,0,0)", "@t", tabId, "@g", s.GroupCaption.Trim());
-                        grpId = Escalar(c, tx, "SELECT TOP 1 RibbonGroupID FROM engRibbonGroup WHERE RibbonTabID=@t AND GroupCaption=@g ORDER BY RibbonGroupID DESC", "@t", tabId, "@g", s.GroupCaption.Trim());
-                    }
-
                     // el botón: se actualiza si ya existe (mismo Ejecutar), si no se crea
                     object ctlId = Escalar(c, tx, "SELECT TOP 1 ControlID FROM engRibbonControl WHERE ControlExecute=@e", "@e", ejecuta);
                     string desc = string.IsNullOrWhiteSpace(s.Description) ? null : s.Description.Trim();
@@ -342,22 +325,53 @@ namespace BrosLMV
                         ctlId = Escalar(c, tx, "SELECT TOP 1 ControlID FROM engRibbonControl WHERE ControlExecute=@e", "@e", ejecuta);
                     }
 
-                    // dónde aparece: se reemplazan TODAS sus filas por una por (módulo x usuario)
+                    // dónde aparece: se reemplazan TODAS sus filas por una por (módulo x usuario).
+                    // La pestaña y la sección se resuelven POR MÓDULO: una pestaña propia de un módulo (p. ej. «General» de Facturas de compra) solo
+                    // sirve a ese módulo, así que un botón para varios módulos puede terminar en grupos de pestañas distintas.
                     Exec(c, tx, "DELETE FROM engRibbonMenu WHERE ControlID=@id", "@id", ctlId);
                     var mods = s.Modules.Count == 0 ? new List<long> { 0 } : s.Modules.Distinct().ToList();
                     var usrs = s.Users.Count == 0 ? new List<long> { 0 } : s.Users.Distinct().ToList();
-                    long orden = L(Escalar(c, tx, "SELECT ISNULL(MAX(ControlOrder),0)+1 FROM engRibbonMenu WHERE RibbonGroupID=@g", "@g", grpId));
                     foreach (var m in mods)
+                    {
+                        object grpId = ResolverGrupo(c, tx, s, m);
+                        long orden = L(Escalar(c, tx, "SELECT ISNULL(MAX(ControlOrder),0)+1 FROM engRibbonMenu WHERE RibbonGroupID=@g", "@g", grpId));
                         foreach (var u in usrs)
                             Exec(c, tx,
                                 "INSERT engRibbonMenu(RibbonMenuIDBase,RibbonGroupID,ControlID,ControlOrder,ControlType,ExtraMenuModuleID,IfFieldsExist,IfUserIDIs) VALUES(0,@g,@id,@o,1,@m,NULL,@u)",
                                 "@g", grpId, "@id", ctlId, "@o", orden, "@m", m, "@u", u);
+                    }
 
                     tx.Commit();
                     return Convert.ToInt64(ctlId);
                 }
                 catch { try { tx.Rollback(); } catch { } throw; }
             }
+        }
+
+        // Devuelve el RibbonGroupID donde va el botón para el módulo m (0 = todos): busca la pestaña por nombre prefiriendo la propia del módulo
+        // (ModuleID = m) sobre la compartida (ModuleID = 0); crea la pestaña y/o la sección si no existen.
+        private static object ResolverGrupo(SqlConnection c, SqlTransaction tx, BotonSpec s, long m)
+        {
+            string tabCap = s.TabCaption.Trim(), grpCap = s.GroupCaption.Trim();
+            object tabId = Escalar(c, tx,
+                "SELECT TOP 1 RibbonTabID FROM engRibbonTab WHERE TabCaption=@c AND (ModuleID=@m OR ModuleID=0) ORDER BY CASE WHEN ModuleID=@m THEN 0 ELSE 1 END, TabOrder",
+                "@c", tabCap, "@m", m);
+            if (tabId == null)
+            {
+                Exec(c, tx,
+                    "INSERT engRibbonTab(RibbonTabIDBase,ProductID,ModuleID,TabCaption,TabOrder,DRL,Color,ContextCaption,ExtraMenuModuleID,ShowIfSectionModuleIDIs,ResID,IfUserIDIs) " +
+                    "VALUES(0,1,0,@c,(SELECT ISNULL(MAX(TabOrder),0)+1 FROM engRibbonTab WHERE TabOrder>=101 OR TabOrder IS NULL),NULL,0,NULL,0,0,0,0)", "@c", tabCap);
+                tabId = Escalar(c, tx, "SELECT TOP 1 RibbonTabID FROM engRibbonTab WHERE TabCaption=@c ORDER BY RibbonTabID DESC", "@c", tabCap);
+            }
+            object grpId = Escalar(c, tx, "SELECT TOP 1 RibbonGroupID FROM engRibbonGroup WHERE RibbonTabID=@t AND GroupCaption=@g ORDER BY GroupOrder", "@t", tabId, "@g", grpCap);
+            if (grpId == null)
+            {
+                Exec(c, tx,
+                    "INSERT engRibbonGroup(RibbonGroupIDBase,RibbonTabID,GroupCaption,GroupOrder,ShowOptionButton,ToolTipText,IconFile,ExtraMenuModuleID,IfFieldsExist,ResID,IfUserIDIs) " +
+                    "VALUES(0,@t,@g,(SELECT ISNULL(MAX(GroupOrder),0)+1 FROM engRibbonGroup WHERE RibbonTabID=@t),0,NULL,NULL,0,NULL,0,0)", "@t", tabId, "@g", grpCap);
+                grpId = Escalar(c, tx, "SELECT TOP 1 RibbonGroupID FROM engRibbonGroup WHERE RibbonTabID=@t AND GroupCaption=@g ORDER BY RibbonGroupID DESC", "@t", tabId, "@g", grpCap);
+            }
+            return grpId;
         }
 
         // Copia del estado actual de un botón (control + filas de menú) para poder deshacer. Antes=NULL si el botón no existía.

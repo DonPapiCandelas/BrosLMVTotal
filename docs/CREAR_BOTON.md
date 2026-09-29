@@ -24,10 +24,13 @@
     Si Windows no deja copiar (Comercial instalado en *Program Files*), abre Comercial como administrador esa vez.
 
 ### 2 · Dónde aparece
-- **Pestaña:** una existente (BrosLMV, General, Lista, Reporte, Contabilidad…) o **＋ Nueva pestaña…** con el nombre que quieras (por ejemplo *Reportes*).
+- **Módulos** (se elige primero): **En todos** (aparece en cualquier módulo) o **Solo en algunos…** y marcas los módulos (Facturas de compra, Gastos, XML recibidos…).
+- **Pestaña:** una existente o **＋ Nueva pestaña…** con el nombre que quieras (por ejemplo *Reportes*).
+  **Ojo:** en Comercial cada pestaña solo se ve en cierto tipo de vista. *Lista* se ve en las listas (Facturas, XML recibidos…), *Contabilidad* solo en el catálogo de
+  cuentas contables, *General* es propia de cada módulo. Por eso, al elegir módulos el asistente **solo ofrece las pestañas que sí se ven ahí** y desactiva las demás.
+  Una pestaña nueva se muestra en todos los módulos (el botón sigue apareciendo solo donde indiques).
 - **Sección:** una de las que tiene esa pestaña o **＋ Nueva sección…** (Herramientas, Impresión, Filtro…).
-- **Módulos:** **En todos** (aparece en cualquier módulo) o **Solo en algunos…** y marcas los módulos (Facturas de compra, Gastos, XML recibidos…).
-  Ejemplo: un botón dentro de la pestaña *Lista*, sección *Filtro*, solo en *Facturas electrónicas*.
+  Ejemplo: un botón dentro de la pestaña *Lista*, sección *Filtro*, solo en *XML Recibidos*.
 
 ### 3 · Quién lo ve
 - **Todos los usuarios**, **Grupos** (lo ven todos los usuarios de cada grupo elegido) o **Usuarios** específicos.
@@ -65,7 +68,7 @@ Cómo guarda Comercial un botón (tablas de la base de cada empresa):
 ## Problemas frecuentes
 | Síntoma | Qué hacer |
 |---|---|
-| El botón no aparece | Reinicia Comercial. Revisa que estés en un módulo donde lo publicaste y que tu usuario esté entre los que lo ven. |
+| El botón no aparece | Reinicia Comercial. Revisa que estés en un módulo donde lo publicaste, que tu usuario esté entre los que lo ven y que la **pestaña** se vea en ese módulo (p. ej. «Contabilidad» no se ve en una lista de XML recibidos; usa «Lista»). |
 | El botón sale sin ícono | El ícono debe estar en `…\ComercialSP\Icons`. Reinstala BrosLMV (copia los íconos) o usa **Explorar…**. |
 | «Windows no dejó copiar el ícono» | Abre Comercial como administrador una vez, o copia el `.ico` a la carpeta de íconos a mano. |
 | «No se pudo abrir el asistente» | Falta el WebView2 Runtime de Microsoft (viene con Windows 11 y con Edge). |

@@ -96,6 +96,11 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
 </div>
 
 <div class="pg" id="pg1">
+  <div><h2>Módulos</h2>
+    <div class="seg" id="segMod"><button class="on" data-v="g">En todos</button><button data-v="m">Solo en algunos…</button></div>
+    <div id="modBox" class="hide"><input id="qm" type="text" placeholder="Buscar módulo…" style="margin-top:8px" oninput="pintaMods()"><div class="list" id="mods"></div>
+      <div class="hint">Elige los módulos donde debe verse el botón (Facturas de compra, Gastos, XML recibidos…).</div></div>
+  </div>
   <div class="row">
     <div><label class="f" for="tab">Pestaña</label>
       <select id="tab" onchange="onTab()"></select>
@@ -104,11 +109,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
       <select id="sec" onchange="onSec()"></select>
       <input id="secNew" type="text" class="hide" placeholder="Ej. Herramientas" style="margin-top:6px" oninput="draw()"></div>
   </div>
-  <div><h2>Módulos</h2>
-    <div class="seg" id="segMod"><button class="on" data-v="g">En todos</button><button data-v="m">Solo en algunos…</button></div>
-    <div id="modBox" class="hide"><input id="qm" type="text" placeholder="Buscar módulo…" style="margin-top:8px" oninput="pintaMods()"><div class="list" id="mods"></div>
-      <div class="hint">Elige los módulos donde debe verse el botón (Facturas de compra, Gastos, XML recibidos…).</div></div>
-  </div>
+  <div class="hint" id="tabHint"></div>
 </div>
 
 <div class="pg" id="pg2">
@@ -175,11 +176,10 @@ async function init(){
     $('bQuitar').classList.remove('hide');$('bCrear').textContent='Guardar cambios';$('bDeshacer').classList.remove('hide')}
   else{$('bCrear').textContent='Crear botón'}
   // pestañas (sin repetir nombre)
-  const tabs=[...new Set(C.tabs.map(t=>t.caption))];
   const sg=C.sugerida;
-  const t0=(ex&&ex.tab)||(sg&&tabs.includes(sg.tab)?sg.tab:tabs[0]);
-  $('tab').innerHTML=tabs.map(t=>`<option ${t===t0?'selected':''}>${esc(t)}</option>`).join('')+'<option value="+">＋ Nueva pestaña…</option>';
-  fillSec((ex&&ex.group)||(sg&&sg.tab===t0?sg.group:null));
+  const t0=(ex&&ex.tab)||(sg?sg.tab:null);
+  pintaTabs(t0);
+  fillSec((ex&&ex.group)||(sg&&sg.tab===$('tab').value?sg.group:null));
   if(modo==='m'){[...$('segMod').children].forEach(b=>b.classList.toggle('on',b.dataset.v==='m'));$('modBox').classList.remove('hide')}
   if(quien==='u'){[...$('segWho').children].forEach(b=>b.classList.toggle('on',b.dataset.v==='u'))}
   $('emps').innerHTML=C.empresas.map(x=>`<span class="chip ${emps.has(x)?'on':''}" data-e="${esc(x)}">${esc(x)}</span>`).join('');
@@ -211,9 +211,9 @@ $('bExp').onclick=async()=>{try{const r=await call('explorar');if(r&&r.icono){ic
 // ---- módulos / quién / empresas ----
 function pintaMods(){const q=norm($('qm').value);const gs={};C.modulos.filter(m=>!q||norm(m.nombre).includes(q)||norm(m.grupo).includes(q)).forEach(m=>{(gs[m.grupo]=gs[m.grupo]||[]).push(m)});
   $('mods').innerHTML=Object.keys(gs).sort().map(g=>`<div class="gh">${esc(g)}</div>`+gs[g].map(m=>`<label><input type="checkbox" data-m="${m.id}" ${mods.has(m.id)?'checked':''}> ${esc(m.nombre)}</label>`).join('')).join('')||'<div class="hint" style="padding:8px">Sin resultados.</div>'}
-$('mods').onchange=e=>{const c=e.target;const id=+c.dataset.m;c.checked?mods.add(id):mods.delete(id);draw()};
+$('mods').onchange=e=>{const c=e.target;const id=+c.dataset.m;c.checked?mods.add(id):mods.delete(id);pintaTabs();fillSec();draw()};
 function seg(id,fn){$(id).onclick=e=>{const b=e.target.closest('button');if(!b)return;[...$(id).children].forEach(x=>x.classList.toggle('on',x===b));fn(b.dataset.v)}}
-seg('segMod',v=>{modo=v;$('modBox').classList.toggle('hide',v==='g');draw()});
+seg('segMod',v=>{modo=v;$('modBox').classList.toggle('hide',v==='g');pintaTabs();fillSec();draw()});
 seg('segWho',v=>{quien=v;drawWho();draw()});
 function drawWho(){$('whoBox').classList.toggle('hide',quien==='t');if(quien==='t')return;
   const lista=quien==='g'?C.grupos:C.usuarios,set=quien==='g'?grupos:usuarios;
@@ -224,7 +224,28 @@ $('emps').onclick=e=>{const c=e.target.closest('.chip');if(!c)return;const m=c.d
 function usuariosFinales(){if(quien==='u')return [...usuarios];if(quien==='g'){const r=new Set();C.usuarios.forEach(u=>{if(grupos.has(u.grupo))r.add(u.id)});return [...r]}return []}
 
 // ---- pestaña / sección ----
-function onTab(){$('tabNew').classList.toggle('hide',$('tab').value!=='+');fillSec();draw()}
+// Una pestaña solo aparece en ciertos módulos: las propias de un módulo (modulo>0) y las de un tipo de vista (drl: drlGrid = listas,
+// drlAccountingCatalog = catálogo de cuentas…). Por eso, según los módulos elegidos, las pestañas que no se verían se marcan y se desactivan.
+const DRLTXT={drlGrid:'las listas',drlAccountingCatalog:'el catálogo de cuentas contables',drlAgenda:'la agenda',drlChart:'las gráficas',drlCrystalReport:'los reportes',drlWebReport:'los reportes web',drlAccountingAuxiliares:'los auxiliares contables',drlActivation:'la activación',drlInstalia:'las actualizaciones'};
+function modsSel(){return modo==='m'?C.modulos.filter(m=>mods.has(m.id)):[]}
+function tabsDe(cap){return C.tabs.filter(t=>t.caption===cap)}
+function visibleEn(cap,m){return tabsDe(cap).some(t=>(t.modulo===0||t.modulo===m.id)&&(!t.drl||t.drl===m.drl))}
+function compatible(cap){const ms=modsSel();return ms.length?ms.every(m=>visibleEn(cap,m)):tabsDe(cap).some(t=>t.modulo===0)}
+function soloEn(cap){const t=tabsDe(cap).filter(x=>x.modulo===0&&x.drl);return t.length&&t.every(x=>x.drl)?DRLTXT[t[0].drl]||t[0].drl:null}
+function pintaTabs(sel){
+  const caps=[...new Set(C.tabs.map(t=>t.caption))];
+  let cur=sel||($('tab').value&&$('tab').value!=='+'?$('tab').value:null);
+  if(cur&&cur!=='+'&&!compatible(cur))cur=null;
+  if(!cur){cur=caps.find(c=>compatible(c)&&(!C.sugerida||c===C.sugerida.tab))||caps.find(c=>compatible(c))||'+'}
+  const ok=caps.filter(c=>compatible(c)),no=caps.filter(c=>!compatible(c));
+  $('tab').innerHTML=ok.map(c=>{const so=modsSel().length?null:soloEn(c);return `<option value="${esc(c)}" ${c===cur?'selected':''}>${esc(c)}${so?' (solo en '+so+')':''}</option>`}).join('')
+    +'<option value="+" '+(cur==='+'?'selected':'')+'>＋ Nueva pestaña…</option>'
+    +(no.length?'<optgroup label="No se verían en los módulos elegidos">'+no.map(c=>`<option value="${esc(c)}" disabled>${esc(c)}</option>`).join('')+'</optgroup>':'');
+  $('tabNew').classList.toggle('hide',$('tab').value!=='+');
+  const so=cur!=='+'&&!modsSel().length?soloEn(cur):null;
+  $('tabHint').textContent=cur==='+'?'La pestaña nueva se muestra en todos los módulos; el botón solo aparece donde indiques arriba.':(so?'Ojo: esta pestaña solo aparece en '+so+'.':(modsSel().length?'Solo se listan las pestañas que sí se ven en los módulos elegidos.':''));
+}
+function onTab(){pintaTabs($('tab').value);fillSec();draw()}
 function fillSec(sel){const v=$('tab').value;const ids=C.tabs.filter(t=>t.caption===v).map(t=>t.id);
   const gs=[...new Set(C.groups.filter(g=>ids.includes(g.tabId)).map(g=>g.caption))];
   $('sec').innerHTML=gs.map(g=>`<option ${g===sel?'selected':''}>${esc(g)}</option>`).join('')+'<option value="+">＋ Nueva sección…</option>';onSec(true)}

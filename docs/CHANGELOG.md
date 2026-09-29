@@ -8,6 +8,20 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.95.1] — 2026-09-29 — «Crear botón»: solo pestañas que sí se ven
+
+### Corregido
+- **El botón no aparecía** cuando se ponía en una pestaña que el módulo elegido nunca muestra. En Comercial cada pestaña se ve solo en cierto tipo de vista: «Lista»
+  en las listas, «Contabilidad» solo en el catálogo de cuentas contables, «General» es propia de cada módulo, etc. Por ejemplo, un botón para *XML Recibidos*
+  puesto en «Contabilidad» se guardaba bien pero no se veía nunca. El asistente ahora pide primero los **módulos** y **solo ofrece las pestañas que sí se ven ahí**
+  (las demás salen desactivadas con la razón); con «En todos» avisa cuando una pestaña solo aparece en un tipo de vista («Lista (solo en las listas)»).
+- La pestaña y la sección se resuelven **por módulo** al publicar: si el botón va a varios módulos y la pestaña es propia de cada módulo (como «General»),
+  cada módulo recibe su fila en la sección de su propia pestaña (antes se usaba una sola, que solo servía a un módulo).
+
+### Cambiado
+- Paso 2 del asistente: primero **Módulos**, después **Pestaña** y **Sección**.
+- Guía `docs/CREAR_BOTON.md`: explica qué pestañas se ven en qué módulos.
+
 ## [2.95.0] — 2026-09-29 — Asistente «Crear botón…» y catálogo de íconos BrosLMV
 
 ### Agregado
