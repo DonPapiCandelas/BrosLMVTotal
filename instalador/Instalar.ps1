@@ -152,6 +152,26 @@ if (Test-Path $icoSrc) {
     Write-Host "AVISO: no se encontro assets\BrosLMV.ico en el paquete." -ForegroundColor Yellow
 }
 
+# 5c) Catalogo de iconos BrosLMV (v2.95.0): los .ico BrosLMV_*.ico van a la carpeta Icons de Comercial (ahi los lee el ribbon) y el
+#     catalogo con etiquetas de busqueda + la licencia (Lucide, ISC) a C:\BrosLMV\iconos. Si el paquete no los trae, se omite sin error.
+$iconosPkg = Join-Path $pkg "iconos"
+if (Test-Path $iconosPkg) {
+    New-Item -ItemType Directory -Force "$base\iconos" | Out-Null
+    Copy-Item (Join-Path $iconosPkg "iconos.json") "$base\iconos" -Force
+    Copy-Item (Join-Path $iconosPkg "LICENCIA_Lucide.txt") "$base\iconos" -Force
+    $nIco = 0
+    foreach ($icoDir in @("C:\Program Files (x86)\Compac\ComercialSP\Icons", "C:\Program Files\Compac\ComercialSP\Icons")) {
+        if (Test-Path (Split-Path $icoDir -Parent)) {
+            New-Item -ItemType Directory -Force $icoDir | Out-Null
+            Copy-Item (Join-Path $iconosPkg "BrosLMV_*.ico") $icoDir -Force
+            $nIco = (Get-ChildItem $icoDir -Filter "BrosLMV_*.ico").Count
+            Write-Host "Iconos BrosLMV copiados a: $icoDir ($nIco)"
+        }
+    }
+} else {
+    Write-Host "AVISO: el paquete no trae el catalogo de iconos BrosLMV (instalador\iconos)." -ForegroundColor Yellow
+}
+
 # 6) Registrar el COM (RegAsm de 32 bits)
 & $regasm "$base\bin\BrosLMVClsMain.dll" /codebase /tlb
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR al registrar COM" -ForegroundColor Red; exit 1 }

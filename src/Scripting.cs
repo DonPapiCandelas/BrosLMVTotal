@@ -771,6 +771,16 @@ namespace BrosLMV
             var c = new SqlConnection(cs); c.Open(); return c;
         }
 
+        // Cadena de conexión SqlClient resuelta (la misma que usa OpenConn). Sirve para abrir conexiones propias desde OTRO hilo
+        // (p. ej. la ventana de «Crear botón», que corre en su propio hilo STA y no puede llamar objetos COM de Comercial).
+        public string CadenaSql()
+        {
+            string cs = ResolverCadena();
+            if (string.IsNullOrEmpty(cs)) throw new Exception("No hay conexion disponible (ni automatica de CONTPAQi, ni credencial cifrada, ni " + Rutas.ConnFile + ").");
+            if (cs.IndexOf("Timeout", StringComparison.OrdinalIgnoreCase) < 0) cs = cs.TrimEnd(';') + ";Connect Timeout=4";
+            return cs;
+        }
+
         private static string MaskPwd(string cs)
         {
             return Regex.Replace(cs ?? "", "(Password=)[^;]*", "$1***", RegexOptions.IgnoreCase);

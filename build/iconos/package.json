@@ -1,0 +1,9 @@
+{
+  "name": "broslmv-iconos",
+  "private": true,
+  "description": "Genera el catálogo de íconos BrosLMV (.ico) a partir de Lucide (ISC). Ver build/iconos/README.md",
+  "dependencies": {
+    "lucide-static": "1.48.0",
+    "sharp": "^0.34.0"
+  }
+}

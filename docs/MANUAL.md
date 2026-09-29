@@ -143,6 +143,12 @@ categorizarlo en la empresa destino.
 
 ## 4. Cómo crear un botón nuevo
 
+### Opción recomendada — asistente «Crear botón…» (desde v2.95.0)
+
+En la Consola: clic secundario sobre el script → **Crear botón…** (o **Más opciones → Nuevo botón…** para empezar por el botón). Eliges nombre, descripción,
+ícono, pestaña/sección, módulos y quién lo ve, con vista previa del ribbon; el asistente da de alta el botón sin SQL ni claves a mano. Guía completa:
+[`CREAR_BOTON.md`](CREAR_BOTON.md). Las opciones de abajo (SQL a mano, Gestor de Ribbon) siguen funcionando pero ya no son necesarias.
+
 ### Opción rápida (todo desde la consola)
 
 1. Abre **Consola BrosLMV**.

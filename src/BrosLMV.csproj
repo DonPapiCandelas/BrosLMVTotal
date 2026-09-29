@@ -23,6 +23,8 @@
     <Compile Include="Consola.cs" />
     <Compile Include="HostClient.cs" />
     <Compile Include="Recetas.cs" />
+    <Compile Include="RibbonAdmin.cs" />
+    <Compile Include="RibbonUi.cs" />
     <Compile Include="EstructurasDocumento.cs" />
     <Compile Include="ConsolaPasswordHash.cs" />
     <Compile Include="ConsolaPasswordPromptForm.cs" />
@@ -33,6 +35,7 @@
     <EmbeddedResource Include="assets\logo_app.png" />
     <EmbeddedResource Include="assets\BrosLMV.ico" />
     <EmbeddedResource Include="assets\notas_version.html" />
+    <EmbeddedResource Include="assets\crear_boton_app.html" />
     <EmbeddedResource Include="..\instalador\docs\plantillas\*.html"><LogicalName>doc_%(Filename)%(Extension)</LogicalName></EmbeddedResource>
   </ItemGroup>
 

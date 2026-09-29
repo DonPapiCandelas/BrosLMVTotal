@@ -42,8 +42,25 @@ New-Item -ItemType Directory -Force $docsPlant | Out-Null
 $py = Get-Command python -ErrorAction SilentlyContinue
 if ($py) {
     & python (Join-Path $root "build\md_a_html.py") (Join-Path $root "docs\CREAR_DOC_DESDE_XML.md") (Join-Path $docsPlant "CREAR_DOC_DESDE_XML.html")
+    & python (Join-Path $root "build\md_a_html.py") (Join-Path $root "docs\CREAR_BOTON.md") (Join-Path $docsPlant "CREAR_BOTON.html")
 } else {
     Write-Host "   AVISO: no hay Python; se usa el HTML ya versionado en instalador\docs\plantillas." -ForegroundColor Yellow
+}
+
+Write-Host "0b) Catalogo de iconos BrosLMV (.ico, desde Lucide/ISC; requiere Node.js)..." -ForegroundColor Cyan
+$iconosSrc = Join-Path $root "build\iconos"
+$iconosOut = Join-Path $root "instalador\iconos"
+$node = Get-Command node -ErrorAction SilentlyContinue
+if ($node) {
+    Push-Location $iconosSrc
+    try {
+        if (-not (Test-Path (Join-Path $iconosSrc "node_modules\lucide-static"))) { & npm install --no-audit --no-fund 2>&1 | Out-Null }
+        if (Test-Path $iconosOut) { Remove-Item $iconosOut -Recurse -Force }
+        & node generar_iconos.js $iconosOut
+        if ($LASTEXITCODE -ne 0) { Write-Host "AVISO: no se pudo generar el catalogo de iconos (el instalador saldra sin el)." -ForegroundColor Yellow }
+    } finally { Pop-Location }
+} else {
+    Write-Host "   AVISO: no hay Node.js; el instalador saldra sin el catalogo de iconos BrosLMV." -ForegroundColor Yellow
 }
 
 Write-Host "1) Compilando addon..." -ForegroundColor Cyan
