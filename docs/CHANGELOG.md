@@ -8,6 +8,19 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.97.0] — 2026-09-29 — Lenguaje sin recordar «lang:», clave siempre visible y respaldo de scripts
+
+### Agregado
+- **Selector de lenguaje** en la barra (botón *Lenguaje: C#* y clic en el lenguaje de la barra de estado): C#, Python o SQL. Al cambiarlo la Consola escribe (o quita) por ti la
+  línea `# lang: python` / `-- lang: sql`; C# no lleva marca. Si el editor está vacío, deja un arranque mínimo (Python: `from broslmv import ctx`). Ya no hay que recordar la marca.
+- **Respaldar todos los scripts…** (Más opciones): un archivo `.bros` por script de la empresa activa en la carpeta que elijas (con sus assets). Sirve de respaldo y para llevarlos a otra empresa o equipo.
+
+### Cambiado
+- **La clave del script es su nombre, sin nombre «bonito» aparte:** el script se llama igual que su botón (`BrosLMV.<clave>`). Al guardar, el cuadro muestra en vivo
+  **«Se guardará como: BrosLMV.<clave>»** (los espacios y símbolos se cambian por `_`; se respetan mayúsculas y minúsculas). Así nadie escribe un nombre que luego no coincide con el botón.
+- En la lista de **Plantillas** cada plantilla se muestra con su clave (`CREAR_DOC_DESDE_XML`); el nombre descriptivo queda en la ayuda emergente. El buscador encuentra por clave o por nombre.
+- Manual: nueva sección «Dónde viven tus scripts» (SQL es la fuente de verdad; qué pasa si se borran archivos).
+
 ## [2.96.0] — 2026-09-29 — Editar botones que ya existen
 
 ### Agregado
@@ -73,7 +86,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ### Cambiado
 - **Categorizar** (clic secundario) ahora muestra un combo con las categorías que ya existen en la empresa (o permite escribir una nueva), igual que «Guardar como».
-- **Guardar** acepta el nombre del botón con espacios y acentos («Crear docs XML» → `CREAR_DOCS_XML`) y, para una plantilla, propone el nombre recomendado en su cabecera.
+- **Guardar** acepta el nombre del botón con espacios y acentos («Crear docs XML» → `Crear_docs_XML`) y, para una plantilla, propone el nombre recomendado en su cabecera.
 - Las plantillas muestran en su ayuda emergente el nombre con el que se guardan como botón (`BrosLMV.<NOMBRE>`).
 - Plan de la Consola v3 documentado en `docs/PLAN_CONSOLA_V3.md`.
 

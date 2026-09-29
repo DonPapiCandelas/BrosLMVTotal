@@ -65,6 +65,7 @@ namespace BrosLMV
         private Label        _lblCtx;
         private CheckBox     _chkSoloLectura;
         private ToolStripStatusLabel _status, _statusTiempo, _statusScript, _statusLang, _statusPos, _statusVer;
+        private IconButton _btnLang;
         // private string _appKey
 
         // Versión del addon (de AssemblyVersion). Se lee de memoria una vez: costo cero.
@@ -657,10 +658,17 @@ namespace BrosLMV
             ctxMore.Items.Add(new ToolStripSeparator());
             ctxMore.Items.Add(new ToolStripMenuItem("Historial", null, (s, e) => VerHistorial()));
             ctxMore.Items.Add(new ToolStripSeparator());
+            ctxMore.Items.Add(new ToolStripMenuItem("Respaldar todos los scripts…", null, (s, e) => RespaldarTodos()));
             ctxMore.Items.Add(new ToolStripMenuItem("Reparar biblioteca de scripts", null, (s, e) => RepararBibliotecaScripts()));
             ctxMore.Items.Add(new ToolStripMenuItem("Acerca de", null, (s, e) => AcercaDe()));
             btnMore.Click += (s, e) => ctxMore.Show(btnMore, new Point(0, btnMore.Height));
             pnlToolbar.Controls.Add(btnMore);
+
+            // Lenguaje del script (v2.97.0): C# / Python / SQL. Cambiarlo escribe (o quita) la línea «lang:» por el usuario; ya no hay que recordarla.
+            _btnLang = new IconButton { Glyph = Glyph.Down, Text = "Lenguaje: C#", Kind = BtnKind.Toolbar, Accent = Color.Empty, PadX = 12, MinH = 34, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(3, 1, 3, 1) };
+            _tips.SetToolTip(_btnLang, "Lenguaje del script: C#, Python o SQL");
+            _btnLang.Click += (s, e) => MostrarMenuLenguaje(_btnLang, new Point(0, _btnLang.Height));
+            pnlToolbar.Controls.Add(_btnLang);
             
             AddSep();
             
@@ -710,6 +718,7 @@ namespace BrosLMV
             _statusTiempo  = new ToolStripStatusLabel("") { ForeColor = AppTheme.TextMuted, BorderSides = ToolStripStatusLabelBorderSides.Left, BorderStyle = Border3DStyle.Etched };
             _statusVer     = new ToolStripStatusLabel(Version) { ForeColor = AppTheme.Primary, IsLink = true, LinkBehavior = LinkBehavior.HoverUnderline, BorderSides = ToolStripStatusLabelBorderSides.Left, BorderStyle = Border3DStyle.Etched, ToolTipText = "Acerca de BrosLMV / notas de versión" };
             _statusVer.Click += (s, e) => AcercaDe();
+            _statusLang.Click += (s, e) => MostrarMenuLenguaje(this, PointToClient(Cursor.Position));
             ss.Items.AddRange(new ToolStripItem[] { _status, sep1, _statusScript, _statusLang, _statusPos, _statusTiempo, _statusVer });
             Controls.Add(ss);
 
@@ -1459,6 +1468,43 @@ namespace BrosLMV
             ed.ExtraDescent = 3; // mejor interlineado
         }
 
+        // ---- Lenguaje del script ----
+        // El lenguaje se guarda como una línea «lang:» al inicio del código (así lo detectan la Consola, los botones y las terminales). El selector la escribe o la quita:
+        // C# no lleva marca (es el predeterminado); Python lleva «# lang: python»; SQL lleva «-- lang: sql».
+        private static readonly Regex RX_MARCA_LANG = new Regex(@"^\s*(#|//|--)\s*lang\s*:\s*\w+\s*$", RegexOptions.IgnoreCase);
+        private static readonly Regex RX_MARCA_VIEJA = new Regex(@"^\s*(#py|#sql|--sql)\s*$|^\s*(#|//|--)\s*broslmv:(python|sql|receta)\s*$", RegexOptions.IgnoreCase);
+
+        private void MostrarMenuLenguaje(Control ancla, Point donde)
+        {
+            string actual = HostClient.EsPython(_editor.Text) ? "Python" : HostClient.EsSql(_editor.Text) ? "SQL" : "C#";
+            var menu = new ContextMenuStrip { Font = AppTheme.FontMain };
+            foreach (var l in new[] { "C#", "Python", "SQL" })
+            {
+                string lang = l;
+                menu.Items.Add(new ToolStripMenuItem(lang, null, (s, e) => CambiarLenguaje(lang)) { Checked = lang == actual });
+            }
+            menu.Show(ancla, donde);
+        }
+
+        private void CambiarLenguaje(string lang)
+        {
+            if (_editor == null) return;
+            string actual = HostClient.EsPython(_editor.Text) ? "Python" : HostClient.EsSql(_editor.Text) ? "SQL" : "C#";
+            if (actual == lang) return;
+            var lineas = new List<string>(_editor.Text.Replace("\r\n", "\n").Split('\n'));
+            for (int i = Math.Min(lineas.Count, 12) - 1; i >= 0; i--)
+                if (RX_MARCA_LANG.IsMatch(lineas[i]) || RX_MARCA_VIEJA.IsMatch(lineas[i])) lineas.RemoveAt(i);
+            string cuerpo = string.Join("\r\n", lineas);
+            bool vacio = string.IsNullOrWhiteSpace(cuerpo);
+            string marca = lang == "Python" ? "# lang: python\r\n" : lang == "SQL" ? "-- lang: sql\r\n" : "";
+            string inicio = "";
+            if (vacio)
+                inicio = lang == "Python" ? "from broslmv import ctx\r\n\r\n" : lang == "SQL" ? "-- Escribe aquí tu consulta\r\n" : "";
+            _editor.Text = marca + (vacio ? inicio : cuerpo);
+            _status.Text = "Lenguaje: " + lang + (vacio ? "" : " (el código se conservó; revisa que corresponda al nuevo lenguaje)");
+            DetectarLenguajeStatus();
+        }
+
         // Refleja el lenguaje detectado en la barra de estado, y re-aplica el lexer
         // correcto si el lenguaje cambió desde el último cambio de texto (p. ej. el
         // usuario acaba de escribir "-- lang: sql" en un script nuevo) -- sin este
@@ -1469,6 +1515,7 @@ namespace BrosLMV
             string c = _editor.Text;
             string lang = HostClient.EsPython(c) ? "Python" : HostClient.EsSql(c) ? "SQL" : "C#";
             if (_statusLang != null) _statusLang.Text = lang;
+            if (_btnLang != null) _btnLang.Text = "Lenguaje: " + lang;
             if (lang != _ultimoLenguajeEditor)
             {
                 _ultimoLenguajeEditor = lang;
@@ -1572,14 +1619,14 @@ namespace BrosLMV
             var gruposPlant = new SortedDictionary<string, TreeNode>(StringComparer.OrdinalIgnoreCase);
             foreach (var p in PLANTILLAS_DEF)
             {
-                if (filtrando && !p.Nombre.ToLower().Contains(filtro)) continue;
+                if (filtrando && !p.Nombre.ToLower().Contains(filtro) && !(p.AppKey ?? "").ToLower().Contains(filtro)) continue;
                 if (!gruposPlant.TryGetValue(p.Categoria, out TreeNode nCat))
                 {
                     nCat = new TreeNode(p.Categoria) { ImageKey = "folder", SelectedImageKey = "folder" };
                     gruposPlant[p.Categoria] = nCat;
                     nPlant.Nodes.Add(nCat);
                 }
-                nCat.Nodes.Add(new TreeNode(p.Nombre) { Tag = new KeyValuePair<string, string>(p.Nombre, p.Codigo), Name = p.Documentacion ?? "", ToolTipText = "Se guarda como botón: BrosLMV." + (p.AppKey ?? NormalizarAppKey(p.Nombre)), ImageKey = "template", SelectedImageKey = "template" });
+                nCat.Nodes.Add(new TreeNode(p.AppKey ?? NormalizarAppKey(p.Nombre)) { Tag = new KeyValuePair<string, string>(p.Nombre, p.Codigo), Name = p.Documentacion ?? "", ToolTipText = p.Nombre + " — se guarda como el script/botón BrosLMV." + (p.AppKey ?? NormalizarAppKey(p.Nombre)), ImageKey = "template", SelectedImageKey = "template" });
             }
             _tree.Nodes.Add(nPlant);
 
@@ -2259,49 +2306,87 @@ namespace BrosLMV
                 using (var dlg = new SaveFileDialog { FileName = appKey + ".bros", Filter = "Paquete BrosLMV (*.bros)|*.bros" })
                 {
                     if (dlg.ShowDialog(this) != DialogResult.OK) return;
-
-                    string tmp = Path.Combine(Path.GetTempPath(), "broslmv_pkg_" + Guid.NewGuid().ToString("N"));
-                    Directory.CreateDirectory(tmp);
-                    try
-                    {
-                        File.WriteAllText(Path.Combine(tmp, "codigo.txt"), codigo, Encoding.UTF8);
-
-                        string empresa = SafeEmpresa();
-                        string carpetaAssets = Path.Combine(Rutas.ScriptsDe(empresa), appKey + "_assets");
-                        int nArchivos = 0;
-                        if (Directory.Exists(carpetaAssets))
-                        {
-                            string destAssets = Path.Combine(tmp, "assets");
-                            foreach (var f in Directory.GetFiles(carpetaAssets, "*", SearchOption.AllDirectories))
-                            {
-                                string rel = f.Substring(carpetaAssets.Length).TrimStart('\\', '/');
-                                string destFile = Path.Combine(destAssets, rel);
-                                Directory.CreateDirectory(Path.GetDirectoryName(destFile));
-                                File.Copy(f, destFile, true);
-                                nArchivos++;
-                            }
-                        }
-
-                        string manifest = "{\r\n" +
-                            "  \"appKey\": " + Paquetes.JsonStr(appKey) + ",\r\n" +
-                            "  \"nombre\": " + Paquetes.JsonStr(nombre) + ",\r\n" +
-                            "  \"modulo\": " + modulo + ",\r\n" +
-                            "  \"categoria\": " + Paquetes.JsonStr(categoria) + ",\r\n" +
-                            "  \"versionMinima\": " + Paquetes.JsonStr(Com.Version) + ",\r\n" +
-                            "  \"exportadoDe\": " + Paquetes.JsonStr(empresa) + ",\r\n" +
-                            "  \"exportadoEl\": " + Paquetes.JsonStr(DateTime.Now.ToString("yyyy-MM-dd HH:mm")) + "\r\n" +
-                            "}\r\n";
-                        File.WriteAllText(Path.Combine(tmp, "paquete.json"), manifest, Encoding.UTF8);
-
-                        if (File.Exists(dlg.FileName)) File.Delete(dlg.FileName);
-                        ZipFile.CreateFromDirectory(tmp, dlg.FileName, CompressionLevel.Optimal, false);
-
-                        _status.Text = "Exportado: " + Path.GetFileName(dlg.FileName) + " (" + nArchivos + " archivo(s) de assets)";
-                    }
-                    finally { try { Directory.Delete(tmp, true); } catch { } }
+                    int nArchivos = EscribirPaquete(dlg.FileName, appKey, codigo, nombre, modulo, categoria);
+                    _status.Text = "Exportado: " + Path.GetFileName(dlg.FileName) + " (" + nArchivos + " archivo(s) de assets)";
                 }
             }
             catch (Exception ex) { ctxError("No se pudo exportar el paquete: " + ex.Message); }
+        }
+
+        // Escribe un paquete .bros (zip con codigo.txt, paquete.json y la carpeta <clave>_assets de la empresa). Devuelve cuántos archivos de assets incluyó.
+        private int EscribirPaquete(string destino, string appKey, string codigo, string nombre, int modulo, string categoria)
+        {
+            string tmp = Path.Combine(Path.GetTempPath(), "broslmv_pkg_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tmp);
+            try
+            {
+                File.WriteAllText(Path.Combine(tmp, "codigo.txt"), codigo, Encoding.UTF8);
+
+                string empresa = SafeEmpresa();
+                string carpetaAssets = Path.Combine(Rutas.ScriptsDe(empresa), appKey + "_assets");
+                int nArchivos = 0;
+                if (Directory.Exists(carpetaAssets))
+                {
+                    string destAssets = Path.Combine(tmp, "assets");
+                    foreach (var f in Directory.GetFiles(carpetaAssets, "*", SearchOption.AllDirectories))
+                    {
+                        string rel = f.Substring(carpetaAssets.Length).TrimStart('\\', '/');
+                        string destFile = Path.Combine(destAssets, rel);
+                        Directory.CreateDirectory(Path.GetDirectoryName(destFile));
+                        File.Copy(f, destFile, true);
+                        nArchivos++;
+                    }
+                }
+
+                string manifest = "{\r\n" +
+                    "  \"appKey\": " + Paquetes.JsonStr(appKey) + ",\r\n" +
+                    "  \"nombre\": " + Paquetes.JsonStr(nombre) + ",\r\n" +
+                    "  \"modulo\": " + modulo + ",\r\n" +
+                    "  \"categoria\": " + Paquetes.JsonStr(categoria) + ",\r\n" +
+                    "  \"versionMinima\": " + Paquetes.JsonStr(Com.Version) + ",\r\n" +
+                    "  \"exportadoDe\": " + Paquetes.JsonStr(empresa) + ",\r\n" +
+                    "  \"exportadoEl\": " + Paquetes.JsonStr(DateTime.Now.ToString("yyyy-MM-dd HH:mm")) + "\r\n" +
+                    "}\r\n";
+                File.WriteAllText(Path.Combine(tmp, "paquete.json"), manifest, Encoding.UTF8);
+
+                if (File.Exists(destino)) File.Delete(destino);
+                ZipFile.CreateFromDirectory(tmp, destino, CompressionLevel.Optimal, false);
+                return nArchivos;
+            }
+            finally { try { Directory.Delete(tmp, true); } catch { } }
+        }
+
+        // «Respaldar todos los scripts…»: un .bros por script de la empresa activa en la carpeta que se elija. Sirve de respaldo y para llevarlos a otra empresa/equipo.
+        private void RespaldarTodos()
+        {
+            try
+            {
+                var lista = _ctx.BrosListar();
+                if (lista.Count == 0) { MessageBox.Show(this, "Esta empresa no tiene scripts guardados.", "BrosLMV", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+                using (var dlg = new FolderBrowserDialog { Description = "Carpeta donde guardar el respaldo (un archivo .bros por script)" })
+                {
+                    if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                    string carpeta = Path.Combine(dlg.SelectedPath, "Respaldo_scripts_" + SafeEmpresa() + "_" + DateTime.Now.ToString("yyyyMMdd_HHmm"));
+                    Directory.CreateDirectory(carpeta);
+                    int ok = 0; var fallos = new List<string>();
+                    foreach (var r in lista)
+                    {
+                        string ak = Convert.ToString(r["AppKey"]);
+                        try
+                        {
+                            var info = _ctx.BrosObtenerParaExportar(ak);
+                            if (info == null) { fallos.Add(ak); continue; }
+                            EscribirPaquete(Path.Combine(carpeta, ak + ".bros"), ak, info.Codigo, info.Nombre, info.Modulo, info.Categoria);
+                            ok++;
+                        }
+                        catch { fallos.Add(ak); }
+                    }
+                    _status.Text = "Respaldo: " + ok + " script(s) en " + carpeta;
+                    MessageBox.Show(this, "Se respaldaron " + ok + " de " + lista.Count + " script(s).\n\nCarpeta:\n" + carpeta + (fallos.Count > 0 ? "\n\nNo se pudieron respaldar: " + string.Join(", ", fallos) : ""),
+                        "BrosLMV", MessageBoxButtons.OK, fallos.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex) { ctxError("No se pudo respaldar: " + ex.Message); }
         }
 
         // Importa un .bros a la empresa ACTIVA (la que tenga abierta Comercial en este momento
@@ -2559,7 +2644,7 @@ private void Guardar(bool comoNuevo)
                         .FirstOrDefault()?["Categoria"]); } catch { }
                 }
                 string sugerido = string.IsNullOrEmpty(_appKey) ? (AppKeySugerido(_editor.Text) ?? "MI_SCRIPT") : _appKey;
-                var r = PedirNombreYCategoria("Nombre del botón (puedes escribirlo con espacios; se guarda con guiones bajos).\nEl botón usará  BrosLMV.<NOMBRE>:",
+                var r = PedirNombreYCategoria("Nombre del script. Es también la clave del botón (BrosLMV.<clave>): usa letras, números y _ ; lo demás se cambia por _.",
                                 sugerido, categoriaActual);
                 if (r == null) return;
                 ak = r.Value.nombre;
@@ -2681,20 +2766,24 @@ private void Guardar(bool comoNuevo)
             }
             catch { /* empresa sin scripts todavia, o columna recien agregada -- lista vacia, no es error */ }
 
-            using (var f = new Form { Text = "BrosLMV", Width = 480, Height = 290, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, BackColor = AppTheme.BgSurface, Font = AppTheme.FontMain })
+            using (var f = new Form { Text = "BrosLMV", Width = 480, Height = 312, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, BackColor = AppTheme.BgSurface, Font = AppTheme.FontMain })
             {
                 var pnlHead = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = AppTheme.Primary };
                 var lbl = new Label { Text = prompt, Left = 22, Top = 22, Width = 430, Height = 40, ForeColor = AppTheme.TextMain, BackColor = Color.Transparent };
                 var txt = new TextBox { Left = 22, Top = 66, Width = 430, Text = valorNombre ?? "", BorderStyle = BorderStyle.FixedSingle, Font = AppTheme.FontMain };
+                var lblClave = new Label { Left = 22, Top = 94, Width = 430, Height = 18, ForeColor = AppTheme.Primary, BackColor = Color.Transparent, Font = AppTheme.FontSmall };
+                Action actualizaClave = () => lblClave.Text = "Se guardará como:  BrosLMV." + (NormalizarAppKey(txt.Text) is string k && k.Length > 0 ? k : "…");
+                txt.TextChanged += (s2, e2) => actualizaClave();
+                actualizaClave();
 
-                var lblCat = new Label { Text = "Categoría (elige una existente o escribe una nueva; opcional):", Left = 22, Top = 106, Width = 430, Height = 20, ForeColor = AppTheme.TextMuted, BackColor = Color.Transparent, Font = AppTheme.FontSmall };
-                var cboCat = new ComboBox { Left = 22, Top = 128, Width = 430, DropDownStyle = ComboBoxStyle.DropDown, Font = AppTheme.FontMain, FlatStyle = FlatStyle.Flat };
+                var lblCat = new Label { Text = "Categoría (elige una existente o escribe una nueva; opcional):", Left = 22, Top = 122, Width = 430, Height = 20, ForeColor = AppTheme.TextMuted, BackColor = Color.Transparent, Font = AppTheme.FontSmall };
+                var cboCat = new ComboBox { Left = 22, Top = 144, Width = 430, DropDownStyle = ComboBoxStyle.DropDown, Font = AppTheme.FontMain, FlatStyle = FlatStyle.Flat };
                 cboCat.Items.AddRange(categorias.Cast<object>().ToArray());
                 cboCat.Text = categoriaSugerida ?? "";
 
-                var ok = new IconButton { Text = "Aceptar", Kind = BtnKind.Primary, Accent = AppTheme.Primary, Left = 296, Top = 198, Width = 78, Height = 34, DialogResult = DialogResult.OK };
-                var ca = new IconButton { Text = "Cancelar", Kind = BtnKind.Outline, Accent = AppTheme.TextMuted, Left = 382, Top = 198, Width = 78, Height = 34, DialogResult = DialogResult.Cancel };
-                f.Controls.AddRange(new Control[] { lbl, txt, lblCat, cboCat, ok, ca, pnlHead });
+                var ok = new IconButton { Text = "Aceptar", Kind = BtnKind.Primary, Accent = AppTheme.Primary, Left = 296, Top = 214, Width = 78, Height = 34, DialogResult = DialogResult.OK };
+                var ca = new IconButton { Text = "Cancelar", Kind = BtnKind.Outline, Accent = AppTheme.TextMuted, Left = 382, Top = 214, Width = 78, Height = 34, DialogResult = DialogResult.Cancel };
+                f.Controls.AddRange(new Control[] { lbl, txt, lblClave, lblCat, cboCat, ok, ca, pnlHead });
                 f.AcceptButton = ok; f.CancelButton = ca;
                 txt.SelectAll(); txt.Focus();
 
