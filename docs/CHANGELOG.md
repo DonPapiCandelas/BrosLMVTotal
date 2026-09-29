@@ -8,6 +8,21 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.96.0] — 2026-09-29 — Editar botones que ya existen
+
+### Agregado
+- **Más opciones → Botones del ribbon…**: lista los botones del ribbon (por defecto los de BrosLMV; con «Incluir los de Comercial y otros productos» también los demás), con
+  búsqueda por nombre, descripción o función. Al elegir uno se abre el mismo asistente en modo edición.
+- **Cambiar nombre, descripción, ícono y la función que ejecuta** de cualquier botón (por ejemplo pasar uno de otro producto de `OtroProducto.X` a `BrosLMV.X`). En los
+  botones que **no** son de BrosLMV solo se cambian esas propiedades (su ubicación y sus módulos no se tocan), se pide confirmación y se guarda copia.
+- **Deshacer** restaura en su lugar el nombre, descripción, ícono y función anteriores (el `ControlID` no cambia, porque otras tablas de Comercial lo referencian).
+  `zzBrosRibbonHist` guarda ahora el `ControlID` (se agrega la columna a las bases existentes).
+- En **Editar botón** de un botón de BrosLMV, sección «Avanzado: función que ejecuta» para apuntarlo a otro script.
+
+### Cambiado
+- `RibbonAdmin`: una clave con punto (`Document.AbrirX`, `CFDI3.Y`) se trata como la función completa; una sin punto sigue siendo un script de BrosLMV. «Quitar botón» sigue
+  limitado a botones de BrosLMV.
+
 ## [2.95.1] — 2026-09-29 — «Crear botón»: solo pestañas que sí se ven
 
 ### Corregido

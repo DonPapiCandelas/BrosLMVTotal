@@ -64,8 +64,22 @@ footer .sp{flex:1;color:var(--mut);font-size:12.5px}
 .msg{border-radius:8px;padding:10px 12px;font-size:13px}
 .msg.ok{background:var(--oks);color:var(--ok)}.msg.err{background:var(--errs);color:var(--err)}.msg.warn{background:var(--warns);color:var(--warn)}
 .hide{display:none!important}
+.over{position:fixed;inset:0;background:var(--bg);z-index:20;display:flex;flex-direction:column}
+.over .top{padding:16px 22px;background:var(--card);border-bottom:1px solid var(--lin)}
+.over .lst{flex:1;overflow:auto;padding:12px 22px}
+.it{display:flex;gap:12px;align-items:center;padding:8px 12px;border:1px solid var(--lin);border-radius:8px;background:var(--card);margin-bottom:6px;cursor:pointer}
+.it:hover{border-color:var(--ac)}.it img{width:28px;height:28px}.it .n{font-weight:600}.it .e{color:var(--mut);font-size:12px}
+.tag{font-size:11px;padding:1px 7px;border-radius:99px;background:var(--warns);color:var(--warn);margin-left:6px}
 code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
 </style></head><body>
+<div class="over hide" id="buscador">
+  <div class="top"><h1 style="font-size:16px;margin:0 0 4px">Botones del ribbon</h1>
+    <div class="sub" style="margin-bottom:10px">Elige el botón que quieres editar: cambia su nombre, descripción, ícono o la función que ejecuta.</div>
+    <div class="row" style="align-items:center"><input id="qb" type="text" placeholder="Buscar por nombre, descripción o función…">
+      <label style="flex:0 0 auto;display:flex;gap:6px;align-items:center;white-space:nowrap"><input type="checkbox" id="todos"> Incluir los de Comercial y otros productos</label>
+      <button class="btn" style="flex:0 0 auto" id="bCancelB">Cerrar</button></div></div>
+  <div class="lst" id="lstb"></div>
+</div>
 <header>
   <div><h1 id="titulo">Crear botón</h1><div class="sub" id="subt"></div></div>
   <span class="sp"></span>
@@ -82,6 +96,10 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
     <div class="hint">Es el texto del botón. Clave técnica: <code id="clave"></code></div></div>
   <div><label class="f" for="desc">Descripción <span style="color:var(--mut)">(opcional)</span></label>
     <textarea id="desc" oninput="draw()" placeholder="Se muestra al pasar el mouse sobre el botón."></textarea></div>
+  <details id="exeBox" class="hide"><summary>Avanzado: función que ejecuta</summary>
+    <label class="f" for="exe" style="margin-top:8px">Función (Ejecutar)</label>
+    <input id="exe" type="text" oninput="draw()">
+    <div class="hint">Para que el botón corra un script de BrosLMV escribe <code>BrosLMV.NOMBRE_DEL_SCRIPT</code>. Cambiar la función de un botón de Comercial puede romperlo; se guarda copia para «Deshacer».</div></details>
   <div><h2>Ícono</h2>
     <div class="hint hide" id="sugBox" style="margin:0 0 4px">Sugeridos</div>
     <div class="icons hide" id="sug" style="max-height:none"></div>
@@ -158,6 +176,7 @@ const ES={documento:['file','document'],factura:['receipt','invoice','file-text'
 const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
 function clave(t){return norm(t).replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').toUpperCase()}
 
+let ajeno=false,ejecutaActual=null,porBuscador=false;
 let C=null,pack='p',ico='',modo='g',quien='t',pg=0,editando=false,claveFija=null,mods=new Set(),grupos=new Set(),usuarios=new Set(),emps=new Set(),shown=250;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -165,28 +184,51 @@ const img=f=>f?`<img loading="lazy" src="${ICOBASE}${encodeURIComponent(f)}" alt
 
 async function init(){
   const d=await call('init');
-  C=d.ctx;claveFija=d.appKey||null;
-  $('nom').value=d.nombre||'';
+  C=d.ctx;
   $('subt').textContent=C.empresa;
   emps=new Set([C.empresa]);
-  const ex=C.existe;
-  if(ex){editando=true;$('titulo').textContent='Editar botón';$('nom').value=ex.caption||'';$('desc').value=ex.description||'';ico=ex.icon||'';
+  claveFija=d.appKey||null;
+  $('nom').value=d.nombre||'';
+  aplicar(C.existe);
+  porBuscador=!!d.modoBuscar;
+  if(porBuscador)abrirBuscador();
+}
+// Carga el estado del asistente: de un botón existente (ex) o valores por defecto (botón nuevo).
+function aplicar(ex){
+  editando=!!ex;ajeno=!!(ex&&ex.ajeno);ejecutaActual=ex?ex.ejecuta:null;
+  mods=new Set();modo='g';quien='t';usuarios=new Set();grupos=new Set();
+  $('bQuitar').classList.toggle('hide',!ex||ajeno);$('bDeshacer').classList.toggle('hide',!ex);
+  $('bCrear').textContent=ex?'Guardar cambios':'Crear botón';
+  $('titulo').textContent=ex?(ajeno?'Editar botón (no es de BrosLMV)':'Editar botón'):'Crear botón';
+  $('exeBox').classList.toggle('hide',!ex);$('exe').value=ex?ex.ejecuta:'';
+  if(ex){claveFija=ajeno?null:ex.ejecuta.replace(/^BrosLMV\./i,'');$('nom').value=ex.caption||'';$('desc').value=ex.description||'';ico=ex.icon||'';
     mods=new Set(ex.modules||[]);if(mods.size)modo='m';
-    if((ex.users||[]).length){quien='u';usuarios=new Set(ex.users)}
-    $('bQuitar').classList.remove('hide');$('bCrear').textContent='Guardar cambios';$('bDeshacer').classList.remove('hide')}
-  else{$('bCrear').textContent='Crear botón'}
-  // pestañas (sin repetir nombre)
+    if((ex.users||[]).length){quien='u';usuarios=new Set(ex.users)}}
+  [1,2].forEach(i=>$('steps').children[i].classList.toggle('hide',ajeno));$('bNext').classList.toggle('hide',ajeno);
+  document.querySelector('.side .ribbon').parentElement.classList.toggle('hide',ajeno);
   const sg=C.sugerida;
-  const t0=(ex&&ex.tab)||(sg?sg.tab:null);
-  pintaTabs(t0);
+  pintaTabs((ex&&ex.tab)||(sg?sg.tab:null));
   fillSec((ex&&ex.group)||(sg&&sg.tab===$('tab').value?sg.group:null));
-  if(modo==='m'){[...$('segMod').children].forEach(b=>b.classList.toggle('on',b.dataset.v==='m'));$('modBox').classList.remove('hide')}
-  if(quien==='u'){[...$('segWho').children].forEach(b=>b.classList.toggle('on',b.dataset.v==='u'))}
+  [...$('segMod').children].forEach(b=>b.classList.toggle('on',b.dataset.v===modo));$('modBox').classList.toggle('hide',modo!=='m');
+  [...$('segWho').children].forEach(b=>b.classList.toggle('on',b.dataset.v===quien));
   $('emps').innerHTML=C.empresas.map(x=>`<span class="chip ${emps.has(x)?'on':''}" data-e="${esc(x)}">${esc(x)}</span>`).join('');
   if(!ico){const s=sugeridos();ico=s.length?s[0]:''}
-  pack=ico&&ico.indexOf('BrosLMV_')!==0&&ico?'n':'p';[...$('segPack').children].forEach(b=>b.classList.toggle('on',b.dataset.v===pack));
+  pack=ico&&ico.indexOf('BrosLMV_')!==0?'n':'p';[...$('segPack').children].forEach(b=>b.classList.toggle('on',b.dataset.v===pack));
+  $('resultado').innerHTML='';
   cambioNombre(true);pintaIconos(true);pintaMods();drawWho();go(0);draw();
 }
+// ---- buscador de botones existentes ----
+let tb=null;
+function abrirBuscador(){$('buscador').classList.remove('hide');pintaBotones();$('qb').focus()}
+async function pintaBotones(){
+  try{const r=await call('listar',{q:$('qb').value,todos:$('todos').checked});
+    $('lstb').innerHTML=r.items.map((b,i)=>`<div class="it" data-i="${i}">${b.icon?img(b.icon):'<span style="width:28px"></span>'}<div><div class="n">${esc(b.caption)}${b.ajeno?'<span class="tag">Comercial / otro</span>':''}</div><div class="e">${esc(b.ejecuta)}${b.ubic?' · '+esc(b.ubic):''}</div></div></div>`).join('')
+      +(r.items.length?'':'<div class="hint">No hay botones con ese texto.'+($('todos').checked?'':' Marca «Incluir los de Comercial y otros productos» para ver más.')+'</div>')+(r.tope?'<div class="hint">Se muestran los primeros 200; afina la búsqueda.</div>':'');
+    $('lstb')._items=r.items}catch(x){$('lstb').innerHTML='<div class="msg err">'+esc(x.message)+'</div>'}}
+$('qb').oninput=()=>{clearTimeout(tb);tb=setTimeout(pintaBotones,250)};$('todos').onchange=pintaBotones;
+$('bCancelB').onclick=()=>{if(porBuscador&&!editando)call('cerrar');else $('buscador').classList.add('hide')};
+$('lstb').onclick=async e=>{const it=e.target.closest('.it');if(!it)return;const b=$('lstb')._items[+it.dataset.i];
+  try{const r=await call('buscar',{ejecuta:b.ejecuta});if(!r.boton)return;$('buscador').classList.add('hide');aplicar(r.boton)}catch(x){alert(x.message)}};
 function cambioNombre(sinDraw){$('clave').textContent='BrosLMV.'+(claveFija||clave($('nom').value)||'…');if(!sinDraw){pintaSug();draw()}}
 function claveActual(){return claveFija||clave($('nom').value)}
 
@@ -254,6 +296,7 @@ function est(){const tn=$('tab').value==='+',tab=tn?($('tabNew').value.trim()||'
 
 // ---- vista previa ----
 function draw(){const s=est(),nom=$('nom').value.trim()||'(sin nombre)',desc=$('desc').value.trim();
+  if(ajeno){$('sum').innerHTML=`<b>Se va a actualizar</b><ul><li>«${esc(nom)}»${desc?' con descripción':''}</li><li>Función: <code>${esc($('exe').value.trim()||ejecutaActual||'')}</code></li><li>Su ubicación en el ribbon no cambia.</li></ul><div class="msg warn" style="margin-top:8px">Este botón es de Comercial o de otro producto. Se guarda copia para «Deshacer».</div>`;return}
   const tabs=[...new Set(C.tabs.map(t=>t.caption))].slice(0,6);if(!tabs.includes(s.tab))tabs.push(s.tab);
   $('pvTabs').innerHTML=tabs.map(t=>`<div class="tab ${t===s.tab?'on':''} ${s.tn&&t===s.tab?'nuevo':''}">${esc(t)}</div>`).join('');
   const on=$('pvTabs').querySelector('.on');if(on)$('pvTabs').scrollLeft=Math.max(0,on.offsetLeft-60);
@@ -274,11 +317,15 @@ $('steps').onclick=e=>{const b=e.target.closest('button');if(b)go(+b.dataset.p)}
 function aviso(t,m){$('resultado').innerHTML=`<div class="msg ${t}">${esc(m)}</div>`}
 
 // ---- acciones ----
-function spec(){const s=est();return{appKey:claveActual(),caption:$('nom').value.trim(),description:$('desc').value.trim(),icon:ico,tab:s.tab,group:s.sec,
-  modules:modo==='g'?[]:[...mods],users:usuariosFinales(),empresas:[...emps].filter(x=>x!==C.empresa)}}
+function ejecutaDeClave(){return ajeno?ejecutaActual:'BrosLMV.'+claveActual()}
+function spec(){const s=est();const exe=$('exe').value.trim();const actual=ejecutaDeClave();
+  return{appKey:ajeno?ejecutaActual:claveActual(),caption:$('nom').value.trim(),description:$('desc').value.trim(),icon:ico,tab:ajeno?'':s.tab,group:ajeno?'':s.sec,
+  modules:modo==='g'?[]:[...mods],users:usuariosFinales(),empresas:ajeno?[]:[...emps].filter(x=>x!==C.empresa),
+  ejecutaNuevo:(editando&&exe&&exe!==actual)?exe:'',permitirAjeno:ajeno,soloPropiedades:ajeno}}
 $('bCrear').onclick=async()=>{
-  if(modo==='m'&&!mods.size){go(1);return aviso('warn','Elige al menos un módulo, o «En todos».')}
-  if(quien!=='t'&&!usuariosFinales().length){go(2);return aviso('warn','Elige a quién le aparece el botón, o «Todos los usuarios».')}
+  if(ajeno&&!confirm('«'+$('nom').value+'» es un botón de Comercial o de otro producto.\n\nCambiar su nombre, ícono o función puede afectar su funcionamiento. Se guarda copia para deshacer.\n\n¿Guardar los cambios?'))return;
+  if(!ajeno&&modo==='m'&&!mods.size){go(1);return aviso('warn','Elige al menos un módulo, o «En todos».')}
+  if(!ajeno&&quien!=='t'&&!usuariosFinales().length){go(2);return aviso('warn','Elige a quién le aparece el botón, o «Todos los usuarios».')}
   if(!$('nom').value.trim()){go(0);return aviso('warn','Escribe el nombre del botón.')}
   $('bCrear').disabled=true;
   try{const r=await call('publicar',spec());
@@ -286,12 +333,12 @@ $('bCrear').onclick=async()=>{
     let h=`<div class="msg ${mal.length?'warn':'ok'}"><b>${mal.length?'Se creó con avisos.':'Listo.'}</b> ${bien} empresa(s) actualizada(s).<br>`;
     mal.forEach(x=>h+=`<br>✗ ${esc(x.empresa)}: ${esc(x.error)}`);
     h+=`<br><br>Si no ves el botón todavía, cierra y vuelve a abrir Comercial (el ribbon se lee al iniciar).</div>`;$('resultado').innerHTML=h;
-    $('bDeshacer').classList.remove('hide');editando=true;claveFija=claveActual();$('bCrear').textContent='Guardar cambios';$('titulo').textContent='Editar botón';$('bQuitar').classList.remove('hide');draw()}
+    $('bDeshacer').classList.remove('hide');editando=true;const sp=spec();if(sp.ejecutaNuevo){ejecutaActual=sp.ejecutaNuevo;if(!ajeno)claveFija=sp.ejecutaNuevo.replace(/^BrosLMV\./i,'')}else if(!ajeno)claveFija=claveActual();$('exeBox').classList.remove('hide');$('exe').value=ajeno?ejecutaActual:'BrosLMV.'+claveActual();$('bCrear').textContent='Guardar cambios';$('titulo').textContent=ajeno?'Editar botón (no es de BrosLMV)':'Editar botón';$('bQuitar').classList.toggle('hide',ajeno);$('bNext').classList.toggle('hide',ajeno||pg===2);draw()}
   catch(x){aviso('err','No se pudo crear: '+x.message)}
   $('bCrear').disabled=false};
 $('bQuitar').onclick=async()=>{if(!confirm('¿Quitar el botón «'+$('nom').value+'» del ribbon? (Podrás deshacerlo aquí mismo.) El script no se borra.'))return;
   try{const r=await call('quitar',{appKey:claveActual(),empresas:[...emps].filter(x=>x!==C.empresa)});aviso('ok','Botón quitado en '+r.resultados.filter(x=>x.ok).length+' empresa(s). Reinicia Comercial para ver el cambio.');editando=false;$('bQuitar').classList.add('hide');$('bCrear').textContent='Crear botón'}catch(x){aviso('err',x.message)}};
-$('bDeshacer').onclick=async()=>{try{const r=await call('deshacer',{appKey:claveActual()});aviso('ok',r.mensaje)}catch(x){aviso('err',x.message)}};
+$('bDeshacer').onclick=async()=>{try{const r=await call('deshacer',{appKey:ajeno?ejecutaActual:claveActual()});aviso('ok',r.mensaje)}catch(x){aviso('err',x.message)}};
 $('bCerrar').onclick=()=>call('cerrar');
 $('bAyuda').onclick=()=>call('ayuda');
 $('emps').innerHTML='';
