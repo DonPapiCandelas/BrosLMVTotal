@@ -333,6 +333,7 @@ namespace BrosLMV
         private class PlantillaDef
         {
             public string Categoria, Nombre, Codigo, Documentacion;
+            public string AppKey => AppKeySugerido(Codigo);
             public PlantillaDef(string cat, string n, string c, string doc = null) { Categoria = cat; Nombre = n; Codigo = c; Documentacion = doc; }
         }
         private static readonly PlantillaDef[] PLANTILLAS_DEF = new[]
@@ -342,11 +343,40 @@ namespace BrosLMV
                 "CREAR_DOC_DESDE_XML.html"),
         };
 
+        // «AppKey recomendado: X» en la cabecera de una plantilla = nombre con el que se guarda como botón (BrosLMV.X).
+        private static readonly Regex RX_APPKEY_SUG = new Regex(@"AppKey\s+recomendado\s*:\s*([A-Za-z0-9_]+)", RegexOptions.IgnoreCase);
+        private static string AppKeySugerido(string codigo)
+        {
+            if (string.IsNullOrEmpty(codigo)) return null;
+            var m = RX_APPKEY_SUG.Match(codigo.Length > 2000 ? codigo.Substring(0, 2000) : codigo);
+            return m.Success ? m.Groups[1].Value : null;
+        }
+
+        // Convierte lo que escriba el usuario («Crear docs XML», con espacios/acentos) en un AppKey válido: CREAR_DOCS_XML.
+        private static string NormalizarAppKey(string texto)
+        {
+            if (string.IsNullOrWhiteSpace(texto)) return "";
+            string d = texto.Trim().Normalize(NormalizationForm.FormD);
+            var sb = new StringBuilder();
+            foreach (char c in d)
+            {
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+                sb.Append(char.IsLetterOrDigit(c) && c < 128 ? c : '_');
+            }
+            return Regex.Replace(sb.ToString(), "_+", "_").Trim('_');
+        }
+
         // Busca la documentación HTML de una plantilla (instalada en C:\BrosLMV\docs\plantillas o junto a la DLL) y la muestra en una ventana.
         private void MostrarDocumentacionPlantilla(string nombre, string archivoHtml)
         {
             string html = null;
-            foreach (var ruta in new[]
+            try
+            {
+                using (var rs = Recurso("doc_" + archivoHtml))
+                    if (rs != null) using (var sr = new StreamReader(rs, Encoding.UTF8)) html = sr.ReadToEnd();
+            }
+            catch { }
+            if (html == null) foreach (var ruta in new[]
             {
                 Path.Combine(Rutas.Base, "docs", "plantillas", archivoHtml),
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "docs", "plantillas", archivoHtml),
@@ -804,7 +834,7 @@ namespace BrosLMV
 
             var espTop = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = AppTheme.BgMain };
 
-            _tree = new TreeView { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, HideSelection = false, BackColor = AppTheme.BgMain, ForeColor = AppTheme.TextMain, Font = AppTheme.FontMain, ItemHeight = 26, ShowLines = false, ShowRootLines = true, ShowPlusMinus = true, FullRowSelect = true, Indent = 16 };
+            _tree = new TreeView { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, HideSelection = false, BackColor = AppTheme.BgMain, ForeColor = AppTheme.TextMain, Font = AppTheme.FontMain, ItemHeight = 26, ShowLines = false, ShowRootLines = true, ShowPlusMinus = true, FullRowSelect = true, Indent = 16, ShowNodeToolTips = true };
             _tree.ImageList = ConstruirIconosArbol();
             _tree.NodeMouseDoubleClick += (s, e) =>
             {
@@ -1547,7 +1577,7 @@ namespace BrosLMV
                     gruposPlant[p.Categoria] = nCat;
                     nPlant.Nodes.Add(nCat);
                 }
-                nCat.Nodes.Add(new TreeNode(p.Nombre) { Tag = new KeyValuePair<string, string>(p.Nombre, p.Codigo), Name = p.Documentacion ?? "", ImageKey = "template", SelectedImageKey = "template" });
+                nCat.Nodes.Add(new TreeNode(p.Nombre) { Tag = new KeyValuePair<string, string>(p.Nombre, p.Codigo), Name = p.Documentacion ?? "", ToolTipText = "Se guarda como botón: BrosLMV." + (p.AppKey ?? NormalizarAppKey(p.Nombre)), ImageKey = "template", SelectedImageKey = "template" });
             }
             _tree.Nodes.Add(nPlant);
 
@@ -2139,7 +2169,7 @@ namespace BrosLMV
             string actual = "";
             try { actual = Convert.ToString(_ctx.Query("SELECT Categoria FROM zzBrosScript WHERE AppKey=" + "N'" + appKey.Replace("'", "''") + "'")
                 .FirstOrDefault()?["Categoria"] ?? ""); } catch { }
-            string nueva = PedirTexto("Categoría para \"" + appKey + "\" (vacío = sin categoría):", actual);
+            string nueva = PedirCategoria(appKey, actual);
             if (nueva == null) return; // canceló
             try
             {
@@ -2474,13 +2504,15 @@ private void Guardar(bool comoNuevo)
                     try { categoriaActual = Convert.ToString(_ctx.Query("SELECT Categoria FROM zzBrosScript WHERE AppKey=" + "N'" + _appKey.Replace("'", "''") + "'")
                         .FirstOrDefault()?["Categoria"]); } catch { }
                 }
-                var r = PedirNombreYCategoria("Nombre del script (AppKey, sin espacios).\nEl botón usará  BrosLMV.<AppKey>:",
-                                string.IsNullOrEmpty(_appKey) ? "MI_SCRIPT" : _appKey, categoriaActual);
+                string sugerido = string.IsNullOrEmpty(_appKey) ? (AppKeySugerido(_editor.Text) ?? "MI_SCRIPT") : _appKey;
+                var r = PedirNombreYCategoria("Nombre del botón (puedes escribirlo con espacios; se guarda con guiones bajos).\nEl botón usará  BrosLMV.<NOMBRE>:",
+                                sugerido, categoriaActual);
                 if (r == null) return;
                 ak = r.Value.nombre;
                 categoria = r.Value.categoria;
                 if (string.IsNullOrEmpty(ak)) return;
-                ak = ak.Trim().Replace(" ", "_");
+                ak = NormalizarAppKey(ak);
+                if (string.IsNullOrEmpty(ak)) return;
             }
             try
             {
@@ -2546,6 +2578,36 @@ private void Guardar(bool comoNuevo)
                 f.AcceptButton = ok; f.CancelButton = ca;
                 txt.SelectAll(); txt.Focus();
                 return f.ShowDialog(this) == DialogResult.OK ? txt.Text : null;
+            }
+        }
+
+        // Categorías que ya existen en esta empresa (para elegirlas en un combo en vez de reescribirlas).
+        private List<string> CategoriasExistentes()
+        {
+            try
+            {
+                return _ctx.Query("SELECT DISTINCT Categoria FROM zzBrosScript WHERE Categoria IS NOT NULL AND Categoria<>'' ORDER BY Categoria")
+                    .Select(r => Convert.ToString(r["Categoria"])).Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
+            }
+            catch { return new List<string>(); }
+        }
+
+        // Pide la categoría de un script: combo editable con las existentes (o escribir una nueva). null = canceló.
+        private string PedirCategoria(string appKey, string actual)
+        {
+            using (var f = new Form { Text = "BrosLMV", Width = 480, Height = 220, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, BackColor = AppTheme.BgSurface, Font = AppTheme.FontMain })
+            {
+                var pnlHead = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = AppTheme.Primary };
+                var lbl = new Label { Text = "Categoría de \"" + appKey + "\": elige una existente o escribe una nueva (vacío = sin categoría).", Left = 22, Top = 22, Width = 430, Height = 40, ForeColor = AppTheme.TextMain, BackColor = Color.Transparent };
+                var cbo = new ComboBox { Left = 22, Top = 72, Width = 430, DropDownStyle = ComboBoxStyle.DropDown, Font = AppTheme.FontMain, FlatStyle = FlatStyle.Flat };
+                cbo.Items.AddRange(CategoriasExistentes().Cast<object>().ToArray());
+                cbo.Text = actual ?? "";
+                var ok = new IconButton { Text = "Aceptar", Kind = BtnKind.Primary, Accent = AppTheme.Primary, Left = 296, Top = 118, Width = 78, Height = 34, DialogResult = DialogResult.OK };
+                var ca = new IconButton { Text = "Cancelar", Kind = BtnKind.Outline, Accent = AppTheme.TextMuted, Left = 382, Top = 118, Width = 78, Height = 34, DialogResult = DialogResult.Cancel };
+                f.Controls.AddRange(new Control[] { lbl, cbo, ok, ca, pnlHead });
+                f.AcceptButton = ok; f.CancelButton = ca;
+                cbo.Focus();
+                return f.ShowDialog(this) == DialogResult.OK ? (cbo.Text ?? "").Trim() : null;
             }
         }
 

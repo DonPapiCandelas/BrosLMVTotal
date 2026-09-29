@@ -126,7 +126,15 @@ namespace BrosLMV
                 if (++revisadas >= LineasCabeceraARevisar) break;
             }
             // Respaldo: sin marcador, pero el código es inequívocamente Python.
-            return codigo.Contains("from broslmv import ctx");
+            if (codigo.Contains("from broslmv import ctx")) return true;
+            // Primera línea de código (ignorando comentarios #) que empieza con «import x» o «from x import y»: C# nunca empieza así.
+            foreach (var raw in codigo.Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0 || line.StartsWith("#")) continue;
+                return System.Text.RegularExpressions.Regex.IsMatch(line, @"^(import\s+\w|from\s+[\w.]+\s+import\s)");
+            }
+            return false;
         }
 
         // Detección del tipo de script 'sql' (T-SQL crudo). Marcador en alguna de las primeras

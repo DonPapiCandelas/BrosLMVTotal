@@ -33,6 +33,7 @@
     <EmbeddedResource Include="assets\logo_app.png" />
     <EmbeddedResource Include="assets\BrosLMV.ico" />
     <EmbeddedResource Include="assets\notas_version.html" />
+    <EmbeddedResource Include="..\instalador\docs\plantillas\*.html"><LogicalName>doc_%(Filename)%(Extension)</LogicalName></EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
