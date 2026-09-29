@@ -180,6 +180,7 @@ Botón ControlExecute:  BrosLMV.SUMA      ← SIN extensión, SIN puntos ni espa
 - **La fuente de verdad es SQL.** Cada script se guarda en la tabla `zzBrosScript` de la empresa (con su historial en `zzBrosScriptHist`), por eso todas las terminales de esa
   empresa ven lo mismo. Los archivos de `C:\BrosLMV\scripts` **no son la biblioteca**: son plantillas y semillas que instala BrosLMV. Si se borran, **no pasa nada** con tus scripts.
 - **El nombre del script es su clave:** el script `crear_doc_desde_xml` lo ejecuta el botón `BrosLMV.crear_doc_desde_xml`. Al guardar, la Consola muestra la clave que va a usar.
+  **No importan las mayúsculas:** `broslmv.crear_doc_desde_xml`, `BrosLMV.Crear_Doc_Desde_XML` y `BROSLMV.CREAR_DOC_DESDE_XML` son el mismo botón y el mismo script.
 - **El lenguaje** (C#, Python o SQL) se elige con el botón *Lenguaje* de la barra; la Consola escribe la línea `lang:` por ti.
 - **Respaldo:** *Más opciones → Respaldar todos los scripts…* crea un `.bros` por script; con clic secundario sobre uno, *Exportar paquete (.bros)…* exporta solo ese.
   Un `.bros` se importa con *Importar paquete…* en cualquier empresa o equipo.

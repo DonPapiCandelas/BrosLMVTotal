@@ -178,7 +178,7 @@ namespace BrosLMV
                     c.Open();
                     using (var cmd = c.CreateCommand())
                     {
-                        cmd.CommandText = "INSERT INTO recientes(nombre,fecha) VALUES(@n,@f) ON CONFLICT(nombre) DO UPDATE SET fecha=@f;";
+                        cmd.CommandText = "DELETE FROM recientes WHERE nombre=@n COLLATE NOCASE AND nombre<>@n; INSERT INTO recientes(nombre,fecha) VALUES(@n,@f) ON CONFLICT(nombre) DO UPDATE SET fecha=@f;";
                         cmd.Parameters.AddWithValue("@n", nombre);
                         cmd.Parameters.AddWithValue("@f", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                         cmd.ExecuteNonQuery();
@@ -232,7 +232,8 @@ namespace BrosLMV
 
         public static bool EsFavorito(string nombre)
         {
-            return Favoritos().Contains(nombre);
+            foreach (var f in Favoritos()) if (string.Equals(f, nombre, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         public static void ToggleFavorito(string nombre)
@@ -246,7 +247,7 @@ namespace BrosLMV
                     c.Open();
                     using (var cmd = c.CreateCommand())
                     {
-                        cmd.CommandText = es ? "DELETE FROM favoritos WHERE nombre=@n;" : "INSERT OR IGNORE INTO favoritos(nombre) VALUES(@n);";
+                        cmd.CommandText = es ? "DELETE FROM favoritos WHERE nombre=@n COLLATE NOCASE;" : "INSERT OR IGNORE INTO favoritos(nombre) VALUES(@n);";
                         cmd.Parameters.AddWithValue("@n", nombre);
                         cmd.ExecuteNonQuery();
                     }
