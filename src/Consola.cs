@@ -649,6 +649,7 @@ namespace BrosLMV
             var ctxMore = new ContextMenuStrip { Font = AppTheme.FontMain };
             ctxMore.Items.Add(new ToolStripMenuItem("Nueva acción", null, (s, e) => { using (var f = new NuevaAccionForm(_ctx)) f.ShowDialog(this); }));
             ctxMore.Items.Add(new ToolStripMenuItem("Nuevo script", null, (s, e) => NuevoScript()));
+            ctxMore.Items.Add(new ToolStripMenuItem("Nuevo botón…", null, (s, e) => CrearBoton("")));
             ctxMore.Items.Add(new ToolStripSeparator());
             ctxMore.Items.Add(new ToolStripMenuItem("Duplicar", null, (s, e) => Duplicar()));
             ctxMore.Items.Add(new ToolStripMenuItem("Aprobar", null, (s, e) => Aprobar()));
@@ -1597,6 +1598,55 @@ namespace BrosLMV
             menu.Show(_tree, _tree.PointToClient(Cursor.Position));
         }
 
+        // ¿Ya hay un botón BrosLMV.<appKey> en el ribbon de esta empresa?
+        private bool ExisteBoton(string appKey)
+        {
+            try
+            {
+                return _ctx.Query("SELECT TOP 1 1 AS x FROM engRibbonControl WHERE ControlExecute=" + "N'BrosLMV." + appKey.Replace("'", "''") + "'").Count > 0;
+            }
+            catch { return false; }
+        }
+
+        // Nombre legible a partir de una clave técnica: CREAR_DOC_XML -> «Crear doc xml»; si ya trae minúsculas se respeta (Cotizador).
+        private static string NombreLegible(string appKey)
+        {
+            if (string.IsNullOrEmpty(appKey)) return "";
+            string t = appKey.Replace('_', ' ');
+            return t == t.ToUpperInvariant() ? char.ToUpperInvariant(t[0]) + t.Substring(1).ToLowerInvariant() : t;
+        }
+
+        // Asistente «Crear botón…» (v2.95.0). appKey vacío = botón nuevo SIN script: al terminar se crea un script mínimo con esa clave y se abre.
+        private void CrearBoton(string appKey)
+        {
+            BotonResultado r;
+            try { r = CrearBotonForm.Mostrar(_ctx, appKey, NombreLegible(appKey)); }
+            catch (Exception ex) { ctxError("No se pudo abrir el asistente de botones: " + ex.Message); return; }
+            if (r == null || !r.Publicado) return;
+            try { _ctx.erp.RefreshRibbon(); } catch { }
+            bool scriptNuevo = false;
+            try
+            {
+                _ctx.BrosAsegurarTablas();
+                if (_ctx.Query("SELECT TOP 1 1 AS x FROM zzBrosScript WHERE AppKey=" + "N'" + r.AppKey.Replace("'", "''") + "'").Count == 0)
+                {
+                    string cap = (r.Caption ?? r.AppKey).Replace("\"", "'").Replace("\r", " ").Replace("\n", " ");
+                    string codigo =
+                        "// lang: csharp\r\n" +
+                        "// Botón «" + cap + "»  ·  BrosLMV." + r.AppKey + "\r\n" +
+                        "// Escribe aquí lo que debe hacer el botón. Este ejemplo solo cuenta los documentos seleccionados en la lista.\r\n" +
+                        "var ids = ctx.GetSelectedIds();\r\n" +
+                        "ctx.Msg(\"Documentos seleccionados: \" + ids.Count, \"" + cap + "\");\r\n";
+                    _ctx.BrosGuardar(r.AppKey, r.AppKey, codigo, SafeModulo());
+                    scriptNuevo = true;
+                }
+            }
+            catch (Exception ex) { ctxError("El botón se creó, pero no se pudo crear su script: " + ex.Message); }
+            CargarArbol();
+            _status.Text = "Botón BrosLMV." + r.AppKey + " listo" + (scriptNuevo ? " (script nuevo: escribe qué debe hacer)" : "");
+            if (scriptNuevo) AbrirScript(r.AppKey);
+        }
+
         // Menú contextual sobre un script (en SQL).
         private void TreeMenu(TreeNode nodo)
         {
@@ -1606,6 +1656,7 @@ namespace BrosLMV
             menu.Items.Add("Abrir", null, (s, e) => AbrirScript(ak));
             menu.Items.Add(Datos.EsFavorito(ak) ? "★ Quitar de favoritos" : "☆ Marcar como favorito", null,
                 (s, e) => { Datos.ToggleFavorito(ak); CargarArbol(); });
+            menu.Items.Add(ExisteBoton(ak) ? "Editar botón…" : "Crear botón…", null, (s, e) => CrearBoton(ak));
             menu.Items.Add("Categorizar…", null, (s, e) => Categorizar(ak));
             menu.Items.Add("Historial de versiones…", null, (s, e) => VerHistorialVersiones(ak));
             menu.Items.Add("Exportar paquete (.bros)…", null, (s, e) => ExportarPaquete(ak));

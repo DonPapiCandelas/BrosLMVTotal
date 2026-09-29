@@ -8,6 +8,29 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.95.0] — 2026-09-29 — Asistente «Crear botón…» y catálogo de íconos BrosLMV
+
+### Agregado
+- **Asistente «Crear botón…»** (clic secundario sobre un script → *Crear botón…* / *Editar botón…*, o *Más opciones → Nuevo botón…* para crear el botón
+  primero y el script después). Tres pasos con vista previa del ribbon: **1 · El botón** (nombre, descripción que sale al pasar el mouse, ícono),
+  **2 · Dónde aparece** (pestaña y sección existentes o nuevas, en todos los módulos o solo en algunos) y **3 · Quién lo ve** (todos, grupos o usuarios;
+  opcionalmente también en otras empresas). Ya no hay que escribir `BrosLMV.XXXX`, el nombre del ícono ni IDs. Guía: `docs/CREAR_BOTON.md`
+  (botón *Ayuda* del asistente); diseño: `docs/DISENO_CREAR_BOTON.md`.
+- **Catálogo de íconos BrosLMV:** 2,118 íconos modernos (colección Lucide, licencia ISC) convertidos a `.ico` (16/32/48 px) que el instalador copia a la carpeta de
+  íconos de Comercial (`BrosLMV_<nombre>.ico`), con búsqueda en español y sugerencias según el nombre del botón. Junto a los 914 íconos nativos de Comercial y
+  «Explorar…» para elegir un `.ico`/`.png` propio (se copia con el prefijo `BrosLMV_`). Licencia en `C:\BrosLMV\iconos\LICENCIA_Lucide.txt`.
+- **Deshacer / Quitar:** cada cambio de un botón guarda copia en `zzBrosRibbonHist` (por empresa); el asistente puede restaurar el último estado o quitar el botón.
+- Nuevas piezas: `src/RibbonAdmin.cs` (motor sobre `engRibbonTab/Group/Control/Menu`, todo en una transacción por empresa), `src/RibbonUi.cs` (ventana WebView2),
+  `src/assets/crear_boton_app.html` (pantalla), `build/iconos/` (generador del catálogo; requiere Node.js al compilar).
+
+### Cambiado
+- `generar_instalador.ps1` genera la guía HTML y el catálogo de íconos antes de compilar; `Instalar.ps1` instala los íconos y el catálogo.
+- Solo se modifican botones `BrosLMV.*`; los nativos de Comercial no se tocan.
+
+### Pendiente de verificar en Comercial
+- Que el filtro por usuario (`IfUserIDIs`, una fila por usuario) lo respete el ribbon de Comercial, y si el botón aparece sin reiniciar tras `RefreshRibbon()`.
+- Editar botones que no son de BrosLMV (por ejemplo los de otros productos, para cambiar su ícono o su función) queda para una versión posterior.
+
 ## [2.94.1] — 2026-09-29 — Consola: documentación siempre disponible y guardado más claro
 
 ### Corregido
