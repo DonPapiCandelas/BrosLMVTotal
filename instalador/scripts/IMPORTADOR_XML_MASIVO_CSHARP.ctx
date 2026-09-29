@@ -1,0 +1,2176 @@
+#r "C:\BrosLMV\bin\Microsoft.Web.WebView2.Core.dll"
+#r "C:\BrosLMV\bin\Microsoft.Web.WebView2.WinForms.dll"
+// lang: csharp
+// AppKey recomendado: IMPORTAR_DOCUMENTOS_XML
+// CFDI recibidos -> Factura de Compra (152) o Gasto (242).
+// BrosLMV - Importador de documentos desde XML (v3, pestañas, "crear y listo").
+//
+// Principios (ver docs/DISENO_IMPORTADOR_XML.md):
+//  1. Ágil: con solo pulsar "Crear documentos" se crean todos los marcados. Proveedor faltante = se da de alta;
+//     producto faltante = renglón descriptivo (como hace Comercial con los gastos) o alta automática, a elección.
+//  2. El IMPUESTO lo rige el documento (lo que dice el XML, emparejado contra los tipos de impuesto que ya existen
+//     en Comercial). Cambiar el tipo de gasto o el producto NUNCA cambia el impuesto.
+//  3. Si el impuesto de una partida no coincide con ningún tipo existente, el documento NO se crea: se sugiere
+//     el tipo de impuesto que hay que dar de alta y se recargan los catálogos.
+//  4. Memoria: producto y tipo de gasto se sugieren por proveedor + clave/descripción (mapa propio + historial
+//     de gastos de Comercial) y se aprenden solos al crear el documento.
+//  5. Alta de proveedor/producto replica las tablas que Comercial escribe al generar desde XML (registros 012/013
+//     del laboratorio). Es la vía de último recurso mientras no haya método COM de alta expuesto.
+
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+
+var ids = ctx.GetSelectedIds();
+if (ids == null || ids.Count == 0)
+{
+    ctx.Msg("Selecciona uno o más XML de la lista de Comercial antes de abrir el importador.", "Crear documentos desde XML");
+    return;
+}
+
+// EMPRESA (Owned): todo catálogo, documento y muestra se filtra por la empresa activa (ownEntityId = ctx.erp.OwnedBusinessEntityId).
+// Las tablas con OwnedBusinessEntityID guardan una copia por empresa (p. ej. tipos de gasto: -1 = plantilla de fábrica, 1, 2… = cada empresa).
+// En este script NO hay identificadores de módulo, de catálogo ni de estatus escritos a mano. Todo se descubre de la
+// empresa donde corre: los módulos por su naturaleza (engModuleParameter), los valores fiscales y de alta por muestra de
+// lo que Comercial ya creó desde XML, y las enumeraciones del motor por engRefCombo. Si algo no se puede descubrir en
+// una empresa nueva, se puede fijar por empresa en la tabla zzBrosCfdiConfig (Clave, Valor) sin tocar el código.
+var ci = CultureInfo.InvariantCulture;
+var ser = new JavaScriptSerializer { MaxJsonLength = 128 * 1024 * 1024 };
+
+string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v);
+int I(object v) { try { return Convert.ToInt32(v ?? 0); } catch { return 0; } }
+long L(object v) { try { return Convert.ToInt64(v ?? 0); } catch { return 0; } }
+double D(object v) { try { return Convert.ToDouble(v ?? 0, ci); } catch { return 0; } }
+bool B(object v) { try { return Convert.ToBoolean(v); } catch { return false; } }
+string Q(string s) => "N'" + (s ?? "").Replace("'", "''") + "'";
+string Norm(string s) => new string((s ?? "").Trim().ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+string Num(double n) => n.ToString("0.############", ci);
+double N01(double x) => x > 1.0 ? x / 100.0 : x;
+string Cortar(string s, int n) { s = s ?? ""; return s.Length > n ? s.Substring(0, n) : s; }
+string ClaveDe(string s, int max)
+{
+    if (string.IsNullOrWhiteSpace(s)) return "";
+    var p = s.Split(new[] { " - " }, StringSplitOptions.None)[0].Trim();
+    return Cortar(p, max);
+}
+string PctTxt(double r) => (Math.Round(r * 100.0, 4)).ToString("0.####", ci) + "%";
+string FechaSql(DateTime d) => "'" + d.ToString("yyyy-MM-dd HH:mm:ss", ci) + "'";
+
+int ownEntityId = ctx.erp.OwnedBusinessEntityId;
+string idsJoined = ctx.JoinIds(ids);
+
+// ── 1. Tablas propias (memoria por empresa) ─────────────────────────────────────────────────────────────
+ctx.NonQuery(@"
+IF OBJECT_ID('zzBrosCfdiProductoMapa', 'U') IS NULL
+    CREATE TABLE zzBrosCfdiProductoMapa (
+        OwnedBusinessEntityID INT NOT NULL, RFCEmisor NVARCHAR(20) NOT NULL, ClaveProveedor NVARCHAR(100) NOT NULL,
+        DescripcionNormalizada NVARCHAR(300) NOT NULL, ProductID INT NOT NULL, CreatedBy INT NULL, CreatedOn DATETIME DEFAULT GETDATE(),
+        PRIMARY KEY (OwnedBusinessEntityID, RFCEmisor, ClaveProveedor, DescripcionNormalizada));
+IF OBJECT_ID('zzBrosCfdiGastoMapa', 'U') IS NULL
+    CREATE TABLE zzBrosCfdiGastoMapa (
+        OwnedBusinessEntityID INT NOT NULL, RFCEmisor NVARCHAR(20) NOT NULL, ClaveProveedor NVARCHAR(100) NOT NULL,
+        DescripcionNormalizada NVARCHAR(300) NOT NULL, ExpenseTypeID INT NOT NULL, CreatedBy INT NULL, CreatedOn DATETIME DEFAULT GETDATE(),
+        PRIMARY KEY (OwnedBusinessEntityID, RFCEmisor, ClaveProveedor, DescripcionNormalizada));
+IF COL_LENGTH('zzBrosCfdiGastoMapa', 'ClaveProdServ') IS NULL ALTER TABLE zzBrosCfdiGastoMapa ADD ClaveProdServ NVARCHAR(20) NULL;
+IF OBJECT_ID('zzBrosCfdiConfig', 'U') IS NULL CREATE TABLE zzBrosCfdiConfig (Clave NVARCHAR(60) NOT NULL PRIMARY KEY, Valor NVARCHAR(200) NULL);");
+
+// ── 2. Modelos ───────────────────────────────────────────────────────────────────────────────────────────
+class TaxRow
+{
+    public int Id; public string Nombre; public double Iva, Ieps, RetIva, RetIsr;
+    public bool EsExento { get { return Nombre != null && Nombre.ToUpperInvariant().Contains("EXENTO"); } }
+    public bool EsNA { get { return Nombre != null && Nombre.ToUpperInvariant().Contains("N/A"); } }
+}
+
+class ItemXml
+{
+    public long ItemId { get; set; }
+    public long SatId { get; set; }
+    public string Rfc { get; set; }
+    public string Clave { get; set; }
+    public string Desc { get; set; }
+    public double Cantidad { get; set; }
+    public double Precio { get; set; }
+    public double Importe { get; set; }
+    public double Descuento { get; set; }
+    public double IvaTrasladado { get; set; }
+    public double IepsTrasladado { get; set; }
+    public double IvaRetenido { get; set; }
+    public double IsrRetenido { get; set; }
+    public double IvaPercXml { get; set; }
+    public int TaxTypeId { get; set; }
+    public bool TaxTypeManual { get; set; }
+    public string CompTxt { get; set; }
+    public string Unit { get; set; }
+    public string ClaveUn { get; set; }
+    public string ClaveProdServ { get; set; }
+    public string Objeto { get; set; }
+    public int ProdId { get; set; }
+    public string ProdOrigen { get; set; } = "";
+    public int ExpId { get; set; }
+    public string ExpOrigen { get; set; } = "";
+    public string ClaveNorm { get; set; }
+    public string DescNorm { get; set; }
+    public string Grupo { get { return Rfc + "|" + ClaveNorm + "|" + DescNorm; } }
+    public double BaseImp { get { return (Importe - Descuento) > 0 ? (Importe - Descuento) : Importe; } }
+}
+
+class DocXml
+{
+    public long SatId { get; set; }
+    public string Uuid { get; set; }
+    public string Tipo { get; set; }
+    public string Rfc { get; set; }
+    public string RazonSocial { get; set; }
+    public string RfcReceptor { get; set; }
+    public string CpReceptor { get; set; }
+    public string RegimenReceptor { get; set; }
+    public string UsoCfdi { get; set; }
+    public string FormaPago { get; set; }
+    public string MetodoPago { get; set; }
+    public string CondicionesPago { get; set; }
+    public DateTime? FechaEmision { get; set; }
+    public DateTime? FechaCert { get; set; }
+    public string Moneda { get; set; }
+    public string Serie { get; set; }
+    public string Folio { get; set; }
+    public string Version { get; set; }
+    public string XmlFileName { get; set; }
+    public double TC { get; set; }
+    public double SubTotal { get; set; }
+    public double Descuento { get; set; }
+    public double Iva16 { get; set; }
+    public double Iva8 { get; set; }
+    public double Iva0 { get; set; }
+    public double Ieps { get; set; }
+    public double Total { get; set; }
+    public double IvaRet { get; set; }
+    public double IsrRet { get; set; }
+    public int DocIdVinculado { get; set; }
+    public int BusinessEntityId { get; set; }
+    public string BusinessEntityName { get; set; }
+    public bool Crear { get; set; }
+    public int DestinoModulo { get; set; }
+    public int DepotId { get; set; }
+    public int PaymentTermId { get; set; }
+    public string Estado { get; set; }
+    public string EstadoTipo { get; set; }
+    public List<string> Avisos { get; set; } = new List<string>();
+    public List<string> Tags { get; set; } = new List<string>();   // versión corta de los avisos para la lista
+    public List<ItemXml> Partidas { get; set; } = new List<ItemXml>();
+    public DateTime FechaDoc { get { return FechaEmision ?? FechaCert ?? DateTime.Now; } }
+}
+
+// ── 3. Catálogos (una sola función; se usa al abrir y en "Recargar catálogos") ────────────────────────────
+List<Dictionary<string, object>> provs = null, prods = null, exps = null, terms = null, depots = null, curs = null;
+List<Dictionary<string, object>> mapasProd = null, mapasGasto = null;
+var taxRows = new List<TaxRow>();
+var provPorRfc = new Dictionary<string, Dictionary<string, object>>();
+var provPorId = new Dictionary<int, Dictionary<string, object>>();
+var prodPorId = new Dictionary<int, Dictionary<string, object>>();
+var expPorId = new Dictionary<int, Dictionary<string, object>>();
+var clavesProdUsadas = new HashSet<string>();
+var mProdExacto = new Dictionary<string, int>();
+var mProdClave = new Dictionary<string, int>();
+var mGastoExacto = new Dictionary<string, int>();
+var mGastoSat = new Dictionary<string, int>();
+var mGastoProv = new Dictionary<string, int>();
+var histGastoDesc = new Dictionary<string, int>();
+var histGastoProv = new Dictionary<int, int>();
+var detalleTerm = new Dictionary<int, List<Dictionary<string, object>>>();
+// Configuración leída de la empresa (no hay valores fijos para altas, rutas ni listas fiscales)
+int cfgTipoDocCompra = -1, cfgTipoDocGasto = -1;                 // enumeración DocumentType del motor
+int cfgCfdTipo = -1, cfgCfdEstatus = -1, cfgPagoEstatus = -1, cfgXmlUsaClave = -1;
+int cfgEntMoral = -1, cfgEntFisica = -1, cfgEntExtranjero = -1;   // enumeración BusinessEntityType
+int cfgCanalEmail = -1, cfgCanalTel = -1;
+string cfgNomCanalEmail = "", cfgNomCanalTel = "";
+List<Dictionary<string, object>> regimenes = new List<Dictionary<string, object>>(), personas = new List<Dictionary<string, object>>();
+string cfgCfdExport = "", cfgFormaDef = "", cfgMetodoDef = "", cfgUsoDef = "";
+var cfgOverride = new Dictionary<string, string>();
+int cfgPais = 0, cfgIdioma = 0, cfgMonedaBase = 0, cfgTipoIdentRfc = 0, cfgTipoDireccion = 0, cfgTipoProducto = 0;
+string cfgNombreIdentRfc = "", cfgNombreDireccion = "", cfgRutaProcesado = "";
+var cfgCarpetasXml = new List<string>();   // plantillas de carpeta donde buscar los XML ({RFC} = RFC de la empresa)
+List<Dictionary<string, object>> formas = new List<Dictionary<string, object>>(), metodos = new List<Dictionary<string, object>>(), usos = new List<Dictionary<string, object>>();
+// Tipo: "compra" (naturaleza de Facturas Compra), "gasto" (naturaleza de Gastos) u "otro" (recibe XML pero su comportamiento aún no está validado)
+// Stock/Costo/CostoCom/Fin = parámetros de afectación del módulo (engModuleParameter): inventario, costo fiscal, costo comercial y saldo/banco. 0 = no afecta.
+class Destino { public int Id; public string Nombre; public string Tipo; public string Aviso; public int Stock, Costo, CostoCom, Fin, Poliza; }
+var destinos = new List<Destino>();
+bool EsGasto(int m) { return destinos.Any(x => x.Id == m && x.Tipo == "gasto"); }
+bool EsCompra(int m) { return destinos.Any(x => x.Id == m && x.Tipo == "compra"); }
+Destino DestinoDe(int m) { return destinos.First(x => x.Id == m); }
+bool EsOtro(int m) { return destinos.Any(x => x.Id == m && x.Tipo == "otro"); }
+
+// Valor fijado por empresa en zzBrosCfdiConfig (si existe) o, si no, el descubierto en engRefCombo por nombre.
+int ComboItem(string clave, string grupo, string filtroNombre)
+{
+    string ov;
+    int v;
+    if (cfgOverride.TryGetValue(clave, out ov) && int.TryParse(ov, out v)) return v;
+    var r = ctx.Query("SELECT TOP 1 ItemData FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'" + grupo + "' AND ItemValue LIKE N'" + filtroNombre + "' ORDER BY ItemData");
+    return r.Count > 0 ? I(r[0]["ItemData"]) : -1;
+}
+
+// Los destinos posibles NO se buscan por número ni por nombre: se reconocen por su NATURALEZA, que Comercial guarda en
+// los parámetros del módulo (engModuleParameter): tabla, tipo de documento y si recibe XML. Todo módulo sobre docDocument
+// con XMLRecibido = 1 puede generarse desde un CFDI; se clasifica como "compra" o "gasto" según su tipo de documento
+// (enumeración DocumentType) y, si es de otra naturaleza, como "otro" (sin validar). Así entran también los módulos
+// copiados o renombrados por el usuario y los de cada cliente.
+void CargarDestinos()
+{
+    cfgTipoDocCompra = ComboItem("TipoDocCompra", "DocumentType", "Factura");
+    cfgTipoDocGasto = ComboItem("TipoDocGasto", "DocumentType", "Gasto");
+    var mods = ctx.Query(@"
+SELECT m.ModuleID, m.ModuleName,
+       MAX(CASE WHEN p.ParameterKey = N'DocumentTypeID' THEN p.Value END) AS DocType,
+       MAX(CASE WHEN p.ParameterKey = N'DocRecipient' THEN p.Value END) AS Recip,
+       MAX(CASE WHEN p.ParameterKey = N'XMLRecibido' THEN p.Value END) AS XmlRec,
+       MAX(CASE WHEN p.ParameterKey = N'TableName' THEN p.Value END) AS Tbl,
+       MAX(CASE WHEN p.ParameterKey = N'StockAffectation' THEN p.Value END) AS Stock,
+       MAX(CASE WHEN p.ParameterKey = N'CostAffectation' THEN p.Value END) AS Costo,
+       MAX(CASE WHEN p.ParameterKey = N'CostAffectationComercial' THEN p.Value END) AS CostoCom,
+       MAX(CASE WHEN p.ParameterKey = N'FinancialAffectation' THEN p.Value END) AS Fin,
+       MAX(CASE WHEN p.ParameterKey = N'AccountingPoliza' THEN p.Value END) AS Poliza
+FROM engModule m
+LEFT JOIN engModuleParameter p ON p.ModuleID = m.ModuleID AND p.Section IN (N'Parámetro', N'Contabilidad')   -- AccountingPoliza vive en la sección Contabilidad
+WHERE m.DeletedOn IS NULL
+GROUP BY m.ModuleID, m.ModuleName");
+    destinos = new List<Destino>();
+    foreach (var m in mods.OrderBy(x => I(x["ModuleID"])))
+    {
+        if (S(m["Tbl"]) != "docDocument" || S(m["XmlRec"]) != "1") continue;
+        int dt = S(m["DocType"]).Length > 0 ? I(m["DocType"]) : -2;
+        string tipo = dt == cfgTipoDocCompra ? "compra" : dt == cfgTipoDocGasto ? "gasto" : "otro";
+        string aviso = tipo != "otro" ? "" : "sin validar: se crea con renglones descriptivos; revisa el resultado";
+        destinos.Add(new Destino { Id = I(m["ModuleID"]), Nombre = S(m["ModuleName"]), Tipo = tipo, Aviso = aviso, Stock = I(m["Stock"]), Costo = I(m["Costo"]), CostoCom = I(m["CostoCom"]), Fin = I(m["Fin"]), Poliza = I(m["Poliza"]) });
+    }
+    if (!destinos.Any(x => x.Tipo != "otro"))
+        throw new Exception("No se encontraron módulos de compra ni de gasto que reciban XML. Si el catálogo DocumentType de esta empresa usa otros nombres, fije TipoDocCompra y TipoDocGasto en zzBrosCfdiConfig.");
+}
+
+// Valor más frecuente de una consulta de una columna (muestra de lo que Comercial ya hizo en esta empresa)
+string Moda(string sql, string col)
+{
+    var r = ctx.Query(sql);
+    return r.Count > 0 && r[0][col] != null && r[0][col] != DBNull.Value ? S(r[0][col]) : "";
+}
+
+void CargarConfiguracion()
+{
+    cfgOverride = new Dictionary<string, string>();
+    foreach (var r in ctx.Query("SELECT Clave, Valor FROM zzBrosCfdiConfig")) cfgOverride[S(r["Clave"])] = S(r["Valor"]);
+    var e = ctx.Query("SELECT CountryID, LanguageID FROM orgBusinessEntity WHERE BusinessEntityID=" + ownEntityId);
+    cfgPais = e.Count > 0 ? I(e[0]["CountryID"]) : 0;
+    cfgIdioma = e.Count > 0 ? I(e[0]["LanguageID"]) : 0;
+    if (cfgPais == 0) { var r = ctx.Query("SELECT TOP 1 CountryID FROM orgBusinessEntity WHERE CountryID > 0 GROUP BY CountryID ORDER BY COUNT(*) DESC"); if (r.Count > 0) cfgPais = I(r[0]["CountryID"]); }
+    if (cfgIdioma == 0) { var r = ctx.Query("SELECT TOP 1 LanguageID FROM orgBusinessEntity WHERE LanguageID > 0 GROUP BY LanguageID ORDER BY COUNT(*) DESC"); if (r.Count > 0) cfgIdioma = I(r[0]["LanguageID"]); }
+    var m = ctx.Query("SELECT TOP 1 CurrencyID FROM orgSupplier WHERE OwnedBusinessEntityID = " + ownEntityId + " AND CurrencyID > 0 GROUP BY CurrencyID ORDER BY COUNT(*) DESC");
+    cfgMonedaBase = m.Count > 0 ? I(m[0]["CurrencyID"]) : (curs.Count > 0 ? I(curs[0]["CurrencyID"]) : 0);
+    var k = ctx.Query("SELECT TOP 1 IdentificationTypeID, IdentificationName FROM orgIdentificationKey WHERE BusinessEntityID=" + ownEntityId + " ORDER BY IsMainIdentification DESC, IdentificationKeyID");
+    cfgTipoIdentRfc = k.Count > 0 ? I(k[0]["IdentificationTypeID"]) : 0;
+    cfgNombreIdentRfc = k.Count > 0 ? S(k[0]["IdentificationName"]) : "";
+    var a = ctx.Query("SELECT TOP 1 AddressTypeID, AddressName FROM orgAddress WHERE BusinessEntityID=" + ownEntityId + " ORDER BY IsMainAddress DESC, AddressID");
+    cfgTipoDireccion = a.Count > 0 ? I(a[0]["AddressTypeID"]) : 0;
+    cfgNombreDireccion = a.Count > 0 ? S(a[0]["AddressName"]) : "";
+    var t = ctx.Query("SELECT ItemData FROM engRefCombo WHERE CboGroupName = N'ProductType' AND DeletedOn IS NULL ORDER BY ItemData");
+    cfgTipoProducto = t.Count > 0 ? I(t[0]["ItemData"]) : 0;
+    // Carpeta donde Comercial deja los XML procesados: se toma de un documento que ya la tenga
+    var p = ctx.Query("SELECT TOP 1 CFDFileXML FROM docDocumentCFD WHERE CFDFileXML LIKE N'%XMLRecibidos%' ORDER BY DocumentID DESC");
+    cfgRutaProcesado = "";
+    if (p.Count > 0)
+    {
+        string f = S(p[0]["CFDFileXML"]); int i = f.LastIndexOf('\\');
+        if (i > 0) cfgRutaProcesado = f.Substring(0, i + 1);
+    }
+    // Dónde buscar los XML: 1) la ruta de un documento que ya la tenga, 2) el parámetro de carpeta de CFDI de Comercial,
+    // 3) la carpeta de datos de Comercial (padre de su carpeta de respaldos) + \CFDI\<RFC>\XMLRecibidos
+    cfgCarpetasXml = new List<string>();
+    if (cfgRutaProcesado.Length > 0) cfgCarpetasXml.Add(cfgRutaProcesado);
+    string cfdDocs = Moda("SELECT TOP 1 [Value] FROM engParameter WHERE [Key] = N'CFDDocumentsPath' AND [Value] IS NOT NULL AND LTRIM(RTRIM(CAST([Value] AS nvarchar(500)))) <> ''", "Value").Trim();
+    string respaldo = Moda("SELECT TOP 1 [Value] FROM engParameter WHERE [Key] = N'BackupPath' AND [Value] IS NOT NULL", "Value").Trim().TrimEnd('\\');
+    Action<string> agregaRaiz = raiz =>
+    {
+        raiz = raiz.TrimEnd('\\');
+        cfgCarpetasXml.Add(raiz + @"\{RFC}\XMLRecibidos\Procesado\");
+        cfgCarpetasXml.Add(raiz + @"\{RFC}\XMLRecibidos\");
+    };
+    if (cfdDocs.Length > 0) agregaRaiz(cfdDocs);
+    if (respaldo.Length > 0) { try { string datos = Path.GetDirectoryName(respaldo); if (!string.IsNullOrEmpty(datos)) agregaRaiz(datos + @"\CFDI"); } catch { } }
+    Func<string, string, List<Dictionary<string, object>>> combo = (g1, g2) =>
+    {
+        var l = ctx.Query("SELECT ItemValue, ISNULL(Custom1,'') AS Clave FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'" + g1 + "' ORDER BY CboOrder, ItemData");
+        if (l.Count == 0 && g2 != null) l = ctx.Query("SELECT ItemValue, ISNULL(Custom1,'') AS Clave FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'" + g2 + "' ORDER BY CboOrder, ItemData");
+        return l.Where(x => S(x["Clave"]).Length > 0).ToList();
+    };
+    formas = combo("Anexo20v33_FormaPago", null);
+    metodos = combo("Anexo20v33_MetodoDePago", null);
+    usos = combo("Anexo20v40_UsoCFDI", "Anexo20v33_UsoCFDI");
+    regimenes = combo("Anexo20v40_RegimenFiscal", "Anexo20v33_RegimenFiscal");
+    personas = ctx.Query("SELECT ItemData, ItemValue FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'BusinessEntityType' ORDER BY ItemData");
+    cfgCanalEmail = ComboItem("CanalEmail", "CommunicationChannelType", "%mail%");
+    cfgCanalTel = ComboItem("CanalTelefono", "CommunicationChannelType", "%fono%");
+    var ne = ctx.Query("SELECT TOP 1 ItemValue FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'CommunicationChannelEmail' ORDER BY ItemData");
+    var nt = ctx.Query("SELECT TOP 1 ItemValue FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'CommunicationChannelPhone' ORDER BY ItemData");
+    cfgNomCanalEmail = ne.Count > 0 ? S(ne[0]["ItemValue"]) : "";
+    cfgNomCanalTel = nt.Count > 0 ? S(nt[0]["ItemValue"]) : "";
+    CargarDestinos();
+    // Enumeración de tipo de persona (Moral / Física / Extranjero) del alta de proveedores
+    cfgEntMoral = ComboItem("TipoEntidadMoral", "BusinessEntityType", "%Moral%");
+    cfgEntFisica = ComboItem("TipoEntidadFisica", "BusinessEntityType", "%sica%");
+    cfgEntExtranjero = ComboItem("TipoEntidadExtranjero", "BusinessEntityType", "%Extranjer%");
+    // Valores fiscales: muestra de los documentos que Comercial ya creó desde XML en esta empresa; si aún no hay, del catálogo
+    string idsDest = string.Join(",", destinos.Select(x => x.Id));
+    string idsCompra = string.Join(",", destinos.Where(x => x.Tipo == "compra").Select(x => x.Id).DefaultIfEmpty(-1));
+    string baseCfd = "FROM docDocumentCFD c INNER JOIN docDocument d ON d.DocumentID = c.DocumentID WHERE d.DeletedOn IS NULL AND d.OwnedBusinessEntityID = " + ownEntityId + " AND d.ModuleID IN (" + idsDest + ") AND ISNULL(c.CFDIFolioFiscal, '') <> ''";
+    var m1 = ctx.Query("SELECT TOP 1 c.TipoComprobanteID, c.CFDStatusID, c.ExportID " + baseCfd + " AND c.TipoComprobanteID > 0 AND c.CFDStatusID > 0 GROUP BY c.TipoComprobanteID, c.CFDStatusID, c.ExportID ORDER BY COUNT(*) DESC");
+    if (m1.Count > 0) { cfgCfdTipo = I(m1[0]["TipoComprobanteID"]); cfgCfdEstatus = I(m1[0]["CFDStatusID"]); cfgCfdExport = S(m1[0]["ExportID"]); }
+    else
+    {
+        var a1 = ctx.Query("SELECT TOP 1 ItemData FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'TipoComprobante' ORDER BY ItemData");
+        var a2 = ctx.Query("SELECT TOP 1 ItemData FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'CFDStatus' ORDER BY ItemData DESC");
+        var a3 = ctx.Query("SELECT TOP 1 Custom1 FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'Exportacion' ORDER BY ItemData");
+        if (a1.Count > 0) cfgCfdTipo = I(a1[0]["ItemData"]);
+        if (a2.Count > 0) cfgCfdEstatus = I(a2[0]["ItemData"]);
+        if (a3.Count > 0) cfgCfdExport = S(a3[0]["Custom1"]);
+    }
+    string sp = Moda("SELECT TOP 1 StatusPaidID FROM docDocument WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = " + ownEntityId + " AND ModuleID IN (" + idsCompra + ") AND ISNULL(TotalPaid, 0) = 0 GROUP BY StatusPaidID ORDER BY COUNT(*) DESC", "StatusPaidID");
+    cfgPagoEstatus = sp.Length > 0 ? int.Parse(sp) : -1;
+    cfgFormaDef = Moda("SELECT TOP 1 c.FormaPago " + baseCfd + " AND ISNULL(c.FormaPago, '') <> '' GROUP BY c.FormaPago ORDER BY COUNT(*) DESC", "FormaPago");
+    cfgMetodoDef = Moda("SELECT TOP 1 c.MetodoPago " + baseCfd + " AND ISNULL(c.MetodoPago, '') <> '' GROUP BY c.MetodoPago ORDER BY COUNT(*) DESC", "MetodoPago");
+    cfgUsoDef = Moda("SELECT TOP 1 c.ReceptorUsoCFDI " + baseCfd + " AND ISNULL(c.ReceptorUsoCFDI, '') <> '' GROUP BY c.ReceptorUsoCFDI ORDER BY COUNT(*) DESC", "ReceptorUsoCFDI");
+    if (cfgFormaDef.Length == 0 && formas.Count > 0) cfgFormaDef = S(formas[0]["Clave"]);
+    if (cfgMetodoDef.Length == 0 && metodos.Count > 0) cfgMetodoDef = S(metodos[0]["Clave"]);
+    if (cfgUsoDef.Length == 0 && usos.Count > 0) cfgUsoDef = S(usos[0]["Clave"]);
+    string uk = Moda("SELECT TOP 1 b.XMLImportUseProductKey FROM orgBusinessEntity b INNER JOIN orgSupplier sp ON sp.BusinessEntityID = b.BusinessEntityID AND sp.OwnedBusinessEntityID = " + ownEntityId + " WHERE b.XMLImportDocumentTypeID > 0 AND b.XMLImportUseProductKey IS NOT NULL GROUP BY b.XMLImportUseProductKey ORDER BY COUNT(*) DESC", "XMLImportUseProductKey");
+    cfgXmlUsaClave = uk.Length > 0 ? int.Parse(uk) : -1;
+}
+
+void CargarCatalogos()
+{
+    provs = ctx.Query(@"
+SELECT be.BusinessEntityID, be.OfficialName, ISNULL(mi.OfficialNumber,'') AS RFC, ISNULL(s.PaymentTermID, 0) AS PaymentTermID, s.SupplierID
+FROM orgBusinessEntity be
+INNER JOIN orgSupplier s ON s.BusinessEntityID = be.BusinessEntityID AND s.DeletedOn IS NULL AND s.OwnedBusinessEntityID = " + ownEntityId + @"
+LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID
+WHERE be.DeletedOn IS NULL
+ORDER BY be.OfficialName");
+    prods = ctx.Query("SELECT ProductID, ISNULL(ProductKey,'') AS ProductKey, ProductName, ISNULL(TaxPerc,0) AS TaxPerc FROM orgProduct WHERE DeletedOn IS NULL ORDER BY ProductName");
+    var tx = ctx.Query(@"
+SELECT t.TaxTypeID, t.TaxTypeName, ISNULL(p.IVA_Perc,0) AS IVA_Perc, ISNULL(p.IEPS_Perc,0) AS IEPS_Perc,
+       ISNULL(p.Retencion_IVA,0) AS Retencion_IVA, ISNULL(p.Retencion_ISR,0) AS Retencion_ISR
+FROM engTaxType t LEFT JOIN vwLBSTaxPerc p ON p.TaxTypeID = t.TaxTypeID
+ORDER BY t.TaxTypeName");
+    taxRows = tx.Select(t => new TaxRow { Id = I(t["TaxTypeID"]), Nombre = S(t["TaxTypeName"]), Iva = N01(D(t["IVA_Perc"])), Ieps = N01(D(t["IEPS_Perc"])), RetIva = N01(D(t["Retencion_IVA"])), RetIsr = N01(D(t["Retencion_ISR"])) }).ToList();
+    exps = ctx.Query("SELECT ExpenseID, LTRIM(RTRIM(ISNULL(CategoryName,'') + CASE WHEN ISNULL(ItemName,'') = '' THEN '' ELSE ' / ' + ItemName END)) AS Nombre FROM engRefExpense WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = " + ownEntityId + " ORDER BY CategoryName, ItemName");
+    terms = ctx.Query("SELECT PaymentTermID, PaymentTermName FROM vwLBSPaymentTermList WHERE Buys=1 AND Deleted=0 ORDER BY PaymentTermName");
+    depots = ctx.Query("SELECT DepotID, DepotName FROM orgDepot WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = " + ownEntityId + " ORDER BY DepotName");
+    curs = ctx.Query("SELECT CurrencyID, IntlSymbol, Currency FROM vwLBSCurrencyList");
+    mapasProd = ctx.Query("SELECT RFCEmisor, ClaveProveedor, DescripcionNormalizada, ProductID FROM zzBrosCfdiProductoMapa WHERE OwnedBusinessEntityID=" + ownEntityId + " ORDER BY CreatedOn");
+    mapasGasto = ctx.Query("SELECT RFCEmisor, ClaveProveedor, DescripcionNormalizada, ExpenseTypeID, ISNULL(ClaveProdServ,'') AS ClaveProdServ FROM zzBrosCfdiGastoMapa WHERE OwnedBusinessEntityID=" + ownEntityId + " ORDER BY CreatedOn");
+
+    provPorRfc = new Dictionary<string, Dictionary<string, object>>();
+    provPorId = new Dictionary<int, Dictionary<string, object>>();
+    foreach (var p in provs)
+    {
+        provPorId[I(p["BusinessEntityID"])] = p;
+        string rn = Norm(S(p["RFC"]));
+        if (rn.Length > 0 && !provPorRfc.ContainsKey(rn)) provPorRfc[rn] = p;
+    }
+    prodPorId = new Dictionary<int, Dictionary<string, object>>();
+    clavesProdUsadas = new HashSet<string>();
+    foreach (var p in prods)
+    {
+        prodPorId[I(p["ProductID"])] = p;
+        if (S(p["ProductKey"]).Length > 0) clavesProdUsadas.Add(S(p["ProductKey"]).ToUpperInvariant());
+    }
+    expPorId = new Dictionary<int, Dictionary<string, object>>();
+    foreach (var e in exps) expPorId[I(e["ExpenseID"])] = e;
+
+    mProdExacto = new Dictionary<string, int>();
+    mProdClave = new Dictionary<string, int>();
+    foreach (var m in mapasProd)
+    {
+        int pid = I(m["ProductID"]);
+        if (!prodPorId.ContainsKey(pid)) continue;
+        string rfc = S(m["RFCEmisor"]), c = S(m["ClaveProveedor"]), d = S(m["DescripcionNormalizada"]);
+        mProdExacto[rfc + "|" + c + "|" + d] = pid;
+        if (c.Length > 0) mProdClave[rfc + "|" + c] = pid;
+    }
+    mGastoExacto = new Dictionary<string, int>();
+    mGastoSat = new Dictionary<string, int>();
+    mGastoProv = new Dictionary<string, int>();
+    var tiposPorRfc = new Dictionary<string, HashSet<int>>();
+    foreach (var m in mapasGasto)
+    {
+        int eid = I(m["ExpenseTypeID"]);
+        if (!expPorId.ContainsKey(eid)) continue;
+        string rfc = S(m["RFCEmisor"]), c = S(m["ClaveProveedor"]), d = S(m["DescripcionNormalizada"]), sat = S(m["ClaveProdServ"]);
+        mGastoExacto[rfc + "|" + c + "|" + d] = eid;
+        if (sat.Length > 0) mGastoSat[rfc + "|" + sat] = eid;
+        if (!tiposPorRfc.ContainsKey(rfc)) tiposPorRfc[rfc] = new HashSet<int>();
+        tiposPorRfc[rfc].Add(eid);
+        mGastoProv[rfc] = eid;
+    }
+    foreach (var k in tiposPorRfc.Where(x => x.Value.Count > 1).Select(x => x.Key).ToList()) mGastoProv.Remove(k);
+}
+
+// Historial de tipos de gasto que Comercial ya tiene por proveedor (gastos capturados a mano o desde XML).
+void CargarHistorial(IEnumerable<int> bes)
+{
+    var lista = bes.Where(x => x > 0).Distinct().ToList();
+    if (lista.Count == 0) return;
+    var h = ctx.Query(@"
+SELECT d.BusinessEntityID AS BE, i.Description AS Descr, i.ExpenseTypeID AS Exp, COUNT(*) AS N, MAX(d.DateDocument) AS F
+FROM docDocumentItem i INNER JOIN docDocument d ON d.DocumentID = i.DocumentID
+WHERE i.ExpenseTypeID > 0 AND i.DeletedOn IS NULL AND d.DeletedOn IS NULL AND d.OwnedBusinessEntityID = " + ownEntityId + " AND d.BusinessEntityID IN (" + string.Join(",", lista) + @")
+GROUP BY d.BusinessEntityID, i.Description, i.ExpenseTypeID");
+    var ultimo = new Dictionary<string, KeyValuePair<DateTime, int>>();
+    var conteo = new Dictionary<int, Dictionary<int, int>>();
+    foreach (var r in h)
+    {
+        int be = I(r["BE"]), exp = I(r["Exp"]);
+        if (!expPorId.ContainsKey(exp)) continue;
+        DateTime f = r["F"] is DateTime ? (DateTime)r["F"] : DateTime.MinValue;
+        string k = be + "|" + Norm(S(r["Descr"]));
+        if (!ultimo.ContainsKey(k) || ultimo[k].Key < f) ultimo[k] = new KeyValuePair<DateTime, int>(f, exp);
+        if (!conteo.ContainsKey(be)) conteo[be] = new Dictionary<int, int>();
+        conteo[be][exp] = (conteo[be].ContainsKey(exp) ? conteo[be][exp] : 0) + I(r["N"]);
+    }
+    foreach (var kv in ultimo) histGastoDesc[kv.Key] = kv.Value.Value;
+    foreach (var kv in conteo) histGastoProv[kv.Key] = kv.Value.OrderByDescending(x => x.Value).First().Key;
+}
+
+List<Dictionary<string, object>> DetalleDePlazo(int id)
+{
+    if (!detalleTerm.ContainsKey(id))
+        detalleTerm[id] = ctx.Query("SELECT PaymentPerc, PaymentUnit, PaymentPeriodID FROM engPaymentTermDetail WHERE PaymentTermID=" + id + " ORDER BY PaymentTermDetailID");
+    return detalleTerm[id];
+}
+
+CargarCatalogos();
+CargarConfiguracion();
+
+// ── 4. Opciones de la sesión ─────────────────────────────────────────────────────────────────────────────
+bool optCrearProv = true;          // proveedor faltante: true = se da de alta solo
+string optProductos = "sin";       // sin = renglón descriptivo | crear = alta automática | exigir = bloquea hasta asignar
+int optGastoDefecto = 0;           // tipo de gasto para partidas sin sugerencia (0 = ninguno)
+
+// ── 5. Encabezados y partidas del lote seleccionado ──────────────────────────────────────────────────────
+var headsRaw = ctx.Query(@"
+SELECT s.DocSATID, s.UUID, s.TipoComprobante, s.RFCEmisor, s.RazonSocial,
+       s.RFCReceptor, s.DomicilioFiscalReceptor, s.RegimenFiscalReceptor, s.UsoCFDI,
+       s.FormaDePago, s.MetodoDePago, s.CondicionesDePago,
+       s.FechaEmision, s.FechaCertificacion, s.Moneda, s.TipoCambio,
+       s.SubTotal, s.Descuento, s.IVA16, s.IVA8, s.IVA0, s.IEPS, s.IVARetenido, s.ISRRetenido, s.Total,
+       s.Serie, s.Folio, s.Version, s.XMLFileName, ISNULL(s.DocumentID, 0) AS DocumentID
+FROM docDocumentCFDiSAT s
+WHERE s.DeletedOn IS NULL AND s.OwnedBusinessEntityID = " + ownEntityId + " AND s.DocSATID IN (" + idsJoined + @")
+ORDER BY s.FechaEmision, s.DocSATID");
+
+if (headsRaw.Count == 0)
+{
+    ctx.Msg("No se encontraron registros activos de XML para los IDs seleccionados.", "Importador XML");
+    return;
+}
+
+var itemsRaw = ctx.Query(@"
+SELECT ItemID, DocSATID, NoIdentificacion, Descripcion, Cantidad, ValorUnitario,
+       ISNULL(Importe, 0) AS Importe, ISNULL(Descuento, 0) AS Descuento,
+       ProductID, ExpenseTypeID, IVAPerc,
+       ISNULL(IVATrasladado, 0) AS IVATrasladado, ISNULL(IEPSTrasladado, 0) AS IEPSTrasladado,
+       ISNULL(IVARetenido, 0) AS IVARetenido, ISNULL(ISRRetenido, 0) AS ISRRetenido,
+       Unidad AS Unit, ClaveUnidad, ClaveProdServ, ObjetoImpuesto
+FROM docDocumentItemCFDiSAT
+WHERE DocSATID IN (" + idsJoined + @")
+ORDER BY ItemID");
+
+// ── 6. Impuestos: el XML manda; se empareja contra los tipos de impuesto que YA existen ──────────────────
+
+bool Cerca(double a, double b, double baseImp) { return Math.Abs(a - b) <= 0.0006 + 0.0101 / Math.Max(baseImp, 1.0); }
+
+double Ajusta(double tasa, double baseImp)
+{
+    if (tasa < 0.00005) return 0;
+    foreach (var t in taxRows.SelectMany(x => new[] { x.Iva, x.Ieps, x.RetIva, x.RetIsr }))
+        if (t > 0 && Cerca(tasa, t, baseImp)) return t;
+    return Math.Round(tasa, 4);
+}
+
+string ComposicionTexto(double iva, double ieps, double retIva, double retIsr, string objeto)
+{
+    var p = new List<string>();
+    if (iva > 0) p.Add("IVA " + PctTxt(iva));
+    if (ieps > 0) p.Add("IEPS " + PctTxt(ieps));
+    if (retIva > 0) p.Add("Ret. IVA " + PctTxt(retIva));
+    if (retIsr > 0) p.Add("Ret. ISR " + PctTxt(retIsr));
+    if (p.Count == 0) return objeto == "01" ? "No objeto de impuesto" : "IVA 0%";
+    return string.Join(" + ", p);
+}
+
+// Devuelve el TaxTypeID que coincide EXACTO con lo que trae el XML, o 0 si no hay ninguno.
+void ResolverImpuesto(ItemXml it)
+{
+    double b = it.BaseImp;
+    double iva = 0, ieps = 0, rIva = 0, rIsr = 0;
+    if (b > 0)
+    {
+        iva = Ajusta(it.IvaTrasladado / b, b);
+        ieps = Ajusta(it.IepsTrasladado / b, b);
+        rIva = Ajusta(it.IvaRetenido / b, b);
+        rIsr = Ajusta(it.IsrRetenido / b, b);
+    }
+    it.CompTxt = ComposicionTexto(iva, ieps, rIva, rIsr, it.Objeto);
+    if (it.TaxTypeManual) return;
+
+    bool obj01 = it.Objeto == "01";
+    var cand = taxRows.Where(t => Cerca(t.Iva, iva, b) && Cerca(t.Ieps, ieps, b) && Cerca(t.RetIva, rIva, b) && Cerca(t.RetIsr, rIsr, b)).ToList();
+    if (cand.Count == 0) { it.TaxTypeId = 0; return; }
+    bool todoCero = iva == 0 && ieps == 0 && rIva == 0 && rIsr == 0;
+    Func<TaxRow, int> puntos = t =>
+    {
+        int s = 0;
+        if (todoCero)
+        {
+            if (t.EsExento) s += 3;                          // "Exento" solo si el usuario lo elige
+            if (t.EsNA) s += obj01 ? -2 : 2;                 // "N/A" para objeto 01 (no objeto de impuesto)
+        }
+        return s;
+    };
+    it.TaxTypeId = cand.OrderBy(puntos).ThenBy(t => t.Id).First().Id;
+}
+
+// ── 7. Sugerencias de producto y de tipo de gasto (memoria) ──────────────────────────────────────────────
+void Sugerir(DocXml d, ItemXml it)
+{
+    if (it.ProdId == 0 || it.ProdOrigen == "memoria" || it.ProdOrigen == "sugerido")
+    {
+        int pid;
+        if (mProdExacto.TryGetValue(it.Grupo, out pid)) { it.ProdId = pid; it.ProdOrigen = "memoria"; }
+        else if (it.ClaveNorm.Length > 0 && mProdClave.TryGetValue(it.Rfc + "|" + it.ClaveNorm, out pid)) { it.ProdId = pid; it.ProdOrigen = "sugerido"; }
+        else if (it.ProdOrigen == "memoria" || it.ProdOrigen == "sugerido") { it.ProdId = 0; it.ProdOrigen = ""; }
+    }
+    if (it.ExpId == 0 || it.ExpOrigen == "memoria" || it.ExpOrigen == "sugerido" || it.ExpOrigen == "historial" || it.ExpOrigen == "defecto")
+    {
+        int eid; string origen = "";
+        if (mGastoExacto.TryGetValue(it.Grupo, out eid)) origen = "memoria";
+        else if ((it.ClaveProdServ ?? "").Length > 0 && mGastoSat.TryGetValue(it.Rfc + "|" + ClaveDe(it.ClaveProdServ, 8), out eid)) origen = "sugerido";
+        else if (d.BusinessEntityId > 0 && histGastoDesc.TryGetValue(d.BusinessEntityId + "|" + it.DescNorm, out eid)) origen = "historial";
+        else if (mGastoProv.TryGetValue(it.Rfc, out eid)) origen = "sugerido";
+        else if (d.BusinessEntityId > 0 && histGastoProv.TryGetValue(d.BusinessEntityId, out eid)) origen = "historial";
+        else if (optGastoDefecto > 0 && expPorId.ContainsKey(optGastoDefecto)) { eid = optGastoDefecto; origen = "defecto"; }
+        if (origen != "") { it.ExpId = eid; it.ExpOrigen = origen; }
+        else if (it.ExpOrigen != "manual" && it.ExpOrigen != "") { it.ExpId = 0; it.ExpOrigen = ""; }
+    }
+}
+
+// ── 8. Armado de documentos en memoria ───────────────────────────────────────────────────────────────────
+var docs = new Dictionary<long, DocXml>();
+int defaultDepot = depots.Count > 0 ? I(depots[0]["DepotID"]) : 1;
+// Plazo por omisión: el de contado (todas sus parcialidades a 0 días), o el primero de la lista
+int defaultTerm = terms.Count > 0 ? I(terms[0]["PaymentTermID"]) : 0;
+foreach (var tm in terms)
+{
+    var dt = DetalleDePlazo(I(tm["PaymentTermID"]));
+    if (dt.Count > 0 && dt.All(x => I(x["PaymentUnit"]) == 0)) { defaultTerm = I(tm["PaymentTermID"]); break; }
+}
+
+DateTime? Fecha(object v)
+{
+    if (v == null || v == DBNull.Value) return null;
+    try { return Convert.ToDateTime(v); } catch { return null; }
+}
+
+foreach (var r in headsRaw)
+{
+    string tipo = S(r["TipoComprobante"]);
+    string rfcNorm = Norm(S(r["RFCEmisor"]));
+    int be = 0; string beName = ""; int beTerm = defaultTerm;
+    Dictionary<string, object> pMatch;
+    if (provPorRfc.TryGetValue(rfcNorm, out pMatch))
+    {
+        be = I(pMatch["BusinessEntityID"]); beName = S(pMatch["OfficialName"]);
+        if (I(pMatch["PaymentTermID"]) > 0) beTerm = I(pMatch["PaymentTermID"]);
+    }
+    var d = new DocXml
+    {
+        SatId = L(r["DocSATID"]), Uuid = S(r["UUID"]), Tipo = tipo, Rfc = S(r["RFCEmisor"]), RazonSocial = S(r["RazonSocial"]),
+        RfcReceptor = S(r["RFCReceptor"]), CpReceptor = S(r["DomicilioFiscalReceptor"]), RegimenReceptor = S(r["RegimenFiscalReceptor"]),
+        UsoCfdi = S(r["UsoCFDI"]), FormaPago = S(r["FormaDePago"]), MetodoPago = S(r["MetodoDePago"]), CondicionesPago = S(r["CondicionesDePago"]),
+        FechaEmision = Fecha(r["FechaEmision"]), FechaCert = Fecha(r["FechaCertificacion"]),
+        Serie = S(r["Serie"]), Folio = S(r["Folio"]), Version = S(r["Version"]), XmlFileName = S(r["XMLFileName"]),
+        Moneda = string.IsNullOrEmpty(S(r["Moneda"])) ? "MXN" : S(r["Moneda"]),
+        TC = D(r["TipoCambio"]) <= 0 ? 1.0 : D(r["TipoCambio"]),
+        SubTotal = D(r["SubTotal"]), Descuento = D(r["Descuento"]), Iva16 = D(r["IVA16"]), Iva8 = D(r["IVA8"]), Iva0 = D(r["IVA0"]),
+        Ieps = D(r["IEPS"]), Total = D(r["Total"]), IvaRet = D(r["IVARetenido"]), IsrRet = D(r["ISRRetenido"]),
+        DocIdVinculado = I(r["DocumentID"]), BusinessEntityId = be, BusinessEntityName = beName,
+        Crear = tipo.StartsWith("I") && I(r["DocumentID"]) == 0,
+        DestinoModulo = tipo.StartsWith("I") ? (destinos.FirstOrDefault(x => x.Tipo == "compra") ?? destinos[0]).Id : 0,
+        DepotId = defaultDepot, PaymentTermId = beTerm
+    };
+    docs[d.SatId] = d;
+}
+
+var todasLasLineas = new List<ItemXml>();
+foreach (var r in itemsRaw)
+{
+    long satId = L(r["DocSATID"]);
+    DocXml d;
+    if (!docs.TryGetValue(satId, out d)) continue;
+    double cant = D(r["Cantidad"]), pr = D(r["ValorUnitario"]), imp = D(r["Importe"]);
+    if (imp <= 0) imp = cant * pr;
+    var it = new ItemXml
+    {
+        ItemId = L(r["ItemID"]), SatId = satId, Rfc = d.Rfc, Clave = S(r["NoIdentificacion"]), Desc = S(r["Descripcion"]),
+        Cantidad = cant, Precio = pr, Importe = imp, Descuento = D(r["Descuento"]), IvaPercXml = D(r["IVAPerc"]),
+        IvaTrasladado = D(r["IVATrasladado"]), IepsTrasladado = D(r["IEPSTrasladado"]),
+        IvaRetenido = D(r["IVARetenido"]), IsrRetenido = D(r["ISRRetenido"]),
+        Unit = S(r["Unit"]), ClaveUn = S(r["ClaveUnidad"]), ClaveProdServ = S(r["ClaveProdServ"]), Objeto = S(r["ObjetoImpuesto"]),
+        ProdId = I(r["ProductID"]), ExpId = I(r["ExpenseTypeID"]),
+        ClaveNorm = Norm(S(r["NoIdentificacion"])), DescNorm = Norm(S(r["Descripcion"]))
+    };
+    if (it.ProdId > 0) it.ProdOrigen = "comercial";
+    if (it.ExpId > 0) it.ExpOrigen = "comercial";
+    d.Partidas.Add(it);
+    todasLasLineas.Add(it);
+}
+
+CargarHistorial(docs.Values.Select(x => x.BusinessEntityId));
+foreach (var d in docs.Values)
+    foreach (var it in d.Partidas) { ResolverImpuesto(it); Sugerir(d, it); }
+
+// Vuelve a evaluar impuestos y sugerencias (tras recargar catálogos, asociar proveedor, etc.)
+void ReevaluarTodo(bool impuestos)
+{
+    foreach (var d in docs.Values)
+        foreach (var it in d.Partidas)
+        {
+            if (impuestos) ResolverImpuesto(it);
+            Sugerir(d, it);
+        }
+}
+
+// ── 9. Estado de cada documento ──────────────────────────────────────────────────────────────────────────
+void EvaluarEstados()
+{
+    foreach (var d in docs.Values)
+    {
+        d.Avisos = new List<string>();
+        d.Tags = new List<string>();
+        if (d.DocIdVinculado > 0)
+        {
+            d.Estado = "Ya creado (documento #" + d.DocIdVinculado + ")"; d.EstadoTipo = "blocked"; d.Crear = false; continue;
+        }
+        if (!d.Tipo.StartsWith("I"))
+        {
+            d.Estado = d.Tipo.StartsWith("P") ? "Bloqueado: es un complemento de pago" : d.Tipo.StartsWith("E") ? "Bloqueado: es un egreso / nota de crédito" : "Bloqueado: tipo " + d.Tipo;
+            d.EstadoTipo = "blocked"; d.Crear = false; d.DestinoModulo = 0; continue;
+        }
+        if (!destinos.Any(x => x.Id == d.DestinoModulo))
+        {
+            d.Estado = "Bloqueado: destino inválido"; d.EstadoTipo = "blocked"; d.Crear = false; continue;
+        }
+        // 1) Impuestos: sin coincidencia exacta NO se crea, se sugiere el tipo de impuesto a dar de alta
+        var faltan = d.Partidas.Where(l => l.TaxTypeId == 0).Select(l => l.CompTxt).Distinct().ToList();
+        if (faltan.Count > 0)
+        {
+            d.Estado = "Bloqueado: falta tipo de impuesto";
+            d.EstadoTipo = "blocked"; d.Crear = false;
+            foreach (var f in faltan) { d.Avisos.Add("Sugerencia: dar de alta en Comercial un tipo de impuesto «" + f + "» y recargar catálogos."); d.Tags.Add("falta impuesto: " + f); }
+            continue;
+        }
+        // 2) Proveedor
+        bool pendiente = false;
+        if (d.BusinessEntityId == 0)
+        {
+            if (optCrearProv) { d.Avisos.Add("Se creará el proveedor"); d.Tags.Add("proveedor nuevo"); }
+            else { d.Avisos.Add("El proveedor no existe (activa «Crear proveedores faltantes» o víncula uno)"); d.Tags.Add("sin proveedor"); pendiente = true; }
+        }
+        // 3) Productos
+        var dm = DestinoDe(d.DestinoModulo);
+        bool usaProducto = dm.Tipo == "compra" || dm.Stock != 0;   // los módulos que mueven inventario necesitan producto
+        int sinProd = usaProducto ? d.Partidas.Count(l => l.ProdId == 0) : 0;
+        var dest = destinos.First(x => x.Id == d.DestinoModulo);
+        if (dest.Aviso.Length > 0) { d.Avisos.Add("Módulo «" + dest.Nombre + "» " + dest.Aviso); d.Tags.Add("módulo sin validar"); }
+        if (sinProd > 0)
+        {
+            if (optProductos == "exigir") { d.Avisos.Add(sinProd + " partida(s) sin producto (modo «exigir producto»)"); d.Tags.Add(sinProd + " sin producto"); pendiente = true; }
+            else if (optProductos == "crear") { d.Avisos.Add("Se crearán " + sinProd + " producto(s)"); d.Tags.Add(sinProd + " producto(s) nuevos"); }
+            else { d.Avisos.Add(sinProd + " partida(s) como renglón descriptivo (sin producto)" + (dm.Stock != 0 ? ": NO moverán inventario" : "")); d.Tags.Add(sinProd + " sin producto"); }
+        }
+        // 4) Tipo de gasto
+        if (EsGasto(d.DestinoModulo))
+        {
+            int sinGasto = d.Partidas.Count(l => l.ProdId == 0 && l.ExpId == 0);
+            if (sinGasto > 0) { d.Avisos.Add(sinGasto + " partida(s) sin tipo de gasto"); d.Tags.Add(sinGasto + " sin tipo de gasto"); }
+        }
+        if (pendiente) { d.Estado = "Pendiente"; d.EstadoTipo = "pending"; }
+        else if (d.Avisos.Count > 0) { d.Estado = "Listo"; d.EstadoTipo = "warn"; }
+        else { d.Estado = "Listo"; d.EstadoTipo = "ok"; }
+    }
+}
+EvaluarEstados();
+
+// ── 10. Estado hacia la interfaz ─────────────────────────────────────────────────────────────────────────
+object GenerarCatalogos()
+{
+    return new
+    {
+        depots = depots.Select(x => new { id = I(x["DepotID"]), nombre = S(x["DepotName"]) }).ToArray(),
+        terms = terms.Select(x => new { id = I(x["PaymentTermID"]), nombre = S(x["PaymentTermName"]) }).ToArray(),
+        taxes = taxRows.Select(x => new { id = x.Id, nombre = x.Nombre, iva = x.Iva, ieps = x.Ieps, retIva = x.RetIva, retIsr = x.RetIsr }).ToArray(),
+        expenses = exps.Select(x => new { id = I(x["ExpenseID"]), nombre = S(x["Nombre"]) }).ToArray(),
+        suppliers = provs.Select(x => new { id = I(x["BusinessEntityID"]), nombre = S(x["OfficialName"]), rfc = S(x["RFC"]) }).ToArray(),
+        products = prods.Select(x => new { id = I(x["ProductID"]), key = S(x["ProductKey"]), nombre = S(x["ProductName"]) }).ToArray(),
+        destinos = destinos.Select(x => new { id = x.Id, nombre = x.Nombre, tipo = x.Tipo, validado = x.Tipo != "otro" }).ToArray(),
+        formas = formas.Select(x => new { clave = S(x["Clave"]), nombre = S(x["ItemValue"]) }).ToArray(),
+        metodos = metodos.Select(x => new { clave = S(x["Clave"]), nombre = S(x["ItemValue"]) }).ToArray(),
+        regimenes = regimenes.Select(x => new { clave = S(x["Clave"]), nombre = S(x["ItemValue"]) }).ToArray(),
+        personas = personas.Select(x => new { id = I(x["ItemData"]), nombre = S(x["ItemValue"]) }).ToArray(),
+        usos = usos.Select(x => new { clave = S(x["Clave"]), nombre = S(x["ItemValue"]) }).ToArray()
+    };
+}
+
+object GenerarEstado()
+{
+    EvaluarEstados();
+    var docsList = docs.Values.Select(d => new
+    {
+        satId = d.SatId, uuid = d.Uuid, tipo = d.Tipo, rfc = d.Rfc, razonSocial = d.RazonSocial, rfcReceptor = d.RfcReceptor,
+        cpReceptor = d.CpReceptor, regimenReceptor = d.RegimenReceptor, usoCfdi = d.UsoCfdi, formaPago = d.FormaPago, metodoPago = d.MetodoPago,
+        condicionesPago = d.CondicionesPago,
+        fechaEmision = d.FechaEmision.HasValue ? d.FechaEmision.Value.ToString("yyyy-MM-dd HH:mm") : "",
+        fechaCert = d.FechaCert.HasValue ? d.FechaCert.Value.ToString("yyyy-MM-dd HH:mm") : "",
+        fecha = d.FechaDoc.ToString("yyyy-MM-dd"),
+        moneda = d.Moneda, tc = d.TC, serie = d.Serie, folio = d.Folio, version = d.Version, xmlFileName = d.XmlFileName,
+        subTotal = d.SubTotal, descuento = d.Descuento, iva16 = d.Iva16, iva8 = d.Iva8, iva0 = d.Iva0, ieps = d.Ieps,
+        ivaRet = d.IvaRet, isrRet = d.IsrRet, total = d.Total, docIdVinculado = d.DocIdVinculado,
+        businessEntityId = d.BusinessEntityId, businessEntityName = d.BusinessEntityName,
+        crear = d.Crear, destinoModulo = d.DestinoModulo, depotId = d.DepotId, paymentTermId = d.PaymentTermId,
+        estado = d.Estado, estadoTipo = d.EstadoTipo, avisos = d.Avisos.ToArray(), tags = d.Tags.ToArray(),
+        partidas = d.Partidas.Select(p => new
+        {
+            itemId = p.ItemId, clave = p.Clave, desc = p.Desc, cantidad = p.Cantidad, precio = p.Precio, importe = p.Importe, descuento = p.Descuento,
+            ivaTrasladado = p.IvaTrasladado, iepsTrasladado = p.IepsTrasladado, ivaRetenido = p.IvaRetenido, isrRetenido = p.IsrRetenido,
+            taxTypeId = p.TaxTypeId, comp = p.CompTxt, manual = p.TaxTypeManual, unit = p.Unit, claveSat = p.ClaveProdServ, claveUn = p.ClaveUn, objeto = p.Objeto,
+            prodId = p.ProdId, expId = p.ExpId, grupo = p.Grupo, prodOrigen = p.ProdOrigen, expOrigen = p.ExpOrigen,
+            prodNombre = prodPorId.ContainsKey(p.ProdId) ? (S(prodPorId[p.ProdId]["ProductKey"]) + " · " + S(prodPorId[p.ProdId]["ProductName"])) : "",
+            expNombre = expPorId.ContainsKey(p.ExpId) ? S(expPorId[p.ExpId]["Nombre"]) : ""
+        }).ToArray()
+    }).ToArray();
+
+    var grupos = todasLasLineas.GroupBy(l => l.Grupo).Select(g =>
+    {
+        var f = g.First();
+        Dictionary<string, object> prod = null, exp = null;
+        prodPorId.TryGetValue(f.ProdId, out prod);
+        expPorId.TryGetValue(f.ExpId, out exp);
+        return new
+        {
+            key = g.Key, rfc = f.Rfc, razon = docs[f.SatId].RazonSocial, clave = f.Clave, desc = f.Desc, unit = f.Unit,
+            claveSat = f.ClaveProdServ, claveUn = f.ClaveUn, objeto = f.Objeto,
+            cantidad = g.Sum(x => x.Cantidad), lineas = g.Count(), precio = f.Precio, comp = f.CompTxt, taxTypeId = f.TaxTypeId,
+            prodId = f.ProdId, prodNombre = prod != null ? (S(prod["ProductKey"]) + " · " + S(prod["ProductName"])) : "", prodOrigen = f.ProdOrigen,
+            expId = f.ExpId, expNombre = exp != null ? S(exp["Nombre"]) : "", expOrigen = f.ExpOrigen,
+            claveNorm = f.ClaveNorm, descNorm = f.DescNorm
+        };
+    }).ToArray();
+
+    var rfcs = docs.Values.GroupBy(d => Norm(d.Rfc)).Select(g =>
+    {
+        var f = g.First();
+        object nuevo = null;
+        if (f.BusinessEntityId == 0)
+        {
+            var pn = ProvDe(f);
+            var dirs = DireccionesPorCp(pn.Cp);
+            var dir = dirs.Count > 0 ? dirs[0] : null;
+            nuevo = new
+            {
+                razon = pn.Razon, nombreCom = pn.NombreCom, persona = pn.Persona, regimen = pn.Regimen, cp = pn.Cp, colonia = pn.Colonia,
+                calle = pn.Calle, numExt = pn.NumExt, numInt = pn.NumInt, tel = pn.Tel, email = pn.Email, plazoId = pn.PlazoId,
+                estado = dir != null ? S(dir["State"]) : "", municipio = dir != null ? S(dir["Municipality"]) : "",
+                colonias = dirs.Select(x => S(x["City"])).Where(x => x.Length > 0).Distinct().ToArray(),
+                cpValido = pn.Cp.Length == 0 || dirs.Count > 0, xmlOk = pn.XmlOk
+            };
+        }
+        return new { rfc = f.Rfc, razonSocial = f.RazonSocial, businessEntityId = f.BusinessEntityId, businessEntityName = f.BusinessEntityName, docsCount = g.Count(), paymentTermId = f.PaymentTermId, nuevo = nuevo };
+    }).ToArray();
+
+    var comps = todasLasLineas.GroupBy(l => l.CompTxt + "|" + l.TaxTypeId).Select(g =>
+    {
+        var f = g.First();
+        return new { comp = f.CompTxt, taxTypeId = f.TaxTypeId, lineas = g.Count(), docs = g.Select(x => x.SatId).Distinct().Count(), manual = g.Any(x => x.TaxTypeManual) };
+    }).OrderBy(c => c.taxTypeId == 0 ? 0 : 1).ThenByDescending(c => c.lineas).ToArray();
+
+    return new
+    {
+        docs = docsList, grupos = grupos, rfcs = rfcs, comps = comps,
+        opciones = new { crearProv = optCrearProv, productos = optProductos, gastoDefecto = optGastoDefecto },
+        resumen = new
+        {
+            total = docs.Count,
+            listos = docs.Values.Count(d => d.EstadoTipo == "ok" || d.EstadoTipo == "warn"),
+            pendientes = docs.Values.Count(d => d.EstadoTipo == "pending"),
+            bloqueados = docs.Values.Count(d => d.EstadoTipo == "blocked"),
+            aCrear = docs.Values.Count(d => d.Crear && (d.EstadoTipo == "ok" || d.EstadoTipo == "warn"))
+        }
+    };
+}
+
+// ── 11. Altas (mismas tablas que escribe Comercial al generar desde XML; registros 012 y 013 del laboratorio) ─
+// Ejecuta un lote de ALTA (varios INSERT en transacción) por una conexión propia (ctx.OpenConn) y devuelve el ID de su SELECT final.
+// Por el puente COM de Comercial (ctx.Scalar / ctx.NonQuery) estos lotes se ejecutan pero el resultado no se puede leer y falla.
+int EjecutaAlta(string sql)
+{
+    using (var cn = ctx.OpenConn())
+    using (var cmd = cn.CreateCommand())
+    {
+        cmd.CommandText = sql;
+        cmd.CommandTimeout = 60;
+        return I(cmd.ExecuteScalar());
+    }
+}
+
+// Datos con los que se da de alta un proveedor: los del XML (régimen fiscal y CP del lugar de expedición, que el staging no guarda)
+// más lo que el usuario complete en la pestaña Proveedores.
+class ProvNuevo
+{
+    public string Rfc = "", Razon = "", NombreCom = "", Regimen = "", Cp = "", Colonia = "", Calle = "", NumExt = "", NumInt = "", Tel = "", Email = "";
+    public int Persona = -1, PlazoId = 0;
+    public bool XmlOk;
+}
+var provNuevos = new Dictionary<string, ProvNuevo>();
+var cpCache = new Dictionary<string, List<Dictionary<string, object>>>();
+
+ProvNuevo ProvDe(DocXml d)
+{
+    string k = Norm(d.Rfc);
+    ProvNuevo p;
+    if (provNuevos.TryGetValue(k, out p)) return p;
+    p = new ProvNuevo { Rfc = (d.Rfc ?? "").Trim().ToUpperInvariant(), Razon = Cortar(d.RazonSocial ?? "", 255) };
+    p.Persona = p.Rfc.StartsWith("XEXX") ? cfgEntExtranjero : p.Rfc.Length >= 13 ? cfgEntFisica : cfgEntMoral;
+    try
+    {
+        string ruta = RutaXmlCompleta(d);
+        if (ruta.Length > 0 && File.Exists(ruta))
+        {
+            p.XmlOk = true;
+            string txt = File.ReadAllText(ruta, Encoding.UTF8);
+            var em = System.Text.RegularExpressions.Regex.Match(txt, @"<(?:\w+:)?Emisor\b[^>]*>");
+            if (em.Success)
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(em.Value, @"RegimenFiscal=""(\d+)""");
+                if (m.Success) p.Regimen = m.Groups[1].Value;
+            }
+            var lg = System.Text.RegularExpressions.Regex.Match(txt, @"LugarExpedicion=""(\w+)""");
+            if (lg.Success) p.Cp = lg.Groups[1].Value;
+        }
+    }
+    catch { }
+    provNuevos[k] = p;
+    return p;
+}
+
+// Catálogo de direcciones de Comercial (engRefCountryAddress): con el CP salen estado, municipio y colonias
+List<Dictionary<string, object>> DireccionesPorCp(string cp)
+{
+    cp = (cp ?? "").Trim();
+    if (cp.Length == 0) return new List<Dictionary<string, object>>();
+    if (!cpCache.ContainsKey(cp))
+        cpCache[cp] = ctx.Query("SELECT State, Municipality, StateCode, MunicipalityCode, CountryCode, Pais, City, CityCode FROM engRefCountryAddress WHERE ZipCode = " + Q(cp) + " AND CountryID = " + cfgPais + " ORDER BY City");
+    return cpCache[cp];
+}
+
+string RegimenTexto(string clave)
+{
+    if (string.IsNullOrEmpty(clave)) return "";
+    var r = regimenes.FirstOrDefault(x => S(x["Clave"]) == clave);
+    return r != null ? clave + " - " + S(r["ItemValue"]) : clave;
+}
+
+int CrearProveedorDesdeXml(ProvNuevo p, int destino)
+{
+    string rfc = (p.Rfc ?? "").Trim().ToUpperInvariant();
+    string razon = Cortar((p.Razon ?? "").Trim(), 255);
+    if (rfc.Length == 0) throw new Exception("El RFC es requerido.");
+    if (razon.Length == 0) razon = rfc;
+    string u = ctx.erp.UserId.ToString();
+    Func<string, string> QN = t => string.IsNullOrWhiteSpace(t) ? "NULL" : Q(t.Trim());
+    int te = p.Persona;
+    string tipoCol = te >= 0 ? "BusinessEntityTypeID, " : "", tipoVal = te >= 0 ? te + ", " : "";
+    string claveCol = cfgXmlUsaClave >= 0 ? ", XMLImportUseProductKey" : "", claveVal = cfgXmlUsaClave >= 0 ? ", " + cfgXmlUsaClave : "";
+    // Dirección: estado, municipio y (si es única o se eligió) colonia salen del catálogo por el CP
+    var dirs = DireccionesPorCp(p.Cp);
+    Dictionary<string, object> dir = dirs.Count == 0 ? null : (dirs.FirstOrDefault(x => S(x["City"]) == p.Colonia) ?? dirs[0]);
+    bool colSel = dir != null && (dirs.Count == 1 || S(dir["City"]) == p.Colonia);
+    string est = dir != null ? S(dir["State"]) : "", mun = dir != null ? S(dir["Municipality"]) : "", pais = dir != null ? S(dir["Pais"]) : "";
+    string cEst = dir != null ? S(dir["StateCode"]) : "", cMun = dir != null ? S(dir["MunicipalityCode"]) : "", cPais = dir != null ? S(dir["CountryCode"]) : "";
+    string col = colSel ? S(dir["City"]) : "", cCol = colSel ? S(dir["CityCode"]) : "";
+    string tel = (p.Tel ?? "").Trim(), mail = (p.Email ?? "").Trim();
+    string sql =
+        "SET NOCOUNT ON;\n" +
+        // La persona (entidad) es compartida entre empresas: si el RFC ya existe se reutiliza y solo se agrega el rol de proveedor de ESTA empresa
+        "DECLARE @ex BIGINT = (SELECT TOP 1 mi.BusinessEntityID FROM orgBusinessEntityMainInfo mi " +
+        "INNER JOIN orgBusinessEntity b ON b.BusinessEntityID = mi.BusinessEntityID AND b.DeletedOn IS NULL AND b.IsOwned = 0 WHERE mi.OfficialNumber = " + Q(rfc) + " ORDER BY mi.BusinessEntityID);\n" +
+        "IF @ex IS NOT NULL BEGIN\n" +
+        "  IF NOT EXISTS (SELECT 1 FROM orgSupplier WHERE BusinessEntityID = @ex AND OwnedBusinessEntityID = " + ownEntityId + " AND DeletedOn IS NULL)\n" +
+        "    INSERT INTO orgSupplier (OwnedBusinessEntityID, BusinessEntityID, CurrencyID, PaymentTermID, Segmento, CreatedBy, CreatedOn) " +
+        "VALUES (" + ownEntityId + ", @ex, " + cfgMonedaBase + ", " + p.PlazoId + ", ISNULL((SELECT MAX(Segmento) FROM orgSupplier WHERE OwnedBusinessEntityID = " + ownEntityId + "), 0) + 1, " + u + ", GETDATE());\n" +
+        "  SELECT @ex; RETURN;\n" +
+        "END;\n" +
+        "BEGIN TRY BEGIN TRAN;\n" +
+        "DECLARE @ad BIGINT, @be BIGINT;\n" +
+        "INSERT INTO orgAddressDetail (CountryID, StateProvince, City, ZipCode, Municipality, Street, ExtNumber, IntNumber, CreatedOn, CreatedBy, CountryCode, StateProvinceCode, CityCode, MunicipalityCode) VALUES (" +
+        cfgPais + ", " + QN(est) + ", " + QN(col) + ", " + QN(p.Cp) + ", " + QN(mun) + ", " + QN(p.Calle) + ", " + QN(p.NumExt) + ", " + QN(p.NumInt) + ", GETDATE(), " + u + ", " + QN(cPais) + ", " + QN(cEst) + ", " + QN(cCol) + ", " + QN(cMun) + ");\n" +
+        "SET @ad = SCOPE_IDENTITY();\n" +
+        "INSERT INTO orgBusinessEntity (" + tipoCol + "CountryID, LanguageID, OfficialName, CommercialName, CompanyTypeName, IsOwned, CreatedOn, CreatedBy, XMLImportDocumentTypeID" + claveCol + ") " +
+        "VALUES (" + tipoVal + cfgPais + ", " + cfgIdioma + ", " + Q(razon) + ", " + QN(p.NombreCom) + ", " + QN(RegimenTexto(p.Regimen)) + ", 0, GETDATE(), " + u + ", " + destino + claveVal + ");\n" +
+        "SET @be = SCOPE_IDENTITY();\n" +
+        "INSERT INTO orgAddress (BusinessEntityID, AddressDetailID, AddressTypeID, AddressName, IsMainAddress) VALUES (@be, @ad, " + cfgTipoDireccion + ", " + Q(cfgNombreDireccion) + ", 1);\n" +
+        "INSERT INTO orgIdentificationKey (BusinessEntityID, IdentificationTypeID, IdentificationName, IdentificationValue, IsMainIdentification, CreatedOn, CreatedBy) " +
+        "VALUES (@be, " + cfgTipoIdentRfc + ", " + Q(cfgNombreIdentRfc) + ", " + Q(rfc) + ", 1, GETDATE(), " + u + ");\n" +
+        (tel.Length > 0 && cfgCanalTel >= 0 ? "INSERT INTO orgCommunicationChannel (BusinessEntityID, ChannelTypeID, ChannelName, ChannelValue, IsMainChannel) VALUES (@be, " + cfgCanalTel + ", " + QN(cfgNomCanalTel) + ", " + Q(tel) + ", 0);\n" : "") +
+        (mail.Length > 0 && cfgCanalEmail >= 0 ? "INSERT INTO orgCommunicationChannel (BusinessEntityID, ChannelTypeID, ChannelName, ChannelValue, IsMainChannel) VALUES (@be, " + cfgCanalEmail + ", " + QN(cfgNomCanalEmail) + ", " + Q(mail) + ", 1);\n" : "") +
+        "INSERT INTO orgBusinessEntityMainInfo (BusinessEntityID, OfficialNumber, BusinessEntityPhone, BusinessEntityEmail, AddressFiscalDetailID, AddressFiscalName, AddressFiscalCountryName, AddressFiscalStateProvince, AddressFiscalCity, AddressFiscalZipCode, AddressFiscalMunicipality, AddressFiscalStreet, AddressFiscalExtNumber, AddressFiscalIntNumber, AddressFiscalCountryCode, AddressFiscalStateProvinceCode, AddressFiscalCityCode, AddressFiscalMunicipalityCode) VALUES (@be, " +
+        Q(rfc) + ", " + QN(tel) + ", " + QN(mail) + ", @ad, " + Q(cfgNombreDireccion) + ", " + QN(pais) + ", " + QN(est) + ", " + QN(col) + ", " + QN(p.Cp) + ", " + QN(mun) + ", " + QN(p.Calle) + ", " + QN(p.NumExt) + ", " + QN(p.NumInt) + ", " + QN(cPais) + ", " + QN(cEst) + ", " + QN(cCol) + ", " + QN(cMun) + ");\n" +
+        "INSERT INTO orgSupplier (OwnedBusinessEntityID, BusinessEntityID, CurrencyID, PaymentTermID, Segmento, CreatedBy, CreatedOn) " +
+        "VALUES (" + ownEntityId + ", @be, " + cfgMonedaBase + ", " + p.PlazoId + ", ISNULL((SELECT MAX(Segmento) FROM orgSupplier WHERE OwnedBusinessEntityID = " + ownEntityId + "), 0) + 1, " + u + ", GETDATE());\n" +
+        "COMMIT; SELECT @be; END TRY BEGIN CATCH IF @@TRANCOUNT > 0 ROLLBACK; THROW; END CATCH";
+    int id = EjecutaAlta(sql);   // conexión propia: el puente COM de Comercial no puede leer el resultado de lotes con varios INSERT
+    if (id <= 0) throw new Exception("No se obtuvo el ID del proveedor creado.");
+    return id;
+}
+
+int MonedaId(string moneda)
+{
+    var c = curs.FirstOrDefault(x => S(x["IntlSymbol"]).Equals(moneda, StringComparison.OrdinalIgnoreCase) || S(x["Currency"]).Equals(moneda, StringComparison.OrdinalIgnoreCase));
+    return c == null ? cfgMonedaBase : I(c["CurrencyID"]);
+}
+
+TaxRow TaxDe(int id) { return taxRows.FirstOrDefault(t => t.Id == id); }
+
+int CrearProductoDesdeXml(ItemXml it, DocXml d)
+{
+    string nombre = Cortar((it.Desc ?? "").Trim(), 255);
+    if (nombre.Length == 0) throw new Exception("La partida no tiene descripción.");
+    string unidad = Cortar(string.IsNullOrWhiteSpace(it.Unit) ? "PIEZA" : it.Unit.Trim(), 50);
+    string key = Cortar((it.Clave ?? "").Trim(), 50);
+    if (key.Length == 0 || clavesProdUsadas.Contains(key.ToUpperInvariant())) key = "";
+    var tr = TaxDe(it.TaxTypeId);
+    double taxPerc = tr != null ? tr.Iva : 0;
+    int cur = MonedaId(d.Moneda);
+    Dictionary<string, object> prov;
+    long supplierId = provPorId.TryGetValue(d.BusinessEntityId, out prov) ? L(prov["SupplierID"]) : 0;
+    string u = ctx.erp.UserId.ToString();
+    string sql =
+        "SET NOCOUNT ON;\n" +
+        "BEGIN TRY BEGIN TRAN;\n" +
+        "DECLARE @p BIGINT;\n" +
+        "INSERT INTO orgProduct (ProductTypeID, ProductKey, ProductName, Unit, CostPrice, CurrencyID, TaxTypeID, TaxPerc, ClaveProdServ, ClaveUnidad, ObjetoImpuesto, CreatedBy, CreatedOn) VALUES (" + cfgTipoProducto + ", " +
+        (key.Length > 0 ? Q(key) : "NULL") + ", " + Q(nombre) + ", " + Q(unidad) + ", " + Num(it.Precio) + ", " + cur + ", " + it.TaxTypeId + ", " + Num(taxPerc) + ", " +
+        Q(ClaveDe(it.ClaveProdServ, 8)) + ", " + Q(ClaveDe(it.ClaveUn, 10)) + ", " + Q(ClaveDe(it.Objeto, 2)) + ", " + u + ", GETDATE());\n" +
+        "SET @p = SCOPE_IDENTITY();\n" +
+        "IF NOT EXISTS (SELECT 1 FROM engRefCombo WHERE CboGroupName = N'ProductUnits' AND ItemValue = " + Q(unidad) + " AND DeletedOn IS NULL) " +
+        "INSERT INTO engRefCombo (CboGroupName, ItemData, ItemValue, CboOrder, CreatedOn, CreatedBy) VALUES (N'ProductUnits', 0, " + Q(unidad) + ", 0, GETDATE(), 0);\n" +
+        (supplierId > 0 ? "INSERT INTO orgProductSupplier (ProductID, SupplierID, CostPrice, CurrencyID) VALUES (@p, " + supplierId + ", " + Num(it.Precio) + ", " + cur + ");\n" : "") +
+        "COMMIT; SELECT @p; END TRY BEGIN CATCH IF @@TRANCOUNT > 0 ROLLBACK; THROW; END CATCH";
+    int id = EjecutaAlta(sql);
+    if (id <= 0) throw new Exception("No se obtuvo el ID del producto creado.");
+    if (key.Length > 0) clavesProdUsadas.Add(key.ToUpperInvariant());
+    return id;
+}
+
+// ── 12. Memoria (mapas propios) ──────────────────────────────────────────────────────────────────────────
+string SqlMapaProd(string rfc, string c, string dsc, int pid)
+{
+    return "DELETE FROM zzBrosCfdiProductoMapa WHERE OwnedBusinessEntityID=" + ownEntityId + " AND RFCEmisor=" + Q(rfc) + " AND ClaveProveedor=" + Q(c) + " AND DescripcionNormalizada=" + Q(Cortar(dsc, 300)) + ";" +
+           "INSERT INTO zzBrosCfdiProductoMapa(OwnedBusinessEntityID, RFCEmisor, ClaveProveedor, DescripcionNormalizada, ProductID, CreatedBy) VALUES(" +
+           ownEntityId + "," + Q(rfc) + "," + Q(c) + "," + Q(Cortar(dsc, 300)) + "," + pid + "," + ctx.erp.UserId + ")";
+}
+string SqlMapaGasto(string rfc, string c, string dsc, int eid, string sat)
+{
+    return "DELETE FROM zzBrosCfdiGastoMapa WHERE OwnedBusinessEntityID=" + ownEntityId + " AND RFCEmisor=" + Q(rfc) + " AND ClaveProveedor=" + Q(c) + " AND DescripcionNormalizada=" + Q(Cortar(dsc, 300)) + ";" +
+           "INSERT INTO zzBrosCfdiGastoMapa(OwnedBusinessEntityID, RFCEmisor, ClaveProveedor, DescripcionNormalizada, ExpenseTypeID, ClaveProdServ, CreatedBy) VALUES(" +
+           ownEntityId + "," + Q(rfc) + "," + Q(c) + "," + Q(Cortar(dsc, 300)) + "," + eid + "," + Q(ClaveDe(sat, 8)) + "," + ctx.erp.UserId + ")";
+}
+string SqlBorrarMapa(string tabla, string rfc, string c, string dsc)
+{
+    return "DELETE FROM " + tabla + " WHERE OwnedBusinessEntityID=" + ownEntityId + " AND RFCEmisor=" + Q(rfc) + " AND ClaveProveedor=" + Q(c) + " AND DescripcionNormalizada=" + Q(Cortar(dsc, 300));
+}
+
+void AsignarProducto(string grupo, int pid, string origen)
+{
+    var ls = todasLasLineas.Where(l => l.Grupo == grupo).ToList();
+    if (ls.Count == 0) return;
+    var f = ls[0];
+    foreach (var l in ls) { l.ProdId = pid; l.ProdOrigen = origen; }
+    if (pid > 0)
+    {
+        ctx.NonQuery(SqlMapaProd(f.Rfc, f.ClaveNorm, f.DescNorm, pid));
+        mProdExacto[grupo] = pid;
+        if (f.ClaveNorm.Length > 0) mProdClave[f.Rfc + "|" + f.ClaveNorm] = pid;
+    }
+    else
+    {
+        ctx.NonQuery(SqlBorrarMapa("zzBrosCfdiProductoMapa", f.Rfc, f.ClaveNorm, f.DescNorm));
+        mProdExacto.Remove(grupo);
+    }
+}
+
+void AsignarGasto(string grupo, int eid, string origen)
+{
+    var ls = todasLasLineas.Where(l => l.Grupo == grupo).ToList();
+    if (ls.Count == 0) return;
+    var f = ls[0];
+    foreach (var l in ls) { l.ExpId = eid; l.ExpOrigen = eid > 0 ? origen : ""; }
+    if (eid > 0)
+    {
+        ctx.NonQuery(SqlMapaGasto(f.Rfc, f.ClaveNorm, f.DescNorm, eid, f.ClaveProdServ));
+        mGastoExacto[grupo] = eid;
+        if ((f.ClaveProdServ ?? "").Length > 0) mGastoSat[f.Rfc + "|" + ClaveDe(f.ClaveProdServ, 8)] = eid;
+    }
+    else
+    {
+        ctx.NonQuery(SqlBorrarMapa("zzBrosCfdiGastoMapa", f.Rfc, f.ClaveNorm, f.DescNorm));
+        mGastoExacto.Remove(grupo);
+    }
+}
+
+// ── 13. Creación de UN documento (la vía nativa hace lo pesado; el resto va en pocas sentencias por lote) ───
+DateTime SumaPlazo(DateTime b, int unidad, int cuenta)
+{
+    switch (unidad)
+    {
+        case 6: return b.AddYears(cuenta);
+        case 5: return b.AddMonths(cuenta * 6);
+        case 4: return b.AddMonths(cuenta * 3);
+        case 3: return b.AddMonths(cuenta);
+        case 2: return b.AddDays(cuenta * 7);
+        default: return b.AddDays(cuenta);
+    }
+}
+
+string ClaveDeTexto(string s, int max, string defecto)
+{
+    if (string.IsNullOrWhiteSpace(s)) return defecto;
+    var partes = s.Trim().Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries);
+    string c = partes.Length > 0 ? partes[0].Trim().ToUpperInvariant() : "";
+    if (c.Length > max) c = c.Substring(0, max);
+    return c.Length == 0 ? defecto : c;
+}
+
+string RutaXmlCompleta(DocXml d)
+{
+    // Busca el archivo en las carpetas candidatas (ver CargarConfiguracion); si no lo encuentra, solo el nombre
+    if (string.IsNullOrEmpty(d.XmlFileName)) return "";
+    foreach (var t in cfgCarpetasXml)
+    {
+        try
+        {
+            string f = Path.Combine(t.Replace("{RFC}", d.RfcReceptor ?? ""), d.XmlFileName);
+            if (File.Exists(f)) return f;
+        }
+        catch { }
+    }
+    return d.XmlFileName;
+}
+
+int CrearUnDocumento(DocXml d, List<string> notas)
+{
+    int yaUsado = I(ctx.Scalar("SELECT ISNULL(DocumentID,0) FROM docDocumentCFDiSAT WHERE DocSATID=" + d.SatId));
+    if (yaUsado > 0) throw new Exception("ya estaba vinculado al documento #" + yaUsado);
+
+    int curId = MonedaId(d.Moneda);
+    string folioTxt = string.IsNullOrEmpty(d.Folio) ? d.Uuid : ((string.IsNullOrEmpty(d.Serie) ? "" : d.Serie + "-") + d.Folio);
+    int docId = ctx.erp.NuevoDocumento(d.DestinoModulo, d.DepotId, d.BusinessEntityId, rate: d.TC, paymentTermId: d.PaymentTermId, currencyId: curId, title: "CFDI " + folioTxt);
+
+    string fDoc = FechaSql(d.FechaDoc);
+    var lote1 = new List<string>();
+    var dm = DestinoDe(d.DestinoModulo);
+    // Si el módulo mueve inventario, el propio documento es la entrega (fecha de entrega = fecha del documento); si no, no hay entrega
+    var hdr = "UPDATE docDocument SET DepotIDFrom=0, PaymentTermID=" + d.PaymentTermId + ", DateDocument=" + fDoc + ", DateCost=" + fDoc +
+              (dm.Stock != 0 ? ", DateDelivery=" + fDoc + ", DateDocDelivery=" + fDoc : ", DateDocDelivery=NULL");
+    if (dm.Fin != 0 && cfgPagoEstatus >= 0) hdr += ", StatusPaidID=" + cfgPagoEstatus;
+    if (!string.IsNullOrEmpty(d.Folio)) hdr += ", Folio=" + Q(d.Folio) + ", FolioPrefix=" + Q(d.Serie ?? "");
+    lote1.Add(hdr + " WHERE DocumentID=" + docId);
+
+    int ln = 1;
+    int conDescuento = 0;
+    foreach (var it in d.Partidas)
+    {
+        var tr = TaxDe(it.TaxTypeId);
+        double iva = tr != null ? tr.Iva : 0;
+        double ret = tr != null ? (tr.RetIva + tr.RetIsr) : 0;
+        double neto = it.Importe - it.Descuento;
+        double precio = it.Descuento > 0 && it.Cantidad > 0 ? neto / it.Cantidad : it.Precio;
+        if (it.Descuento > 0) conDescuento++;
+        string expSql = EsGasto(d.DestinoModulo) && it.ExpId > 0 ? ", ExpenseTypeID=" + it.ExpId : "";
+        if (it.ProdId > 0)
+        {
+            int itemId = ctx.erp.AgregarArticulo(docId, it.ProdId, it.Cantidad, precio);
+            lote1.Add("UPDATE docDocumentItem SET LineNumber=" + ln + ", TaxTypeID=" + it.TaxTypeId + ", TaxPerc=" + Num(iva) + ", RetentionPerc=" + Num(ret) + expSql + " WHERE DocumentItemID=" + itemId);
+        }
+        else
+        {
+            lote1.Add(
+                "INSERT INTO docDocumentItem(DocumentID, ProductID, ProductKey, Description, Unit, Quantity, UnitPrice, Total, TaxTypeID, TaxPerc, RetentionPerc, DiscountPerc, LineNumber, DateItem, " +
+                "ApplyGlobalDiscount, DeductiblePerc, IsBusinessOperation, MustBeDelivered, CoefUnit, ExpenseTypeID, ClaveUnidad, ObjetoImpuesto) VALUES(" +
+                docId + ", 0, N'', " + Q(it.Desc) + ", " + Q(string.IsNullOrEmpty(it.Unit) ? "SERVICIO" : it.Unit) + ", " + Num(it.Cantidad) + ", " + Num(precio) + ", " + Num(neto > 0 ? neto : it.Cantidad * precio) + ", " +
+                it.TaxTypeId + ", " + Num(iva) + ", " + Num(ret) + ", 0, " + ln + ", GETDATE(), 1, 1, 1, 0, 1, " +
+                (EsGasto(d.DestinoModulo) && it.ExpId > 0 ? it.ExpId.ToString() : "NULL") + ", " + Q(ClaveDe(it.ClaveUn, 10)) + ", " + Q(ClaveDe(it.Objeto, 2)) + ")");
+        }
+        ln++;
+    }
+    ctx.NonQuery(string.Join(";\n", lote1));
+    if (conDescuento > 0) notas.Add(conDescuento + " partida(s) con descuento: se capturó el precio neto.");
+
+    ctx.erp.RecalcCompleto(docId);                  // totales + costos + saldo pagado
+    if (dm.Stock != 0 && d.Partidas.Any(x => x.ProdId > 0))
+    {
+        ctx.erp.AffectStockNEW(docId);              // kardex: existencias presente/disponible según StockAffectation del módulo
+        notas.Add("Inventario afectado (kardex).");
+    }
+    if ((dm.Costo != 0 || dm.CostoCom != 0) && d.Partidas.Any(x => x.ProdId > 0))
+        ctx.erp.CalcularCostos(docId);              // costo fiscal / comercial según el módulo
+    ctx.erp.Save(docId);
+
+    var lote2 = new List<string>();
+    // Comprobación contra el XML: los impuestos los calcula Comercial con el compuesto; solo se corrige si no cuadra.
+    var tot = ctx.Query("SELECT Total, ISNULL(TotalRetention,0) AS Ret FROM docDocument WHERE DocumentID=" + docId);
+    bool ajustado = false;
+    if (tot.Count > 0 && Math.Abs(D(tot[0]["Total"]) - d.Total) > 0.02)
+    {
+        double calculado = D(tot[0]["Total"]);
+        double totalRet = d.IvaRet + d.IsrRet;
+        lote2.Add("UPDATE docDocument SET TotalRetention=" + Num(totalRet) + ", Total=" + Num(d.Total) + ", Balance=" + Num(d.Total) + " WHERE DocumentID=" + docId);
+        lote2.Add("IF EXISTS (SELECT 1 FROM docDocumentTax WHERE DocumentID=" + docId + ") UPDATE docDocumentTax SET IVA_T=" + Num(d.Iva16 + d.Iva8) + ", IVA_R=" + Num(d.IvaRet) + ", ISR_R=" + Num(d.IsrRet) + ", IEPS_T=" + Num(d.Ieps) + " WHERE DocumentID=" + docId +
+                  " ELSE INSERT INTO docDocumentTax(DocumentID, IVA_T, IVA_R, ISR_R, IEPS_T, IEPS_R, Otro, Local_T, Local_R) VALUES(" + docId + ", " + Num(d.Iva16 + d.Iva8) + ", " + Num(d.IvaRet) + ", " + Num(d.IsrRet) + ", " + Num(d.Ieps) + ", 0, 0, 0, 0)");
+        notas.Add(Math.Abs(calculado - d.Total) < 0.10 * Math.Max(1, d.Partidas.Count) ? "Total igualado al del XML (diferencia de " + Math.Abs(calculado - d.Total).ToString("N2", ci) + " por redondeo de impuestos por partida)." : "Total ajustado al del XML (Comercial calculó " + calculado.ToString("N2", ci) + ", XML " + d.Total.ToString("N2", ci) + "): revisa impuestos.");
+        ajustado = true;
+    }
+
+    // Agenda de pagos según la condición real, sobre la fecha del XML
+    var det = DetalleDePlazo(d.PaymentTermId);
+    DateTime fb = d.FechaDoc;
+    lote2.Add("UPDATE docDocumentPaymentAgenda SET DeletedOn=GETDATE() WHERE DeletedOn IS NULL AND DocumentID=" + docId);
+    DateTime ultima = fb;
+    if (det.Count > 0)
+    {
+        int n = 1;
+        foreach (var dt in det)
+        {
+            double perc = D(dt["PaymentPerc"]);
+            DateTime f = SumaPlazo(fb, I(dt["PaymentPeriodID"]), I(dt["PaymentUnit"])).Date;
+            ultima = f;
+            lote2.Add("INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy, FechaEmision) VALUES (" +
+                      docId + ", " + FechaSql(f) + ", " + Num(perc) + ", " + Num(d.Total * perc / 100.0) + ", " + n + ", GETDATE(), " + ctx.erp.UserId + ", " + fDoc + ")");
+            n++;
+        }
+    }
+    else
+    {
+        lote2.Add("INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy, FechaEmision) VALUES (" +
+                  docId + ", " + FechaSql(fb.Date) + ", 100, " + Num(d.Total) + ", 1, GETDATE(), " + ctx.erp.UserId + ", " + fDoc + ")");
+        ultima = fb.Date;
+    }
+    lote2.Add("UPDATE docDocument SET DateLastPayment=" + FechaSql(ultima.Date) + " WHERE DocumentID=" + docId);
+
+    // Cabecera fiscal del CFDI (vive en docDocumentCFD, no en docDocument)
+    string cert = d.FechaCert.HasValue ? d.FechaCert.Value.ToString("yyyy-MM-dd HH:mm:ss", ci) : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", ci);
+    string expd = d.FechaDoc.ToString("M/d/yyyy h:mm:ss tt", ci);
+    string metodo = ClaveDeTexto(d.MetodoPago, 3, cfgMetodoDef);
+    lote2.Add("UPDATE docDocumentCFD SET CFDFileXML=" + Q(RutaXmlCompleta(d)) + ", CFDIFolioFiscal=" + Q(d.Uuid) + ", CFDIFechaCertificacion=" + Q(cert) + ", CFDIFechaExpedicion=" + Q(expd) +
+              ", Anexo20Ver=" + Q(string.IsNullOrEmpty(d.Version) ? "4.0" : d.Version) + ", Serie=" + Q(d.Serie ?? "") + ", Folio=" + Q(d.Folio ?? "") + ", RFC=" + Q(d.Rfc) +
+              "" + (cfgCfdTipo >= 0 ? ", TipoComprobanteID=" + cfgCfdTipo : "") + (cfgCfdExport.Length > 0 ? ", ExportID=" + Q(cfgCfdExport) : "") + (cfgCfdEstatus >= 0 ? ", CFDStatusID=" + cfgCfdEstatus : "") + ", FormaPago=" + Q(ClaveDeTexto(d.FormaPago, 10, cfgFormaDef)) + ", MetodoPago=" + Q(metodo) + ", CFDFormOfPayment=" + Q(metodo) +
+              ", ReceptorUsoCFDI=" + Q(ClaveDeTexto(d.UsoCfdi, 5, cfgUsoDef)) + " WHERE DocumentID=" + docId);
+    lote2.Add("UPDATE docDocumentCFDiSAT SET DocumentID=" + docId + " WHERE DocSATID=" + d.SatId + " AND DocumentID=0");
+    ctx.NonQuery(string.Join(";\n", lote2));
+
+    if (dm.Fin != 0)
+    {
+        ctx.erp.UpdateDocumentPaidInfo(docId);      // saldo / cuenta por pagar-cobrar (afectación en banco) sobre la agenda ya regenerada
+        if (ajustado) ctx.NonQuery("UPDATE docDocument SET Balance=" + Num(d.Total) + " WHERE DocumentID=" + docId + " AND TotalPaid=0");
+    }
+    ctx.erp.UpdateStatusDelivery(docId);            // estatus de entrega (no lo calcula RecalcCompleto)
+    // Póliza: el Save por script no la genera; se pide a la clase nativa que la genera al guardar en Comercial (Accounting.clsMain)
+    if (dm.Poliza != 0) GenerarPolizaNativa(docId, notas);
+    return docId;
+}
+
+class Creado { public int DocId; public int Modulo; public string Folio; public string Proveedor; public double Total; }
+
+// Genera las pólizas del documento con el motor nativo de Comercial (Accounting.clsMain.CrearPolizasDocumento), el mismo que usa el
+// guardado de la ventana. No envía nada a CONTPAQi Contabilidad (eso es la sincronización manual de Comercial).
+void GenerarPolizaNativa(int docId, List<string> notas)
+{
+    try
+    {
+        var acc = ctx.erp.CrearHelper("Accounting.clsMain");   // asigna XEngineLib
+        var args = new object[] { docId, false, "" };            // DocumentID, ShowResult, sAdvertencias (los tres por referencia en VB6)
+        var r = acc.GetType().InvokeMember("CrearPolizasDocumento", System.Reflection.BindingFlags.InvokeMethod, null, acc, args);
+        int generadas = 0; try { generadas = Convert.ToInt32(r); } catch { }
+        try { ctx.Log("Importador XML - póliza del documento " + docId + ": CrearPolizasDocumento devolvió " + generadas); } catch { }
+        if (generadas <= 0) notas.Add("El motor nativo no generó póliza para este documento (revisa las definiciones de póliza del módulo).");
+    }
+    catch (Exception ex)
+    {
+        Exception e = ex; while (e.InnerException != null) e = e.InnerException;
+        notas.Add("No se pudo generar la póliza (motor nativo): " + e.Message);
+    }
+}
+
+// Refresco del grid de Comercial. RefreshGrid() no se pinta mientras la ventana propia conserva el foco (MANUAL §6.3) y el importador se
+// queda abierto; por eso se deja pendiente y se ejecuta en cuanto el usuario pasa a Comercial (evento Deactivate de la ventana), que es
+// justo cuando Comercial ya está al frente. También se intenta una vez de inmediato y al cerrar la ventana.
+bool gridPendiente = false;
+bool cerrarAlTerminar = false;   // lo decide CrearDocumentos: si todo salió bien la ventana se cierra sola
+// Refresco del grid de Comercial: XEngine.RefreshGrid(janusGrid) recarga todo y deja la vista al principio, así que se lee la fila actual
+// del grid (Janus GridEX: Row) antes y se restaura después (Row + EnsureVisible). MustRefreshGrid sola no refresca y RefreshGrid() sin
+// parámetros falla con DISP_E_PARAMNOTOPTIONAL. Se registra con ctx.Log (fila antes/después y milisegundos).
+void RefrescarGridNativo()
+{
+    string r = "";
+    try
+    {
+        var g = ctx.erp.Get("janusGrid");
+        if (g == null) { r = "sin grid"; }
+        else
+        {
+            var bf = System.Reflection.BindingFlags.GetProperty;
+            int fila = -1;
+            try { fila = Convert.ToInt32(g.GetType().InvokeMember("Row", bf, null, g, null)); } catch { }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            ctx.erp.Call("RefreshGrid", g);
+            long ms = sw.ElapsedMilliseconds;
+            if (fila > 0)
+            {
+                try
+                {
+                    g.GetType().InvokeMember("Row", System.Reflection.BindingFlags.SetProperty, null, g, new object[] { fila });
+                    g.GetType().InvokeMember("EnsureVisible", System.Reflection.BindingFlags.InvokeMethod, null, g, new object[] { fila, Type.Missing });
+                }
+                catch (Exception ex2) { r = "no se pudo restaurar la fila: " + ex2.Message + "; "; }
+            }
+            r += "ok (fila " + fila + ", " + ms + " ms)";
+        }
+    }
+    catch (Exception ex) { r = "fallo: " + ex.Message; }
+    try { ctx.Log("Importador XML - refresco del grid: RefreshGrid(janusGrid) + restaurar fila -> " + r); } catch { }
+}
+void RefrescarGridComercial()
+{
+    gridPendiente = true;
+    RefrescarGridNativo();
+}
+
+Destino DestinoDeDoc(int docId) { var d = docs.Values.FirstOrDefault(x => x.DocIdVinculado == docId); return d != null ? DestinoDe(d.DestinoModulo) : new Destino(); }
+
+// ── 14. Crear todos los documentos marcados ──────────────────────────────────────────────────────────────
+Action<object> responder = null;
+
+object CrearDocumentos(bool abrirDocs, bool verificarPoliza)
+{
+    EvaluarEstados();
+    var listos = docs.Values.Where(x => x.Crear && (x.EstadoTipo == "ok" || x.EstadoTipo == "warn")).OrderBy(x => x.FechaDoc).ToList();
+    if (listos.Count == 0) throw new Exception("No hay ningún documento marcado y listo para crear.");
+
+    var swTotal = System.Diagnostics.Stopwatch.StartNew();
+    Action<string> tiempo = m => { try { ctx.Log("Importador XML - tiempo: " + m + " (" + swTotal.ElapsedMilliseconds + " ms desde el inicio)"); } catch { } };
+    var creados = new List<Creado>();
+    var errores = new List<string>();
+    var avisosRes = new List<string>();
+    var omitir = new HashSet<long>();
+    int paso = 0, totalPasos = listos.Count;
+    Action<string> progreso = (msg) =>
+    {
+        try { if (responder != null) responder(new { evento = "progreso", i = paso, n = totalPasos, msg = msg }); Application.DoEvents(); } catch { }
+    };
+
+    // a) Proveedores faltantes (una vez por RFC)
+    var faltantes = listos.Where(x => x.BusinessEntityId == 0).GroupBy(x => Norm(x.Rfc)).ToList();
+    if (faltantes.Count > 0)
+    {
+        progreso("Creando " + faltantes.Count + " proveedor(es)...");
+        foreach (var g in faltantes)
+        {
+            var f = g.First();
+            try { CrearProveedorDesdeXml(ProvDe(f), f.DestinoModulo); }
+            catch (Exception ex)
+            {
+                foreach (var x in g) omitir.Add(x.SatId);
+                errores.Add("Proveedor " + f.Rfc + ": " + ex.Message + " (sus documentos no se crearon)");
+            }
+        }
+        CargarCatalogos();
+        foreach (var x in docs.Values.Where(z => z.BusinessEntityId == 0))
+        {
+            Dictionary<string, object> pm;
+            if (provPorRfc.TryGetValue(Norm(x.Rfc), out pm)) { x.BusinessEntityId = I(pm["BusinessEntityID"]); x.BusinessEntityName = S(pm["OfficialName"]); }
+        }
+        CargarHistorial(listos.Select(x => x.BusinessEntityId));
+        ReevaluarTodo(false);
+    }
+
+    // b) Productos, solo si el usuario eligió "crear automáticamente"
+    if (optProductos == "crear")
+    {
+        var nuevos = listos.Where(x => !omitir.Contains(x.SatId)).SelectMany(x => x.Partidas.Select(l => new { d = x, l = l })).Where(z => z.l.ProdId == 0 && (DestinoDe(z.d.DestinoModulo).Tipo == "compra" || DestinoDe(z.d.DestinoModulo).Stock != 0)).GroupBy(z => z.l.Grupo).ToList();
+        if (nuevos.Count > 0)
+        {
+            progreso("Creando " + nuevos.Count + " producto(s)...");
+            foreach (var g in nuevos)
+            {
+                var z = g.First();
+                try { int pid = CrearProductoDesdeXml(z.l, z.d); AsignarProducto(g.Key, pid, "memoria"); }
+                catch (Exception ex) { errores.Add("Producto «" + Cortar(z.l.Desc, 40) + "»: " + ex.Message + " (queda como renglón descriptivo)"); }
+            }
+        }
+    }
+
+    // c) Documentos
+    tiempo("proveedores y productos listos");
+    var aprender = new List<string>();
+    foreach (var d in listos)
+    {
+        paso++;
+        string etiqueta = (string.IsNullOrEmpty(d.Serie) ? "" : d.Serie + "-") + (string.IsNullOrEmpty(d.Folio) ? d.Uuid.Substring(0, Math.Min(8, d.Uuid.Length)) : d.Folio);
+        if (omitir.Contains(d.SatId)) continue;
+        progreso("Creando " + etiqueta + " (" + paso + " de " + totalPasos + ")");
+        var notas = new List<string>();
+        int docId = 0;
+        try
+        {
+            docId = CrearUnDocumento(d, notas);
+            d.DocIdVinculado = docId; d.Crear = false;
+            creados.Add(new Creado { DocId = docId, Modulo = d.DestinoModulo, Folio = etiqueta, Proveedor = d.BusinessEntityName, Total = d.Total });
+            tiempo("creado " + etiqueta);
+            foreach (var n in notas) avisosRes.Add(etiqueta + ": " + n);
+            // aprende producto y tipo de gasto usados (el impuesto NO se aprende: lo rige el XML)
+            foreach (var l in d.Partidas)
+            {
+                if (l.ProdId > 0 && l.ProdOrigen != "comercial") aprender.Add(SqlMapaProd(l.Rfc, l.ClaveNorm, l.DescNorm, l.ProdId));
+                if (l.ExpId > 0 && l.ExpOrigen != "comercial") aprender.Add(SqlMapaGasto(l.Rfc, l.ClaveNorm, l.DescNorm, l.ExpId, l.ClaveProdServ));
+            }
+        }
+        catch (Exception ex)
+        {
+            errores.Add(etiqueta + ": " + ex.Message + (docId > 0 ? " — quedó el documento incompleto #" + docId + ", revísalo o elimínalo en Comercial." : ""));
+        }
+    }
+    tiempo("documentos creados");
+    if (aprender.Count > 0) { try { ctx.NonQuery(string.Join(";\n", aprender.Distinct())); } catch { } }
+    tiempo("memoria de producto/gasto guardada");
+
+    var sinPoliza = new List<int>();
+    if (verificarPoliza && creados.Count > 0)
+    {
+        try
+        {
+            var idsC = creados.Select(c => c.DocId).ToList();
+            var con = ctx.Query("SELECT DISTINCT DocumentID FROM accPoliza WHERE DeletedOn IS NULL AND DocumentID IN (" + string.Join(",", idsC) + ")").Select(r => I(r["DocumentID"])).ToList();
+            sinPoliza = idsC.Where(x => !con.Contains(x) && DestinoDeDoc(x).Poliza != 0).ToList();
+        }
+        catch { }
+    }
+    // Si todo salió bien la ventana se cierra sola: no se recargan catálogos ni se manda estado a la interfaz, y el grid de Comercial se
+    // refresca UNA vez al cerrar (FormClosed). Solo si hubo errores o falta póliza se recarga y se muestra el Resultado.
+    cerrarAlTerminar = errores.Count == 0 && sinPoliza.Count == 0;
+    if (!cerrarAlTerminar) { CargarCatalogos(); RefrescarGridComercial(); tiempo("catálogos recargados y grid refrescado"); }
+    if (abrirDocs)
+        foreach (var c in creados)
+        {
+            try { ctx.erp.AbrirDocumento(c.DocId, c.Modulo); } catch { }
+        }
+    try { foreach (var av in avisosRes) ctx.Log("Importador XML - aviso: " + av); } catch { }
+    return new { creados = creados.Select(c => new { docId = c.DocId, modulo = c.Modulo, folio = c.Folio, proveedor = c.Proveedor, total = c.Total }).ToArray(), errores = errores, avisos = avisosRes, sinPoliza = sinPoliza };
+}
+
+// ── 15. Ventana y mensajes con la interfaz ───────────────────────────────────────────────────────────────
+var frm = new Form
+{
+    Text = "BrosLMV · Documentos desde XML",
+    Width = 1360, Height = 840,
+    StartPosition = FormStartPosition.CenterScreen,
+    MinimumSize = new Size(1100, 700),
+    BackColor = Color.FromArgb(15, 23, 42)
+};
+var wv = new WebView2 { Dock = DockStyle.Fill };
+frm.Controls.Add(wv);
+frm.Deactivate += (s0, e0) =>
+{
+    if (!gridPendiente) return;
+    gridPendiente = false;
+    var tmr = new System.Windows.Forms.Timer { Interval = 300 };   // deja que Comercial tome el foco antes de refrescar
+    tmr.Tick += (s1, e1) => { tmr.Stop(); tmr.Dispose(); RefrescarGridNativo(); };
+    tmr.Start();
+};
+responder = (obj) => { try { wv.CoreWebView2.PostWebMessageAsJson(ser.Serialize(obj)); } catch { } };
+
+Dictionary<string, object> Payload(Dictionary<string, object> msg)
+{
+    return msg.ContainsKey("payload") ? msg["payload"] as Dictionary<string, object> : new Dictionary<string, object>();
+}
+
+object Despachar(string accion, Dictionary<string, object> p)
+{
+    switch (accion)
+    {
+        case "opciones":
+            if (p.ContainsKey("crearProv")) optCrearProv = B(p["crearProv"]);
+            if (p.ContainsKey("productos")) { string v = S(p["productos"]); if (v == "sin" || v == "crear" || v == "exigir") optProductos = v; }
+            if (p.ContainsKey("gastoDefecto")) { optGastoDefecto = I(p["gastoDefecto"]); ReevaluarTodo(false); }
+            break;
+
+        case "actualizarDoc":
+        {
+            DocXml d;
+            if (docs.TryGetValue(L(p["satId"]), out d))
+            {
+                if (p.ContainsKey("crear")) d.Crear = B(p["crear"]);
+                if (p.ContainsKey("destinoModulo") && d.Tipo.StartsWith("I")) d.DestinoModulo = I(p["destinoModulo"]);
+                if (p.ContainsKey("depotId")) d.DepotId = I(p["depotId"]);
+                if (p.ContainsKey("paymentTermId")) d.PaymentTermId = I(p["paymentTermId"]);
+                if (p.ContainsKey("formaPago")) d.FormaPago = S(p["formaPago"]);
+                if (p.ContainsKey("metodoPago")) d.MetodoPago = S(p["metodoPago"]);
+                if (p.ContainsKey("usoCfdi")) d.UsoCfdi = S(p["usoCfdi"]);
+            }
+            break;
+        }
+
+        case "aplicarMasivo":
+        {
+            int dest = p.ContainsKey("destinoModulo") ? I(p["destinoModulo"]) : -1;
+            int dep = p.ContainsKey("depotId") ? I(p["depotId"]) : -1;
+            int term = p.ContainsKey("paymentTermId") ? I(p["paymentTermId"]) : -1;
+            foreach (var d in docs.Values.Where(x => x.Crear))
+            {
+                if (dest > 0 && d.Tipo.StartsWith("I")) d.DestinoModulo = dest;
+                if (dep > 0) d.DepotId = dep;
+                if (term > 0) d.PaymentTermId = term;
+            }
+            break;
+        }
+
+        case "marcarTodos":
+        {
+            bool val = B(p["marcar"]);
+            string soloRfc = p.ContainsKey("rfc") ? S(p["rfc"]) : "";
+            foreach (var d in docs.Values)
+            {
+                if (soloRfc.Length > 0 && Norm(d.Rfc) != Norm(soloRfc)) continue;
+                d.Crear = val && d.EstadoTipo != "blocked";
+            }
+            break;
+        }
+
+        case "asociarProveedor":
+        {
+            string rfc = Norm(S(p["rfc"]));
+            int beId = I(p["businessEntityId"]);
+            Dictionary<string, object> pm;
+            if (!provPorId.TryGetValue(beId, out pm)) throw new Exception("Proveedor no encontrado en el catálogo.");
+            int term = I(pm["PaymentTermID"]) > 0 ? I(pm["PaymentTermID"]) : defaultTerm;
+            foreach (var d in docs.Values.Where(x => Norm(x.Rfc) == rfc))
+            {
+                d.BusinessEntityId = beId; d.BusinessEntityName = S(pm["OfficialName"]); d.PaymentTermId = term;
+            }
+            CargarHistorial(new[] { beId });
+            ReevaluarTodo(false);
+            break;
+        }
+
+        case "provDatos":
+        {
+            // Edición de los datos con que se dará de alta un proveedor faltante
+            var d0 = docs.Values.FirstOrDefault(x => Norm(x.Rfc) == Norm(S(p["rfc"])));
+            if (d0 == null) throw new Exception("RFC no encontrado en el lote.");
+            var pn = ProvDe(d0);
+            if (p.ContainsKey("razon")) pn.Razon = Cortar(S(p["razon"]), 255);
+            if (p.ContainsKey("nombreCom")) pn.NombreCom = Cortar(S(p["nombreCom"]), 255);
+            if (p.ContainsKey("persona")) pn.Persona = I(p["persona"]);
+            if (p.ContainsKey("regimen")) pn.Regimen = S(p["regimen"]);
+            if (p.ContainsKey("cp")) { pn.Cp = S(p["cp"]).Trim(); pn.Colonia = ""; }
+            if (p.ContainsKey("colonia")) pn.Colonia = S(p["colonia"]);
+            if (p.ContainsKey("calle")) pn.Calle = S(p["calle"]);
+            if (p.ContainsKey("numExt")) pn.NumExt = S(p["numExt"]);
+            if (p.ContainsKey("numInt")) pn.NumInt = S(p["numInt"]);
+            if (p.ContainsKey("tel")) pn.Tel = S(p["tel"]);
+            if (p.ContainsKey("email")) pn.Email = S(p["email"]);
+            if (p.ContainsKey("plazoId")) pn.PlazoId = I(p["plazoId"]);
+            break;
+        }
+
+        case "crearProveedor":
+        {
+            string rfc = Norm(S(p["rfc"]));
+            var d0 = docs.Values.FirstOrDefault(x => Norm(x.Rfc) == rfc);
+            if (d0 == null) throw new Exception("RFC no encontrado en el lote.");
+            var pn = ProvDe(d0);
+            int id = CrearProveedorDesdeXml(pn, d0.DestinoModulo);
+            CargarCatalogos();
+            Dictionary<string, object> pm = provPorId.ContainsKey(id) ? provPorId[id] : null;
+            foreach (var d in docs.Values.Where(x => Norm(x.Rfc) == rfc))
+            {
+                d.BusinessEntityId = id; d.BusinessEntityName = pm != null ? S(pm["OfficialName"]) : pn.Razon; if (pn.PlazoId > 0) d.PaymentTermId = pn.PlazoId;
+            }
+            ReevaluarTodo(false);
+            break;
+        }
+
+        case "asociarProducto":
+            AsignarProducto(S(p["grupo"]), I(p["productId"]), "manual");
+            break;
+
+        case "quitarProducto":
+            AsignarProducto(S(p["grupo"]), 0, "");
+            break;
+
+        case "asociarGasto":
+            AsignarGasto(S(p["grupo"]), I(p["expenseId"]), "manual");
+            break;
+
+        case "quitarGasto":
+            AsignarGasto(S(p["grupo"]), 0, "");
+            Sugerir(docs[todasLasLineas.First(l => l.Grupo == S(p["grupo"])).SatId], todasLasLineas.First(l => l.Grupo == S(p["grupo"])));
+            break;
+
+        case "crearProducto":
+        {
+            string grupo = S(p["grupo"]);
+            var l = todasLasLineas.FirstOrDefault(x => x.Grupo == grupo);
+            if (l == null) throw new Exception("Concepto no encontrado.");
+            if (l.TaxTypeId == 0) throw new Exception("Primero resuelve el impuesto de este concepto (pestaña Impuestos).");
+            int pid = CrearProductoDesdeXml(l, docs[l.SatId]);
+            CargarCatalogos();
+            AsignarProducto(grupo, pid, "manual");
+            break;
+        }
+
+        case "crearProductosTodos":
+        {
+            int n = 0; var fallos = new List<string>();
+            foreach (var g in todasLasLineas.Where(x => x.ProdId == 0 && x.TaxTypeId > 0).GroupBy(x => x.Grupo).ToList())
+            {
+                var l = g.First();
+                try { int pid = CrearProductoDesdeXml(l, docs[l.SatId]); AsignarProducto(g.Key, pid, "manual"); n++; }
+                catch (Exception ex) { fallos.Add(Cortar(l.Desc, 40) + ": " + ex.Message); }
+            }
+            CargarCatalogos();
+            if (fallos.Count > 0) throw new Exception("Se crearon " + n + " producto(s). Fallaron: " + string.Join(" | ", fallos));
+            break;
+        }
+
+        case "impuestoPartida":
+        {
+            var it = todasLasLineas.FirstOrDefault(x => x.SatId == L(p["satId"]) && x.ItemId == L(p["itemId"]));
+            if (it != null) { it.TaxTypeId = I(p["taxTypeId"]); it.TaxTypeManual = it.TaxTypeId > 0; if (it.TaxTypeId == 0) ResolverImpuesto(it); }
+            break;
+        }
+
+        case "impuestoDocumento":
+        {
+            int tid = I(p["taxTypeId"]);
+            foreach (var it in todasLasLineas.Where(x => x.SatId == L(p["satId"]))) { it.TaxTypeId = tid; it.TaxTypeManual = tid > 0; if (tid == 0) ResolverImpuesto(it); }
+            break;
+        }
+
+        case "impuestoComposicion":
+        {
+            // Aplica un tipo de impuesto existente a TODAS las partidas del lote con esa misma composición del XML
+            string comp = S(p["comp"]); int tid = I(p["taxTypeId"]);
+            foreach (var it in todasLasLineas.Where(x => x.CompTxt == comp)) { it.TaxTypeId = tid; it.TaxTypeManual = tid > 0; if (tid == 0) { it.TaxTypeManual = false; ResolverImpuesto(it); } }
+            break;
+        }
+
+        case "refrescarCatalogos":
+            CargarCatalogos();
+            CargarHistorial(docs.Values.Select(x => x.BusinessEntityId));
+            foreach (var d in docs.Values)
+            {
+                Dictionary<string, object> pm;
+                if (d.BusinessEntityId == 0 && provPorRfc.TryGetValue(Norm(d.Rfc), out pm)) { d.BusinessEntityId = I(pm["BusinessEntityID"]); d.BusinessEntityName = S(pm["OfficialName"]); }
+            }
+            ReevaluarTodo(true);
+            break;
+    }
+    return null;
+}
+
+frm.Load += async (s, e) =>
+{
+    try
+    {
+        string perfil = Path.Combine(Path.GetTempPath(), "BrosLMV_XmlImport_" + Guid.NewGuid().ToString("N"));
+        frm.FormClosed += (s3, e3) =>
+        {
+            // Borrar el perfil de WebView2 puede tardar (sus procesos aún lo tienen abierto): se hace en segundo plano para no congelar Comercial al cerrar
+            System.Threading.ThreadPool.QueueUserWorkItem(_ => { System.Threading.Thread.Sleep(4000); try { if (Directory.Exists(perfil)) Directory.Delete(perfil, true); } catch { } });
+            var swC = System.Diagnostics.Stopwatch.StartNew();
+            RefrescarGridNativo();
+            try { ctx.Log("Importador XML - tiempo: refresco del grid al cerrar " + swC.ElapsedMilliseconds + " ms"); } catch { }
+        };
+        var env = await CoreWebView2Environment.CreateAsync(null, perfil, new CoreWebView2EnvironmentOptions());
+        await wv.EnsureCoreWebView2Async(env);
+        wv.CoreWebView2.Settings.AreDevToolsEnabled = false;
+        wv.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+
+        wv.CoreWebView2.WebMessageReceived += (s2, e2) =>
+        {
+            Dictionary<string, object> msg;
+            try { msg = ser.Deserialize<Dictionary<string, object>>(e2.WebMessageAsJson); }
+            catch (Exception ex) { ctx.Log("Error deserializando mensaje: " + ex.Message); return; }
+
+            string accion = S(msg.ContainsKey("action") ? msg["action"] : "");
+            int reqId = I(msg.ContainsKey("reqId") ? msg["reqId"] : 0);
+            try
+            {
+                if (accion == "cargarTodo")
+                {
+                    responder(new { reqId = reqId, ok = true, cat = GenerarCatalogos(), data = GenerarEstado() });
+                }
+                else if (accion == "crearDocumentos")
+                {
+                    var p = Payload(msg);
+                    object res = CrearDocumentos(B(p["abrirDocs"]), B(p["verificarPoliza"]));
+                    if (cerrarAlTerminar)
+                    {
+                        responder(new { reqId = reqId, ok = true, resultado = res, cerrar = true });
+                        frm.BeginInvoke(new Action(() => frm.Close()));
+                    }
+                    else responder(new { reqId = reqId, ok = true, resultado = res, cat = GenerarCatalogos(), data = GenerarEstado() });
+                }
+                else if (accion == "abrirDocumento")
+                {
+                    var p = Payload(msg);
+                    try { ctx.erp.AbrirDocumento(I(p["docId"]), I(p["modulo"])); } catch { }
+                    responder(new { reqId = reqId, ok = true });
+                }
+                else if (accion == "cerrar")
+                {
+                    frm.Close();
+                }
+                else
+                {
+                    Despachar(accion, Payload(msg));
+                    bool conCat = accion == "crearProveedor" || accion == "crearProducto" || accion == "crearProductosTodos" || accion == "refrescarCatalogos";
+                    if (conCat) responder(new { reqId = reqId, ok = true, cat = GenerarCatalogos(), data = GenerarEstado() });
+                    else responder(new { reqId = reqId, ok = true, data = GenerarEstado() });
+                }
+            }
+            catch (Exception ex)
+            {
+                responder(new { reqId = reqId, ok = false, error = ex.Message });
+            }
+        };
+
+        wv.CoreWebView2.NavigateToString(GENERAR_HTML_INTERFAZ());
+    }
+    catch (Exception ex)
+    {
+        ctx.Msg("Error iniciando la interfaz WebView2: " + ex.Message, "Error");
+        frm.Close();
+    }
+};
+
+string GENERAR_HTML_INTERFAZ()
+{
+    return @"<!DOCTYPE html>
+<html lang='es'>
+<head>
+<meta charset='utf-8'>
+<title>Documentos desde XML</title>
+<style>
+  :root { --bg:#f1f5f9; --card:#fff; --line:#e2e8f0; --line2:#cbd5e1; --txt:#0f172a; --mut:#64748b; --pri:#2563eb; --ok:#15803d; --okbg:#dcfce7; --wr:#b45309; --wrbg:#fef3c7; --bad:#b91c1c; --badbg:#fee2e2; --navy:#0f172a; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,'Segoe UI',Roboto,Arial,sans-serif; background:var(--bg); color:var(--txt); font-size:13px; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+  .header { background:linear-gradient(135deg,#0f172a,#1e293b); color:#fff; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .header h1 { font-size:16px; font-weight:700; }
+  .header p { font-size:11.5px; color:#94a3b8; margin-top:2px; }
+  .badges { display:flex; gap:8px; }
+  .badge { padding:5px 10px; border-radius:7px; font-size:12px; font-weight:600; }
+  .badge.ok { background:rgba(16,185,129,.2); color:#34d399; } .badge.wr { background:rgba(245,158,11,.2); color:#fbbf24; } .badge.bad { background:rgba(239,68,68,.2); color:#f87171; }
+  .btn-main { background:#10b981; color:#fff; border:0; padding:10px 20px; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; white-space:nowrap; }
+  .btn-main:hover { background:#059669; } .btn-main:disabled { background:#475569; cursor:not-allowed; opacity:.7; }
+  .tabs { display:flex; gap:2px; background:#fff; border-bottom:1px solid var(--line); padding:0 16px; }
+  .tab { padding:11px 16px; font-size:13px; font-weight:600; color:var(--mut); border:0; background:none; border-bottom:3px solid transparent; cursor:pointer; }
+  .tab:hover { color:var(--txt); } .tab.on { color:var(--pri); border-bottom-color:var(--pri); }
+  .tab .n { display:inline-block; min-width:18px; padding:1px 6px; margin-left:6px; border-radius:99px; font-size:10.5px; background:var(--wrbg); color:var(--wr); }
+  .tab .n.z { background:var(--okbg); color:var(--ok); } .tab .n.b { background:var(--badbg); color:var(--bad); }
+  .pane { display:none; flex:1; flex-direction:column; min-height:0; background:#fff; }
+  .pane.on { display:flex; }
+  .bar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 20px; border-bottom:1px solid var(--line); background:#f8fafc; }
+  .bar label { font-size:11px; font-weight:700; color:var(--mut); text-transform:uppercase; letter-spacing:.03em; }
+  .bar .grp { display:flex; align-items:center; gap:6px; }
+  .sep { width:1px; height:24px; background:var(--line2); }
+  select, input[type=text] { padding:5px 8px; border:1px solid var(--line2); border-radius:6px; font-size:12px; background:#fff; color:var(--txt); font-family:inherit; }
+  select:focus, input:focus { outline:2px solid #bfdbfe; border-color:var(--pri); }
+  .btn { padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid var(--line2); background:#fff; color:#1e293b; white-space:nowrap; }
+  .btn:hover { background:#f1f5f9; } .btn.pri { background:var(--pri); color:#fff; border-color:var(--pri); } .btn.pri:hover { background:#1d4ed8; }
+  .btn.sm { padding:3px 8px; font-size:11px; } .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .scroll { flex:1; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead th { position:sticky; top:0; z-index:2; background:#f8fafc; color:#475569; text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; padding:8px 10px; border-bottom:2px solid var(--line); white-space:nowrap; }
+  tbody td { padding:6px 10px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+  tbody tr:hover { background:#f8fafc; }
+  tr.r-blocked td { background:#fef2f2; } tr.r-pending td { background:#fffdf5; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .p-ok { background:var(--okbg); color:var(--ok); } .p-warn { background:#e0f2fe; color:#0369a1; } .p-pending { background:var(--wrbg); color:var(--wr); } .p-blocked { background:var(--badbg); color:var(--bad); }
+  .p-new { background:#ede9fe; color:#6d28d9; } .p-mem { background:#e0f2fe; color:#0369a1; } .p-sug { background:#fef9c3; color:#854d0e; }
+  .mut { color:var(--mut); } .sm { font-size:11px; } .r { text-align:right; } .b { font-weight:600; } .mono { font-family:Consolas,monospace; }
+  .avisos { font-size:10.5px; color:var(--mut); line-height:1.35; margin-top:2px; max-width:340px; }
+  .avisos.red { color:var(--bad); }
+  .note { padding:10px 20px; font-size:12px; color:#475569; background:#f8fafc; border-bottom:1px solid var(--line); }
+  .cell-in { width:100%; min-width:200px; }
+  table.compact tbody td { padding:3px 8px; white-space:nowrap; }
+  table.compact select, table.compact input[type=text] { padding:2px 5px; font-size:11.5px; }
+  .trunc { max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tag { display:inline-block; padding:1px 6px; margin-left:4px; border-radius:5px; font-size:10.5px; font-weight:600; background:#eef2ff; color:#4338ca; white-space:nowrap; }
+  .tag.w { background:#fef3c7; color:#92400e; } .tag.b { background:#fee2e2; color:#b91c1c; }
+  .bar.tight { padding:6px 16px; gap:8px; } .bar.tight label { font-size:10px; }
+  .footer { background:#fff; border-top:1px solid var(--line); padding:8px 20px; display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--mut); }
+  .footer label { margin-left:14px; color:var(--txt); cursor:pointer; }
+  .box { margin:16px 20px; padding:14px 16px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .box h3 { font-size:13px; margin-bottom:8px; }
+  .box.bad { border-color:#fecaca; background:#fef2f2; } .box.ok { border-color:#bbf7d0; background:#f0fdf4; } .box.wr { border-color:#fde68a; background:#fffbeb; }
+  ul.l { margin-left:18px; line-height:1.6; }
+  .modal { position:fixed; inset:0; background:rgba(15,23,42,.6); display:none; align-items:center; justify-content:center; z-index:100; }
+  .modal.on { display:flex; }
+  .card { background:#fff; border-radius:10px; width:1100px; max-width:96vw; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; }
+  .card .hd { padding:12px 18px; background:var(--navy); color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .card .bd { padding:16px 18px; overflow:auto; flex:1; background:#f1f5f9; }
+  .card .ft { padding:10px 18px; border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; background:#fff; }
+  .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; font-size:12px; }
+  #toast { position:fixed; bottom:20px; right:20px; padding:11px 18px; border-radius:8px; background:#1e293b; color:#fff; display:none; z-index:300; max-width:520px; }
+  #prog { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; align-items:center; justify-content:center; z-index:250; }
+  #prog .in { background:#fff; border-radius:10px; padding:20px 26px; width:440px; }
+  .barra { height:8px; border-radius:99px; background:#e2e8f0; overflow:hidden; margin-top:10px; } .barra i { display:block; height:100%; background:#10b981; width:0; transition:width .15s; }
+</style>
+</head>
+<body>
+
+<div class='header'>
+  <div>
+    <h1>Documentos desde XML</h1>
+    <p id='sub'>Cargando…</p>
+  </div>
+  <div style='display:flex;align-items:center;gap:14px;'>
+    <div class='badges'>
+      <div class='badge ok' id='bOk'></div><div class='badge wr' id='bWr'></div><div class='badge bad' id='bBad'></div>
+    </div>
+    <button class='btn-main' id='btnCrear' onclick='crearTodo()'>Crear documentos</button>
+  </div>
+</div>
+
+<div class='tabs'>
+  <button class='tab on' data-t='docs' onclick=""goTab('docs')"">Documentos <span class='n' id='nDocs'></span></button>
+  <button class='tab' data-t='prov' onclick=""goTab('prov')"">Proveedores <span class='n' id='nProv'></span></button>
+  <button class='tab' data-t='part' onclick=""goTab('part')"">Partidas <span class='n' id='nPart'></span></button>
+  <button class='tab' data-t='imp' onclick=""goTab('imp')"">Impuestos <span class='n' id='nImp'></span></button>
+  <button class='tab' data-t='res' onclick=""goTab('res')"">Resultado <span class='n z' id='nRes'></span></button>
+</div>
+
+<!-- DOCUMENTOS -->
+<div class='pane on' id='pane-docs'>
+  <div class='bar tight'>
+    <div class='grp'><label>Proveedor faltante</label>
+      <select id='oProv' onchange='setOpc()'><option value='1'>Crearlo</option><option value='0'>No crear</option></select></div>
+    <div class='grp'><label>Producto faltante</label>
+      <select id='oProd' onchange='setOpc()'><option value='sin'>Renglón sin producto</option><option value='crear'>Crear el producto</option><option value='exigir'>Exigir producto</option></select></div>
+    <div class='grp'><label>Gasto por omisión</label><select id='oGasto' onchange='setOpc()' style='max-width:200px'></select></div>
+    <button class='btn sm' onclick='refrescar()' title='Vuelve a leer impuestos, proveedores, productos y tipos de gasto de Comercial'>Recargar catálogos</button>
+    <div class='sep'></div>
+    <button class='btn sm' onclick='marcar(true)'>Marcar todos</button>
+    <button class='btn sm' onclick='marcar(false)'>Ninguno</button>
+    <select id='fEst' onchange='render()'><option value=''>Todos</option><option value='ok'>Listos</option><option value='warn'>Con avisos</option><option value='pending'>Pendientes</option><option value='blocked'>Bloqueados</option></select>
+    <input type='text' id='fTxt' placeholder='Buscar RFC, folio o razón…' oninput='render()' style='width:180px;'>
+    <div class='sep'></div>
+    <div class='grp'><label>Aplicar a marcados</label>
+      <select id='bDest' style='max-width:150px'></select><select id='bAlm' style='max-width:110px'></select><select id='bPlz' style='max-width:110px'></select>
+      <button class='btn sm' onclick='aplicarLote()'>Aplicar</button></div>
+  </div>
+  <div class='scroll'>
+    <table class='compact'><thead><tr>
+      <th style='width:30px'><input type='checkbox' id='chkAll' onchange='marcar(this.checked)'></th>
+      <th>Fecha</th><th>Folio</th><th>Emisor</th><th class='r'>Total</th><th>Destino</th><th>Proveedor en Comercial</th><th>Almacén</th><th>Plazo</th><th>Estado</th><th></th>
+    </tr></thead><tbody id='tbDocs'></tbody></table>
+  </div>
+  <div class='footer'>
+    <span>Solo los CFDI de <b>Ingreso</b> se convierten en compra o gasto. El impuesto sale del XML y se empareja con los tipos de impuesto de Comercial.</span>
+    <span><label><input type='checkbox' id='chkAbrir'> Abrir los documentos al crearse</label><label><input type='checkbox' id='chkPol' checked> Comprobar póliza</label></span>
+  </div>
+</div>
+
+<!-- PROVEEDORES -->
+<div class='pane' id='pane-prov'>
+  <div class='note'>Si no haces nada, los proveedores que no existan se <b>dan de alta solos</b> al crear los documentos, con el régimen fiscal y el C.P. del XML. Solo revisa los renglones en amarillo (les falta régimen o C.P.). <span id='provResumen'></span></div>
+  <div class='scroll'>
+    <table><thead><tr><th>RFC</th><th>Razón social</th><th class='r'>Docs</th><th>Persona</th><th>Régimen fiscal</th><th>C.P.</th><th>Estado · municipio</th><th>Colonia</th><th>Vincular a existente</th><th></th></tr></thead><tbody id='tbProv'></tbody></table>
+  </div>
+</div>
+
+<!-- PARTIDAS -->
+<div class='pane' id='pane-part'>
+  <div class='bar'>
+    <input type='text' id='pTxt' placeholder='Filtrar concepto, clave o RFC…' oninput='renderPart()' style='width:260px;'>
+    <label style='display:flex;align-items:center;gap:5px;text-transform:none;font-size:12px;color:var(--txt);'><input type='checkbox' id='pSolo' onchange='renderPart()'> Solo sin producto</label>
+    <div class='sep'></div>
+    <button class='btn' onclick='crearProductosTodos()' title='Da de alta como producto todos los conceptos que no tienen uno'>Crear todos los productos faltantes</button>
+    <span class='mut sm'>El producto y el tipo de gasto se recuerdan por proveedor + clave/descripción. El impuesto NO depende de ellos.</span>
+  </div>
+  <div class='scroll'>
+    <table class='compact'><thead><tr><th>Proveedor</th><th>Clave</th><th>Concepto en el XML</th><th class='r'>Cant.</th><th>Impuesto del XML</th><th>Producto</th><th>Tipo de gasto</th><th></th></tr></thead><tbody id='tbPart'></tbody></table>
+  </div>
+</div>
+
+<!-- IMPUESTOS -->
+<div class='pane' id='pane-imp'>
+  <div class='note'>El impuesto lo rige el <b>documento</b> (lo que trae el XML), emparejado con los tipos de impuesto que ya existen en Comercial. Si una composición no coincide con ninguno, esos documentos <b>no se crean</b>: da de alta el tipo en Comercial y pulsa <b>Recargar catálogos</b>, o elige uno existente aquí.</div>
+  <div class='bar'><button class='btn pri' onclick='refrescar()'>Recargar catálogos</button></div>
+  <div class='scroll'>
+    <table><thead><tr><th>Composición fiscal del XML</th><th class='r'>Partidas</th><th class='r'>Documentos</th><th>Tipo de impuesto en Comercial</th><th>Estado</th></tr></thead><tbody id='tbImp'></tbody></table>
+  </div>
+</div>
+
+<!-- RESULTADO -->
+<div class='pane' id='pane-res'><div class='scroll' id='resBody'><div class='note'>Aún no se ha creado nada en esta sesión.</div></div></div>
+
+<!-- DETALLE -->
+<div class='modal' id='mDet'><div class='card'>
+  <div class='hd'><b id='dTitulo'>CFDI</b><button class='btn sm' onclick='cerrarDet()'>Cerrar</button></div>
+  <div class='bd' id='dBody'></div>
+  <div class='ft'><span class='mono mut sm' id='dArch'></span><button class='btn' onclick='cerrarDet()'>Cerrar</button></div>
+</div></div>
+
+<div id='prog'><div class='in'><b id='progMsg'>Trabajando…</b><div class='barra'><i id='progBar'></i></div></div></div>
+<div id='toast'></div>
+<datalist id='dlProv'></datalist><datalist id='dlProd'></datalist><datalist id='dlGasto'></datalist>
+
+<script>
+let DATA = null, CAT = null, TAB = 'docs', RES = null, DET = null, rid = 0;
+const pend = {};
+const LBL = { prov: new Map(), prod: new Map(), gasto: new Map() };
+
+function call(action, payload) {
+  return new Promise((resolve, reject) => {
+    const id = ++rid; pend[id] = { resolve, reject };
+    window.chrome.webview.postMessage({ action: action, reqId: id, payload: payload || {} });
+  });
+}
+window.chrome.webview.addEventListener('message', e => {
+  const r = e.data;
+  if (r && r.evento === 'progreso') { showProg(r); return; }
+  if (r && r.reqId && pend[r.reqId]) {
+    const p = pend[r.reqId]; delete pend[r.reqId];
+    if (r.ok) { if (r.cat) { CAT = r.cat; buildLists(); } if (r.data) DATA = r.data; p.resolve(r); }
+    else p.reject(new Error(r.error || 'Error'));
+  }
+});
+async function act(action, payload, okMsg) {
+  try { const r = await call(action, payload); render(); if (okMsg) toast(okMsg, 'ok'); return r; }
+  catch (e) { toast(e.message, 'bad'); try { await call('estado'); } catch (x) {} render(); return null; }
+}
+function esc(s) { return s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;'); }
+function money(n) { return Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function toast(m, t) { const el = document.getElementById('toast'); el.textContent = m; el.style.display = 'block'; el.style.background = t === 'bad' ? '#dc2626' : t === 'ok' ? '#16a34a' : '#1e293b'; clearTimeout(el._t); el._t = setTimeout(() => { el.style.display = 'none'; }, t === 'bad' ? 7000 : 3200); }
+function showProg(r) {
+  document.getElementById('prog').style.display = 'flex';
+  document.getElementById('progMsg').textContent = r.msg || 'Trabajando…';
+  document.getElementById('progBar').style.width = (r.n > 0 ? Math.round(100 * r.i / r.n) : 5) + '%';
+}
+function goTab(t) {
+  TAB = t;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + t));
+  render();
+}
+
+// listas de búsqueda (una sola vez por carga de catálogos)
+function buildLists() {
+  LBL.prov = new Map(); LBL.prod = new Map(); LBL.gasto = new Map();
+  let h = '';
+  CAT.suppliers.forEach(s => { const l = s.nombre + ' · ' + s.rfc + ' [#' + s.id + ']'; LBL.prov.set(l, s.id); h += `<option value='${esc(l)}'>`; });
+  document.getElementById('dlProv').innerHTML = h;
+  h = '';
+  CAT.products.forEach(p => { const l = (p.key ? p.key + ' · ' : '') + p.nombre + ' [#' + p.id + ']'; LBL.prod.set(l, p.id); h += `<option value='${esc(l)}'>`; });
+  document.getElementById('dlProd').innerHTML = h;
+  h = '';
+  CAT.expenses.forEach(g => { const l = g.nombre + ' [#' + g.id + ']'; LBL.gasto.set(l, g.id); h += `<option value='${esc(l)}'>`; });
+  document.getElementById('dlGasto').innerHTML = h;
+  document.getElementById('bDest').innerHTML = CAT.destinos.map(x => `<option value='${x.id}'>${esc(x.nombre + (x.validado ? '' : '  (sin validar)'))}</option>`).join('');
+  const bA = document.getElementById('bAlm'); bA.innerHTML = CAT.depots.map(d => `<option value='${d.id}'>${esc(d.nombre)}</option>`).join('');
+  const bP = document.getElementById('bPlz'); bP.innerHTML = CAT.terms.map(t => `<option value='${t.id}'>${esc(t.nombre)}</option>`).join('');
+}
+function taxLabel(t) {
+  const p = [];
+  if (t.iva > 0) p.push('IVA ' + +(t.iva * 100).toFixed(4) + '%');
+  if (t.ieps > 0) p.push('IEPS ' + +(t.ieps * 100).toFixed(4) + '%');
+  if (t.retIva > 0) p.push('Ret.IVA ' + +(t.retIva * 100).toFixed(4) + '%');
+  if (t.retIsr > 0) p.push('Ret.ISR ' + +(t.retIsr * 100).toFixed(4) + '%');
+  return t.nombre + (p.length ? '  [' + p.join(' · ') + ']' : '');
+}
+function taxOpts(sel, conNinguno) {
+  return (conNinguno ? `<option value='0'>— ninguno —</option>` : '') + CAT.taxes.map(t => `<option value='${t.id}' ${t.id === sel ? 'selected' : ''}>${esc(taxLabel(t))}</option>`).join('');
+}
+function taxName(id) { const t = CAT.taxes.find(x => x.id === id); return t ? t.nombre : ''; }
+
+// ── Render general ──
+function render() {
+  if (!DATA || !CAT) return;
+  const r = DATA.resumen, o = DATA.opciones;
+  document.getElementById('sub').textContent = `${r.total} comprobante(s) · con solo pulsar «Crear documentos» se crean los marcados`;
+  document.getElementById('bOk').textContent = 'Listos ' + r.listos;
+  document.getElementById('bWr').textContent = 'Pendientes ' + r.pendientes;
+  document.getElementById('bBad').textContent = 'Bloqueados ' + r.bloqueados;
+  const bc = document.getElementById('btnCrear');
+  if (!bc.dataset.busy) { bc.textContent = r.aCrear > 0 ? `Crear ${r.aCrear} documento(s)` : 'Nada por crear'; bc.disabled = r.aCrear === 0; }
+  document.getElementById('nDocs').textContent = r.total;
+  const rf = DATA.rfcs.filter(x => x.businessEntityId === 0).length;
+  const nP = document.getElementById('nProv'); nP.textContent = rf; nP.className = 'n' + (rf === 0 ? ' z' : '');
+  const sp = DATA.grupos.filter(g => g.prodId === 0).length;
+  const nA = document.getElementById('nPart'); nA.textContent = sp; nA.className = 'n' + (sp === 0 ? ' z' : '');
+  const fi = DATA.comps.filter(c => c.taxTypeId === 0).length;
+  const nI = document.getElementById('nImp'); nI.textContent = fi; nI.className = 'n ' + (fi === 0 ? 'z' : 'b');
+  const nR = document.getElementById('nRes'); nR.textContent = RES ? RES.creados.length : 0;
+  // opciones
+  document.getElementById('oProv').value = o.crearProv ? '1' : '0';
+  document.getElementById('oProd').value = o.productos;
+  const og = document.getElementById('oGasto');
+  if (og.dataset.n !== String(CAT.expenses.length)) { og.innerHTML = `<option value='0'>— ninguno —</option>` + CAT.expenses.map(g => `<option value='${g.id}'>${esc(g.nombre)}</option>`).join(''); og.dataset.n = CAT.expenses.length; }
+  og.value = String(o.gastoDefecto);
+  if (TAB === 'docs') renderDocs(); else if (TAB === 'prov') renderProv(); else if (TAB === 'part') renderPart(); else if (TAB === 'imp') renderImp(); else if (TAB === 'res') renderRes();
+}
+
+// ── Documentos ──
+function renderDocs() {
+  const f = (document.getElementById('fTxt').value || '').toLowerCase().trim();
+  const fe = document.getElementById('fEst').value;
+  const dests = CAT.destinos.map(x => ({ id: x.id, t: x.nombre + (x.validado ? '' : ' (sin validar)') }));
+  const alms = CAT.depots.map(x => ({ id: x.id, t: x.nombre })), plzs = CAT.terms.map(x => ({ id: x.id, t: x.nombre }));
+  const opts = (l, cur) => l.map(x => `<option value='${x.id}' ${x.id === cur ? 'selected' : ''}>${esc(x.t)}</option>`).join('');
+  let h = '';
+  DATA.docs.forEach(d => {
+    if (fe && d.estadoTipo !== fe) return;
+    if (f && !(d.rfc + ' ' + d.razonSocial + ' ' + d.folio + ' ' + d.serie + ' ' + d.uuid).toLowerCase().includes(f)) return;
+    const blk = d.estadoTipo === 'blocked';
+    const folio = (d.serie ? d.serie + '-' : '') + d.folio;
+    const dest = !d.tipo.startsWith('I') ? `<span class='mut sm'>—</span>` : `<select style='width:140px' onchange='cambia(${d.satId},{destinoModulo:+this.value})' ${blk ? 'disabled' : ''}>${opts(dests, d.destinoModulo)}</select>`;
+    const alm = `<select style='width:100px' onchange='cambia(${d.satId},{depotId:+this.value})' ${blk ? 'disabled' : ''}>${opts(alms, d.depotId)}</select>`;
+    const plz = `<select style='width:100px' onchange='cambia(${d.satId},{paymentTermId:+this.value})' ${blk ? 'disabled' : ''}>${opts(plzs, d.paymentTermId)}</select>`;
+    const prov = d.businessEntityId > 0 ? `<span class='trunc' style='display:inline-block' title='${esc(d.businessEntityName)}'>${esc(d.businessEntityName)}</span>` : `<span class='pill p-new'>se creará</span>`;
+    const tags = d.tags.map(t => `<span class='tag ${blk ? 'b' : /sin |falta/.test(t) ? 'w' : ''}'>${esc(t)}</span>`).join('');
+    h += `<tr class='r-${d.estadoTipo}' title='${esc(d.avisos.join('\n'))}'>
+      <td><input type='checkbox' ${d.crear ? 'checked' : ''} ${blk ? 'disabled' : ''} onchange='cambia(${d.satId},{crear:this.checked})'></td>
+      <td>${d.fecha}</td><td class='b'>${esc(folio || '(sin folio)')}</td>
+      <td><span class='mono sm'>${esc(d.rfc)}</span> <span class='trunc mut sm' style='display:inline-block;vertical-align:bottom;max-width:170px' title='${esc(d.razonSocial)}'>${esc(d.razonSocial)}</span></td>
+      <td class='r b'>$${money(d.total)}${(d.ivaRet + d.isrRet) > 0 ? ` <span class='sm' style='color:#dc2626;font-weight:400' title='Retenciones'>−${money(d.ivaRet + d.isrRet)}</span>` : ''}</td>
+      <td>${dest}</td><td>${prov}</td><td>${alm}</td><td>${plz}</td>
+      <td><span class='pill p-${d.estadoTipo}'>${esc(d.estado)}</span>${tags}</td>
+      <td><button class='btn sm' onclick='verDet(${d.satId})'>Partidas (${d.partidas.length})</button></td></tr>`;
+  });
+  document.getElementById('tbDocs').innerHTML = h || `<tr><td colspan='11' class='mut' style='padding:24px'>Sin resultados.</td></tr>`;
+}
+function cambia(satId, campos) { act('actualizarDoc', Object.assign({ satId: satId }, campos)); }
+function marcar(v) { act('marcarTodos', { marcar: v }); }
+function aplicarLote() {
+  act('aplicarMasivo', { destinoModulo: +document.getElementById('bDest').value, depotId: +document.getElementById('bAlm').value, paymentTermId: +document.getElementById('bPlz').value }, 'Aplicado a los documentos marcados');
+}
+function setOpc() {
+  act('opciones', { crearProv: document.getElementById('oProv').value === '1', productos: document.getElementById('oProd').value, gastoDefecto: +document.getElementById('oGasto').value });
+}
+async function refrescar() { toast('Recargando catálogos de Comercial…'); await act('refrescarCatalogos', {}, 'Catálogos recargados'); }
+
+// ── Proveedores ──
+const PROV_ABIERTO = new Set();
+function renderProv() {
+  const nuevos = DATA.rfcs.filter(r => r.businessEntityId === 0 && r.nuevo);
+  const sinReg = nuevos.filter(r => !r.nuevo.regimen).length, sinCp = nuevos.filter(r => !r.nuevo.cp || !r.nuevo.cpValido).length;
+  document.getElementById('provResumen').innerHTML = nuevos.length === 0 ? 'Todos los proveedores del lote ya existen en Comercial.' :
+    `<b>${nuevos.length}</b> proveedor(es) se darán de alta con los datos del XML. Sin régimen: <b>${sinReg}</b> · Sin C.P. válido: <b>${sinCp}</b>` +
+    (nuevos.some(r => !r.nuevo.xmlOk) ? ` · <span style='color:#b45309'>no se pudo leer el archivo XML de ${nuevos.filter(r => !r.nuevo.xmlOk).length}: captura su régimen y C.P.</span>` : '');
+  const regs = [{ v: '', t: '— sin régimen —' }].concat(CAT.regimenes.map(x => ({ v: x.clave, t: x.clave + ' · ' + x.nombre })));
+  const pers = CAT.personas.map(x => ({ v: x.id, t: x.nombre }));
+  const plz = [{ v: 0, t: '— sin plazo —' }].concat(CAT.terms.map(t => ({ v: t.id, t: t.nombre })));
+  const inp = (i, campo, val, ancho, ph) => `<input type='text' value='${esc(val)}' placeholder='${ph || ''}' style='width:${ancho}px' onchange=""provDato(${i},'${campo}',this.value)"">`;
+  const sel = (i, campo, opts, cur, ancho) => `<select style='width:${ancho}px' onchange=""provDato(${i},'${campo}',this.value)"">${opts.map(o => `<option value='${esc(o.v)}' ${String(o.v) === String(cur) ? 'selected' : ''}>${esc(o.t)}</option>`).join('')}</select>`;
+  let h = '';
+  DATA.rfcs.forEach((r, i) => {
+    const n = r.nuevo;
+    if (r.businessEntityId > 0 || !n) {
+      h += `<tr><td class='mono'>${esc(r.rfc)}</td><td>${esc(r.razonSocial)}</td><td class='r'>${r.docsCount}</td><td colspan='5'><span class='pill p-ok'>${esc(r.businessEntityName)}</span> <span class='mut sm'>ya existe en Comercial</span></td>
+        <td><input type='text' class='cell-in' style='min-width:150px' list='dlProv' placeholder='Cambiar por otro…' onchange='vincProv(${i}, this)'></td><td></td></tr>`;
+      return;
+    }
+    const falta = !n.regimen || !n.cp || !n.cpValido;
+    const cols = [{ v: '', t: n.colonias.length > 1 ? '— elegir —' : '—' }].concat(n.colonias.map(c => ({ v: c, t: c })));
+    const abierto = PROV_ABIERTO.has(r.rfc);
+    h += `<tr class='${falta ? 'r-pending' : ''}'><td class='mono'>${esc(r.rfc)}</td><td>${inp(i, 'razon', n.razon, 230)}</td><td class='r'>${r.docsCount}</td>
+      <td>${sel(i, 'persona', pers, n.persona, 120)}</td><td>${sel(i, 'regimen', regs, n.regimen, 200)}</td>
+      <td>${inp(i, 'cp', n.cp, 62)}</td><td class='sm'>${n.cp ? (n.cpValido ? esc(n.estado + ' · ' + n.municipio) : `<span style='color:#b91c1c'>C.P. no está en el catálogo</span>`) : '—'}</td>
+      <td>${sel(i, 'colonia', cols, n.colonia, 130)}</td><td><input type='text' class='cell-in' style='min-width:150px' list='dlProv' placeholder='Vincular a existente…' onchange='vincProv(${i}, this)'></td>
+      <td style='white-space:nowrap'><button class='btn sm' onclick=""provAbre('${esc(r.rfc)}')"">${abierto ? '− datos' : '+ datos'}</button> <button class='btn sm pri' onclick='altaProv(${i})'>Crear ahora</button></td></tr>`;
+    if (abierto) h += `<tr><td colspan='10' style='background:#f8fafc;padding:8px 20px'><div style='display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11px;color:var(--mut)'>
+      Nombre comercial ${inp(i, 'nombreCom', n.nombreCom, 170)} Calle ${inp(i, 'calle', n.calle, 170)} No. ext. ${inp(i, 'numExt', n.numExt, 55)} No. int. ${inp(i, 'numInt', n.numInt, 55)}
+      Teléfono ${inp(i, 'tel', n.tel, 110)} Correo ${inp(i, 'email', n.email, 170)} Plazo ${sel(i, 'plazoId', plz, n.plazoId, 130)}</div></td></tr>`;
+  });
+  document.getElementById('tbProv').innerHTML = h;
+}
+function provAbre(rfc) { if (PROV_ABIERTO.has(rfc)) PROV_ABIERTO.delete(rfc); else PROV_ABIERTO.add(rfc); renderProv(); }
+function provDato(i, campo, valor) { const p = { rfc: DATA.rfcs[i].rfc }; p[campo] = (campo === 'persona' || campo === 'plazoId') ? +valor : valor; act('provDatos', p); }
+function vincProv(i, el) {
+  const id = LBL.prov.get(el.value); if (!id) { toast('Elige un proveedor de la lista', 'bad'); return; }
+  act('asociarProveedor', { rfc: DATA.rfcs[i].rfc, businessEntityId: id }, 'Proveedor vinculado');
+}
+function altaProv(i) { act('crearProveedor', { rfc: DATA.rfcs[i].rfc }, 'Proveedor creado'); }
+
+// ── Partidas ──
+function origen(o) { return o === 'memoria' ? `<span class='pill p-mem' title='Usado antes con este proveedor'>recordado</span>` : o === 'sugerido' ? `<span class='pill p-sug' title='Sugerido por clave o por el mismo proveedor'>sugerido</span>` : o === 'historial' ? `<span class='pill p-mem' title='Ya lo usaste en gastos de este proveedor en Comercial'>historial</span>` : o === 'defecto' ? `<span class='pill p-sug'>por omisión</span>` : ''; }
+function renderPart() {
+  const f = (document.getElementById('pTxt').value || '').toLowerCase().trim();
+  const solo = document.getElementById('pSolo').checked;
+  let h = '';
+  DATA.grupos.forEach((g, i) => {
+    if (solo && g.prodId > 0) return;
+    if (f && !(g.desc + ' ' + g.clave + ' ' + g.rfc + ' ' + g.razon).toLowerCase().includes(f)) return;
+    const imp = g.taxTypeId > 0 ? `<span class='pill p-ok' title='${esc(g.comp)}'>${esc(taxName(g.taxTypeId))}</span>` : `<span class='pill p-blocked' title='${esc(g.comp)}'>sin tipo: ${esc(g.comp)}</span>`;
+    h += `<tr><td><span class='mono sm'>${esc(g.rfc)}</span> <span class='trunc mut sm' style='display:inline-block;vertical-align:bottom;max-width:130px' title='${esc(g.razon)}'>${esc(g.razon)}</span></td>
+      <td class='mono sm'>${esc(g.clave || '—')}</td>
+      <td><span class='trunc' style='display:inline-block;vertical-align:bottom;max-width:280px' title='${esc(g.desc)}'>${esc(g.desc)}</span> <span class='mut sm'>×${g.lineas}</span></td>
+      <td class='r'>${g.cantidad}</td><td>${imp}</td>
+      <td><input type='text' list='dlProd' value='${esc(g.prodNombre)}' placeholder='Sin producto' style='width:190px' onchange='setProd(${i}, this)'>${origen(g.prodOrigen)}</td>
+      <td><input type='text' list='dlGasto' value='${esc(g.expNombre)}' placeholder='—' style='width:190px' onchange='setGasto(${i}, this)'>${origen(g.expOrigen)}</td>
+      <td>${g.prodId === 0 ? `<button class='btn sm' onclick='nuevoProd(${i})'>Crear producto</button>` : ''}</td></tr>`;
+  });
+  document.getElementById('tbPart').innerHTML = h || `<tr><td colspan='8' class='mut' style='padding:24px'>Sin partidas.</td></tr>`;
+}
+function setProd(i, el) {
+  const g = DATA.grupos[i]; const v = el.value.trim();
+  if (!v) { act('quitarProducto', { grupo: g.key }); return; }
+  const id = LBL.prod.get(v); if (!id) { toast('Elige un producto de la lista (o déjalo vacío)', 'bad'); renderPart(); return; }
+  act('asociarProducto', { grupo: g.key, productId: id });
+}
+function setGasto(i, el) {
+  const g = DATA.grupos[i]; const v = el.value.trim();
+  if (!v) { act('quitarGasto', { grupo: g.key }); return; }
+  const id = LBL.gasto.get(v); if (!id) { toast('Elige un tipo de gasto de la lista (o déjalo vacío)', 'bad'); renderPart(); return; }
+  act('asociarGasto', { grupo: g.key, expenseId: id });
+}
+function nuevoProd(i) { act('crearProducto', { grupo: DATA.grupos[i].key }, 'Producto creado y asignado'); }
+function crearProductosTodos() { act('crearProductosTodos', {}, 'Productos creados'); }
+
+// ── Impuestos ──
+function renderImp() {
+  let h = '';
+  DATA.comps.forEach(c => {
+    const ok = c.taxTypeId > 0;
+    h += `<tr class='${ok ? '' : 'r-blocked'}'><td class='b'>${esc(c.comp)}</td><td class='r'>${c.lineas}</td><td class='r'>${c.docs}</td>
+      <td><select data-comp='${esc(c.comp)}' onchange='setImpComp(this)'>${taxOpts(c.taxTypeId, true)}</select> ${c.manual ? `<span class='pill p-sug'>elegido a mano</span>` : ''}</td>
+      <td>${ok ? `<span class='pill p-ok'>coincide</span>` : `<span class='pill p-blocked'>documentos bloqueados</span><div class='avisos red'>Sugerencia: dar de alta en Comercial un tipo de impuesto con «${esc(c.comp)}» y recargar catálogos.</div>`}</td></tr>`;
+  });
+  document.getElementById('tbImp').innerHTML = h || `<tr><td colspan='5' class='mut' style='padding:24px'>Sin partidas.</td></tr>`;
+}
+function setImpComp(el) { act('impuestoComposicion', { comp: el.dataset.comp, taxTypeId: +el.value }, 'Impuesto aplicado a esas partidas'); }
+
+// ── Resultado ──
+function renderRes() {
+  const b = document.getElementById('resBody');
+  if (!RES) { b.innerHTML = `<div class='note'>Aún no se ha creado nada en esta sesión.</div>`; return; }
+  let h = `<div class='box ok'><h3>Se crearon ${RES.creados.length} documento(s)</h3>`;
+  if (RES.creados.length) h += `<table><thead><tr><th>Folio</th><th>Proveedor</th><th class='r'>Total</th><th>Documento</th><th></th></tr></thead><tbody>` +
+    RES.creados.map(c => `<tr><td>${esc(c.folio)}</td><td>${esc(c.proveedor)}</td><td class='r'>$${money(c.total)}</td><td>#${c.docId}</td><td><button class='btn sm' onclick='abrirDoc(${c.docId},${c.modulo})'>Abrir</button></td></tr>`).join('') + `</tbody></table>`;
+  h += `</div>`;
+  if (RES.errores.length) h += `<div class='box bad'><h3>No se pudieron crear (${RES.errores.length})</h3><ul class='l'>${RES.errores.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>`;
+  if (RES.avisos.length) h += `<div class='box wr'><h3>Avisos</h3><ul class='l'>${RES.avisos.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>`;
+  if (RES.sinPoliza.length) h += `<div class='box wr'><h3>Sin póliza automática</h3><div>Documentos: ${RES.sinPoliza.map(x => '#' + x).join(', ')}. Revisa la plantilla contable del módulo.</div></div>`;
+  b.innerHTML = h;
+}
+function abrirDoc(docId, modulo) { call('abrirDocumento', { docId: docId, modulo: modulo }); }
+
+// ── Crear ──
+async function crearTodo() {
+  const bc = document.getElementById('btnCrear');
+  bc.dataset.busy = '1'; bc.disabled = true; bc.textContent = 'Creando…';
+  showProg({ msg: 'Preparando…', i: 0, n: 0 });
+  try {
+    const r = await call('crearDocumentos', { abrirDocs: document.getElementById('chkAbrir').checked, verificarPoliza: document.getElementById('chkPol').checked });
+    RES = r.resultado;
+    if (r.cerrar) return;   // la ventana la cierra el servidor
+    toast(`Listo: ${RES.creados.length} creado(s)` + (RES.errores.length ? `, ${RES.errores.length} con error` : ''), RES.errores.length ? 'bad' : 'ok');
+    delete bc.dataset.busy; document.getElementById('prog').style.display = 'none';
+    // Todo bien: el grid de Comercial ya muestra los documentos, así que se cierra la ventana. Si hubo errores o falta póliza, se queda en Resultado.
+    if (RES.errores.length === 0 && RES.sinPoliza.length === 0) { call('cerrar'); return; }
+    goTab('res');
+  } catch (e) {
+    delete bc.dataset.busy; document.getElementById('prog').style.display = 'none';
+    toast(e.message, 'bad'); try { await call('estado'); } catch (x) {} render();
+  }
+}
+
+// ── Detalle de un CFDI ──
+function optsClave(lista, actual) {
+  const a = (actual || '').trim().split(/[ -]/)[0].toUpperCase();
+  let l = lista.slice(); if (a && !l.some(x => x.clave.toUpperCase() === a)) l.unshift({ clave: a, nombre: '(del XML)' });
+  return l.map(x => `<option value='${esc(x.clave)}' ${x.clave.toUpperCase() === a ? 'selected' : ''}>${esc(x.clave + ' - ' + x.nombre)}</option>`).join('');
+}
+function verDet(satId) { DET = satId; pintaDet(); document.getElementById('mDet').classList.add('on'); }
+function cerrarDet() { DET = null; document.getElementById('mDet').classList.remove('on'); render(); }
+function pintaDet() {
+  const d = DATA.docs.find(x => x.satId === DET); if (!d) return;
+  document.getElementById('dTitulo').textContent = 'CFDI ' + ((d.serie ? d.serie + '-' : '') + (d.folio || '(sin folio)')) + '  ·  ' + d.uuid;
+  document.getElementById('dArch').textContent = d.xmlFileName;
+  const filas = d.partidas.map((p, i) => `<tr><td class='mut'>${i + 1}</td><td class='mono sm'>${esc(p.claveSat)}</td><td class='mono sm'>${esc(p.clave || '—')}</td><td>${esc(p.desc)}</td><td class='r'>${p.cantidad}</td>
+    <td class='r mono'>$${money(p.precio)}</td><td class='r mono'>$${money(p.descuento)}</td><td class='sm'>${esc(p.comp)}</td>
+    <td><select onchange='cambiaImp(${d.satId},${p.itemId},this.value)' style='max-width:230px'>${taxOpts(p.taxTypeId, true)}</select></td>
+    <td><input type='text' list='dlGasto' value='${esc(p.expNombre)}' placeholder='Tipo de gasto…' style='width:210px' onchange='setGastoLin(${d.satId},${p.itemId},this)'> ${origen(p.expOrigen)}</td>
+    <td><input type='text' list='dlProd' value='${esc(p.prodNombre)}' placeholder='Sin producto' style='width:210px' onchange='setProdLin(${d.satId},${p.itemId},this)'> ${origen(p.prodOrigen)}</td>
+    <td class='r mono b'>$${money(p.importe)}</td></tr>`).join('');
+  document.getElementById('dBody').innerHTML = `
+    <div class='box' style='margin:0 0 12px'><div class='grid4'>
+      <div><span class='mut'>Emisor</span><br><b>${esc(d.razonSocial)}</b><br><span class='mono'>${esc(d.rfc)}</span></div>
+      <div><span class='mut'>Emisión / Certificación</span><br><b>${esc(d.fechaEmision)}</b><br>${esc(d.fechaCert)}</div>
+      <div><span class='mut'>Moneda</span><br><b>${esc(d.moneda)}</b> (TC ${d.tc})</div>
+      <div><span class='mut'>Condiciones (XML)</span><br>${esc(d.condicionesPago || '—')}</div>
+    </div>
+    <div class='grid4' style='margin-top:10px'>
+      <div><span class='mut'>Método de pago</span><br><select onchange=""cambiaFis(${d.satId},'metodoPago',this.value)"">${optsClave(CAT.metodos, d.metodoPago)}</select></div>
+      <div><span class='mut'>Forma de pago</span><br><select onchange=""cambiaFis(${d.satId},'formaPago',this.value)"">${optsClave(CAT.formas, d.formaPago)}</select></div>
+      <div style='grid-column:span 2'><span class='mut'>Uso del CFDI</span><br><select onchange=""cambiaFis(${d.satId},'usoCfdi',this.value)"" style='max-width:100%'>${optsClave(CAT.usos, d.usoCfdi)}</select></div>
+    </div></div>
+    <div class='box' style='margin:0 0 12px;padding:0;overflow:auto'><table><thead><tr><th>#</th><th>Clave SAT</th><th>Clave</th><th>Concepto</th><th class='r'>Cant.</th><th class='r'>P. unit.</th><th class='r'>Desc.</th><th>Impuesto XML</th><th>Tipo de impuesto</th><th>Tipo de gasto</th><th>Producto</th><th class='r'>Importe</th></tr></thead><tbody>${filas}</tbody></table></div>
+    <div style='display:flex;justify-content:space-between;align-items:center'>
+      <div><span class='mut'>Aplicar a todas las partidas:</span> <select onchange='cambiaImpDoc(${d.satId},this.value)'><option value=''>— elegir tipo de impuesto —</option>${taxOpts(-1, false)}</select></div>
+      <div class='b'>Total XML: $${money(d.total)}</div></div>`;
+}
+function lineaDe(satId, itemId) { const d = DATA.docs.find(x => x.satId === satId); return d ? d.partidas.find(x => x.itemId === itemId) : null; }
+async function setGastoLin(satId, itemId, el) {
+  const p = lineaDe(satId, itemId); if (!p) return; const v = el.value.trim();
+  if (!v) { await act('quitarGasto', { grupo: p.grupo }); pintaDet(); return; }
+  const id = LBL.gasto.get(v); if (!id) { toast('Elige un tipo de gasto de la lista (o déjalo vacío)', 'bad'); pintaDet(); return; }
+  await act('asociarGasto', { grupo: p.grupo, expenseId: id }, 'Tipo de gasto asignado a este concepto del proveedor'); pintaDet();
+}
+async function setProdLin(satId, itemId, el) {
+  const p = lineaDe(satId, itemId); if (!p) return; const v = el.value.trim();
+  if (!v) { await act('quitarProducto', { grupo: p.grupo }); pintaDet(); return; }
+  const id = LBL.prod.get(v); if (!id) { toast('Elige un producto de la lista (o déjalo vacío)', 'bad'); pintaDet(); return; }
+  await act('asociarProducto', { grupo: p.grupo, productId: id }, 'Producto asignado a este concepto del proveedor'); pintaDet();
+}
+async function cambiaImp(satId, itemId, v) { await act('impuestoPartida', { satId: satId, itemId: itemId, taxTypeId: +v }); pintaDet(); }
+async function cambiaImpDoc(satId, v) { if (!v) return; await act('impuestoDocumento', { satId: satId, taxTypeId: +v }); pintaDet(); }
+async function cambiaFis(satId, campo, v) { const p = { satId: satId }; p[campo] = v; await act('actualizarDoc', p); }
+
+(async function () {
+  try { const r = await call('cargarTodo'); render(); }
+  catch (e) { toast('Error al cargar: ' + e.message, 'bad'); }
+})();
+</script>
+</body>
+</html>";
+}
+
+frm.Show();

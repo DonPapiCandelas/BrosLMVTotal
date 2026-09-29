@@ -485,19 +485,8 @@ Después de `NuevoDocumento` + `AgregarArticulo` × N, se llama en este orden:
 > Orden recomendado para un documento sin inventario (Solicitud, OC): `NuevoDocumento` →
 > `AgregarArticulo` × N → `RecalcCompleto` → `Save` → **`UpdateStatusDelivery`** → `RefreshGrid`.
 
-> ⚠️ **`RefreshGrid()` NO "pega" visualmente si se llama mientras tu propia ventana (`frm`)
-> sigue al frente** — Comercial no está en foco en ese instante, aunque la llamada no truene
-> y el dato en la base ya haya quedado correcto (confirmado en vivo dos veces: `RecepcionOc`
-> en EmpresaB y `GenOrdenCompra` en EmpresaC, ambos con ventana propia
-> tipo WinForms). **Patrón correcto**: no llamar `RefreshGrid()` inline después de `Save`;
-> engancharlo a `frm.FormClosed` en vez de eso, así corre siempre justo cuando el control
-> regresa a Comercial, sin importar por cuál salida se cierre la ventana:
-> ```csharp
-> frm.FormClosed += (_, __) => { try { ctx.erp.RefreshGrid(); } catch { } };
-> ```
-> Nota: con "Guardar y Nueva" (la ventana NO se cierra) el grid nativo no se refresca hasta
-> que el usuario cierre la ventana — limitación aceptada, no hay forma de "pegar" el refresco
-> mientras la ventana propia conserva el foco.
+> 🔄 **Todo script que cambie lo que se ve en un grid termina con `ctx.erp.RefreshGrid()`** — ver **«Refrescar el grid (estándar)»**
+> en la sección de advertencias. Desde v2.94.0 `RefreshGrid()` sí refresca y conserva tu fila; antes fallaba en silencio.
 
 ### 6.4 Cancelar / Eliminar
 
@@ -1911,6 +1900,125 @@ SELECT TOP 50 * FROM zzBrosAuditoria ORDER BY id DESC;
 ### ⚠️ No duplicar anclas
 - `NuevoDocumento` ya crea las 4 anclas (`docDocumentExt`, `docDocumentExtra`, `docDocumentCFD`,
   `docDocumentPaymentAgenda`). **No volver a insertarlas** (causa PK duplicada).
+
+### ⚠️ Campos fiscales de CFDI viven en `docDocumentCFD`, no en `docDocument`
+- `docDocument` no almacena Método de Pago, Forma de Pago ni Uso de CFDI. Estos datos residen
+  exclusivamente en `docDocumentCFD`:
+  - `MetodoPago` (`nvarchar(3)`: `PUE`, `PPD`).
+  - `FormaPago` (`nvarchar(10)`: `03`, `01`, `99`...).
+  - `ReceptorUsoCFDI` (`nvarchar(5)`: `G03`, `G01`, `CP01`...).
+  - `CFDFormOfPayment` (`nvarchar(255)`).
+- Si creas un documento desde un XML preexistente mediante `NuevoDocumento` y solo asignas el UUID
+  y el archivo XML, Comercial PRO mostrará `99 - Por definir` y Uso en blanco. Es mandatorio
+  actualizar estas columnas directamente en `docDocumentCFD`.
+
+### ⚠️ Agenda de pagos (`docDocumentPaymentAgenda`) en documentos con fecha distinta a hoy
+- `ctx.erp.NuevoDocumento` inserta la fila inicial de `docDocumentPaymentAgenda` calculada a
+  partir de `GETDATE()`. Si el documento tiene una fecha distinta (por ejemplo, importación de
+  facturas CFDI emitidas en días anteriores), cambiar `docDocument.DateDocument` por SQL **no**
+  recalcula la agenda. Comercial PRO mantendrá la fecha de creación como fecha de vencimiento,
+  provocando plazos de crédito erróneos (ej. 14 días en lugar de 30).
+- **Regla de regeneración:** si el documento tiene fecha histórica o plazo de crédito, consulta
+  `engPaymentTermDetail` (`PaymentPeriodID` = unidad, `PaymentUnit` = cantidad) y regenera las filas
+  de `docDocumentPaymentAgenda` aplicando `DATEADD` a partir de `DateDocument` (la fecha real de la
+  factura), actualiza `docDocument.DateLastPayment` con el vencimiento final, y fija
+  `DateDocDelivery = NULL` en compras para evitar marcas indebidas de recepción.
+
+### ⚠️ Un documento creado por script no genera póliza: pídesela al motor nativo
+- `NuevoDocumento` → … → `Save` (vía `Doc.clsMain`) **no dispara la póliza**, aunque el módulo tenga `AccountingPoliza = 1`. Se la pides
+  tú, **después de `Save`**, a `Accounting.clsMain` (el motor que la genera al guardar en la ventana):
+  ```csharp
+  var acc = ctx.erp.CrearHelper("Accounting.clsMain");   // asigna XEngineLib
+  var generadas = acc.GetType().InvokeMember("CrearPolizasDocumento", BindingFlags.InvokeMethod, null, acc,
+                                             new object[] { docId, false, "" });   // DocumentID, ShowResult, sAdvertencias → devuelve cuántas generó
+  ```
+  **Confirmado en pruebas** (devuelve `1` y `accPoliza` pasa de 0 a 1). `CrearPolizasDocumentos("1,2,3", false)` es la versión por lote y
+  `CrearPolizasFinancialOperation(id, false, "")` la de cobros/pagos. No envía nada a CONTPAQi Contabilidad (eso es «Sincronizar Póliza»).
+- **No funcionaron** (devuelven `null` y no generan): `Document.clsMain.ExecuteFunction("RefreshAllPolizasPorDocumentID")` y
+  `LBS.clsMain` `AllIDs` + `ExecuteFunction("RegenerarPolizasPorID")` (el botón «Volver a generar Pólizas seleccionadas» sí lo hace desde la lista,
+  pero no con esa llamada).
+- ¿El módulo genera póliza? Lee `engModuleParameter.AccountingPoliza`, que vive en `Section = 'Contabilidad'` (**no** en `'Parámetro'`).
+- No reimplementes el asiento con `INSERT`.
+
+### 🔄 Refrescar el grid (ESTÁNDAR: todo script que cambie datos lo hace)
+Si un script crea, modifica, cancela, timbra o vincula algo que aparece en una lista de Comercial, **debe refrescar el grid al terminar**;
+si no, el usuario tiene que pulsar «Actualizar» para ver el cambio (el ID del documento creado, estatus, saldos…), a diferencia de lo que
+hacen los botones nativos.
+
+**Regla:**
+- Llama `ctx.erp.RefreshGrid();` **una sola vez, después del último cambio** (si creas N documentos, no lo llames por cada uno: solo al final).
+- Desde **v2.94.0** `ctx.erp.RefreshGrid()` refresca el grid actual **y conserva la fila y la vista** (lee `Row` del grid Janus antes y lo
+  restaura después con `EnsureVisible`). En versiones anteriores llevaba siempre roto (fallaba en silencio con `DISP_E_PARAMNOTOPTIONAL`).
+- Si el script tiene una ventana propia que se queda abierta, refresca también al cerrarla; si se cierra sola al terminar, basta con el
+  refresco de al final.
+- **Nunca** pases `Redraw = false` a `XEngine.RefreshGrid` (trabó el sistema). No uses `ExecuteFunction("GridRefresh")`, `MustRefreshGrid`
+  sola, ocultar/minimizar la ventana ni `SendKeys F5`: en pruebas no refrescan.
+
+**Por qué:** `XEngine.RefreshGrid(jgd, [Redraw])` exige el grid como primer parámetro (`ctx.erp.Get("janusGrid")`); recarga todo y deja la
+vista al principio, por eso se restaura la fila. El grid es un Janus GridEX (`GridEX20.ocx`: `Row` get/put, `RowCount`, `EnsureVisible`,
+`MoveToBookmark`, `MoveToRowIndex`, `Rebind`).
+
+**Compatible con versiones anteriores a 2.94.0** (copia esta función en el script):
+```csharp
+void RefrescarGrid()
+{
+    try
+    {
+        var g = ctx.erp.Get("janusGrid");
+        if (g == null) return;
+        int fila = -1;
+        try { fila = Convert.ToInt32(g.GetType().InvokeMember("Row", System.Reflection.BindingFlags.GetProperty, null, g, null)); } catch { }
+        ctx.erp.Call("RefreshGrid", g);
+        if (fila > 0)
+        {
+            g.GetType().InvokeMember("Row", System.Reflection.BindingFlags.SetProperty, null, g, new object[] { fila });
+            g.GetType().InvokeMember("EnsureVisible", System.Reflection.BindingFlags.InvokeMethod, null, g, new object[] { fila, Type.Missing });
+        }
+    }
+    catch { }
+}
+```
+Plantilla de referencia: `instalador/scripts/IMPORTADOR_XML_MASIVO_CSHARP.ctx` (función `RefrescarGridNativo`).
+
+### ⚠️ Filtra SIEMPRE por la empresa activa (`OwnedBusinessEntityID`)
+- Varias tablas guardan una copia por empresa: `engRefExpense` (tipos de gasto: `-1` = plantilla de fábrica, `1`, `2`…
+  cada empresa), `orgDepot`, `orgSupplier`, `orgCustomer`, `orgCostCenter`, `docDocument`, `docDocumentCFDiSAT`.
+  Un `SELECT` sin `OwnedBusinessEntityID = ctx.erp.OwnedBusinessEntityId` mezcla empresas (tres veces cada tipo de gasto).
+- La persona (`orgBusinessEntity`) es compartida entre empresas; lo que es de la empresa es su rol
+  (`orgSupplier`/`orgCustomer`). Si el RFC ya existe, reutiliza la entidad y agrega solo el rol.
+
+### ⚠️ Un lote de alta (varios INSERT) va por `ctx.OpenConn()`, no por `ctx.Scalar`/`ctx.NonQuery`
+- Por el puente COM de Comercial, un lote con varios `INSERT`/transacción **se ejecuta pero su resultado no se puede
+  leer**: `ctx.Scalar` con `soloLectura = true` (por omisión) **reintenta** el SQL y duplica el alta; con `false`, y
+  también `ctx.NonQuery` (que añade `SELECT @@ROWCOUNT`; un `RETURN;` se lo salta), lanzan «el SQL se ejecutó por COM
+  pero la conexión murió leyendo el resultado» **aunque sí corrió**.
+- Regla: el lote va con `using (var cn = ctx.OpenConn()) using (var cmd = cn.CreateCommand()) { cmd.CommandText = sql;
+  var id = cmd.ExecuteScalar(); }` (termina en `SELECT @id`), con `SET NOCOUNT ON;` y **idempotente**
+  (`IF EXISTS (…) BEGIN SELECT id; RETURN; END` antes de insertar).
+
+### ⚠️ Un documento creado por script no genera póliza
+- `NuevoDocumento` → `AgregarArticulo` → `RecalcCompleto` → `Save` (vía `Doc.clsMain`) **no dispara la póliza**, aunque el
+  módulo tenga `AccountingPoliza = 1`: el `Save` de la ventana de Comercial sí. Si el documento debe llevar póliza, hoy
+  hay que generarla aparte (la vía nativa está en investigación; no la reimplementes con `INSERT`).
+
+### ⚠️ Filtra SIEMPRE por la empresa activa (`OwnedBusinessEntityID`)
+- Varias tablas guardan una copia por empresa: `engRefExpense` (tipos de gasto: `-1` = plantilla de fábrica, `1`, `2`…
+  cada empresa), `orgDepot`, `orgSupplier`, `orgCustomer`, `orgCostCenter`, `docDocument`, `docDocumentCFDiSAT`.
+  Un `SELECT` sin `OwnedBusinessEntityID = ctx.erp.OwnedBusinessEntityId` mezcla empresas (tres veces cada tipo de gasto).
+- La persona (`orgBusinessEntity`) es compartida entre empresas; lo que es de la empresa es su rol
+  (`orgSupplier`/`orgCustomer`). Si el RFC ya existe, reutiliza la entidad y agrega solo el rol.
+
+### ⚠️ Un lote que escribe NO se lee con `ctx.Scalar`
+- Con varios `INSERT`/`UPDATE` en el lote, `ctx.Scalar` no puede leer el resultado: con `soloLectura = true` (por
+  omisión) **reintenta el mismo SQL** y el alta se hace dos veces; con `soloLectura = false` lanza «el SQL se ejecutó por
+  COM pero la conexión murió leyendo el resultado» **aunque el SQL sí corrió**.
+- Regla: el lote va con `ctx.NonQuery(sql)` (sin `SELECT` final), el SQL es **idempotente** (`IF EXISTS (…) RETURN;`
+  antes de insertar) y el ID se consulta después con un `SELECT` aparte.
+
+### ⚠️ Plazo de pago del proveedor (`orgSupplier.PaymentTermID`)
+- El plazo de crédito de compras no vive en `orgBusinessEntity`, sino en `orgSupplier.PaymentTermID`.
+  Al construir documentos de compra o asistentes de alta, consulta `orgSupplier` para preasignar
+  los días de crédito del proveedor en vez de degradar al plazo predeterminado del sistema.
 
 ### ⚠️ No duplicar campos de partida
 - `AgregarArticulo` ya llena `ApplyGlobalDiscount=1`, `DeductiblePerc=1`, `IsBusinessOperation=1`,

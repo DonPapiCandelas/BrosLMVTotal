@@ -8,6 +8,37 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.94.0] — 2026-09-28 — Documentos desde XML, ágil
+
+### Agregado
+- Plantilla C# **Importador de documentos desde XML** (`IMPORTADOR_XML_MASIVO_CSHARP.ctx`, versión 3 con
+  pestañas: Documentos, Proveedores, Partidas, Impuestos y Resultado). Crea Facturas de Compra o Gastos
+  desde los CFDI recibidos con solo pulsar «Crear documentos»: da de alta los proveedores que falten,
+  deja las partidas sin producto como renglón descriptivo (o crea el producto / exige uno, a elección) y
+  muestra el avance. Detalle en `docs/IMPORTADOR_XML_MASIVO.md`; diseño en `docs/DISENO_IMPORTADOR_XML.md`.
+- **El impuesto lo rige el documento:** se empareja la composición fiscal del XML (IVA, IEPS, retención de
+  IVA y de ISR) con los tipos de impuesto existentes. Sin coincidencia exacta el documento no se crea y se
+  sugiere el tipo de impuesto que falta; producto y tipo de gasto no cambian el impuesto.
+- **Destinos por naturaleza, no por nombre:** ofrece como destino todo módulo cuyo tipo de documento, destinatario y
+  recepción de XML coincidan con los de Compra y Gasto de fábrica, incluidos módulos copiados o renombrados.
+- **Memoria por proveedor:** sugiere producto y tipo de gasto por proveedor + clave/descripción (mapa
+  propio, historial de gastos de Comercial y clave SAT) y los aprende al crear el documento.
+
+### Corregido
+- **`ctx.erp.RefreshGrid()` nunca refrescaba el grid:** llamaba a `XEngine.RefreshGrid` sin parámetros y fallaba en silencio con
+  `DISP_E_PARAMNOTOPTIONAL`. Ahora le pasa el grid actual (`janusGrid`) y, como recarga todo y deja la vista al principio, restaura la
+  fila que tenías (`Row` + `EnsureVisible` del grid). Todos los scripts que ya lo llaman empiezan a refrescar de verdad. Nuevo estándar:
+  todo script que cambie datos visibles en una lista termina refrescando el grid (`AGENTS.md`, `MANUAL.md`).
+
+### Corregido (respecto a la primera versión del importador)
+- El alta de proveedor replica ahora las tablas que escribe Comercial al generar desde XML (entidad tipo 1,
+  dirección fiscal, clave de identificación, información principal, rol de proveedor); antes escribía tres y
+  con tipo de entidad distinto.
+- Las fechas del documento usan la de **emisión** del XML (como Comercial); la agenda de pagos se calcula
+  con el plazo real sobre esa fecha; método/forma de pago y uso de CFDI viven en `docDocumentCFD`.
+- Se eliminaron los identificadores de impuesto fijos y el «tipo parecido»: sin coincidencia exacta se
+  bloquea. Las retenciones ya salen del tipo de impuesto y solo se fuerzan si el total no cuadra con el XML.
+
 ## [2.93.0] — 2026-09-27 — Vencimientos de Factura de Compra: fórmula de `engPaymentTermDetail` corregida
 
 > El único cambio en `src\` es el bump de `AssemblyVersion`; el arreglo vive en las plantillas

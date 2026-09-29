@@ -140,6 +140,31 @@ ctx.erp.RecalcCompleto(doc_id)
 ctx.erp.RefreshGrid()
 ```
 
+### Refrescar el grid (estándar, v2.94.0+)
+
+Todo script Python que cree o cambie algo visible en una lista de Comercial termina con `ctx.erp.RefreshGrid()`, **una sola vez, después
+del último cambio** (si crea N documentos, no lo llames dentro del ciclo). Desde v2.94.0 refresca el grid actual **y conserva tu fila y la
+vista**; en versiones anteriores no refrescaba nada. No hay que pasar parámetros ni tocar el grid: el host resuelve `RefreshGrid()` contra
+el mismo método del addon.
+
+```python
+# lang: python
+from broslmv import ctx
+
+creados = []
+for prov in proveedores:                              # N documentos
+    doc_id = ctx.erp.NuevoDocumento(152, 1, prov)
+    ctx.erp.AgregarArticulo(doc_id, producto, 1, 100)
+    ctx.erp.RecalcCompleto(doc_id)
+    ctx.erp.Save(doc_id)
+    creados.append(doc_id)
+
+ctx.erp.RefreshGrid()                                 # ← al final, UNA vez: el grid ya muestra los documentos creados
+result = f"Se crearon {len(creados)} documento(s): {creados}"
+```
+
+Si el script abre una ventana (`ctx.show_html_formulario`), refresca **después** de que regrese, no mientras está abierta.
+
 ### Qué lenguaje usar (3 niveles)
 | Necesitas… | Lenguaje |
 |---|---|
