@@ -152,6 +152,13 @@ Luego, para publicar:
 Trampas que ya pasaron:
 - **Renombrar la rama de un PR abierto lo cierra** (GitHub solo reasigna los PR que la usan como
   destino). Si una rama necesita otro nombre, abre un PR nuevo desde la rama renombrada.
+- **PR apilados (uno sobre otro): no uses `--delete-branch` al mezclar el de abajo.** Al borrarse su rama, GitHub **cierra** (no reasigna) el PR que la usaba como base, y
+  el mezclado con `--rebase` reescribe los SHA. Orden que funciona: mezcla el primero **sin** borrar la rama; rebasa el siguiente sobre `origin/main`
+  (`git rebase origin/main` salta solo los commits ya aplicados), `git push --force-with-lease`, `gh pr edit <n> --base main`, espera CI y mezcla; repite. Deja el `--delete-branch` para el último.
+  Antes de rebasar deja una etiqueta de respaldo (`git tag respaldo-antes-de-rebase-<tema> <rama>`) y confirma con `git diff --stat <etiqueta> HEAD` que el contenido quedó idéntico.
+- **`gh pr merge --delete-branch` estando en esa rama te cambia a `main` con un checkout normal**, y eso reescribe `instaladorin\BrosLMVClsMain.dll` con fecha nueva:
+  `publicar_release.ps1` dirá que los `.exe` son más viejos que la DLL. Si los bytes son idénticos a los del commit (compara `sha256sum`), ajusta la fecha de la DLL a una anterior
+  a la de los `.exe` (`touch -d`) o, mejor, usa el procedimiento del paso 3 sin `checkout`.
 - **Nombres de clientes en mensajes de commit o nombres de rama** también se publican.
   `build\verificar_terminos_prohibidos.ps1` (lo corre la regla de oro) ya los revisa, además de
   los archivos.
