@@ -73,6 +73,16 @@ $fmtDst = Join-Path $root "instalador\formatos"
 New-Item -ItemType Directory -Force $fmtDst | Out-Null
 Copy-Item (Join-Path $root "htmlpdf\formatos\*.html") $fmtDst -Force
 
+Write-Host "3e) Documentacion HTML de las plantillas (clic secundario -> Ver documentacion)..." -ForegroundColor Cyan
+$docsPlant = Join-Path $root "instalador\docs\plantillas"
+New-Item -ItemType Directory -Force $docsPlant | Out-Null
+$py = Get-Command python -ErrorAction SilentlyContinue
+if ($py) {
+    & python (Join-Path $root "build\md_a_html.py") (Join-Path $root "docs\CREAR_DOC_DESDE_XML.md") (Join-Path $docsPlant "CREAR_DOC_DESDE_XML.html")
+} else {
+    Write-Host "   AVISO: no hay Python; se usa el HTML ya versionado en instalador\docs\plantillas." -ForegroundColor Yellow
+}
+
 Write-Host "4) Copiando workers..." -ForegroundColor Cyan
 $workersSrc = Join-Path $root "workers"
 $workersDst = Join-Path $root "instalador\workers"

@@ -2,7 +2,7 @@
 # job: safe-offline
 # timeout: 60
 # Humo #13: valida PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py de punta a punta -- MISMA
-# logica que el archivo real (instalador/scripts/PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py,
+# logica que el archivo real (docs/archivo/plantillas_2.93.0/PLANTILLA_REQUISICION_WEBVIEW2_PYTHON.py,
 # incluyendo moneda/condicion de pago/RFC), con un auto-click de JS inyectado al final para
 # poder probarla sin un humano (la plantilla real NO tiene ese auto-click).
 from broslmv import ctx

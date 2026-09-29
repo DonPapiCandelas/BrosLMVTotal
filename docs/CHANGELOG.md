@@ -11,11 +11,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 ## [2.94.0] — 2026-09-28 — Documentos desde XML, ágil
 
 ### Agregado
-- Plantilla C# **Importador de documentos desde XML** (`IMPORTADOR_XML_MASIVO_CSHARP.ctx`, versión 3 con
+- Plantilla C# **Crear documentos desde XML** (`CREAR_DOC_DESDE_XML.ctx`, con
   pestañas: Documentos, Proveedores, Partidas, Impuestos y Resultado). Crea Facturas de Compra o Gastos
   desde los CFDI recibidos con solo pulsar «Crear documentos»: da de alta los proveedores que falten,
   deja las partidas sin producto como renglón descriptivo (o crea el producto / exige uno, a elección) y
-  muestra el avance. Detalle en `docs/IMPORTADOR_XML_MASIVO.md`; diseño en `docs/DISENO_IMPORTADOR_XML.md`.
+  muestra el avance. Detalle en `docs/CREAR_DOC_DESDE_XML.md`; diseño en `docs/DISENO_CREAR_DOC_DESDE_XML.md`.
 - **El impuesto lo rige el documento:** se empareja la composición fiscal del XML (IVA, IEPS, retención de
   IVA y de ISR) con los tipos de impuesto existentes. Sin coincidencia exacta el documento no se crea y se
   sugiere el tipo de impuesto que falta; producto y tipo de gasto no cambian el impuesto.
@@ -23,6 +23,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   recepción de XML coincidan con los de Compra y Gasto de fábrica, incluidos módulos copiados o renombrados.
 - **Memoria por proveedor:** sugiere producto y tipo de gasto por proveedor + clave/descripción (mapa
   propio, historial de gastos de Comercial y clave SAT) y los aprende al crear el documento.
+
+### Cambiado
+- **Una sola plantilla:** la Consola solo ofrece «Crear documentos desde XML». Las plantillas y ejemplos anteriores (Orden de Compra, Recepción,
+  Factura, Requisición, extracción de datos, dashboards, etc.) se retiraron por estar desactualizadas y quedaron archivadas en
+  `docs/archivo/plantillas_2.93.0/`. Al actualizar, el instalador las **mueve** de `C:\BrosLMV\scripts\` a
+  `scripts\_archivo\plantillas_anteriores_<fecha>\` (no las borra) y refresca la plantilla vigente.
+- **Documentación de la plantilla:** clic secundario sobre la plantilla en la Consola → «Ver documentación» (ventana con la documentación
+  completa); el código de la plantilla queda corto y legible.
 
 ### Corregido
 - **`ctx.erp.RefreshGrid()` nunca refrescaba el grid:** llamaba a `XEngine.RefreshGrid` sin parámetros y fallaba en silencio con

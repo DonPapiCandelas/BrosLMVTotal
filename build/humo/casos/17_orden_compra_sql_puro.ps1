@@ -77,7 +77,7 @@ $docNativo = (sqlcmd -S $Server -E -d $Database -h -1 -Q "SELECT MAX(DocumentID)
 # almacen=1, productoID=1, cantidad=2, precio=80, condicionPago=4), simulando lo que el
 # formulario hubiera capturado -- son justo los valores que el documento de referencia nativo
 # (arriba) tambien usa, para que la comparacion campo por campo siga siendo valida.
-$codigoSqlPuro = Get-Content (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
+$codigoSqlPuro = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
 $codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoSqlPuro = $codigoSqlPuro -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'

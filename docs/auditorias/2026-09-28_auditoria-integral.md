@@ -57,7 +57,7 @@ registrada.
 - **Evidencia:** la primera interfaz muestra controles globales en una pestaña final, repite
   proveedores y conceptos, usa una vista previa de cuadro de mensaje y permite una revisión que
   no corresponde al lote por CFDI definido para el producto.
-- **Corrección en curso:** reemplazo completo separado (`IMPORTADOR_XML_MASIVO_V2_CSHARP.ctx`),
+- **Corrección en curso:** reemplazo completo separado (`CREAR_DOC_DESDE_XML_V2_CSHARP.ctx`),
   aún no registrado en la empresa. La acción existente no se considera entrega ni evidencia de
   aceptación.
 - **Regla de publicación:** no sustituir la acción de la empresa hasta contar con revisión por

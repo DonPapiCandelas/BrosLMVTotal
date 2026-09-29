@@ -1,12 +1,10 @@
-# Importador de documentos desde XML
+# Crear documentos desde XML
 
-Plantilla C# `instalador/scripts/IMPORTADOR_XML_MASIVO_CSHARP.ctx` (AppKey recomendado
-`IMPORTAR_DOCUMENTOS_XML`). Convierte los CFDI **recibidos** que Comercial ya cargó en su staging
-(`docDocumentCFDiSAT` / `docDocumentItemCFDiSAT`) en **Facturas de Compra** (módulo 152) o **Gastos**
-(módulo 242). Se abre con los XML seleccionados en la lista de Comercial.
+Plantilla C# `instalador/scripts/CREAR_DOC_DESDE_XML.ctx` (AppKey recomendado `CREAR_DOC_DESDE_XML`). Convierte los CFDI **recibidos** que Comercial ya cargó
+en su staging (`docDocumentCFDiSAT` / `docDocumentItemCFDiSAT`) en **Facturas de Compra**, **Gastos** y los demás módulos que reciben XML. Se abre con los XML
+seleccionados en la lista de Comercial. Es la **única plantilla de la versión 2.94.0**: las anteriores se archivaron y se irán rehaciendo.
 
-> **Estado:** en desarrollo (addon 2.94.0, sin publicar). Diseño de referencia:
-> [`DISENO_IMPORTADOR_XML.md`](DISENO_IMPORTADOR_XML.md). Pendiente antes de operar: prueba en sandbox
+> **Versión mínima:** BrosLMV 2.94.0. Diseño de referencia: `docs/DISENO_CREAR_DOC_DESDE_XML.md`. Pendiente antes de operar en producción: prueba en sandbox
 > de cada camino (ver §7) y sustituir las altas por SQL cuando exista método COM de alta.
 
 ## 1. Objetivo: ágil

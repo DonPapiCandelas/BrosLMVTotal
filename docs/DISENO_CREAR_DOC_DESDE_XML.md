@@ -3,7 +3,7 @@
 ## Estado
 
 Versión 3 (pestañas), 2026-09-28. Sustituye a la pantalla única de lote y a la primera versión con
-ventanas emergentes. Descripción técnica en [`IMPORTADOR_XML_MASIVO.md`](IMPORTADOR_XML_MASIVO.md).
+ventanas emergentes. Descripción técnica en [`CREAR_DOC_DESDE_XML.md`](CREAR_DOC_DESDE_XML.md).
 
 ## Decisiones de diseño (pedidas por el usuario)
 

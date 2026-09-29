@@ -1,21 +1,9 @@
 #r "C:\BrosLMV\bin\Microsoft.Web.WebView2.Core.dll"
 #r "C:\BrosLMV\bin\Microsoft.Web.WebView2.WinForms.dll"
 // lang: csharp
-// AppKey recomendado: IMPORTAR_DOCUMENTOS_XML
-// CFDI recibidos -> Factura de Compra (152) o Gasto (242).
-// BrosLMV - Importador de documentos desde XML (v3, pestañas, "crear y listo").
-//
-// Principios (ver docs/DISENO_IMPORTADOR_XML.md):
-//  1. Ágil: con solo pulsar "Crear documentos" se crean todos los marcados. Proveedor faltante = se da de alta;
-//     producto faltante = renglón descriptivo (como hace Comercial con los gastos) o alta automática, a elección.
-//  2. El IMPUESTO lo rige el documento (lo que dice el XML, emparejado contra los tipos de impuesto que ya existen
-//     en Comercial). Cambiar el tipo de gasto o el producto NUNCA cambia el impuesto.
-//  3. Si el impuesto de una partida no coincide con ningún tipo existente, el documento NO se crea: se sugiere
-//     el tipo de impuesto que hay que dar de alta y se recargan los catálogos.
-//  4. Memoria: producto y tipo de gasto se sugieren por proveedor + clave/descripción (mapa propio + historial
-//     de gastos de Comercial) y se aprenden solos al crear el documento.
-//  5. Alta de proveedor/producto replica las tablas que Comercial escribe al generar desde XML (registros 012/013
-//     del laboratorio). Es la vía de último recurso mientras no haya método COM de alta expuesto.
+// AppKey recomendado: CREAR_DOC_DESDE_XML
+// Crear documentos desde XML: convierte los CFDI recibidos seleccionados en Facturas de Compra, Gastos y demás módulos que reciben XML.
+// Selecciona los XML en la lista de Comercial y ejecuta. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
 
 using System;
 using System.Collections.Generic;
@@ -36,12 +24,8 @@ if (ids == null || ids.Count == 0)
     return;
 }
 
-// EMPRESA (Owned): todo catálogo, documento y muestra se filtra por la empresa activa (ownEntityId = ctx.erp.OwnedBusinessEntityId).
-// Las tablas con OwnedBusinessEntityID guardan una copia por empresa (p. ej. tipos de gasto: -1 = plantilla de fábrica, 1, 2… = cada empresa).
-// En este script NO hay identificadores de módulo, de catálogo ni de estatus escritos a mano. Todo se descubre de la
-// empresa donde corre: los módulos por su naturaleza (engModuleParameter), los valores fiscales y de alta por muestra de
-// lo que Comercial ya creó desde XML, y las enumeraciones del motor por engRefCombo. Si algo no se puede descubrir en
-// una empresa nueva, se puede fijar por empresa en la tabla zzBrosCfdiConfig (Clave, Valor) sin tocar el código.
+// Todo se descubre de la empresa activa (ownEntityId): módulos por su naturaleza, catálogos, valores fiscales y rutas; nada va escrito a mano.
+// Lo que no se pueda descubrir en una empresa nueva se fija en la tabla zzBrosCfdiConfig (Clave, Valor).
 var ci = CultureInfo.InvariantCulture;
 var ser = new JavaScriptSerializer { MaxJsonLength = 128 * 1024 * 1024 };
 
@@ -218,11 +202,8 @@ int ComboItem(string clave, string grupo, string filtroNombre)
     return r.Count > 0 ? I(r[0]["ItemData"]) : -1;
 }
 
-// Los destinos posibles NO se buscan por número ni por nombre: se reconocen por su NATURALEZA, que Comercial guarda en
-// los parámetros del módulo (engModuleParameter): tabla, tipo de documento y si recibe XML. Todo módulo sobre docDocument
-// con XMLRecibido = 1 puede generarse desde un CFDI; se clasifica como "compra" o "gasto" según su tipo de documento
-// (enumeración DocumentType) y, si es de otra naturaleza, como "otro" (sin validar). Así entran también los módulos
-// copiados o renombrados por el usuario y los de cada cliente.
+// Destinos: todo módulo sobre docDocument con XMLRecibido = 1, clasificado por su DocumentTypeID (compra / gasto / otro sin validar); así entran
+// también los módulos copiados o renombrados.
 void CargarDestinos()
 {
     cfgTipoDocCompra = ComboItem("TipoDocCompra", "DocumentType", "Factura");
@@ -1226,49 +1207,10 @@ void GenerarPolizaNativa(int docId, List<string> notas)
     }
 }
 
-// Refresco del grid de Comercial. RefreshGrid() no se pinta mientras la ventana propia conserva el foco (MANUAL §6.3) y el importador se
-// queda abierto; por eso se deja pendiente y se ejecuta en cuanto el usuario pasa a Comercial (evento Deactivate de la ventana), que es
-// justo cuando Comercial ya está al frente. También se intenta una vez de inmediato y al cerrar la ventana.
-bool gridPendiente = false;
+// Refresca el grid de Comercial (estándar de BrosLMV: todo script que cambie datos visibles en una lista lo hace al terminar).
+// Desde v2.94.0 ctx.erp.RefreshGrid() conserva la fila y la vista.
+void RefrescarGrid() { try { ctx.erp.RefreshGrid(); } catch { } }
 bool cerrarAlTerminar = false;   // lo decide CrearDocumentos: si todo salió bien la ventana se cierra sola
-// Refresco del grid de Comercial: XEngine.RefreshGrid(janusGrid) recarga todo y deja la vista al principio, así que se lee la fila actual
-// del grid (Janus GridEX: Row) antes y se restaura después (Row + EnsureVisible). MustRefreshGrid sola no refresca y RefreshGrid() sin
-// parámetros falla con DISP_E_PARAMNOTOPTIONAL. Se registra con ctx.Log (fila antes/después y milisegundos).
-void RefrescarGridNativo()
-{
-    string r = "";
-    try
-    {
-        var g = ctx.erp.Get("janusGrid");
-        if (g == null) { r = "sin grid"; }
-        else
-        {
-            var bf = System.Reflection.BindingFlags.GetProperty;
-            int fila = -1;
-            try { fila = Convert.ToInt32(g.GetType().InvokeMember("Row", bf, null, g, null)); } catch { }
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            ctx.erp.Call("RefreshGrid", g);
-            long ms = sw.ElapsedMilliseconds;
-            if (fila > 0)
-            {
-                try
-                {
-                    g.GetType().InvokeMember("Row", System.Reflection.BindingFlags.SetProperty, null, g, new object[] { fila });
-                    g.GetType().InvokeMember("EnsureVisible", System.Reflection.BindingFlags.InvokeMethod, null, g, new object[] { fila, Type.Missing });
-                }
-                catch (Exception ex2) { r = "no se pudo restaurar la fila: " + ex2.Message + "; "; }
-            }
-            r += "ok (fila " + fila + ", " + ms + " ms)";
-        }
-    }
-    catch (Exception ex) { r = "fallo: " + ex.Message; }
-    try { ctx.Log("Importador XML - refresco del grid: RefreshGrid(janusGrid) + restaurar fila -> " + r); } catch { }
-}
-void RefrescarGridComercial()
-{
-    gridPendiente = true;
-    RefrescarGridNativo();
-}
 
 Destino DestinoDeDoc(int docId) { var d = docs.Values.FirstOrDefault(x => x.DocIdVinculado == docId); return d != null ? DestinoDe(d.DestinoModulo) : new Destino(); }
 
@@ -1382,7 +1324,7 @@ object CrearDocumentos(bool abrirDocs, bool verificarPoliza)
     // Si todo salió bien la ventana se cierra sola: no se recargan catálogos ni se manda estado a la interfaz, y el grid de Comercial se
     // refresca UNA vez al cerrar (FormClosed). Solo si hubo errores o falta póliza se recarga y se muestra el Resultado.
     cerrarAlTerminar = errores.Count == 0 && sinPoliza.Count == 0;
-    if (!cerrarAlTerminar) { CargarCatalogos(); RefrescarGridComercial(); tiempo("catálogos recargados y grid refrescado"); }
+    if (!cerrarAlTerminar) { CargarCatalogos(); RefrescarGrid(); tiempo("catálogos recargados y grid refrescado"); }
     if (abrirDocs)
         foreach (var c in creados)
         {
@@ -1403,14 +1345,6 @@ var frm = new Form
 };
 var wv = new WebView2 { Dock = DockStyle.Fill };
 frm.Controls.Add(wv);
-frm.Deactivate += (s0, e0) =>
-{
-    if (!gridPendiente) return;
-    gridPendiente = false;
-    var tmr = new System.Windows.Forms.Timer { Interval = 300 };   // deja que Comercial tome el foco antes de refrescar
-    tmr.Tick += (s1, e1) => { tmr.Stop(); tmr.Dispose(); RefrescarGridNativo(); };
-    tmr.Start();
-};
 responder = (obj) => { try { wv.CoreWebView2.PostWebMessageAsJson(ser.Serialize(obj)); } catch { } };
 
 Dictionary<string, object> Payload(Dictionary<string, object> msg)
@@ -1612,9 +1546,7 @@ frm.Load += async (s, e) =>
         {
             // Borrar el perfil de WebView2 puede tardar (sus procesos aún lo tienen abierto): se hace en segundo plano para no congelar Comercial al cerrar
             System.Threading.ThreadPool.QueueUserWorkItem(_ => { System.Threading.Thread.Sleep(4000); try { if (Directory.Exists(perfil)) Directory.Delete(perfil, true); } catch { } });
-            var swC = System.Diagnostics.Stopwatch.StartNew();
-            RefrescarGridNativo();
-            try { ctx.Log("Importador XML - tiempo: refresco del grid al cerrar " + swC.ElapsedMilliseconds + " ms"); } catch { }
+            RefrescarGrid();
         };
         var env = await CoreWebView2Environment.CreateAsync(null, perfil, new CoreWebView2EnvironmentOptions());
         await wv.EnsureCoreWebView2Async(env);
