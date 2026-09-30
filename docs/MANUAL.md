@@ -1,7 +1,8 @@
 # BrosLMV — Manual de uso y programación
 
-> **Versión 2.23.0** — API completa de `ctx` y `ctx.erp` para scripts C#, Python y SQL.
-> Software libre (GPL-3.0). Documento de referencia para usuarios de la beta.
+> **Documento vivo** — API de `ctx` y `ctx.erp` para scripts C#, Python y SQL, y todo lo aprendido de Comercial en producción.
+> La versión vigente del producto está en [`ESTADO.md`](ESTADO.md); qué función llegó en qué versión, en [`CHANGELOG.md`](CHANGELOG.md).
+> Catálogo de funciones con parámetros y ejemplos: [`SDK_REFERENCIA.md`](SDK_REFERENCIA.md). Software libre (GPL-3.0).
 
 ---
 
@@ -850,9 +851,8 @@ ctx.erp.RefreshGrid();
 return "Factura creada: doc=" + doc;
 ```
 
-> **Nota sobre contabilidad:** La factura de compra **debería** generar póliza contable
-> (`accPoliza` + `accPolizaTransaccion` + `accPolizasPorDocumentID`). Verificar que
-> `ctx.erp.Save()` la dispare. Si no, consultar la documentación del lab.
+> **Nota sobre contabilidad:** la factura de compra genera póliza al guardarla **en la ventana** de Comercial, pero un documento creado por script
+> **no** la genera: pídesela al motor nativo después de `Save` (`Accounting.clsMain.CrearPolizasDocumento`, ver §12 «Un documento creado por script no genera póliza»).
 
 ### 7.8 Receta — Traspaso entre almacenes (ModuleID=204)
 
@@ -861,27 +861,27 @@ int depotOrigen = 1;
 int depotDestino = 2;
 int doc = ctx.erp.NuevoDocumento(204, depotOrigen);
 
-// Traspaso: DepotID=origen, DepotIDFrom=destino; PaymentTermID=0
+// Captura nativa (laboratorio): DepotID = origen, DepotIDFrom = origen, DepotIDTo = destino, PaymentTermID = 0 y AMBAS fechas de entrega con valor.
 ctx.NonQuery($@"
     UPDATE docDocument SET
-        DepotIDFrom={depotDestino}, PaymentTermID=0,
-        DateDelivery=GETDATE()
+        DepotIDFrom={depotOrigen}, DepotIDTo={depotDestino}, PaymentTermID=0,
+        DateDelivery=GETDATE(), DateDocDelivery=GETDATE()
     WHERE DocumentID={doc}");
 
 ctx.erp.AgregarArticulo(doc, 20, 5);  // 5 unidades del producto 20
 
 ctx.erp.RecalcCompleto(doc);
-ctx.erp.AffectStockNEW(doc);  // Genera kardex: -5 en origen, +5 en destino
+ctx.erp.AffectStockNEW(doc);  // kardex: -5 en origen, +5 en destino (2 filas por partida)
 ctx.erp.Save(doc);
 ctx.erp.RefreshGrid();
 return "Traspaso creado: doc=" + doc;
 ```
 
-> ⚠️ **Verifica antes que el módulo 204 sume en el destino en esa empresa.** Si
-> `engModuleParameter.StockAffectation = -1` para el módulo 204, el traspaso solo resta en el
-> origen y **nunca suma en el destino** (confirmado en producción). En ese caso usa una Salida
-> (203) en el origen + una Entrada (202) en el destino — ver §12 "Gaps reales entre los
-> builders y el comportamiento nativo en Orden de Compra".
+> ⚠️ **Sin `DateDelivery`/`DateDocDelivery` el traspaso queda «en tránsito»**: solo genera el kardex de **salida** del origen y nada entra al destino.
+> Confirmado por captura nativa en el laboratorio (un traspaso nativo genera 2 kardex por partida; la réplica sin esas fechas generó 1). Un caso de producción
+> reportó que el módulo «solo restaba en el origen»: muy probablemente era este mismo caso de traspaso en tránsito (no se comprobó la causa en ese caso).
+> **Verifica siempre** en tu empresa que salgan **2** filas de `orgProductKardex` por partida. Si aun con las fechas solo hay una, usa una Salida (203) en el
+> origen + una Entrada (202) en el destino — ver §12 «Gaps reales entre los builders y el comportamiento nativo».
 
 ---
 
@@ -2013,25 +2013,6 @@ Plantilla de referencia: `instalador/scripts/CREAR_DOC_DESDE_XML.ctx` (función 
   var id = cmd.ExecuteScalar(); }` (termina en `SELECT @id`), con `SET NOCOUNT ON;` y **idempotente**
   (`IF EXISTS (…) BEGIN SELECT id; RETURN; END` antes de insertar).
 
-### ⚠️ Un documento creado por script no genera póliza
-- `NuevoDocumento` → `AgregarArticulo` → `RecalcCompleto` → `Save` (vía `Doc.clsMain`) **no dispara la póliza**, aunque el
-  módulo tenga `AccountingPoliza = 1`: el `Save` de la ventana de Comercial sí. Si el documento debe llevar póliza, hoy
-  hay que generarla aparte (la vía nativa está en investigación; no la reimplementes con `INSERT`).
-
-### ⚠️ Filtra SIEMPRE por la empresa activa (`OwnedBusinessEntityID`)
-- Varias tablas guardan una copia por empresa: `engRefExpense` (tipos de gasto: `-1` = plantilla de fábrica, `1`, `2`…
-  cada empresa), `orgDepot`, `orgSupplier`, `orgCustomer`, `orgCostCenter`, `docDocument`, `docDocumentCFDiSAT`.
-  Un `SELECT` sin `OwnedBusinessEntityID = ctx.erp.OwnedBusinessEntityId` mezcla empresas (tres veces cada tipo de gasto).
-- La persona (`orgBusinessEntity`) es compartida entre empresas; lo que es de la empresa es su rol
-  (`orgSupplier`/`orgCustomer`). Si el RFC ya existe, reutiliza la entidad y agrega solo el rol.
-
-### ⚠️ Un lote que escribe NO se lee con `ctx.Scalar`
-- Con varios `INSERT`/`UPDATE` en el lote, `ctx.Scalar` no puede leer el resultado: con `soloLectura = true` (por
-  omisión) **reintenta el mismo SQL** y el alta se hace dos veces; con `soloLectura = false` lanza «el SQL se ejecutó por
-  COM pero la conexión murió leyendo el resultado» **aunque el SQL sí corrió**.
-- Regla: el lote va con `ctx.NonQuery(sql)` (sin `SELECT` final), el SQL es **idempotente** (`IF EXISTS (…) RETURN;`
-  antes de insertar) y el ID se consulta después con un `SELECT` aparte.
-
 ### ⚠️ Plazo de pago del proveedor (`orgSupplier.PaymentTermID`)
 - El plazo de crédito de compras no vive en `orgBusinessEntity`, sino en `orgSupplier.PaymentTermID`.
   Al construir documentos de compra o asistentes de alta, consulta `orgSupplier` para preasignar
@@ -2200,9 +2181,9 @@ Datos fijos del componente:
  CREAR UN BOTÓN NUEVO
 ──────────────────────────────────────────────────────────
  1. Consola BrosLMV → escribir → Ejecutar (F5)
- 2. Guardar como  C:\BrosLMV\scripts\NOMBRE.ctx
- 3. SQL: plantilla_crear_boton.sql con @Execute='BrosLMV.NOMBRE'
- 4. Reiniciar CONTPAQi
+ 2. Guardar (la Consola muestra la clave: BrosLMV.<clave>)
+ 3. Clic derecho sobre el script -> Crear botón… (asistente)
+ 4. Reiniciar CONTPAQi para ver el botón
 ──────────────────────────────────────────────────────────
  CREAR UN DOCUMENTO (patrón canónico)
 ──────────────────────────────────────────────────────────
