@@ -69,7 +69,8 @@ namespace BrosLMV.Descargas.Cola
                     while (lector.Read()) pendientes.Add((lector.GetInt32(0), lector.GetGuid(1), lector.GetString(2)));
             }
 
-            int arreglados = 0;
+            int arreglados = 0, sinPermiso = 0;
+            string primerError = null;
             foreach (var (id, uuid, ruta) in pendientes)
             {
                 try
@@ -88,8 +89,15 @@ namespace BrosLMV.Descargas.Cola
                     }
                     arreglados++;
                 }
-                catch (Exception ex) { Bitacora.EscribirError("    No se pudo renombrar " + ruta + ": " + ex.Message); }
+                catch (Exception ex)
+                {
+                    // Un archivo creado por otra cuenta (p. ej. el servicio) puede no ser modificable desde la sesion de un
+                    // usuario: se cuenta y se avisa UNA sola vez al final en vez de una linea por archivo.
+                    sinPermiso++;
+                    if (primerError == null) primerError = ruta + ": " + ex.Message;
+                }
             }
+            if (sinPermiso > 0) Bitacora.Escribir("    " + sinPermiso + " archivo(s) con nombre \"[UUID]\" no se pudieron renombrar (se reintenta con otra cuenta); primero: " + primerError);
             if (arreglados > 0) Bitacora.Escribir("    " + arreglados + " archivo(s) con nombre \"[UUID]\" renombrados a <uuid>.xml.");
             return arreglados;
         }

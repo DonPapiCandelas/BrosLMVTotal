@@ -56,7 +56,7 @@ namespace BrosLMV.Descargas.Datos
             // 1) El servicio esta vivo
             var latido = BrosSatDb.LeerEstado(conn, ClaveLatido);
             if (!latido.HasValue)
-                Agregar(NivelSalud.Aviso, "Servicio", "El servicio todavia no ha reportado actividad (no esta instalado, esta detenido o es una version anterior a la 2.2.4).");
+                Agregar(NivelSalud.Aviso, "Servicio", "El servicio todavia no ha reportado actividad (no esta instalado, esta detenido o es una version anterior a la 2.3.0).");
             else
             {
                 var edad = DateTime.UtcNow - latido.Value;
