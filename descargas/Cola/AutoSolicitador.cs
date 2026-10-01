@@ -315,6 +315,22 @@ namespace BrosLMV.Descargas.Cola
         // Primer tramo de dias SIN cubrir dentro de [desde, hasta] (fechas de calendario), o null si
         // todo el periodo esta cubierto. Un rango cubierto tapa desde el dia de su FechaInicial hasta
         // el dia de su FechaFinal, ambos incluidos.
+        // Todos los tramos sin cubrir dentro de [desde, hasta], en orden.
+        public static System.Collections.Generic.List<(DateTime Desde, DateTime Hasta)> Todos(System.Collections.Generic.List<(DateTime Desde, DateTime Hasta)> cubiertos, DateTime desde, DateTime hasta)
+        {
+            var lista = new System.Collections.Generic.List<(DateTime, DateTime)>();
+            var extra = new System.Collections.Generic.List<(DateTime Desde, DateTime Hasta)>(cubiertos);
+            DateTime d1 = hasta.Date;
+            for (int i = 0; i < 2000; i++)
+            {
+                var h = PrimerHueco(extra, desde, hasta);
+                if (!h.HasValue) break;
+                lista.Add((h.Value.Desde, h.Value.Hasta));
+                extra.Add((h.Value.Desde, h.Value.Hasta));
+            }
+            return lista;
+        }
+
         public static (DateTime Desde, DateTime Hasta)? PrimerHueco(System.Collections.Generic.List<(DateTime Desde, DateTime Hasta)> cubiertos, DateTime desde, DateTime hasta)
         {
             DateTime d0 = desde.Date, d1 = hasta.Date;

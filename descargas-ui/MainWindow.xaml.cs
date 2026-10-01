@@ -304,6 +304,11 @@ namespace BrosLMV.DescargasUI
             CargarEmpresas();
         }
 
+        private void NavSalud_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            new SaludWindow(_conn) { Owner = this }.ShowDialog();
+        }
+
         private void NavBitacora_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             new BitacoraWindow { Owner = this }.ShowDialog();

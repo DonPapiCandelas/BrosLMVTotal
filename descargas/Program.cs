@@ -52,7 +52,7 @@ namespace BrosLMV.Descargas
         {
             string rutaCer = null, rutaKey = null, password = null, rfc = null, salida = "sobre_firmado.xml", idSolicitud = null, idPaquete = null, salidaZip = null, conexionSql = null, tipoSolicitud = "CFDI";
             bool autenticar = false, solicitar = false, auto = false, reparsear = false, autoTodas = false, verificarEstatus = false;
-            bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false;
+            bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -136,6 +136,7 @@ namespace BrosLMV.Descargas
                     // automatica en SolicitudWorker, asi que nunca se copiaron). Sin --rfc procesa
                     // TODAS las empresas activas del catalogo; con --rfc solo esa. Requiere --conn.
                     case "--sincronizar-comercial": sincronizarComercial = true; break;
+                    case "--salud": mostrarSalud = true; break;
                     // Crea la base de datos (si no existe) y el esquema y sale -- no requiere
                     // FIEL. Pensado para el instalador (BrosLMV.Descargas.Instalador): antes de
                     // crear las Tareas Programadas, deja la BD lista para que la primera corrida
@@ -203,6 +204,15 @@ namespace BrosLMV.Descargas
                     return Uso();
                 }
                 return await VerificarMetadataCatalogoAsync(conexionSql, rfc, idSolicitud);
+            }
+
+            if (mostrarSalud)
+            {
+                if (string.IsNullOrWhiteSpace(conexionSql)) { Console.Error.WriteLine("--salud requiere --conn."); return 1; }
+                var todos = HallazgosDeSalud(conexionSql);
+                if (todos.Count == 0) Console.WriteLine("Salud: todo en orden.");
+                foreach (var h in todos) Console.WriteLine(h.Nivel + " [" + h.Empresa + "] " + h.Tema + ": " + h.Detalle);
+                return todos.Any(h => h.Nivel == "CRITICO") ? 2 : 0;
             }
 
             if (sincronizarComercial)
@@ -443,6 +453,44 @@ namespace BrosLMV.Descargas
         // (ver BrosSatDb.ObtenerCfdiParaVerificar), con 4 consultas en paralelo, 2 reintentos por
         // CFDI y un tope de tiempo: lo que no alcance se atiende en la siguiente pasada, asi los
         // estatus se mantienen al dia de forma continua en vez de en una sola corrida diaria.
+        // ---- Salud (pantalla Salud, bandeja y servicio) ----
+
+        // Anota que el servicio hizo algo (clave = "Latido", "PasadaDescargas"...). Nunca lanza.
+        public static void AnotarEstado(string conexionSql, string clave)
+        {
+            try
+            {
+                using (var conn = new SqlConnection(conexionSql))
+                {
+                    conn.Open();
+                    EsquemaSql.Asegurar(conn);
+                    BrosSatDb.GuardarEstado(conn, clave);
+                }
+            }
+            catch { }
+        }
+
+        public static string ClaveLatido => Salud.ClaveLatido;
+        public static string ClavePasadaDescargas => Salud.ClavePasadaDescargas;
+        public static string ClavePasadaSolicitudes => Salud.ClavePasadaSolicitudes;
+        public static string ClavePasadaEstatus => Salud.ClavePasadaEstatus;
+
+        // Hallazgos NO "Ok" de todas las empresas activas, para que el servicio los anote en la
+        // bitacora y en el Registro de eventos de Windows. Todo local.
+        public static System.Collections.Generic.List<(string Empresa, string Nivel, string Tema, string Detalle)> HallazgosDeSalud(string conexionSql)
+        {
+            var salida = new System.Collections.Generic.List<(string, string, string, string)>();
+            using (var conn = new SqlConnection(conexionSql))
+            {
+                conn.Open();
+                EsquemaSql.Asegurar(conn);
+                foreach (var e in BrosSatDb.ObtenerEmpresas(conn).Where(x => x.Activa))
+                    foreach (var h in Salud.Evaluar(conn, e).Where(h => h.Nivel != NivelSalud.Ok))
+                        salida.Add((e.Nombre + " (" + e.RFC + ")", h.Nivel == NivelSalud.Critico ? "CRITICO" : "AVISO", h.Tema, h.Detalle));
+            }
+            return salida;
+        }
+
         public static async Task<int> VerificarEstatusAsync(string conexionSql, int limite = 800, int minutosMaximo = 12)
         {
             List<CfdiDetalleFila> cfdis;
@@ -729,6 +777,9 @@ namespace BrosLMV.Descargas
                     foreach (var empresa in empresas)
                     {
                         Bitacora.Escribir("--- " + empresa.Nombre + " (" + empresa.RFC + ") ---");
+                        // Autoreparacion barata: archivos que quedaron con el nombre literal "[UUID]" se renombran
+                        // (el servicio corre con permisos para tocar lo que el mismo creo).
+                        try { OrganizadorArchivos.RepararNombresLiterales(conn, empresa.RFC); } catch { }
                         try
                         {
                             string passwordEmpresa = DpapiHelper.Descifrar(empresa.PasswordCifrada);
@@ -867,6 +918,7 @@ namespace BrosLMV.Descargas
                 "--verificar-metadata-catalogo --conn <cadena> --rfc <RFC> --idsolicitud <id>: verifica y descarga el resultado de la solicitud de arriba, guarda los TXT crudos en metadata_prueba\\ para inspeccionar el formato.\n" +
                 "--auto-solicitar-todas --conn <cadena>: UNICO modo que CREA solicitudes nuevas de forma automatica -- calcula que tan atrasada esta cada empresa y pide el siguiente tramo pendiente (CFDI+Metadata, max 2 solicitudes por empresa por corrida). SI gasta cupo diario. Pensado para UNA Tarea Programada aparte, 1 vez al dia.\n" +
                 "--inicializar --conn <cadena>: crea la base de datos (si falta) y el esquema, y sale -- no requiere FIEL. Pensado para el instalador, antes de crear las Tareas Programadas.\n" +
+                "--salud --conn <cadena>: muestra la salud de cada empresa activa (servicio, huecos, faltantes, estatus, archivos, Comercial); termina con codigo 2 si hay algo critico. Solo lee la base local.\n" +
                 "--sincronizar-comercial --conn <cadena> [--rfc <RFC>]: copia hacia las carpetas de Comercial (Ruta XML Recibidos/Emitidos) TODOS los CFDI ya descargados en la BD -- no gasta cupo, no vuelve a pedir nada al SAT. Backfill de una sola vez para CFDI descargados antes de tener la copia automatica configurada. Sin --rfc procesa todas las empresas activas.");
             return 2;
         }

@@ -1,0 +1,23 @@
+<Window x:Class="BrosLMV.DescargasUI.SaludWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Salud" Height="780" Width="980" MinHeight="560" MinWidth="760"
+        WindowStartupLocation="CenterOwner" Background="#F4F6F9">
+  <Grid Margin="34,28,34,30">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Grid>
+      <StackPanel>
+        <TextBlock Text="Salud de las descargas" FontSize="27" FontWeight="Bold" Foreground="#16263A"/>
+        <TextBlock x:Name="LblResumen" Foreground="#64748B" Margin="0,6,0,0" TextWrapping="Wrap"
+                   Text="Todo se calcula con los datos de este equipo; no se envia nada a ningun lado."/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+        <Button Content="Copiar como texto" Style="{StaticResource Ghost}" Margin="0,0,8,0" Click="BtnCopiar_Click"/>
+        <Button x:Name="BtnActualizar" Content="Actualizar" Style="{StaticResource Ghost}" Click="BtnActualizar_Click"/>
+      </StackPanel>
+    </Grid>
+    <ScrollViewer Grid.Row="1" Margin="0,20,0,0" VerticalScrollBarVisibility="Auto">
+      <StackPanel x:Name="Contenido"/>
+    </ScrollViewer>
+  </Grid>
+</Window>

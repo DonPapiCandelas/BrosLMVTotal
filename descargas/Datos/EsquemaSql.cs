@@ -220,6 +220,13 @@ CREATE TABLE CfdiEstatusHistorial (
     Fuente NVARCHAR(20) NOT NULL,
     Fecha DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
+-- Estado del servicio (latido y ultimas pasadas), para la pantalla Salud. Solo local.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ServicioEstado')
+CREATE TABLE ServicioEstado (
+    Clave NVARCHAR(50) NOT NULL PRIMARY KEY,
+    Valor NVARCHAR(200) NULL,
+    Fecha DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
 -- Archivar saca el CFDI del historial que se muestra por defecto sin borrar la fila ni el XML
 -- en disco (RutaArchivoXml sigue intacto): una forma de limpiar el historial sin perder el XML.
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('CfdiRecibido') AND name='Archivado')

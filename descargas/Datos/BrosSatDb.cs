@@ -783,6 +783,30 @@ WHERE s.RfcSolicitante = @Rfc AND s.TipoSolicitud = @Tipo AND s.Tipo = @TipoRecE
             }
         }
 
+        // Estado del servicio (latido, ultimas pasadas): una fila por clave.
+        public static void GuardarEstado(SqlConnection conn, string clave, string valor = null)
+        {
+            const string sql = @"
+UPDATE ServicioEstado SET Valor=@v, Fecha=SYSUTCDATETIME() WHERE Clave=@c;
+IF @@ROWCOUNT = 0 INSERT INTO ServicioEstado (Clave, Valor) VALUES (@c, @v);";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@c", clave);
+                cmd.Parameters.AddWithValue("@v", (object)valor ?? DBNull.Value);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static DateTime? LeerEstado(SqlConnection conn, string clave)
+        {
+            using (var cmd = new SqlCommand("SELECT Fecha FROM ServicioEstado WHERE Clave=@c", conn))
+            {
+                cmd.Parameters.AddWithValue("@c", clave);
+                var r = cmd.ExecuteScalar();
+                return r == null || r == DBNull.Value ? (DateTime?)null : DateTime.SpecifyKind((DateTime)r, DateTimeKind.Utc);
+            }
+        }
+
         // Meses con CFDI vigentes que el SAT reporta en Metadata y que NO existen como XML descargado
         // (CfdiRecibido). Es la comprobacion de que no falta nada.
         public static List<(int Anio, int Mes, int Faltan)> ObtenerMesesConFaltantes(SqlConnection conn, string rfc, string tipo)

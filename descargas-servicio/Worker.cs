@@ -36,6 +36,7 @@ namespace BrosLMV.Descargas.Servicio
         private DateTime _ultimoSolicitar = DateTime.MinValue;
         private DateTime _ultimoVerificar = DateTime.MinValue;
         private DateTime _ultimoLatido = DateTime.MinValue;
+        private DateTime _ultimaSalud = DateTime.MinValue;
 
         public Worker(ILogger<Worker> logger)
         {
@@ -82,6 +83,8 @@ namespace BrosLMV.Descargas.Servicio
                 }
 
                 var config = ConfigServicio.Cargar();
+                if (config != null && !string.IsNullOrWhiteSpace(config.CadenaConexion))
+                    Program.AnotarEstado(config.CadenaConexion, Program.ClaveLatido);
                 if (config == null || string.IsNullOrWhiteSpace(config.CadenaConexion))
                 {
                     Bitacora.EscribirError("Servicio: sin configuracion (" + ConfigServicio.RutaArchivo + " no existe o esta incompleto) -- nada que hacer.");
@@ -93,6 +96,7 @@ namespace BrosLMV.Descargas.Servicio
                     if ((ahora - _ultimoAutoTodas).TotalMinutes >= 10)
                     {
                         await EjecutarSeguro("auto-todas", () => Program.AutoTodasAsync(config.CadenaConexion));
+                        Program.AnotarEstado(config.CadenaConexion, Program.ClavePasadaDescargas);
                         _ultimoAutoTodas = ahora;
                     }
 
@@ -100,6 +104,7 @@ namespace BrosLMV.Descargas.Servicio
                     if ((ahora - _ultimoSolicitar).TotalMinutes >= intervaloSolicitar)
                     {
                         await EjecutarSeguro("auto-solicitar-todas", () => Program.AutoSolicitarTodasAsync(config.CadenaConexion));
+                        Program.AnotarEstado(config.CadenaConexion, Program.ClavePasadaSolicitudes);
                         _ultimoSolicitar = ahora;
                     }
 
@@ -110,11 +115,48 @@ namespace BrosLMV.Descargas.Servicio
                     if ((ahora - _ultimoVerificar).TotalMinutes >= 30)
                     {
                         await EjecutarSeguro("verificar-estatus", () => Program.VerificarEstatusAsync(config.CadenaConexion));
+                        Program.AnotarEstado(config.CadenaConexion, Program.ClavePasadaEstatus);
                         _ultimoVerificar = ahora;
+                    }
+
+                    // Salud: cada hora se revisa que todo este bien y los problemas se anotan en la
+                    // bitacora y en el Registro de eventos de Windows (visor de eventos, origen
+                    // "BrosLMV Descargas"). Solo local: no se envia nada a ningun lado.
+                    if ((ahora - _ultimaSalud).TotalMinutes >= 60)
+                    {
+                        _ultimaSalud = ahora;
+                        await EjecutarSeguro("salud", async () =>
+                        {
+                            var hallazgos = Program.HallazgosDeSalud(config.CadenaConexion);
+                            foreach (var h in hallazgos)
+                            {
+                                string linea = h.Nivel + " [" + h.Empresa + "] " + h.Tema + ": " + h.Detalle;
+                                Bitacora.EscribirError("Salud: " + linea);
+                                EscribirEnRegistroDeEventos(linea, h.Nivel == "CRITICO");
+                            }
+                            if (hallazgos.Count == 0) Bitacora.Escribir("Salud: todo en orden.");
+                            await Task.CompletedTask;
+                            return 0;
+                        });
                     }
                 }
 
             }
+        }
+
+        private const string OrigenEventos = "BrosLMV Descargas";
+
+        // Registro de eventos de Windows (solo local). Nunca debe romper el servicio.
+        private static void EscribirEnRegistroDeEventos(string mensaje, bool critico)
+        {
+            try
+            {
+                if (!System.Diagnostics.EventLog.SourceExists(OrigenEventos))
+                    System.Diagnostics.EventLog.CreateEventSource(OrigenEventos, "Application");
+                System.Diagnostics.EventLog.WriteEntry(OrigenEventos, mensaje,
+                    critico ? System.Diagnostics.EventLogEntryType.Error : System.Diagnostics.EventLogEntryType.Warning, critico ? 2 : 1);
+            }
+            catch { }
         }
 
         private async Task EjecutarSeguro(string nombre, Func<Task<int>> accion)

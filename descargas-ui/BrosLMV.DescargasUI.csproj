@@ -43,6 +43,7 @@
     <Compile Include="..\descargas\Datos\CfdiMetadataParser.cs" Link="Datos\CfdiMetadataParser.cs" />
     <Compile Include="..\descargas\Datos\BrosSatDb.cs" Link="Datos\BrosSatDb.cs" />
     <Compile Include="..\descargas\Datos\ReportesSql.cs" Link="Datos\ReportesSql.cs" />
+    <Compile Include="..\descargas\Datos\Salud.cs" Link="Datos\Salud.cs" />
     <Compile Include="..\descargas\Datos\DpapiHelper.cs" Link="Datos\DpapiHelper.cs" />
     <Compile Include="..\descargas\Cola\SolicitudWorker.cs" Link="Cola\SolicitudWorker.cs" />
     <Compile Include="..\descargas\Cola\SolicitudChunker.cs" Link="Cola\SolicitudChunker.cs" />
