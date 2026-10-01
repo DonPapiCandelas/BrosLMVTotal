@@ -148,7 +148,6 @@ namespace BrosLMV.Descargas.Cola
                             // Metadata en curso o terminada.
                             var rangosMetadata = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "Metadata", tipoRecEmi);
                             bool pedirMetadata = Huecos.PrimerHueco(rangosMetadata, tramo.Desde, tramo.Hasta).HasValue;
-                            var ultimaMetadata = (DateTime?)null;
 
                             Bitacora.Escribir("  [" + tipoRecEmi + "] Pendiente desde " + desde.ToString("yyyy-MM-dd") + " -- pidiendo tramo " + tramo.Desde.ToString("yyyy-MM-dd") + " a " + tramo.Hasta.ToString("yyyy-MM-dd") +
                                 (pedirMetadata ? " (CFDI + Metadata)..." : " (solo CFDI -- su Metadata ya esta pedida)..."));

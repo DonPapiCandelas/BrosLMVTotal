@@ -2,6 +2,15 @@
 
 > Estado a 2026-08-12: **backend y UI funcionando de punta a punta contra el SAT real** (autenticación, solicitud, verificación y descarga de CFDI probadas en producción con la FIEL de Alma Vegetales Pack SA de CV, RFC AVP1108313W3). Este documento existe para poder retomar el proyecto en una conversación nueva sin perder contexto.
 
+## Historial de versiones del instalador
+
+### 2.2.0 — 2026-10-01 — Sin lagunas, estatus al día y servicio que se reinicia solo
+
+- **Corregido**: solicitudes que el SAT aceptaba pero se perdían por un estado inválido (bug 18, Metadata «atorado»); lagunas de descarga por avanzar solo desde la última fecha, paquetes fallidos sin reintento, freno definitivo por rechazos y solicitudes que nunca terminaban (bug 20); servicio que se quedaba detenido por falta de `failureflag` (bug 20).
+- **Agregado**: mapa de días cubiertos y petición de todos los huecos; barrido semanal de 12 meses; verificación de faltantes contra Metadata; estatus Vigente/Cancelado cada 30 min con historial `CfdiEstatusHistorial` (bug 19); latido por hora y vigilante de 40 min en el servicio.
+- **Actualizar un equipo con la versión anterior**: ejecutar el instalador 2.2.0 encima (detiene, reemplaza y vuelve a registrar el servicio con `failureflag`). La base de datos se actualiza sola al primer arranque (esquema idempotente) y las solicitudes dañadas con estatus `0` se rescatan.
+- **Volver a la 2.1.1**: ejecutar el instalador 2.1.1; las columnas y tablas nuevas no estorban.
+
 ## 1. Qué es esto
 
 Subproducto independiente de BrosLMV (no comparte versión ni instalador con el addon de Comercial PRO). Descarga los CFDI (XML) de un contribuyente directo del **Servicio de Descarga Masiva de CFDI del SAT** (protocolo SOAP oficial, no scraping), los guarda en una base de datos SQL Server **propia**, y expone una interfaz de escritorio WPF para gestionarlos.
