@@ -137,6 +137,10 @@ namespace BrosLMV.Descargas.Instalador
             EjecutarSc("description \"" + NombreServicio + "\" \"Descarga automatica de CFDI del SAT en segundo plano, sin ventanas visibles.\"");
             // Reinicio automatico si el proceso truena (ej. SQL Server no disponible un rato).
             EjecutarSc("failure \"" + NombreServicio + "\" reset= 86400 actions= restart/60000/restart/60000/restart/60000");
+            // Sin este flag, Windows solo reinicia el servicio si el proceso se CAE; si termina con un
+            // codigo de error de forma "limpia" (el host se detiene por una excepcion no controlada) se
+            // quedaba detenido para siempre. Con el flag tambien se reinicia en ese caso.
+            EjecutarSc("failureflag \"" + NombreServicio + "\" 1");
 
             try
             {

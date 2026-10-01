@@ -183,7 +183,7 @@ namespace BrosLMV.Descargas.Datos
             string sql = @"
 SELECT DISTINCT s.SolicitudDescargaID, s.IdSolicitud, s.RfcSolicitante, s.Estatus, s.TipoSolicitud, s.Tipo
 FROM SolicitudDescarga s
-LEFT JOIN SolicitudDescargaPaquete p ON p.SolicitudDescargaID = s.SolicitudDescargaID AND p.VecesDescargado = 0
+LEFT JOIN SolicitudDescargaPaquete p ON p.SolicitudDescargaID = s.SolicitudDescargaID AND (p.VecesDescargado = 0 OR (p.VecesDescargado < 2 AND p.UltimoError IS NOT NULL))
 WHERE (s.Estatus IN ('Aceptada', 'EnProceso') OR p.SolicitudDescargaPaqueteID IS NOT NULL)
   AND (@RfcFiltro IS NULL OR s.RfcSolicitante = @RfcFiltro);";
 
@@ -239,7 +239,7 @@ IF @SolID IS NOT NULL AND NOT EXISTS (SELECT 1 FROM SolicitudDescargaPaquete WHE
 SELECT p.IdPaquete
 FROM SolicitudDescargaPaquete p
 JOIN SolicitudDescarga s ON s.SolicitudDescargaID = p.SolicitudDescargaID
-WHERE s.IdSolicitud = @IdSolicitud AND p.VecesDescargado = 0;";
+WHERE s.IdSolicitud = @IdSolicitud AND (p.VecesDescargado = 0 OR (p.VecesDescargado < 2 AND p.UltimoError IS NOT NULL));";
 
             var resultado = new List<string>();
             using (var cmd = new SqlCommand(sql, conn))
@@ -768,6 +768,98 @@ WHERE s.RfcSolicitante = @Rfc AND s.TipoSolicitud = @Tipo AND s.Tipo = @TipoRecE
                 // un instante -- a diferencia de FechaSolicitud, no se guardo con SYSUTCDATETIME()
                 // y no debe marcarse UTC (confundiria a quien despues le aplique .ToLocalTime()).
                 return resultado == null || resultado == DBNull.Value ? (DateTime?)null : (DateTime)resultado;
+            }
+        }
+
+        // Mapa de dias CUBIERTOS de CFDI para este RFC/direccion: cada solicitud cuenta con su propio
+        // rango [FechaInicial, FechaFinal], no solo la ultima fecha. Reemplaza a
+        // ObtenerUltimaFechaCubierta, que con un MAX(FechaFinal) dejaba un hueco permanente: si el
+        // dia 17 fallaba y el 19 terminaba bien, el sistema seguia desde el 20 y NUNCA volvia al 17.
+        // Cuenta como cubierta una solicitud que:
+        //  - esta Terminada y no tiene un paquete perdido (2 descargas gastadas con error) ni uno
+        //    que nunca se bajo y ya paso su vida de 72 h; o
+        //  - sigue Aceptada/EnProceso y es reciente (se espera su resultado; se descarta si pasan
+        //    'diasEspera' dias, ver VencerSolicitudesAtoradas).
+        public static List<(DateTime Desde, DateTime Hasta)> ObtenerRangosCubiertos(SqlConnection conn, string rfc, string tipoSolicitud, string tipo, int diasEspera = 3)
+        {
+            const string sql = @"
+SELECT s.FechaInicial, s.FechaFinal
+FROM SolicitudDescarga s
+WHERE s.RfcSolicitante = @Rfc AND s.TipoSolicitud = @Tipo AND s.Tipo = @TipoRecEmi
+  AND (
+        (s.Estatus IN ('Aceptada','EnProceso') AND s.FechaSolicitud > DATEADD(DAY, -@DiasEspera, SYSUTCDATETIME()))
+     OR (s.Estatus = 'Terminada'
+         AND NOT EXISTS (
+             SELECT 1 FROM SolicitudDescargaPaquete p
+             WHERE p.SolicitudDescargaID = s.SolicitudDescargaID
+               AND ((p.VecesDescargado >= 2 AND p.UltimoError IS NOT NULL)
+                 OR (p.VecesDescargado = 0 AND s.FechaUltimaVerificacion < DATEADD(HOUR, -72, SYSUTCDATETIME())))))
+      );";
+
+            var rangos = new List<(DateTime, DateTime)>();
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Tipo", tipoSolicitud);
+                cmd.Parameters.AddWithValue("@TipoRecEmi", tipo);
+                cmd.Parameters.AddWithValue("@DiasEspera", diasEspera);
+                using (var reader = cmd.ExecuteReader())
+                    while (reader.Read()) rangos.Add((reader.GetDateTime(0), reader.GetDateTime(1)));
+            }
+            return rangos;
+        }
+
+        // Cuantas veces ya se pidio EXACTAMENTE este rango (cualquier resultado, rechazos incluidos).
+        // El SAT limita las solicitudes con los mismos parametros (CodEstatus 5002 "de por vida"),
+        // asi que un reintento del mismo hueco amplia el rango un dia por cada intento previo.
+        public static int ContarSolicitudesDelRango(SqlConnection conn, string rfc, string tipoSolicitud, string tipo, DateTime desde, DateTime hasta)
+        {
+            const string sql = @"
+SELECT COUNT(*) FROM SolicitudDescarga
+WHERE RfcSolicitante = @Rfc AND TipoSolicitud = @Tipo AND Tipo = @TipoRecEmi
+  AND FechaInicial = @Desde AND FechaFinal = @Hasta;";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Tipo", tipoSolicitud);
+                cmd.Parameters.AddWithValue("@TipoRecEmi", tipo);
+                cmd.Parameters.AddWithValue("@Desde", desde);
+                cmd.Parameters.AddWithValue("@Hasta", hasta);
+                return (int)cmd.ExecuteScalar();
+            }
+        }
+
+        // Una solicitud que el SAT acepto pero nunca termino en 'dias' dias deja de esperarse: pasa
+        // a Vencida y su rango se vuelve a pedir (ObtenerRangosCubiertos ya no la cuenta).
+        public static int VencerSolicitudesAtoradas(SqlConnection conn, string rfc, int dias)
+        {
+            const string sql = @"
+UPDATE SolicitudDescarga
+SET Estatus = 'Vencida', UltimoMensaje = 'Sin resultado del SAT tras ' + CAST(@Dias AS NVARCHAR(5)) + ' dias; se vuelve a pedir.'
+WHERE RfcSolicitante = @Rfc AND Estatus IN ('Aceptada','EnProceso')
+  AND FechaSolicitud < DATEADD(DAY, -@Dias, SYSUTCDATETIME());";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Dias", dias);
+                return cmd.ExecuteNonQuery();
+            }
+        }
+
+        // Fecha (UTC) de la solicitud mas reciente de este tipo/origen, o null.
+        public static DateTime? ObtenerFechaUltimaSolicitudDe(SqlConnection conn, string rfc, string tipo, string tipoSolicitud, string origen = null)
+        {
+            const string sql = @"
+SELECT MAX(FechaSolicitud) FROM SolicitudDescarga
+WHERE RfcSolicitante = @Rfc AND Tipo = @TipoRecEmi AND TipoSolicitud = @Tipo AND (@Origen IS NULL OR Origen = @Origen);";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@TipoRecEmi", tipo);
+                cmd.Parameters.AddWithValue("@Tipo", tipoSolicitud);
+                cmd.Parameters.AddWithValue("@Origen", (object)origen ?? DBNull.Value);
+                var r = cmd.ExecuteScalar();
+                return r == null || r == DBNull.Value ? (DateTime?)null : (DateTime)r;
             }
         }
 

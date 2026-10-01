@@ -67,13 +67,22 @@ namespace BrosLMV.Descargas.Cola
             {
                 try
                 {
-                    var cubierta = BrosSatDb.ObtenerUltimaFechaCubierta(conn, empresa.RFC, "CFDI", tipoRecEmi);
-                    DateTime desde;
-                    if (cubierta.HasValue) desde = cubierta.Value.Date.AddDays(1);
-                    else if (empresa.AnioInicioDescargas.HasValue) desde = new DateTime(empresa.AnioInicioDescargas.Value, 1, 1);
-                    else desde = DateTime.Today.AddDays(-90);
+                    // Se pide el PRIMER HUECO del mapa de dias cubiertos, no "lo que sigue despues de la
+                    // ultima fecha": si el dia 17 fallo y el 19 salio bien, el 17 sigue sin cubrir y se
+                    // vuelve a pedir (antes se quedaba perdido para siempre). Una solicitud que el SAT
+                    // acepto pero nunca termino en 3 dias deja de esperarse y su rango se reabre.
+                    int vencidas = BrosSatDb.VencerSolicitudesAtoradas(conn, empresa.RFC, 3);
+                    if (vencidas > 0) Bitacora.Escribir("  [" + tipoRecEmi + "] " + vencidas + " solicitud(es) sin resultado tras 3 dias -> Vencida, su rango se vuelve a pedir.");
 
-                    bool hayTramoPendiente = desde <= hasta;
+                    DateTime inicioHistorico = empresa.AnioInicioDescargas.HasValue
+                        ? new DateTime(empresa.AnioInicioDescargas.Value, 1, 1)
+                        : DateTime.Today.AddDays(-90);
+                    var rangosCubiertos = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "CFDI", tipoRecEmi);
+                    var hueco = Huecos.PrimerHueco(rangosCubiertos, inicioHistorico, hasta);
+                    DateTime desde = hueco?.Desde ?? hasta.AddDays(1);
+                    var cubierta = hueco.HasValue ? (DateTime?)null : hasta;
+
+                    bool hayTramoPendiente = hueco.HasValue;
 
                     // Reintento retroactivo -- pedido explicito del usuario 2026-08-19: "es
                     // posible timbrar una factura poniendo una fecha de 72 horas atras", asi que
@@ -85,7 +94,7 @@ namespace BrosLMV.Descargas.Cola
                     var ultimaRetroactiva = BrosSatDb.ObtenerFechaUltimaSolicitudRetroactiva(conn, empresa.RFC, tipoRecEmi);
                     bool pedirRetroactivo = !ultimaRetroactiva.HasValue || (DateTime.UtcNow - ultimaRetroactiva.Value).TotalHours >= 20;
 
-                    if (!hayTramoPendiente && !pedirRetroactivo)
+                    if (!hayTramoPendiente && !pedirRetroactivo && !BarridoToca(conn, empresa, tipoRecEmi))
                     {
                         Bitacora.Escribir("  [" + tipoRecEmi + "] Ya al dia (cubierto hasta " + (cubierta?.ToString("yyyy-MM-dd") ?? "-") + "), nada que solicitar.");
                         continue;
@@ -94,8 +103,15 @@ namespace BrosLMV.Descargas.Cola
                     int rechazosSeguidosCfdi = BrosSatDb.ContarRechazosConsecutivos(conn, empresa.RFC, tipoRecEmi, "CFDI");
                     if (rechazosSeguidosCfdi >= UmbralRechazosConsecutivos)
                     {
-                        Bitacora.EscribirError("  [" + tipoRecEmi + "] " + rechazosSeguidosCfdi + " rechazos seguidos del SAT (CFDI) -- pausando reintentos automaticos. Revisa el motivo (cupo agotado, etc) y usa \"Nueva solicitud\" para forzar a mano cuando este resuelto.");
-                        continue;
+                        // Antes el freno era definitivo (hacia falta forzar a mano) y por eso el sistema
+                        // "dejaba de descargar" hasta que alguien abria la app. Ahora solo espacia los
+                        // intentos: uno cada 6 h, para no gastar cupo en rechazos pero sin rendirse nunca.
+                        var ultimoCfdi = BrosSatDb.ObtenerFechaUltimaSolicitudDe(conn, empresa.RFC, tipoRecEmi, "CFDI");
+                        if (ultimoCfdi.HasValue && (DateTime.UtcNow - ultimoCfdi.Value).TotalHours < 6)
+                        {
+                            Bitacora.EscribirError("  [" + tipoRecEmi + "] " + rechazosSeguidosCfdi + " rechazos seguidos del SAT (CFDI) -- se reintenta cada 6 h, proximo intento pasadas " + ultimoCfdi.Value.AddHours(6).ToLocalTime().ToString("HH:mm") + ".");
+                            continue;
+                        }
                     }
 
                     string passwordEmpresa = DpapiHelper.Descifrar(empresa.PasswordCifrada);
@@ -110,7 +126,17 @@ namespace BrosLMV.Descargas.Cola
 
                         if (hayTramoPendiente)
                         {
-                            var tramo = SolicitudChunker.PartirEnMeses(desde, hasta).First();
+                            var tramo = SolicitudChunker.PartirEnMeses(desde, hueco.Value.Hasta).First();
+                            int intentosPrevios = BrosSatDb.ContarSolicitudesDelRango(conn, empresa.RFC, "CFDI", tipoRecEmi, tramo.Desde, tramo.Hasta);
+                            if (intentosPrevios > 0)
+                            {
+                                // Mismos parametros que una solicitud anterior: el SAT los limita (5002). Se amplia el
+                                // inicio un dia por intento previo (se traslapa con dias ya bajados; el guardado es
+                                // idempotente por UUID) para que los parametros sean distintos.
+                                var ampliado = tramo.Desde.AddDays(-Math.Min(intentosPrevios, 10));
+                                if (ampliado < inicioHistorico.AddYears(-1)) ampliado = tramo.Desde;
+                                tramo = (ampliado, tramo.Hasta);
+                            }
 
                             // Metadata se quedo atorado en 13 de 13 intentos reales (2h a 105h de
                             // espera, 0 completados -- confirmado 2026-08-19) -- ya no se pide en
@@ -161,6 +187,12 @@ namespace BrosLMV.Descargas.Cola
                             BrosSatDb.RegistrarSolicitud(conn, solicRetro.IdSolicitud, empresa.RFC, tipoRecEmi, desdeRetro, hasta, "Retroactivo", "CFDI");
                             Bitacora.Escribir("  [" + tipoRecEmi + "] Retroactivo solicitado.");
                         }
+
+                        // Barrido de verificacion: una vez por semana (en fin de semana, o si nunca se ha
+                        // hecho) se vuelven a pedir los ultimos MesesBarrido meses COMPLETOS, para asegurar
+                        // que no falte ningun XML aunque una solicitud anterior haya salido "Terminada"
+                        // incompleta. Es seguro repetirlo (guardado idempotente por UUID).
+                        await BarridoAsync(conn, empresa, tipoRecEmi, cert, llave, auth.Token, rfcEmisor, rfcReceptor, hasta);
                     }
                 }
                 catch (Exception ex)
@@ -171,6 +203,74 @@ namespace BrosLMV.Descargas.Cola
             }
 
             return errores;
+        }
+
+        // Cuantos meses hacia atras revisa el barrido semanal (mes actual incluido). Cada mes son 2
+        // solicitudes por semana (Recibidos + Emitidos) del cupo del SAT.
+        private const int MesesBarrido = 3;
+
+        // Toca barrido si nunca se ha hecho, si ya pasaron 6 dias y es fin de semana, o si ya pasaron
+        // 9 dias (para que un servidor que estuvo apagado el fin de semana no se salte la semana).
+        private static bool BarridoToca(SqlConnection conn, EmpresaFila empresa, string tipoRecEmi)
+        {
+            var ultimo = BrosSatDb.ObtenerFechaUltimaSolicitudDe(conn, empresa.RFC, tipoRecEmi, "CFDI", "Barrido");
+            if (!ultimo.HasValue) return true;
+            double dias = (DateTime.UtcNow - ultimo.Value).TotalDays;
+            bool finDeSemana = DateTime.Today.DayOfWeek == DayOfWeek.Saturday || DateTime.Today.DayOfWeek == DayOfWeek.Sunday;
+            return (dias >= 6 && finDeSemana) || dias >= 9;
+        }
+
+        private static async Task BarridoAsync(SqlConnection conn, EmpresaFila empresa, string tipoRecEmi,
+            System.Security.Cryptography.X509Certificates.X509Certificate2 cert, System.Security.Cryptography.RSA llave,
+            string token, string rfcEmisor, string rfcReceptor, DateTime hasta)
+        {
+            if (!BarridoToca(conn, empresa, tipoRecEmi)) return;
+
+            for (int m = 0; m < MesesBarrido; m++)
+            {
+                var primero = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-m);
+                var fin = primero.AddMonths(1).AddDays(-1).AddHours(23).AddMinutes(59).AddSeconds(59);
+                if (fin > hasta.AddHours(23).AddMinutes(59).AddSeconds(59)) fin = hasta.AddHours(23).AddMinutes(59).AddSeconds(59);
+                if (primero > fin) continue;
+
+                // Cada barrido del mismo mes amplia el inicio un dia mas (maximo 10) para que los
+                // parametros sean distintos y el SAT no los cuente como la misma solicitud (5002).
+                int previos = BrosSatDb.ContarSolicitudesDelRango(conn, empresa.RFC, "CFDI", tipoRecEmi, primero, fin);
+                var desde = primero.AddDays(-Math.Min(previos, 10));
+                Bitacora.Escribir("  [" + tipoRecEmi + "] Barrido: " + desde.ToString("yyyy-MM-dd") + " a " + fin.ToString("yyyy-MM-dd") + " (verificar que no falte ningun XML)...");
+                var solic = await SatSoapClient.SolicitarDescargaAsync(cert, llave, token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                    desde: desde, hasta: fin, tipoSolicitud: "CFDI");
+                if (!solic.Exito)
+                {
+                    BrosSatDb.RegistrarIntentoFallido(conn, empresa.RFC, tipoRecEmi, desde, fin, "Barrido", "CFDI", solic.CodEstatus, solic.Mensaje);
+                    Bitacora.EscribirError("  [" + tipoRecEmi + "] Barrido rechazado por el SAT: " + solic.Error);
+                    return;
+                }
+                BrosSatDb.RegistrarSolicitud(conn, solic.IdSolicitud, empresa.RFC, tipoRecEmi, desde, fin, "Barrido", "CFDI");
+            }
+        }
+    }
+
+    // Calculo de huecos sobre un conjunto de rangos ya cubiertos.
+    internal static class Huecos
+    {
+        // Primer tramo de dias SIN cubrir dentro de [desde, hasta] (fechas de calendario), o null si
+        // todo el periodo esta cubierto. Un rango cubierto tapa desde el dia de su FechaInicial hasta
+        // el dia de su FechaFinal, ambos incluidos.
+        public static (DateTime Desde, DateTime Hasta)? PrimerHueco(System.Collections.Generic.List<(DateTime Desde, DateTime Hasta)> cubiertos, DateTime desde, DateTime hasta)
+        {
+            DateTime d0 = desde.Date, d1 = hasta.Date;
+            if (d0 > d1) return null;
+            var ordenados = cubiertos.Select(r => (Desde: r.Desde.Date, Hasta: r.Hasta.Date)).OrderBy(r => r.Desde).ToList();
+            DateTime cursor = d0;
+            foreach (var r in ordenados)
+            {
+                if (r.Hasta < cursor) continue;
+                if (r.Desde > cursor) return (cursor, (r.Desde.AddDays(-1) < d1 ? r.Desde.AddDays(-1) : d1));
+                cursor = r.Hasta.AddDays(1);
+                if (cursor > d1) return null;
+            }
+            return cursor <= d1 ? ((DateTime, DateTime)?)(cursor, d1) : null;
         }
     }
 }

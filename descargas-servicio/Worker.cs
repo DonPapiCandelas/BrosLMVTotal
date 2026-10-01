@@ -35,6 +35,7 @@ namespace BrosLMV.Descargas.Servicio
         private DateTime _ultimoAutoTodas = DateTime.MinValue;
         private DateTime _ultimoSolicitar = DateTime.MinValue;
         private DateTime _ultimoVerificar = DateTime.MinValue;
+        private DateTime _ultimoLatido = DateTime.MinValue;
 
         public Worker(ILogger<Worker> logger)
         {
@@ -48,6 +49,38 @@ namespace BrosLMV.Descargas.Servicio
 
             while (!stoppingToken.IsCancellationRequested)
             {
+                // TODO el cuerpo del ciclo va protegido: una excepcion fuera de EjecutarSeguro (por
+                // ejemplo leer la configuracion, o la propia bitacora si el archivo esta bloqueado)
+                // tumbaba el servicio entero, que se quedaba detenido hasta que alguien lo
+                // reiniciaba a mano ("deja de descargar hasta que lo vuelvo a abrir").
+                try
+                {
+                await CicloAsync();
+                }
+                catch (Exception ex)
+                {
+                    try { _logger.LogError(ex, "Error en el ciclo del servicio"); } catch { }
+                    try { Bitacora.EscribirError("Servicio (ciclo): " + ex.Message); } catch { }
+                }
+
+                try { await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken); }
+                catch (TaskCanceledException) { }
+            }
+
+            try { Bitacora.Escribir("Servicio detenido."); } catch { }
+        }
+
+        private async Task CicloAsync()
+        {
+            {
+                // Latido: una linea por hora en la bitacora, para saber que el servicio sigue vivo
+                // aunque no haya nada que descargar (y, si la linea deja de aparecer, desde cuando).
+                if ((DateTime.UtcNow - _ultimoLatido).TotalMinutes >= 60)
+                {
+                    Bitacora.Escribir("Latido: servicio activo.");
+                    _ultimoLatido = DateTime.UtcNow;
+                }
+
                 var config = ConfigServicio.Cargar();
                 if (config == null || string.IsNullOrWhiteSpace(config.CadenaConexion))
                 {
@@ -81,20 +114,28 @@ namespace BrosLMV.Descargas.Servicio
                     }
                 }
 
-                try { await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken); }
-                catch (TaskCanceledException) { }
             }
-
-            Bitacora.Escribir("Servicio detenido.");
         }
 
         private async Task EjecutarSeguro(string nombre, Func<Task<int>> accion)
         {
-            try { await accion(); }
+            try
+            {
+                var tarea = accion();
+                // Vigilante: una pasada que se queda colgada (red, SQL) detenia todo el ciclo sin dar
+                // error. Si pasa de 40 min se termina el proceso con codigo de error y Windows lo
+                // reinicia solo (failureflag + restart configurados al instalar el servicio).
+                if (await Task.WhenAny(tarea, Task.Delay(TimeSpan.FromMinutes(40))) != tarea)
+                {
+                    try { Bitacora.EscribirError("Servicio (" + nombre + "): la pasada lleva mas de 40 min sin terminar; se reinicia el servicio."); } catch { }
+                    Environment.Exit(1);
+                }
+                await tarea;
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error en {Nombre}", nombre);
-                Bitacora.EscribirError("Servicio (" + nombre + "): " + ex.Message);
+                try { _logger.LogError(ex, "Error en {Nombre}", nombre); } catch { }
+                try { Bitacora.EscribirError("Servicio (" + nombre + "): " + ex.Message); } catch { }
             }
         }
     }
