@@ -70,9 +70,11 @@ namespace BrosLMV.Descargas.Servicio
                         _ultimoSolicitar = ahora;
                     }
 
-                    // Sin costo de cupo (servicio publico del SAT) -- no hace falta amarrarlo a
-                    // una hora fija del dia, basta con "mas o menos una vez al dia".
-                    if ((ahora - _ultimoVerificar).TotalHours >= 20)
+                    // Sin costo de cupo (servicio publico del SAT). Cada pasada revisa los CFDI con la
+                    // revision mas vieja (los de los ultimos 120 dias cada 6 h, los demas cada 24 h,
+                    // ver BrosSatDb.ObtenerCfdiParaVerificar), asi una cancelacion se detecta en
+                    // horas y no hasta la corrida del dia siguiente.
+                    if ((ahora - _ultimoVerificar).TotalMinutes >= 30)
                     {
                         await EjecutarSeguro("verificar-estatus", () => Program.VerificarEstatusAsync(config.CadenaConexion));
                         _ultimoVerificar = ahora;

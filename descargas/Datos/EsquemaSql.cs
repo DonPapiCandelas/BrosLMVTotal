@@ -203,6 +203,23 @@ CREATE TABLE CfdiRecibido (
     RutaArchivoXml NVARCHAR(400) NULL,
     FechaDescarga DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
+-- Detalle de la ultima consulta de estatus al SAT y bitacora de cada cambio (Vigente <-> Cancelado,
+-- cancelacion en proceso...), para saber CUANDO se detecto una cancelacion y no solo el estado actual.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('CfdiRecibido') AND name='EstatusCancelacion')
+    ALTER TABLE CfdiRecibido ADD EstatusCancelacion NVARCHAR(60) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('CfdiRecibido') AND name='FechaCambioEstatus')
+    ALTER TABLE CfdiRecibido ADD FechaCambioEstatus DATETIME2 NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CfdiEstatusHistorial')
+CREATE TABLE CfdiEstatusHistorial (
+    CfdiEstatusHistorialID INT IDENTITY PRIMARY KEY,
+    CfdiID INT NOT NULL,
+    UUID UNIQUEIDENTIFIER NOT NULL,
+    EstatusAnterior NVARCHAR(30) NULL,
+    EstatusNuevo NVARCHAR(30) NOT NULL,
+    EstatusCancelacion NVARCHAR(60) NULL,
+    Fuente NVARCHAR(20) NOT NULL,
+    Fecha DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
 -- Archivar saca el CFDI del historial que se muestra por defecto sin borrar la fila ni el XML
 -- en disco (RutaArchivoXml sigue intacto): una forma de limpiar el historial sin perder el XML.
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('CfdiRecibido') AND name='Archivado')

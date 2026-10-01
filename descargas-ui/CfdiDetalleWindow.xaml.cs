@@ -167,8 +167,8 @@ namespace BrosLMV.DescargasUI
                     return;
                 }
 
-                BrosSatDb.ActualizarEstatusCfdi(_conn, _cfdiId, resultado.Estado);
-                ValEstatus.Text = resultado.Estado;
+                BrosSatDb.ActualizarEstatusCfdi(_conn, _cfdiId, resultado.Estado, resultado.EstatusCancelacion);
+                if (resultado.Estado == "Vigente" || resultado.Estado == "Cancelado") ValEstatus.Text = resultado.Estado;
                 MessageBox.Show(this, "Estatus del SAT: " + resultado.Estado +
                     (string.IsNullOrEmpty(resultado.EstatusCancelacion) ? "" : "\nCancelación: " + resultado.EstatusCancelacion),
                     "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);

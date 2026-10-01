@@ -1078,18 +1078,70 @@ WHERE CfdiID = @Id;";
         // Refresca EstatusSat (Vigente/Cancelado) contra el servicio publico de consulta del SAT
         // (ver SatSoapClient.ConsultarEstatusCfdiAsync) -- no gasta cupo, se puede llamar cuantas
         // veces se quiera.
-        public static void ActualizarEstatusCfdi(SqlConnection conn, int cfdiId, string estatusSat)
+        // "No Encontrado" NO se guarda como estatus: no significa que el CFDI no exista, sino que la
+        // consulta no lo ubico (total/RFC distinto, servicio del SAT con retraso...). Pisar un
+        // Vigente real con eso borraria informacion buena; solo se marca la fecha de revision.
+        // Si el estatus cambia, queda una fila en CfdiEstatusHistorial.
+        public static void ActualizarEstatusCfdi(SqlConnection conn, int cfdiId, string estatusSat,
+            string estatusCancelacion = null, string fuente = "Consulta")
         {
+            bool valido = estatusSat == "Vigente" || estatusSat == "Cancelado";
             const string sql = @"
+DECLARE @Anterior NVARCHAR(30), @Uuid UNIQUEIDENTIFIER;
+SELECT @Anterior = EstatusSat, @Uuid = UUID FROM CfdiRecibido WHERE CfdiID = @Id;
+
 UPDATE CfdiRecibido
-SET EstatusSat = @Estatus, FechaUltimaVerificacionEstatus = SYSUTCDATETIME()
-WHERE CfdiID = @Id;";
+SET FechaUltimaVerificacionEstatus = SYSUTCDATETIME(),
+    EstatusSat = CASE WHEN @Valido = 1 THEN @Estatus ELSE EstatusSat END,
+    EstatusCancelacion = CASE WHEN @Valido = 1 THEN @EstatusCancelacion ELSE EstatusCancelacion END,
+    FechaCambioEstatus = CASE WHEN @Valido = 1 AND @Anterior <> @Estatus THEN SYSUTCDATETIME() ELSE FechaCambioEstatus END
+WHERE CfdiID = @Id;
+
+IF @Valido = 1 AND @Anterior IS NOT NULL AND @Anterior <> @Estatus
+    INSERT INTO CfdiEstatusHistorial (CfdiID, UUID, EstatusAnterior, EstatusNuevo, EstatusCancelacion, Fuente)
+    VALUES (@Id, @Uuid, @Anterior, @Estatus, @EstatusCancelacion, @Fuente);";
             using (var cmd = new SqlCommand(sql, conn))
             {
-                cmd.Parameters.AddWithValue("@Estatus", estatusSat);
+                cmd.Parameters.AddWithValue("@Estatus", estatusSat ?? "");
+                cmd.Parameters.AddWithValue("@Valido", valido);
+                cmd.Parameters.AddWithValue("@EstatusCancelacion", (object)Recortar(estatusCancelacion, 60) ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Fuente", fuente);
                 cmd.Parameters.AddWithValue("@Id", cfdiId);
                 cmd.ExecuteNonQuery();
             }
+        }
+
+        // Los CFDI que toca revisar ahora, los de revision mas antigua primero (nunca revisados
+        // antes que todos). Un CFDI de los ultimos 120 dias se vuelve a revisar cada 6 h (es cuando
+        // mas se cancelan); los demas cada 24 h. 'limite' acota cada pasada; el resto se atiende en
+        // las siguientes, asi el ciclo es continuo y no una sola corrida gigante al dia.
+        public static List<CfdiDetalleFila> ObtenerCfdiParaVerificar(SqlConnection conn, int limite)
+        {
+            const string sql = @"
+SELECT TOP (@Limite) CfdiID, UUID, RFCEmisor, RFCReceptor, Total, EstatusSat, TipoComprobante
+FROM CfdiRecibido
+WHERE FechaUltimaVerificacionEstatus IS NULL
+   OR FechaUltimaVerificacionEstatus < DATEADD(HOUR, CASE WHEN FechaEmision >= DATEADD(DAY, -120, SYSUTCDATETIME()) THEN -6 ELSE -24 END, SYSUTCDATETIME())
+ORDER BY ISNULL(FechaUltimaVerificacionEstatus, '0001-01-01'), CfdiID;";
+
+            var resultado = new List<CfdiDetalleFila>();
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Limite", limite);
+                using (var reader = cmd.ExecuteReader())
+                    while (reader.Read())
+                        resultado.Add(new CfdiDetalleFila
+                        {
+                            CfdiID = reader.GetInt32(0),
+                            UUID = reader.GetGuid(1),
+                            RFCEmisor = reader.GetString(2),
+                            RFCReceptor = reader.GetString(3),
+                            Total = reader.IsDBNull(4) ? (decimal?)null : reader.GetDecimal(4),
+                            EstatusSat = reader.GetString(5),
+                            TipoComprobante = reader.IsDBNull(6) ? null : reader.GetString(6)
+                        });
+            }
+            return resultado;
         }
 
         // Solo lectura -- para --verificar-estatus (CLI) y para refrescos masivos desde la UI.

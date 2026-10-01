@@ -27,6 +27,7 @@
 //   dotnet run -- --cer "C:\ruta\fiel.cer" --key "C:\ruta\fiel.key" --password "..." --rfc "XAXX010101000" [--autenticar]
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -437,45 +438,82 @@ namespace BrosLMV.Descargas
             }
         }
 
-        public static async Task<int> VerificarEstatusAsync(string conexionSql)
+        // Una pasada de actualizacion de estatus (Vigente/Cancelado) contra el servicio publico de
+        // consulta del SAT (sin FIEL, sin cupo). Revisa primero los CFDI con la revision mas vieja
+        // (ver BrosSatDb.ObtenerCfdiParaVerificar), con 4 consultas en paralelo, 2 reintentos por
+        // CFDI y un tope de tiempo: lo que no alcance se atiende en la siguiente pasada, asi los
+        // estatus se mantienen al dia de forma continua en vez de en una sola corrida diaria.
+        public static async Task<int> VerificarEstatusAsync(string conexionSql, int limite = 800, int minutosMaximo = 12)
         {
+            List<CfdiDetalleFila> cfdis;
             using (var conn = new SqlConnection(conexionSql))
             {
                 conn.Open();
                 EsquemaSql.Asegurar(conn);
-
-                var cfdis = BrosSatDb.ObtenerTodosLosCfdiParaVerificar(conn);
-                Bitacora.Escribir(cfdis.Count + " CFDI a verificar (" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + ").");
-
-                int cambios = 0, sinCambio = 0, sinTotal = 0, errores = 0;
-                foreach (var c in cfdis)
-                {
-                    bool esPago = string.Equals(c.TipoComprobante, "P", StringComparison.OrdinalIgnoreCase);
-                    if (!esPago && c.Total == null) { sinTotal++; continue; }
-
-                    var resultado = await SatSoapClient.ConsultarEstatusCfdiAsync(c.UUID.ToString(), c.RFCEmisor, c.RFCReceptor, BrosSatDb.TotalParaVerificarEstatus(c));
-                    if (!resultado.Exito)
-                    {
-                        errores++;
-                        Bitacora.EscribirError("  " + c.UUID + ": ERROR " + resultado.Error);
-                        continue;
-                    }
-
-                    if (resultado.Estado != c.EstatusSat)
-                    {
-                        Bitacora.Escribir("  " + c.UUID + ": " + c.EstatusSat + " -> " + resultado.Estado);
-                        cambios++;
-                    }
-                    else
-                    {
-                        sinCambio++;
-                    }
-                    BrosSatDb.ActualizarEstatusCfdi(conn, c.CfdiID, resultado.Estado);
-                }
-
-                Bitacora.Escribir(cambios + " con cambio de estatus, " + sinCambio + " sin cambio, " + sinTotal + " sin Total (no se pudieron verificar), " + errores + " con error.");
-                return errores > 0 ? 1 : 0;
+                cfdis = BrosSatDb.ObtenerCfdiParaVerificar(conn, limite);
             }
+            Bitacora.Escribir(cfdis.Count + " CFDI a verificar (" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + ").");
+            if (cfdis.Count == 0) return 0;
+
+            int cambios = 0, sinCambio = 0, sinTotal = 0, errores = 0, noEncontrados = 0, pendientes = 0;
+            var limiteTiempo = DateTime.UtcNow.AddMinutes(minutosMaximo);
+            using (var cupo = new System.Threading.SemaphoreSlim(4))
+            {
+                var tareas = cfdis.Select(async c =>
+                {
+                    await cupo.WaitAsync().ConfigureAwait(false);
+                    try
+                    {
+                        if (DateTime.UtcNow > limiteTiempo) { System.Threading.Interlocked.Increment(ref pendientes); return; }
+
+                        bool esPago = string.Equals(c.TipoComprobante, "P", StringComparison.OrdinalIgnoreCase);
+                        if (!esPago && c.Total == null) { System.Threading.Interlocked.Increment(ref sinTotal); return; }
+
+                        SatConsultaEstatusResultado r = null;
+                        for (int intento = 1; intento <= 3; intento++)
+                        {
+                            r = await SatSoapClient.ConsultarEstatusCfdiAsync(c.UUID.ToString(), c.RFCEmisor, c.RFCReceptor, BrosSatDb.TotalParaVerificarEstatus(c)).ConfigureAwait(false);
+                            if (r.Exito) break;
+                            await Task.Delay(1500 * intento).ConfigureAwait(false);
+                        }
+                        if (!r.Exito)
+                        {
+                            System.Threading.Interlocked.Increment(ref errores);
+                            Bitacora.EscribirError("  " + c.UUID + ": ERROR " + r.Error);
+                            return;
+                        }
+
+                        using (var conn = new SqlConnection(conexionSql))
+                        {
+                            conn.Open();
+                            BrosSatDb.ActualizarEstatusCfdi(conn, c.CfdiID, r.Estado, r.EstatusCancelacion);
+                        }
+
+                        if (r.Estado != "Vigente" && r.Estado != "Cancelado")
+                        {
+                            System.Threading.Interlocked.Increment(ref noEncontrados);
+                            Bitacora.Escribir("  " + c.UUID + ": el SAT contesto '" + r.Estado + "' (" + r.CodigoEstatus + ") -- se conserva '" + c.EstatusSat + "'.");
+                        }
+                        else if (r.Estado != c.EstatusSat)
+                        {
+                            System.Threading.Interlocked.Increment(ref cambios);
+                            Bitacora.Escribir("  " + c.UUID + ": " + c.EstatusSat + " -> " + r.Estado + (string.IsNullOrEmpty(r.EstatusCancelacion) ? "" : " (" + r.EstatusCancelacion + ")"));
+                        }
+                        else System.Threading.Interlocked.Increment(ref sinCambio);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Threading.Interlocked.Increment(ref errores);
+                        Bitacora.EscribirError("  " + c.UUID + ": ERROR " + ex.Message);
+                    }
+                    finally { cupo.Release(); }
+                }).ToList();
+                await Task.WhenAll(tareas).ConfigureAwait(false);
+            }
+
+            Bitacora.Escribir(cambios + " con cambio de estatus, " + sinCambio + " sin cambio, " + noEncontrados + " que el SAT no ubico, " + sinTotal +
+                " sin Total, " + errores + " con error, " + pendientes + " para la siguiente pasada.");
+            return errores > 0 ? 1 : 0;
         }
 
         // Diagnostico puntual (2026-08-14): confirmar en vivo el formato del TXT que regresa
