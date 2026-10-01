@@ -29,7 +29,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.Data.SqlClient;
@@ -45,7 +47,8 @@ namespace BrosLMV.Descargas.Cola
         // y regresa YaExistia -- nunca hay fila duplicada. No hay UNIQUE constraint real sobre
         // UUID en la tabla (confirmado con sys.indexes contra EmpresaA), asi que esta
         // verificacion de la app ES la unica proteccion contra duplicados.
-        public static async Task<(ResultadoImportComercial resultado, string error)> ImportarAsync(string comercialConexionSql, string contenidoXml, string rfcPropio)
+        public static async Task<(ResultadoImportComercial resultado, string error)> ImportarAsync(string comercialConexionSql, string contenidoXml, string rfcPropio,
+            string carpetaRecibidos = null, string carpetaEmitidos = null)
         {
             try
             {
@@ -75,7 +78,13 @@ namespace BrosLMV.Descargas.Cola
                     {
                         cmdExiste.Parameters.AddWithValue("@Uuid", uuid);
                         var existente = await cmdExiste.ExecuteScalarAsync().ConfigureAwait(false);
-                        if (existente != null) return (ResultadoImportComercial.YaExistia, null);
+                        if (existente != null)
+                        {
+                            // Ya estaba la fila; se asegura el archivo (las filas importadas antes de que existiera
+                            // esta pieza quedaron sin XML y Comercial decia "Archivo no encontrado").
+                            await AsegurarArchivoProcesadoAsync(conn, esEmitido, uuid, contenidoXml, carpetaRecibidos, carpetaEmitidos).ConfigureAwait(false);
+                            return (ResultadoImportComercial.YaExistia, null);
+                        }
                     }
 
                     const string sqlInsertCabecera = @"
@@ -121,7 +130,7 @@ VALUES
                         cmd.Parameters.AddWithValue("@Moneda", (object)Atributo(comprobante, "Moneda") ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@TipoCambio", Atributo(comprobante, "TipoCambio") is string tc && decimal.TryParse(tc, out var tcv) ? (object)tcv : DBNull.Value);
                         cmd.Parameters.AddWithValue("@FormaPago", (object)TextoCatalogo(TextosFormaPago, Atributo(comprobante, "FormaPago")) ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@CondicionesPago", (object)Atributo(comprobante, "CondicionesDePago") ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@CondicionesPago", (object)Recortar(Atributo(comprobante, "CondicionesDePago"), 100) ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@MetodoPago", (object)TextoCatalogo(TextosMetodoPago, Atributo(comprobante, "MetodoPago")) ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Version", (object)Atributo(comprobante, "Version") ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@UsoCfdi", (object)TextoCatalogo(TextosUsoCfdi, Atributo(receptor, "UsoCFDI")) ?? DBNull.Value);
@@ -176,6 +185,7 @@ VALUES
                         }
                     }
 
+                    await AsegurarArchivoProcesadoAsync(conn, esEmitido, uuid, contenidoXml, carpetaRecibidos, carpetaEmitidos).ConfigureAwait(false);
                     return (ResultadoImportComercial.Insertado, (string)null);
                 }
             }
@@ -183,6 +193,87 @@ VALUES
             {
                 return (ResultadoImportComercial.Error, ex.Message);
             }
+        }
+
+        // La columna es de 100 caracteres y algunos CFDI traen ahi texto largo (visto con predial).
+        private static string Recortar(string texto, int maximo) =>
+            texto != null && texto.Length > maximo ? texto.Substring(0, maximo) : texto;
+
+        private static readonly HashSet<string> Avisados = new HashSet<string>();
+
+        private static void AvisarUnaVez(string clave, string mensaje)
+        {
+            lock (Avisados) { if (!Avisados.Add(clave)) return; }
+            Bitacora.EscribirError(mensaje);
+        }
+
+        // Comercial NO guarda el XML en la base: la fila de docDocumentCFDiSAT solo trae el nombre
+        // (XMLFileName) y la ventana "XML Recibidos/Emitidos" lo busca en
+        //     <orgBusinessEntityCFD.RutaXMLRecibidos|RutaXMLEmitidos>\Procesado\<nombre>.xml
+        // que es donde Comercial deja los archivos que importa el. Bug visto en vivo 2026-10-01:
+        // el importador escribia solo la fila y la ventana decia "Archivo no encontrado:
+        // \Procesado\<uuid>.xml" (sin carpeta base, porque la empresa ni siquiera tenia la ruta
+        // configurada). Se coloca el archivo en la subcarpeta Procesado (no en la raiz: ahi Comercial
+        // lee los pendientes por importar, y un archivo en la raiz invitaria a duplicar la fila).
+        private static async Task AsegurarArchivoProcesadoAsync(SqlConnection conn, bool esEmitido, string uuid, string contenidoXml, string carpetaRecibidos, string carpetaEmitidos)
+        {
+            string carpetaRespaldo = esEmitido ? carpetaEmitidos : carpetaRecibidos;
+            string columna = esEmitido ? "RutaXMLEmitidos" : "RutaXMLRecibidos";
+            string ruta = null;
+            bool hayFila = false;
+            using (var cmd = new SqlCommand("SELECT TOP 1 " + columna + " FROM orgBusinessEntityCFD ORDER BY BusinessEntityID", conn))
+            using (var lector = await cmd.ExecuteReaderAsync().ConfigureAwait(false))
+            {
+                if (await lector.ReadAsync().ConfigureAwait(false))
+                {
+                    hayFila = true;
+                    ruta = lector.IsDBNull(0) ? null : lector.GetString(0);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(ruta))
+            {
+                if (string.IsNullOrWhiteSpace(carpetaRespaldo))
+                {
+                    AvisarUnaVez("sinruta" + columna, "    Comercial no tiene configurada la ruta " + columna + " y la empresa de Descargas tampoco: los XML no se pueden colocar donde Comercial los busca.");
+                    return;
+                }
+                ruta = carpetaRespaldo;
+                if (hayFila)
+                {
+                    // Solo se llena si esta VACIA (nunca se pisa una ruta que el usuario configuro en Comercial).
+                    using (var cmd = new SqlCommand("UPDATE orgBusinessEntityCFD SET " + columna + " = @r WHERE " + columna + " IS NULL OR " + columna + " = ''", conn))
+                    {
+                        cmd.Parameters.AddWithValue("@r", ruta);
+                        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+                    }
+                    AvisarUnaVez("llenoruta" + columna, "    Comercial tenia vacia la ruta " + columna + "; se configuro como " + ruta);
+                }
+                else
+                {
+                    // Sin registro de configuracion CFDi no hay donde guardar la ruta y Comercial busca en
+                    // "\\Procesado\\..." (vacio). Se crea el registro minimo, SOLO con las rutas (el resto
+                    // queda NULL, igual que una empresa sin timbrado configurado). Para deshacerlo:
+                    //   DELETE FROM orgBusinessEntityCFD WHERE BusinessEntityID = <id>  (solo si no usas CFDi en esa empresa)
+                    string recibidos = string.IsNullOrWhiteSpace(carpetaRecibidos) ? null : carpetaRecibidos;
+                    string emitidos = string.IsNullOrWhiteSpace(carpetaEmitidos) ? null : carpetaEmitidos;
+                    using (var cmd = new SqlCommand(@"
+IF NOT EXISTS (SELECT 1 FROM orgBusinessEntityCFD)
+    INSERT INTO orgBusinessEntityCFD (BusinessEntityID, RutaXMLRecibidos, RutaXMLEmitidos)
+    SELECT TOP 1 BusinessEntityID, @rec, @emi FROM orgBusinessEntity WHERE BusinessEntityID = 1;", conn))
+                    {
+                        cmd.Parameters.AddWithValue("@rec", (object)recibidos ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@emi", (object)emitidos ?? DBNull.Value);
+                        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+                    }
+                    AvisarUnaVez("sinfila" + columna, "    La base de Comercial no tenia registro de configuracion CFDi (orgBusinessEntityCFD); se creo con las rutas XMLRecibidos=" + recibidos + " y XMLEmitidos=" + emitidos + " para que su ventana de XML encuentre los archivos.");
+                }
+            }
+
+            string destino = Path.Combine(ruta, "Procesado", uuid.ToLowerInvariant() + ".xml");
+            if (File.Exists(destino)) return;
+            Directory.CreateDirectory(Path.GetDirectoryName(destino));
+            File.WriteAllText(destino, contenidoXml, new UTF8Encoding(false));
         }
 
         // Impuesto="002" = IVA (agrupado por TasaOCuota: 0.16/0.08/0.00), "003" = IEPS, dentro de

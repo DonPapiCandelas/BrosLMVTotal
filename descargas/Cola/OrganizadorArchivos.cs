@@ -56,11 +56,53 @@ namespace BrosLMV.Descargas.Cola
             }
         }
 
+        // Repara archivos que quedaron con el nombre literal "[UUID]" (ver ResolverRutaArchivo): los
+        // renombra a <uuid>.xml y actualiza CfdiRecibido.RutaArchivoXml. Idempotente.
+        public static int RepararNombresLiterales(Microsoft.Data.SqlClient.SqlConnection conn, string rfc)
+        {
+            var pendientes = new System.Collections.Generic.List<(int Id, Guid Uuid, string Ruta)>();
+            using (var cmd = new Microsoft.Data.SqlClient.SqlCommand(
+                "SELECT CfdiID, UUID, RutaArchivoXml FROM CfdiRecibido WHERE (RFCReceptor=@r OR RFCEmisor=@r) AND RutaArchivoXml LIKE '%[[]UUID]%'", conn))
+            {
+                cmd.Parameters.AddWithValue("@r", rfc);
+                using (var lector = cmd.ExecuteReader())
+                    while (lector.Read()) pendientes.Add((lector.GetInt32(0), lector.GetGuid(1), lector.GetString(2)));
+            }
+
+            int arreglados = 0;
+            foreach (var (id, uuid, ruta) in pendientes)
+            {
+                try
+                {
+                    string nuevo = Path.Combine(Path.GetDirectoryName(ruta), uuid.ToString() + ".xml");
+                    if (File.Exists(ruta))
+                    {
+                        if (File.Exists(nuevo)) File.Delete(ruta); else File.Move(ruta, nuevo);
+                    }
+                    else if (!File.Exists(nuevo)) continue;
+                    using (var cmd = new Microsoft.Data.SqlClient.SqlCommand("UPDATE CfdiRecibido SET RutaArchivoXml=@n WHERE CfdiID=@i", conn))
+                    {
+                        cmd.Parameters.AddWithValue("@n", nuevo);
+                        cmd.Parameters.AddWithValue("@i", id);
+                        cmd.ExecuteNonQuery();
+                    }
+                    arreglados++;
+                }
+                catch (Exception ex) { Bitacora.EscribirError("    No se pudo renombrar " + ruta + ": " + ex.Message); }
+            }
+            if (arreglados > 0) Bitacora.Escribir("    " + arreglados + " archivo(s) con nombre \"[UUID]\" renombrados a <uuid>.xml.");
+            return arreglados;
+        }
+
         // plantilla: Empresa.PlantillaNombreArchivo, con placeholders {UUID} {Folio} {Serie}
         // {RFCEmisor} {RFCReceptor} {NombreEmisor} {Fecha} {Total} {TipoComprobante}.
         public static string ResolverRutaArchivo(string carpetaDestino, string plantilla, CfdiParseado c)
         {
             string nombre = string.IsNullOrWhiteSpace(plantilla) ? "{UUID}" : plantilla;
+            // Se acepta tambien [UUID] (corchetes): una empresa se dio de alta con la plantilla escrita
+            // asi y TODOS sus XML quedaron con el nombre literal "[UUID].xml" mas un sufijo.
+            foreach (var campo in new[] { "UUID", "Folio", "Serie", "RFCEmisor", "RFCReceptor", "NombreEmisor", "Fecha", "Total", "TipoComprobante" })
+                nombre = nombre.Replace("[" + campo + "]", "{" + campo + "}");
             nombre = nombre
                 .Replace("{UUID}", c.UUID.ToString())
                 .Replace("{Folio}", c.Folio ?? "")

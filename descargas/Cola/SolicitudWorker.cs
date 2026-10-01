@@ -208,7 +208,8 @@ namespace BrosLMV.Descargas.Cola
                                         // hay UNIQUE constraint real sobre UUID en su tabla) -- mejor no
                                         // dejar nada ahi que invite a reimportar lo que ya se importo solo.
                                         var (resultadoImport, errorImport) = await ComercialImportador.ImportarAsync(
-                                            DpapiHelper.DescifrarConexionSql(comercialConexionSql), contenidoXml, s.RfcSolicitante);
+                                            DpapiHelper.DescifrarConexionSql(comercialConexionSql), contenidoXml, s.RfcSolicitante,
+                                            comercialCarpetaXmlRecibidos, comercialCarpetaXmlEmitidos);
                                         if (resultadoImport == ResultadoImportComercial.Error)
                                             Bitacora.EscribirError("    No se pudo importar " + parseado.UUID + " a la base de Comercial: " + errorImport);
                                         else

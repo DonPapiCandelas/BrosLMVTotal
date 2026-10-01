@@ -59,6 +59,7 @@ namespace BrosLMV.Descargas.Cola
                 return resultado;
             }
 
+            OrganizadorArchivos.RepararNombresLiterales(conn, empresa.RFC);
             var cfdis = BrosSatDb.ObtenerCfdiConArchivo(conn, empresa.RFC);
             Bitacora.Escribir("  " + empresa.Nombre + ": " + cfdis.Count + " CFDI con XML en disco, sincronizando...");
 
@@ -76,7 +77,8 @@ namespace BrosLMV.Descargas.Cola
                     {
                         string contenidoXml = File.ReadAllText(rutaArchivoXml);
                         var (r, errorImport) = await ComercialImportador.ImportarAsync(
-                            DpapiHelper.DescifrarConexionSql(empresa.ComercialConexionSql), contenidoXml, empresa.RFC);
+                            DpapiHelper.DescifrarConexionSql(empresa.ComercialConexionSql), contenidoXml, empresa.RFC,
+                            empresa.ComercialCarpetaXmlRecibidos, empresa.ComercialCarpetaXmlEmitidos);
                         if (r == ResultadoImportComercial.Error)
                         {
                             resultado.Errores++;
