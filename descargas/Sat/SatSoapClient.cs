@@ -297,11 +297,22 @@ namespace BrosLMV.Descargas.Sat
                 {
                     var respDoc = new XmlDocument();
                     respDoc.LoadXml(cuerpoResp);
-                    var nodo = respDoc.GetElementsByTagName("VerificaSolicitudDescargaResult");
-                    if (nodo.Count == 0)
+                    // Se busca por nombre local y los atributos se leen sin distinguir mayusculas,
+                    // igual que la libreria de referencia phpcfdi/sat-ws-descarga-masiva: el SAT ha
+                    // cambiado el prefijo/capitalizacion de sus respuestas sin avisar.
+                    XmlElement el = null;
+                    foreach (XmlElement candidato in respDoc.GetElementsByTagName("*"))
+                        if (candidato.LocalName == "VerificaSolicitudDescargaResult") { el = candidato; break; }
+                    if (el == null)
                         return new SatVerificaSolicitudResultado { Exito = false, Error = "HTTP 200 sin VerificaSolicitudDescargaResult -- revisar RespuestaCruda.", RespuestaCruda = cuerpoResp };
 
-                    var el = (XmlElement)nodo[0];
+                    string Atributo(string nombre)
+                    {
+                        foreach (XmlAttribute a in el.Attributes)
+                            if (string.Equals(a.LocalName, nombre, StringComparison.OrdinalIgnoreCase)) return a.Value;
+                        return "";
+                    }
+
                     var idsPaquetes = new System.Collections.Generic.List<string>();
                     foreach (XmlNode hijo in el.ChildNodes)
                         if (hijo is XmlElement he && he.LocalName == "IdsPaquetes")
@@ -310,11 +321,11 @@ namespace BrosLMV.Descargas.Sat
                     return new SatVerificaSolicitudResultado
                     {
                         Exito = true,
-                        CodEstatus = el.GetAttribute("CodEstatus"),
-                        EstadoSolicitud = el.GetAttribute("EstadoSolicitud"),
-                        CodigoEstadoSolicitud = el.GetAttribute("CodigoEstadoSolicitud"),
-                        NumeroCFDIs = el.GetAttribute("NumeroCFDIs"),
-                        Mensaje = el.GetAttribute("Mensaje"),
+                        CodEstatus = Atributo("CodEstatus"),
+                        EstadoSolicitud = Atributo("EstadoSolicitud"),
+                        CodigoEstadoSolicitud = Atributo("CodigoEstadoSolicitud"),
+                        NumeroCFDIs = Atributo("NumeroCFDIs"),
+                        Mensaje = Atributo("Mensaje"),
                         IdsPaquetes = idsPaquetes,
                         RespuestaCruda = cuerpoResp
                     };

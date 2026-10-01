@@ -101,7 +101,19 @@ namespace BrosLMV.Descargas.Cola
                 }
 
                 string[] nombresEstado = { "", "Aceptada", "EnProceso", "Terminada", "Error", "Rechazada", "Vencida" };
-                string estadoTexto = int.TryParse(verif.EstadoSolicitud, out var n) && n >= 1 && n <= 6 ? nombresEstado[n] : verif.EstadoSolicitud;
+                if (!(int.TryParse(verif.EstadoSolicitud, out var n) && n >= 1 && n <= 6))
+                {
+                    // El SAT contesto sin un EstadoSolicitud valido (p. ej. 0). Antes ese valor se
+                    // guardaba tal cual como Estatus "0": la solicitud salia de la lista de pendientes
+                    // y NUNCA se volvia a verificar, aunque el SAT la terminara minutos despues (asi se
+                    // perdieron las 20 de Metadata y 6 de CFDI de este equipo). Ahora se conserva el
+                    // estatus, se anota lo que dijo el SAT y se reintenta en la siguiente pasada.
+                    BrosSatDb.RegistrarVerificacionSinEstado(conn, s.IdSolicitud, verif.CodEstatus, verif.Mensaje);
+                    Bitacora.Escribir("  " + s.IdSolicitud + ": el SAT no dio un estado valido (EstadoSolicitud='" + verif.EstadoSolicitud +
+                        "' CodEstatus='" + verif.CodEstatus + "' CodigoEstadoSolicitud='" + verif.CodigoEstadoSolicitud + "' Mensaje='" + verif.Mensaje + "') -- se vuelve a verificar en la siguiente pasada.");
+                    return;
+                }
+                string estadoTexto = nombresEstado[n];
                 int? numeroCfdis = int.TryParse(verif.NumeroCFDIs, out var nc) ? nc : (int?)null;
                 BrosSatDb.ActualizarEstatusSolicitud(conn, s.IdSolicitud, estadoTexto, numeroCfdis);
                 Bitacora.Escribir("  " + s.IdSolicitud + ": " + estadoTexto + " (" + numeroCfdis + " CFDI)");

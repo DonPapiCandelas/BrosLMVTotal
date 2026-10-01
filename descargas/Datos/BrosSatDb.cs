@@ -346,6 +346,28 @@ WHERE IdSolicitud = @IdSolicitud;";
             }
         }
 
+        // Anota una verificacion que NO dio un estado utilizable (EstadoSolicitud distinto de 1..6,
+        // por ejemplo 0): la solicitud conserva su estatus para que la siguiente pasada la
+        // vuelva a verificar, y queda a la vista lo que el SAT respondio de verdad.
+        public static void RegistrarVerificacionSinEstado(SqlConnection conn, string idSolicitud, string codEstatus, string mensaje)
+        {
+            const string sql = @"
+UPDATE SolicitudDescarga
+SET FechaUltimaVerificacion = SYSUTCDATETIME(), UltimoCodEstatus = @CodEstatus, UltimoMensaje = @Mensaje
+WHERE IdSolicitud = @IdSolicitud;";
+
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@CodEstatus", (object)Recortar(codEstatus, 10) ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Mensaje", (object)Recortar(mensaje, 500) ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@IdSolicitud", idSolicitud);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static string Recortar(string texto, int maximo) =>
+            string.IsNullOrEmpty(texto) ? null : (texto.Length <= maximo ? texto : texto.Substring(0, maximo));
+
         // Upsert por UUID: el SAT puede repetir un paquete o una solicitud de Metadata. La última
         // línea conserva el estado más reciente sin duplicar el mismo comprobante en el catálogo.
         public static void GuardarMetadata(SqlConnection conn, MetadataParseada m, string tipo, string idSolicitud)

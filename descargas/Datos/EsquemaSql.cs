@@ -151,6 +151,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('SolicitudDes
     ALTER TABLE SolicitudDescarga ADD UltimoCodEstatus NVARCHAR(10) NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('SolicitudDescarga') AND name='UltimoMensaje')
     ALTER TABLE SolicitudDescarga ADD UltimoMensaje NVARCHAR(500) NULL;
+-- Rescate (bug 2026-09-30): cuando el SAT contestaba la verificacion con EstadoSolicitud=0 se
+-- guardaba Estatus='0', la solicitud salia de la lista de pendientes y nunca mas se verificaba.
+-- Se regresan a EnProceso para que la siguiente pasada pregunte de nuevo al SAT; el valor 0 ya
+-- no se vuelve a escribir, asi que esta sentencia solo tiene efecto sobre filas dañadas.
+UPDATE SolicitudDescarga SET Estatus='EnProceso' WHERE Estatus IN ('0','');
 -- La cola no es un expediente: Limpiar en la app solo oculta solicitudes ya resueltas
 -- de la vista diaria. Nunca borra solicitudes, XML ni resultados del SAT y se puede revertir
 -- directamente desde SQL si alguna vez hiciera falta una auditoría completa.
