@@ -333,6 +333,51 @@ INSERT INTO docDocument VALUES (900, 4, 'F', 123, 116.00);");
         }
     }
 
+    public class VinculacionTests : IClassFixture<BaseDesechable>
+    {
+        private readonly BaseDesechable _bd;
+        public VinculacionTests(BaseDesechable bd) { _bd = bd; }
+
+        [Fact]
+        public async System.Threading.Tasks.Task SugiereElDocumentoPorRfcTotalYFecha_YDetectaTotalesDistintos()
+        {
+            if (!_bd.Disponible) return;
+            string cadena = _bd.CrearOtraBase("vin", @"
+CREATE TABLE docDocumentCFDiSAT (DocSATID INT IDENTITY PRIMARY KEY, UUID NVARCHAR(40), TipoComprobante NVARCHAR(20), RFCEmisor NVARCHAR(13), RFCReceptor NVARCHAR(13),
+    RazonSocial NVARCHAR(200), Total DECIMAL(18,2), FechaEmision DATETIME, Status NVARCHAR(20), TipoEmisionID INT, DocumentID INT NOT NULL DEFAULT 0, DeletedOn DATETIME NULL);
+CREATE TABLE docDocument (DocumentID INT PRIMARY KEY, ModuleID INT, BusinessEntityID INT, FolioPrefix NVARCHAR(10), Folio INT, Total DECIMAL(18,2), DateDocument DATETIME);
+CREATE TABLE orgIdentificationKey (IdentificationKeyID INT IDENTITY PRIMARY KEY, BusinessEntityID INT, IdentificationTypeID INT, IdentificationValue NVARCHAR(20));
+CREATE TABLE engModuleParameter (ModuleParameterID INT IDENTITY PRIMARY KEY, ModuleID INT, ParameterKey NVARCHAR(50), Value NVARCHAR(20));
+INSERT INTO engModuleParameter (ModuleID, ParameterKey, Value) VALUES (152,'XMLRecibido','1'), (400,'XMLRecibido','0');
+INSERT INTO orgIdentificationKey (BusinessEntityID, IdentificationTypeID, IdentificationValue) VALUES (7,1,'AAA010101AAA'), (8,1,'ZZZ999999ZZZ');
+-- CFDI sin documento (el mismo total que el doc 1 y 2)
+INSERT INTO docDocumentCFDiSAT (UUID, TipoComprobante, RFCEmisor, RFCReceptor, RazonSocial, Total, FechaEmision, Status, TipoEmisionID, DocumentID)
+ VALUES ('11111111-1111-1111-1111-111111111111','I - Ingreso','AAA010101AAA','BBB020202BBB','Proveedor Uno',1160.00,DATEADD(DAY,-10,GETDATE()),'Vigente',0,0),
+        ('22222222-2222-2222-2222-222222222222','I - Ingreso','CCC030303CCC','BBB020202BBB','Proveedor Sin Doc',999.00,DATEADD(DAY,-10,GETDATE()),'Vigente',0,0),
+        ('33333333-3333-3333-3333-333333333333','I - Ingreso','AAA010101AAA','BBB020202BBB','Ya vinculado con otro total',500.00,DATEADD(DAY,-10,GETDATE()),'Vigente',0,3);
+-- documentos: 1 coincide por RFC/total/fecha; 2 coincide en total pero es de otro RFC; 3 es el vinculado con total distinto
+INSERT INTO docDocument VALUES (1,152,7,'C',10,1160.00,DATEADD(DAY,-9,GETDATE())), (2,152,8,'C',11,1160.00,DATEADD(DAY,-9,GETDATE())), (3,152,7,'C',12,450.00,DATEADD(DAY,-9,GETDATE()));");
+
+            var r = await Vinculacion.AnalizarAsync(cadena);
+            Assert.Equal(2, r.SinDocumento.Count); // el tercero ya esta vinculado
+
+            var uno = r.SinDocumento.Single(x => x.UUID == Guid.Parse("11111111-1111-1111-1111-111111111111"));
+            Assert.Equal(2, uno.Candidatos.Count);
+            Assert.Equal(1, uno.Candidatos[0].DocumentID);           // primero el del mismo RFC
+            Assert.Equal("RFC + total + fecha", uno.Candidatos[0].Motivo);
+            Assert.Equal(2, uno.Candidatos[1].DocumentID);           // luego el de otro RFC
+            Assert.Contains("otro RFC", uno.Candidatos[1].Motivo);
+
+            var sin = r.SinDocumento.Single(x => x.UUID == Guid.Parse("22222222-2222-2222-2222-222222222222"));
+            Assert.Empty(sin.Candidatos);
+            Assert.Equal("Sin candidato", sin.MejorCandidato);
+
+            var dif = Assert.Single(r.Diferencias);
+            Assert.Equal(3, dif.DocumentID);
+            Assert.Equal(50.00m, dif.Diferencia);
+        }
+    }
+
     public class SaludTests : IClassFixture<BaseDesechable>
     {
         private readonly BaseDesechable _bd;

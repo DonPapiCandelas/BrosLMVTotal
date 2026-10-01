@@ -12,6 +12,7 @@
                    Text="Todo se calcula con los datos de este equipo; no se envia nada a ningun lado."/>
       </StackPanel>
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+        <Button Content="Vínculos con Comercial" Style="{StaticResource Ghost}" Margin="0,0,8,0" Click="BtnVinculos_Click"/>
         <Button Content="Cancelaciones con documento" Style="{StaticResource Ghost}" Margin="0,0,8,0" Click="BtnCancelaciones_Click"/>
         <Button Content="Conciliación mensual" Style="{StaticResource Ghost}" Margin="0,0,8,0" Click="BtnConciliacion_Click"/>
         <Button Content="Copiar como texto" Style="{StaticResource Ghost}" Margin="0,0,8,0" Click="BtnCopiar_Click"/>

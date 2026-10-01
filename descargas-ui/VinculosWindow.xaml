@@ -1,0 +1,51 @@
+<Window x:Class="BrosLMV.DescargasUI.VinculosWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CFDI y documentos de Comercial" Height="740" Width="1120" MinHeight="520" MinWidth="880"
+        WindowStartupLocation="CenterOwner" Background="#F4F6F9">
+  <Grid Margin="34,28,34,30">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Grid>
+      <StackPanel>
+        <TextBlock Text="CFDI y documentos de Comercial" FontSize="27" FontWeight="Bold" Foreground="#16263A"/>
+        <TextBlock Foreground="#64748B" Margin="0,6,60,0" TextWrapping="Wrap"
+                   Text="Cruza la lista de XML de Comercial con sus documentos. Solo lee: no vincula ni cambia nada; el vínculo lo haces tú en Comercial. Las sugerencias se calculan por RFC, total y fecha."/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+        <ComboBox x:Name="CmbEmpresa" Width="240" Margin="0,3,10,0" SelectionChanged="CmbEmpresa_SelectionChanged"/>
+        <Button Content="Actualizar" Style="{StaticResource Ghost}" Click="BtnActualizar_Click"/>
+      </StackPanel>
+    </Grid>
+    <TextBlock x:Name="LblResumen" Grid.Row="1" Margin="0,16,0,10" FontSize="15" FontWeight="SemiBold" Foreground="#16263A" TextWrapping="Wrap"/>
+    <TabControl Grid.Row="2">
+      <TabItem Header="CFDI sin documento">
+        <Border Style="{StaticResource Tarjeta}" Padding="8" Margin="0,10,0,0">
+          <DataGrid x:Name="GridSinDocumento" IsReadOnly="True" AutoGenerateColumns="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="95"/>
+              <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="80"/>
+              <DataGridTextColumn Header="RFC" Binding="{Binding Rfc}" Width="130"/>
+              <DataGridTextColumn Header="Contraparte" Binding="{Binding Nombre}" Width="200"/>
+              <DataGridTextColumn Header="Total" Binding="{Binding TotalTexto}" Width="110"/>
+              <DataGridTextColumn Header="UUID" Binding="{Binding UUID}" Width="290"/>
+              <DataGridTextColumn Header="Documento sugerido" Binding="{Binding Sugerido}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </Border>
+      </TabItem>
+      <TabItem Header="Totales que no coinciden">
+        <Border Style="{StaticResource Tarjeta}" Padding="8" Margin="0,10,0,0">
+          <DataGrid x:Name="GridDiferencias" IsReadOnly="True" AutoGenerateColumns="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Documento" Binding="{Binding Folio}" Width="140"/>
+              <DataGridTextColumn Header="Total del CFDI" Binding="{Binding TotalCfdiTexto}" Width="140"/>
+              <DataGridTextColumn Header="Total del documento" Binding="{Binding TotalDocTexto}" Width="160"/>
+              <DataGridTextColumn Header="Diferencia" Binding="{Binding DiferenciaTexto}" Width="130"/>
+              <DataGridTextColumn Header="UUID" Binding="{Binding UUID}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </Border>
+      </TabItem>
+    </TabControl>
+  </Grid>
+</Window>

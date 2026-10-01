@@ -90,6 +90,8 @@ namespace BrosLMV.DescargasUI
             finally { Cursor = System.Windows.Input.Cursors.Arrow; }
         }
 
+        private void BtnVinculos_Click(object sender, RoutedEventArgs e) => new VinculosWindow(_conn) { Owner = this }.ShowDialog();
+
         private void BtnCancelaciones_Click(object sender, RoutedEventArgs e) { new CancelacionesWindow(_conn) { Owner = this }.ShowDialog(); Cargar(); }
 
         private void BtnConciliacion_Click(object sender, RoutedEventArgs e) => new ConciliacionWindow(_conn) { Owner = this }.ShowDialog();
