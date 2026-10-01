@@ -98,7 +98,9 @@ namespace BrosLMV.Descargas.Cola
                     var ultimaRetroactiva = BrosSatDb.ObtenerFechaUltimaSolicitudRetroactiva(conn, empresa.RFC, tipoRecEmi);
                     bool pedirRetroactivo = !ultimaRetroactiva.HasValue || (DateTime.UtcNow - ultimaRetroactiva.Value).TotalHours >= 20;
 
-                    if (!hayTramoPendiente && !pedirRetroactivo && !BarridoToca(conn, empresa, tipoRecEmi))
+                    var metaHuecoInicial = Huecos.PrimerHueco(BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "Metadata", tipoRecEmi)
+                        .Concat(BrosSatDb.ObtenerRangosRechazadosRecientes(conn, empresa.RFC, "Metadata", tipoRecEmi, 6)).ToList(), inicioHistorico, hasta);
+                    if (!hayTramoPendiente && !pedirRetroactivo && !metaHuecoInicial.HasValue && !BarridoToca(conn, empresa, tipoRecEmi))
                     {
                         Bitacora.Escribir("  [" + tipoRecEmi + "] Ya al dia (cubierto hasta " + (cubierta?.ToString("yyyy-MM-dd") ?? "-") + "), nada que solicitar.");
                         continue;
@@ -190,6 +192,32 @@ namespace BrosLMV.Descargas.Cola
                             hueco = Huecos.PrimerHueco(rangosCubiertos, inicioHistorico, hasta);
                             desde = hueco?.Desde ?? hasta.AddDays(1);
                             hayTramoPendiente = hueco.HasValue;
+                        }
+
+                        // Metadata: sus propios huecos (cobertura aparte de la de CFDI), un mes a la vez.
+                        {
+                            var rangosMeta = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "Metadata", tipoRecEmi);
+                            rangosMeta.AddRange(BrosSatDb.ObtenerRangosRechazadosRecientes(conn, empresa.RFC, "Metadata", tipoRecEmi, 6));
+                            var huecoM = Huecos.PrimerHueco(rangosMeta, inicioHistorico, hasta);
+                            for (int vm = 0; huecoM.HasValue && vm < MaxTramosPorPasada; vm++)
+                            {
+                                var trM = SolicitudChunker.PartirEnMeses(huecoM.Value.Desde, huecoM.Value.Hasta).First();
+                                int prevM = BrosSatDb.ContarSolicitudesDelRango(conn, empresa.RFC, "Metadata", tipoRecEmi, trM.Desde, trM.Hasta);
+                                if (prevM > 0) trM = (trM.Desde.AddDays(-Math.Min(prevM, 10)), trM.Hasta);
+                                Bitacora.Escribir("  [" + tipoRecEmi + "] Metadata: pidiendo " + trM.Desde.ToString("yyyy-MM-dd") + " a " + trM.Hasta.ToString("yyyy-MM-dd") + "...");
+                                var sm = await SatSoapClient.SolicitarDescargaAsync(cert, llave, auth.Token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                                    desde: trM.Desde, hasta: trM.Hasta, tipoSolicitud: "Metadata");
+                                if (!sm.Exito)
+                                {
+                                    BrosSatDb.RegistrarIntentoFallido(conn, empresa.RFC, tipoRecEmi, trM.Desde, trM.Hasta, "Automatica", "Metadata", sm.CodEstatus, sm.Mensaje);
+                                    errores++;
+                                    Bitacora.EscribirError("  [" + tipoRecEmi + "] Metadata rechazada por el SAT: " + sm.Error);
+                                }
+                                else BrosSatDb.RegistrarSolicitud(conn, sm.IdSolicitud, empresa.RFC, tipoRecEmi, trM.Desde, trM.Hasta, "Automatica", "Metadata");
+                                rangosMeta = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "Metadata", tipoRecEmi);
+                                rangosMeta.AddRange(BrosSatDb.ObtenerRangosRechazadosRecientes(conn, empresa.RFC, "Metadata", tipoRecEmi, 6));
+                                huecoM = Huecos.PrimerHueco(rangosMeta, inicioHistorico, hasta);
+                            }
                         }
 
                         if (pedirRetroactivo)

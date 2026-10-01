@@ -52,7 +52,7 @@ namespace BrosLMV.Descargas
         {
             string rutaCer = null, rutaKey = null, password = null, rfc = null, salida = "sobre_firmado.xml", idSolicitud = null, idPaquete = null, salidaZip = null, conexionSql = null, tipoSolicitud = "CFDI";
             bool autenticar = false, solicitar = false, auto = false, reparsear = false, autoTodas = false, verificarEstatus = false;
-            bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false;
+            bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false, mostrarConciliacion = false;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -137,6 +137,7 @@ namespace BrosLMV.Descargas
                     // TODAS las empresas activas del catalogo; con --rfc solo esa. Requiere --conn.
                     case "--sincronizar-comercial": sincronizarComercial = true; break;
                     case "--salud": mostrarSalud = true; break;
+                    case "--conciliacion": mostrarConciliacion = true; break;
                     // Crea la base de datos (si no existe) y el esquema y sale -- no requiere
                     // FIEL. Pensado para el instalador (BrosLMV.Descargas.Instalador): antes de
                     // crear las Tareas Programadas, deja la BD lista para que la primera corrida
@@ -204,6 +205,22 @@ namespace BrosLMV.Descargas
                     return Uso();
                 }
                 return await VerificarMetadataCatalogoAsync(conexionSql, rfc, idSolicitud);
+            }
+
+            if (mostrarConciliacion)
+            {
+                if (string.IsNullOrWhiteSpace(conexionSql)) { Console.Error.WriteLine("--conciliacion requiere --conn."); return 1; }
+                using (var cn = new SqlConnection(conexionSql))
+                {
+                    cn.Open();
+                    EsquemaSql.Asegurar(cn);
+                    foreach (var e in BrosSatDb.ObtenerEmpresas(cn).Where(x => x.Activa && (rfc == null || x.RFC == rfc)))
+                    {
+                        Console.WriteLine("== " + e.Nombre + " (" + e.RFC + ") ==");
+                        Console.Write(Conciliacion.ACsv(Conciliacion.Calcular(cn, e.RFC)));
+                    }
+                }
+                return 0;
             }
 
             if (mostrarSalud)
@@ -918,6 +935,7 @@ namespace BrosLMV.Descargas
                 "--verificar-metadata-catalogo --conn <cadena> --rfc <RFC> --idsolicitud <id>: verifica y descarga el resultado de la solicitud de arriba, guarda los TXT crudos en metadata_prueba\\ para inspeccionar el formato.\n" +
                 "--auto-solicitar-todas --conn <cadena>: UNICO modo que CREA solicitudes nuevas de forma automatica -- calcula que tan atrasada esta cada empresa y pide el siguiente tramo pendiente (CFDI+Metadata, max 2 solicitudes por empresa por corrida). SI gasta cupo diario. Pensado para UNA Tarea Programada aparte, 1 vez al dia.\n" +
                 "--inicializar --conn <cadena>: crea la base de datos (si falta) y el esquema, y sale -- no requiere FIEL. Pensado para el instalador, antes de crear las Tareas Programadas.\n" +
+                "--conciliacion --conn <cadena> [--rfc <RFC>]: tabla mensual SAT (Metadata) contra XML descargados, en CSV. Solo lee la base local.\n" +
                 "--salud --conn <cadena>: muestra la salud de cada empresa activa (servicio, huecos, faltantes, estatus, archivos, Comercial); termina con codigo 2 si hay algo critico. Solo lee la base local.\n" +
                 "--sincronizar-comercial --conn <cadena> [--rfc <RFC>]: copia hacia las carpetas de Comercial (Ruta XML Recibidos/Emitidos) TODOS los CFDI ya descargados en la BD -- no gasta cupo, no vuelve a pedir nada al SAT. Backfill de una sola vez para CFDI descargados antes de tener la copia automatica configurada. Sin --rfc procesa todas las empresas activas.");
             return 2;

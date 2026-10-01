@@ -96,3 +96,5 @@ __pycache__/
 # Catalogo de iconos BrosLMV: se genera al compilar (Node.js + Lucide); no se versiona
 /build/iconos/node_modules/
 /instalador/iconos/
+/descargas-pruebas/obj/
+/descargas-pruebas/bin/

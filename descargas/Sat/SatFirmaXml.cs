@@ -173,7 +173,10 @@ namespace BrosLMV.Descargas.Sat
             // para TipoSolicitud=CFDI (descarga de XML, a diferencia de Metadata) el SAT SOLO
             // acepta EstadoComprobante="Vigente" -- "Todos"/"Cancelados" son rechazados en la
             // descarga de XML (si tiene sentido: un CFDI cancelado no tiene XML descargable).
-            if (tipoSolicitud == "CFDI") solicitud.SetAttribute("EstadoComprobante", "Vigente");
+            // Metadata: la libreria de referencia (phpcfdi/sat-ws-descarga-masiva), que SI funciona con el
+            // mismo RFC, manda SIEMPRE EstadoComprobante ("Todos" cuando no se filtra). Nosotros lo omitiamos
+            // en Metadata y el SAT aceptaba la solicitud (5000) pero nunca la terminaba (bug 18).
+            solicitud.SetAttribute("EstadoComprobante", tipoSolicitud == "CFDI" ? "Vigente" : "Todos");
 
             FirmarElementoEnveloped(docSolicitud, solicitud, cert, llavePrivada);
             return (XmlElement)docDestino.ImportNode(solicitud, true);

@@ -90,6 +90,8 @@ namespace BrosLMV.DescargasUI
             finally { Cursor = System.Windows.Input.Cursors.Arrow; }
         }
 
+        private void BtnConciliacion_Click(object sender, RoutedEventArgs e) => new ConciliacionWindow(_conn) { Owner = this }.ShowDialog();
+
         private void BtnActualizar_Click(object sender, RoutedEventArgs e) => Cargar();
 
         private void BtnCopiar_Click(object sender, RoutedEventArgs e)

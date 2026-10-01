@@ -1,0 +1,35 @@
+<Window x:Class="BrosLMV.DescargasUI.ConciliacionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Conciliación mensual" Height="720" Width="1040" MinHeight="520" MinWidth="820"
+        WindowStartupLocation="CenterOwner" Background="#F4F6F9">
+  <Grid Margin="34,28,34,30">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Grid>
+      <StackPanel>
+        <TextBlock Text="Conciliación mensual" FontSize="27" FontWeight="Bold" Foreground="#16263A"/>
+        <TextBlock x:Name="LblSubtitulo" Foreground="#64748B" Margin="0,6,0,0" TextWrapping="Wrap"
+                   Text="Lo que el SAT reporta (Metadata) contra los XML descargados. Faltan = 0 significa que ningún CFDI vigente del SAT se quedó sin su XML."/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+        <ComboBox x:Name="CmbEmpresa" Width="260" Margin="0,3,10,0" SelectionChanged="CmbEmpresa_SelectionChanged"/>
+        <Button Content="Exportar CSV" Style="{StaticResource Ghost}" Click="BtnCsv_Click"/>
+      </StackPanel>
+    </Grid>
+    <TextBlock x:Name="LblResumen" Grid.Row="1" Margin="0,16,0,12" FontSize="15" FontWeight="SemiBold" Foreground="#16263A" TextWrapping="Wrap"/>
+    <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Padding="8">
+      <DataGrid x:Name="GridConciliacion" IsReadOnly="True" AutoGenerateColumns="False">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Mes" Binding="{Binding MesTexto}" Width="90"/>
+          <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="100"/>
+          <DataGridTextColumn Header="SAT reporta" Binding="{Binding SatTotal}" Width="100"/>
+          <DataGridTextColumn Header="Vigentes" Binding="{Binding SatVigentes}" Width="90"/>
+          <DataGridTextColumn Header="Cancelados" Binding="{Binding SatCancelados}" Width="100"/>
+          <DataGridTextColumn Header="XML descargados" Binding="{Binding Descargados}" Width="130"/>
+          <DataGridTextColumn Header="Faltan" Binding="{Binding Faltan}" Width="80"/>
+          <DataGridTextColumn Header="Estado" Binding="{Binding Estado}" Width="*"/>
+        </DataGrid.Columns>
+      </DataGrid>
+    </Border>
+  </Grid>
+</Window>

@@ -29,6 +29,10 @@ $pDes = Join-Path $root "descargas-desinstalador"
 $dist = Join-Path $root "dist"
 New-Item -ItemType Directory -Force $dist | Out-Null
 
+Write-Host "0) Pruebas automaticas de Descargas (no se genera el instalador si fallan)..." -ForegroundColor Cyan
+dotnet test (Join-Path $root "descargas-pruebas") --nologo -v q
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: fallaron las pruebas automaticas; no se genera el instalador." -ForegroundColor Red; exit 1 }
+
 Write-Host "1) Publicando CLI self-contained..." -ForegroundColor Cyan
 $plCli = Join-Path $env:TEMP "bros_descargas_payload\cli"
 if (Test-Path $plCli) { Remove-Item $plCli -Recurse -Force }
