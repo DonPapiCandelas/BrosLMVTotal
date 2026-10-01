@@ -386,7 +386,19 @@ ELSE
     FechaEmision,FechaCertificacion,Total,EfectoComprobante,EstatusSat,FechaCancelacion,Tipo,
     SolicitudDescargaID,LineaCruda)
   VALUES (@UUID,@RFCEmisor,@NombreEmisor,@RFCReceptor,@NombreReceptor,@RFCPac,@FechaEmision,
-    @FechaCertificacion,@Total,@Efecto,@Estatus,@FechaCancelacion,@Tipo,@SolicitudDescargaID,@LineaCruda);";
+    @FechaCertificacion,@Total,@Efecto,@Estatus,@FechaCancelacion,@Tipo,@SolicitudDescargaID,@LineaCruda);
+
+-- Metadata es el canal del SAT que informa las cancelaciones: si el XML ya descargado figura
+-- Vigente y el SAT lo reporta Cancelado, se actualiza (y queda en el historial). Solo en ese
+-- sentido: Metadata es una foto y no debe regresar a Vigente algo ya detectado como Cancelado.
+DECLARE @CfdiID INT, @Anterior NVARCHAR(30);
+SELECT @CfdiID = CfdiID, @Anterior = EstatusSat FROM CfdiRecibido WHERE UUID = @UUID;
+IF @CfdiID IS NOT NULL AND @Estatus = 'Cancelado' AND @Anterior = 'Vigente'
+BEGIN
+    UPDATE CfdiRecibido SET EstatusSat = 'Cancelado', FechaCambioEstatus = SYSUTCDATETIME() WHERE CfdiID = @CfdiID;
+    INSERT INTO CfdiEstatusHistorial (CfdiID, UUID, EstatusAnterior, EstatusNuevo, Fuente)
+    VALUES (@CfdiID, @UUID, 'Vigente', 'Cancelado', 'Metadata');
+END";
             using (var cmd = new SqlCommand(sql, conn))
             {
                 cmd.Parameters.AddWithValue("@UUID", m.UUID);
@@ -769,6 +781,29 @@ WHERE s.RfcSolicitante = @Rfc AND s.TipoSolicitud = @Tipo AND s.Tipo = @TipoRecE
                 // y no debe marcarse UTC (confundiria a quien despues le aplique .ToLocalTime()).
                 return resultado == null || resultado == DBNull.Value ? (DateTime?)null : (DateTime)resultado;
             }
+        }
+
+        // Meses con CFDI vigentes que el SAT reporta en Metadata y que NO existen como XML descargado
+        // (CfdiRecibido). Es la comprobacion de que no falta nada.
+        public static List<(int Anio, int Mes, int Faltan)> ObtenerMesesConFaltantes(SqlConnection conn, string rfc, string tipo)
+        {
+            const string sql = @"
+SELECT YEAR(m.FechaEmision), MONTH(m.FechaEmision), COUNT(*)
+FROM CfdiMetadata m
+WHERE m.Tipo = @Tipo AND m.EstatusSat = 'Vigente' AND m.FechaEmision IS NOT NULL
+  AND ((@Tipo = 'Recibidos' AND m.RFCReceptor = @Rfc) OR (@Tipo = 'Emitidos' AND m.RFCEmisor = @Rfc))
+  AND NOT EXISTS (SELECT 1 FROM CfdiRecibido c WHERE c.UUID = m.UUID)
+GROUP BY YEAR(m.FechaEmision), MONTH(m.FechaEmision)
+ORDER BY 1, 2;";
+            var lista = new List<(int, int, int)>();
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Tipo", tipo);
+                using (var reader = cmd.ExecuteReader())
+                    while (reader.Read()) lista.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2)));
+            }
+            return lista;
         }
 
         // Mapa de dias CUBIERTOS de CFDI para este RFC/direccion: cada solicitud cuenta con su propio

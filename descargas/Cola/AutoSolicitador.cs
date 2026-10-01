@@ -124,7 +124,10 @@ namespace BrosLMV.Descargas.Cola
                         string rfcEmisor = tipoRecEmi == "Emitidos" ? empresa.RFC : null;
                         string rfcReceptor = tipoRecEmi == "Recibidos" ? empresa.RFC : null;
 
-                        if (hayTramoPendiente)
+                        // Sin tope de "un tramo por pasada": se piden TODOS los huecos (hasta MaxTramosPorPasada)
+                        // en la misma pasada, el mas antiguo primero. El cupo del SAT no es una preocupacion
+                        // aqui: lo que importa es que no quede ningun CFDI sin descargar.
+                        for (int vuelta = 0; hayTramoPendiente && vuelta < MaxTramosPorPasada; vuelta++)
                         {
                             var tramo = SolicitudChunker.PartirEnMeses(desde, hueco.Value.Hasta).First();
                             int intentosPrevios = BrosSatDb.ContarSolicitudesDelRango(conn, empresa.RFC, "CFDI", tipoRecEmi, tramo.Desde, tramo.Hasta);
@@ -138,18 +141,17 @@ namespace BrosLMV.Descargas.Cola
                                 tramo = (ampliado, tramo.Hasta);
                             }
 
-                            // Metadata se quedo atorado en 13 de 13 intentos reales (2h a 105h de
-                            // espera, 0 completados -- confirmado 2026-08-19) -- ya no se pide en
-                            // CADA corrida diaria como antes, solo si ya paso una semana desde el
-                            // ultimo intento (sin importar si ese intento se completo o se quedo
-                            // atorado). Es el UNICO canal del SAT que informa CFDI cancelados
-                            // desde su origen (CFDI tipo "CFDI" solo acepta
-                            // EstadoComprobante=Vigente), asi que no se apaga del todo.
-                            var ultimaMetadata = BrosSatDb.ObtenerFechaUltimaSolicitudMetadata(conn, empresa.RFC, tipoRecEmi);
-                            bool pedirMetadata = !ultimaMetadata.HasValue || (DateTime.UtcNow - ultimaMetadata.Value).TotalDays >= 7;
+                            // Metadata es el UNICO canal del SAT que informa CFDI cancelados desde su origen
+                            // (TipoSolicitud=CFDI solo acepta EstadoComprobante=Vigente). Se creia atorado
+                            // (13 de 13 intentos, 2026-08-19) pero era el bug 18 (estado "0" que sacaba la
+                            // solicitud de la cola), asi que se pide con CADA tramo cuyo rango aun no tenga
+                            // Metadata en curso o terminada.
+                            var rangosMetadata = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "Metadata", tipoRecEmi);
+                            bool pedirMetadata = Huecos.PrimerHueco(rangosMetadata, tramo.Desde, tramo.Hasta).HasValue;
+                            var ultimaMetadata = (DateTime?)null;
 
                             Bitacora.Escribir("  [" + tipoRecEmi + "] Pendiente desde " + desde.ToString("yyyy-MM-dd") + " -- pidiendo tramo " + tramo.Desde.ToString("yyyy-MM-dd") + " a " + tramo.Hasta.ToString("yyyy-MM-dd") +
-                                (pedirMetadata ? " (CFDI + Metadata)..." : " (solo CFDI -- Metadata se reintenta semanal, ultimo intento " + (ultimaMetadata?.ToString("yyyy-MM-dd") ?? "-") + ")..."));
+                                (pedirMetadata ? " (CFDI + Metadata)..." : " (solo CFDI -- su Metadata ya esta pedida)..."));
 
                             var solicCfdi = await SatSoapClient.SolicitarDescargaAsync(
                                 cert, llave, auth.Token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
@@ -170,6 +172,13 @@ namespace BrosLMV.Descargas.Cola
                                 BrosSatDb.RegistrarSolicitud(conn, solicMetadata.IdSolicitud, empresa.RFC, tipoRecEmi, tramo.Desde, tramo.Hasta, "Automatica", "Metadata");
                             }
                             Bitacora.Escribir("  [" + tipoRecEmi + "] Solicitado.");
+
+                            // La solicitud recien registrada ya cuenta como cubierta (Aceptada): se busca el
+                            // siguiente hueco para pedirlo en esta misma pasada.
+                            rangosCubiertos = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "CFDI", tipoRecEmi);
+                            hueco = Huecos.PrimerHueco(rangosCubiertos, inicioHistorico, hasta);
+                            desde = hueco?.Desde ?? hasta.AddDays(1);
+                            hayTramoPendiente = hueco.HasValue;
                         }
 
                         if (pedirRetroactivo)
@@ -193,6 +202,10 @@ namespace BrosLMV.Descargas.Cola
                         // que no falte ningun XML aunque una solicitud anterior haya salido "Terminada"
                         // incompleta. Es seguro repetirlo (guardado idempotente por UUID).
                         await BarridoAsync(conn, empresa, tipoRecEmi, cert, llave, auth.Token, rfcEmisor, rfcReceptor, hasta);
+
+                        // Verificacion contra Metadata: si el SAT informo (Metadata) CFDI vigentes que NO tenemos
+                        // como XML, el mes completo se vuelve a pedir ya mismo (no espera al barrido semanal).
+                        await FaltantesAsync(conn, empresa, tipoRecEmi, cert, llave, auth.Token, rfcEmisor, rfcReceptor, hasta);
                     }
                 }
                 catch (Exception ex)
@@ -205,9 +218,42 @@ namespace BrosLMV.Descargas.Cola
             return errores;
         }
 
-        // Cuantos meses hacia atras revisa el barrido semanal (mes actual incluido). Cada mes son 2
-        // solicitudes por semana (Recibidos + Emitidos) del cupo del SAT.
-        private const int MesesBarrido = 3;
+        // Cuantos meses hacia atras revisa el barrido semanal (mes actual incluido).
+        private const int MesesBarrido = 12;
+        private const int MaxTramosPorPasada = 12;
+
+        // Meses con CFDI vigentes que el SAT reporta (Metadata) y que no tenemos descargados. Se pide de
+        // nuevo el mes completo (a lo mas cada 6 h por mes) ampliando el inicio un dia por intento previo.
+        private static async Task FaltantesAsync(SqlConnection conn, EmpresaFila empresa, string tipoRecEmi,
+            System.Security.Cryptography.X509Certificates.X509Certificate2 cert, System.Security.Cryptography.RSA llave,
+            string token, string rfcEmisor, string rfcReceptor, DateTime hasta)
+        {
+            var meses = BrosSatDb.ObtenerMesesConFaltantes(conn, empresa.RFC, tipoRecEmi);
+            foreach (var (anio, mes, faltan) in meses)
+            {
+                var primero = new DateTime(anio, mes, 1);
+                var fin = primero.AddMonths(1).AddDays(-1).AddHours(23).AddMinutes(59).AddSeconds(59);
+                if (fin > hasta.AddHours(23).AddMinutes(59).AddSeconds(59)) fin = hasta.AddHours(23).AddMinutes(59).AddSeconds(59);
+                if (primero > fin) continue;
+
+                var ultimo = BrosSatDb.ObtenerFechaUltimaSolicitudDe(conn, empresa.RFC, tipoRecEmi, "CFDI", "Faltantes");
+                if (ultimo.HasValue && (DateTime.UtcNow - ultimo.Value).TotalHours < 6) { Bitacora.Escribir("  [" + tipoRecEmi + "] " + faltan + " CFDI faltan en " + anio + "-" + mes.ToString("00") + " (reintento reciente, se espera)."); return; }
+
+                int previos = BrosSatDb.ContarSolicitudesDelRango(conn, empresa.RFC, "CFDI", tipoRecEmi, primero, fin);
+                var desde = primero.AddDays(-Math.Min(previos, 10));
+                Bitacora.Escribir("  [" + tipoRecEmi + "] Faltan " + faltan + " CFDI vigentes de " + anio + "-" + mes.ToString("00") + " segun Metadata; se pide el mes completo " + desde.ToString("yyyy-MM-dd") + " a " + fin.ToString("yyyy-MM-dd") + "...");
+                var solic = await SatSoapClient.SolicitarDescargaAsync(cert, llave, token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                    desde: desde, hasta: fin, tipoSolicitud: "CFDI");
+                if (!solic.Exito)
+                {
+                    BrosSatDb.RegistrarIntentoFallido(conn, empresa.RFC, tipoRecEmi, desde, fin, "Faltantes", "CFDI", solic.CodEstatus, solic.Mensaje);
+                    Bitacora.EscribirError("  [" + tipoRecEmi + "] Faltantes rechazado por el SAT: " + solic.Error);
+                    return;
+                }
+                BrosSatDb.RegistrarSolicitud(conn, solic.IdSolicitud, empresa.RFC, tipoRecEmi, desde, fin, "Faltantes", "CFDI");
+                return; // un mes por pasada: el siguiente se revisa cuando termine este
+            }
+        }
 
         // Toca barrido si nunca se ha hecho, si ya pasaron 6 dias y es fin de semana, o si ya pasaron
         // 9 dias (para que un servidor que estuvo apagado el fin de semana no se salte la semana).
