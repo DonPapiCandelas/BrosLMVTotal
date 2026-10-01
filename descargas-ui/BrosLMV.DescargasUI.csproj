@@ -46,6 +46,7 @@
     <Compile Include="..\descargas\Datos\Salud.cs" Link="Datos\Salud.cs" />
     <Compile Include="..\descargas\Datos\Conciliacion.cs" Link="Datos\Conciliacion.cs" />
     <Compile Include="..\descargas\Datos\Vinculacion.cs" Link="Datos\Vinculacion.cs" />
+    <Compile Include="..\descargas\Datos\Respaldo.cs" Link="Datos\Respaldo.cs" />
     <Compile Include="..\descargas\Datos\DpapiHelper.cs" Link="Datos\DpapiHelper.cs" />
     <Compile Include="..\descargas\Cola\SolicitudWorker.cs" Link="Cola\SolicitudWorker.cs" />
     <Compile Include="..\descargas\Cola\SolicitudChunker.cs" Link="Cola\SolicitudChunker.cs" />

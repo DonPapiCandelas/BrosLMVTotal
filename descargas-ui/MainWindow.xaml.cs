@@ -304,6 +304,42 @@ namespace BrosLMV.DescargasUI
             CargarEmpresas();
         }
 
+        // Respaldo cifrado de la configuracion de las empresas (FIEL, contrasenas, carpetas, conexion a Comercial).
+        private void BtnRespaldo_Click(object sender, RoutedEventArgs e)
+        {
+            var r = MessageBox.Show(this,
+                "¿Qué quieres hacer?\n\nSí = EXPORTAR un respaldo cifrado de todas las empresas.\nNo = IMPORTAR un respaldo (por ejemplo, en un servidor nuevo).\n\n" +
+                "El archivo queda protegido con una contraseña que tú eliges y no se envía a ningún lado.",
+                "Respaldo de empresas", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            try
+            {
+                if (r == MessageBoxResult.Yes)
+                {
+                    var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Respaldo BrosLMV (*.brosbk)|*.brosbk", FileName = "empresas_" + DateTime.Today.ToString("yyyyMMdd") + ".brosbk" };
+                    if (dlg.ShowDialog(this) != true) return;
+                    var pw = new ContrasenaRespaldoWindow(true, "Contraseña del respaldo") { Owner = this };
+                    if (pw.ShowDialog() != true) return;
+                    int n = Respaldo.Exportar(_conn, dlg.FileName, pw.Contrasena);
+                    MessageBox.Show(this, n + " empresa(s) respaldadas en:\n" + dlg.FileName + "\n\nGuarda el archivo y la contraseña en lugares distintos.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else if (r == MessageBoxResult.No)
+                {
+                    var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Respaldo BrosLMV (*.brosbk)|*.brosbk" };
+                    if (dlg.ShowDialog(this) != true) return;
+                    var pw = new ContrasenaRespaldoWindow(false, "Contraseña del respaldo") { Owner = this };
+                    if (pw.ShowDialog() != true) return;
+                    string destino = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BrosLMV", "Descargas", "fiel");
+                    int n = Respaldo.Importar(_conn, dlg.FileName, pw.Contrasena, destino);
+                    CargarEmpresas();
+                    MessageBox.Show(this, n + " empresa(s) restauradas. Los archivos de la FIEL quedaron en:\n" + destino, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void NavSalud_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             new SaludWindow(_conn) { Owner = this }.ShowDialog();

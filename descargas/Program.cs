@@ -53,6 +53,7 @@ namespace BrosLMV.Descargas
             string rutaCer = null, rutaKey = null, password = null, rfc = null, salida = "sobre_firmado.xml", idSolicitud = null, idPaquete = null, salidaZip = null, conexionSql = null, tipoSolicitud = "CFDI";
             bool autenticar = false, solicitar = false, auto = false, reparsear = false, autoTodas = false, verificarEstatus = false;
             bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false, mostrarConciliacion = false, mostrarVinculos = false;
+            string exportarRespaldo = null, importarRespaldo = null, carpetaFiel = null;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -139,6 +140,9 @@ namespace BrosLMV.Descargas
                     case "--salud": mostrarSalud = true; break;
                     case "--conciliacion": mostrarConciliacion = true; break;
                     case "--vinculos": mostrarVinculos = true; break;
+                    case "--exportar-respaldo": exportarRespaldo = Siguiente(args, ref i); break;
+                    case "--importar-respaldo": importarRespaldo = Siguiente(args, ref i); break;
+                    case "--carpeta-fiel": carpetaFiel = Siguiente(args, ref i); break;
                     // Crea la base de datos (si no existe) y el esquema y sale -- no requiere
                     // FIEL. Pensado para el instalador (BrosLMV.Descargas.Instalador): antes de
                     // crear las Tareas Programadas, deja la BD lista para que la primera corrida
@@ -206,6 +210,39 @@ namespace BrosLMV.Descargas
                     return Uso();
                 }
                 return await VerificarMetadataCatalogoAsync(conexionSql, rfc, idSolicitud);
+            }
+
+            if (exportarRespaldo != null || importarRespaldo != null)
+            {
+                if (string.IsNullOrWhiteSpace(conexionSql)) { Console.Error.WriteLine("El respaldo requiere --conn."); return 1; }
+                // La contrasena NO va por argumento (se veria en la lista de procesos): variable de entorno o se pide en la consola.
+                string clave = Environment.GetEnvironmentVariable("BROSLMV_RESPALDO_CLAVE");
+                if (string.IsNullOrEmpty(clave))
+                {
+                    Console.Error.Write("Contrasena del respaldo: ");
+                    var sb = new System.Text.StringBuilder();
+                    ConsoleKeyInfo k;
+                    while ((k = Console.ReadKey(true)).Key != ConsoleKey.Enter) { if (k.Key == ConsoleKey.Backspace) { if (sb.Length > 0) sb.Length--; } else sb.Append(k.KeyChar); }
+                    Console.Error.WriteLine();
+                    clave = sb.ToString();
+                }
+                try
+                {
+                    using (var cn = new SqlConnection(conexionSql))
+                    {
+                        cn.Open();
+                        EsquemaSql.Asegurar(cn);
+                        if (exportarRespaldo != null)
+                            Console.WriteLine(Respaldo.Exportar(cn, exportarRespaldo, clave) + " empresa(s) respaldadas en " + exportarRespaldo);
+                        else
+                        {
+                            string destino = carpetaFiel ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BrosLMV", "Descargas", "fiel");
+                            Console.WriteLine(Respaldo.Importar(cn, importarRespaldo, clave, destino) + " empresa(s) restauradas; FIEL en " + destino);
+                        }
+                    }
+                }
+                catch (Exception ex) { Console.Error.WriteLine("ERROR: " + ex.Message); return 1; }
+                return 0;
             }
 
             if (mostrarVinculos)
@@ -956,6 +993,8 @@ namespace BrosLMV.Descargas
                 "--verificar-metadata-catalogo --conn <cadena> --rfc <RFC> --idsolicitud <id>: verifica y descarga el resultado de la solicitud de arriba, guarda los TXT crudos en metadata_prueba\\ para inspeccionar el formato.\n" +
                 "--auto-solicitar-todas --conn <cadena>: UNICO modo que CREA solicitudes nuevas de forma automatica -- calcula que tan atrasada esta cada empresa y pide el siguiente tramo pendiente (CFDI+Metadata, max 2 solicitudes por empresa por corrida). SI gasta cupo diario. Pensado para UNA Tarea Programada aparte, 1 vez al dia.\n" +
                 "--inicializar --conn <cadena>: crea la base de datos (si falta) y el esquema, y sale -- no requiere FIEL. Pensado para el instalador, antes de crear las Tareas Programadas.\n" +
+                "--exportar-respaldo <archivo> --conn <cadena>: respaldo CIFRADO (AES-256-GCM) de las empresas: FIEL, contrasenas, carpetas y conexion a Comercial. La contrasena se pide en la consola o se toma de BROSLMV_RESPALDO_CLAVE.\n" +
+                "--importar-respaldo <archivo> --conn <cadena> [--carpeta-fiel <dir>]: restaura ese respaldo (por ejemplo en un servidor nuevo); las contrasenas se vuelven a cifrar con DPAPI de esta maquina.\n" +
                 "--vinculos --conn <cadena> [--rfc <RFC>]: cruza la lista de XML de Comercial con sus documentos (CFDI sin documento + sugerencias, totales distintos). Solo lee Comercial.\n" +
                 "--conciliacion --conn <cadena> [--rfc <RFC>]: tabla mensual SAT (Metadata) contra XML descargados, en CSV. Solo lee la base local.\n" +
                 "--salud --conn <cadena>: muestra la salud de cada empresa activa (servicio, huecos, faltantes, estatus, archivos, Comercial); termina con codigo 2 si hay algo critico. Solo lee la base local.\n" +

@@ -378,6 +378,47 @@ INSERT INTO docDocument VALUES (1,152,7,'C',10,1160.00,DATEADD(DAY,-9,GETDATE())
         }
     }
 
+    public class RespaldoBdTests : IClassFixture<BaseDesechable>
+    {
+        private readonly BaseDesechable _bd;
+        public RespaldoBdTests(BaseDesechable bd) { _bd = bd; }
+
+        [Fact]
+        public void ExportarEImportar_RestauraLaEmpresaConSuFiel()
+        {
+            if (!_bd.Disponible) return;
+            string carpeta = Path.Combine(Path.GetTempPath(), "bros_resp_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(carpeta);
+            try
+            {
+                string cer = Path.Combine(carpeta, "demo.cer"), key = Path.Combine(carpeta, "demo.key");
+                File.WriteAllBytes(cer, new byte[] { 1, 2, 3, 4, 5 });
+                File.WriteAllBytes(key, new byte[] { 9, 8, 7 });
+                BrosSatDb.GuardarEmpresaNueva(_bd.Conn, "Empresa Respaldo", "RES010101AAA", cer, key, DpapiHelper.Cifrar("clave-fiel-123"),
+                    carpetaXml: @"C:\xml", comercialConexionSql: Convert.ToBase64String(DpapiHelper.Cifrar("Server=x;Database=y;")), anioInicioDescargas: 2025);
+
+                string archivo = Path.Combine(carpeta, "respaldo.bk");
+                Assert.True(Respaldo.Exportar(_bd.Conn, archivo, "contrasena-de-respaldo") >= 1);
+                Assert.DoesNotContain("clave-fiel-123", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(archivo)));
+
+                // Se "pierde" la empresa (servidor nuevo) y se restaura
+                _bd.Ejecutar("DELETE FROM Empresa WHERE RFC='RES010101AAA'");
+                Assert.Equal(0, _bd.Escalar<int>("SELECT COUNT(*) FROM Empresa WHERE RFC='RES010101AAA'"));
+                string destino = Path.Combine(carpeta, "fiel");
+                Assert.True(Respaldo.Importar(_bd.Conn, archivo, "contrasena-de-respaldo", destino) >= 1);
+
+                var e = BrosSatDb.ObtenerEmpresas(_bd.Conn).Single(x => x.RFC == "RES010101AAA");
+                Assert.Equal("Empresa Respaldo", e.Nombre);
+                Assert.Equal("clave-fiel-123", DpapiHelper.Descifrar(e.PasswordCifrada));
+                Assert.Equal("Server=x;Database=y;", DpapiHelper.DescifrarConexionSql(e.ComercialConexionSql));
+                Assert.Equal(2025, e.AnioInicioDescargas);
+                Assert.Equal(new byte[] { 1, 2, 3, 4, 5 }, File.ReadAllBytes(e.RutaCer));
+                Assert.StartsWith(destino, e.RutaCer);
+            }
+            finally { try { Directory.Delete(carpeta, true); } catch { } }
+        }
+    }
+
     public class SaludTests : IClassFixture<BaseDesechable>
     {
         private readonly BaseDesechable _bd;

@@ -69,6 +69,7 @@
           <TextBlock Text="Selecciona una empresa para ver su cola de solicitudes y sus CFDI descargados." Foreground="#64748B" Margin="0,6,0,0"/>
         </StackPanel>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+          <Button Content="Respaldo…" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnRespaldo_Click" ToolTip="Exportar o importar un respaldo cifrado de las empresas (FIEL, contraseñas y carpetas)"/>
           <Button x:Name="BtnEditarEmpresa" Content="Editar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnEditarEmpresa_Click" IsEnabled="False"/>
           <Button x:Name="BtnEliminarEmpresa" Content="Eliminar" Style="{StaticResource Danger}" Margin="0,0,10,0" Click="BtnEliminarEmpresa_Click" IsEnabled="False"/>
           <Button x:Name="BtnAgregarEmpresa" Content="+ Agregar empresa" Style="{StaticResource Primary}" Click="BtnAgregarEmpresa_Click"/>

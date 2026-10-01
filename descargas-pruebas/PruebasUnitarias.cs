@@ -135,4 +135,43 @@ namespace BrosLMV.Descargas.Pruebas
             Assert.Equal("base", OrganizadorArchivos.ResolverCarpeta("base", "Plana", "Recibidos", new DateTime(2026, 2, 11)));
         }
     }
+
+    public class RespaldoTests
+    {
+        [Fact]
+        public void CifrarYDescifrar_IdaYVuelta()
+        {
+            byte[] archivo = Respaldo.Cifrar("{\"secreto\":\"FIEL de prueba ñ\"}", "una-contrasena-larga");
+            Assert.DoesNotContain("secreto", System.Text.Encoding.UTF8.GetString(archivo)); // no queda legible
+            Assert.Equal("{\"secreto\":\"FIEL de prueba ñ\"}", Respaldo.Descifrar(archivo, "una-contrasena-larga"));
+        }
+
+        [Fact]
+        public void ContrasenaEquivocada_Falla()
+        {
+            byte[] archivo = Respaldo.Cifrar("hola", "una-contrasena-larga");
+            var ex = Assert.Throws<InvalidDataException>(() => Respaldo.Descifrar(archivo, "otra-contrasena-mala"));
+            Assert.Contains("incorrecta", ex.Message);
+        }
+
+        [Fact]
+        public void ArchivoAlterado_Falla()
+        {
+            byte[] archivo = Respaldo.Cifrar("hola mundo", "una-contrasena-larga");
+            archivo[archivo.Length - 1] ^= 0x01; // un solo bit
+            Assert.Throws<InvalidDataException>(() => Respaldo.Descifrar(archivo, "una-contrasena-larga"));
+        }
+
+        [Fact]
+        public void ArchivoQueNoEsRespaldo_Falla()
+        {
+            Assert.Throws<InvalidDataException>(() => Respaldo.Descifrar(new byte[100], "una-contrasena-larga"));
+        }
+
+        [Fact]
+        public void ContrasenaCorta_SeRechaza()
+        {
+            Assert.Throws<ArgumentException>(() => Respaldo.Cifrar("x", "corta"));
+        }
+    }
 }
