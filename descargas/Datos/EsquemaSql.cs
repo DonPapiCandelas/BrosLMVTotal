@@ -220,6 +220,22 @@ CREATE TABLE CfdiEstatusHistorial (
     Fuente NVARCHAR(20) NOT NULL,
     Fecha DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
+-- Cancelaciones propagadas a Comercial y revision de documentos vinculados; validacion EFOS del emisor.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('CfdiRecibido') AND name='FechaCancelacionComercial')
+    ALTER TABLE CfdiRecibido ADD FechaCancelacionComercial DATETIME2 NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('CfdiRecibido') AND name='ValidacionEFOS')
+    ALTER TABLE CfdiRecibido ADD ValidacionEFOS NVARCHAR(10) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CfdiCancelacionComercial')
+CREATE TABLE CfdiCancelacionComercial (
+    CfdiCancelacionComercialID INT IDENTITY PRIMARY KEY,
+    CfdiID INT NOT NULL,
+    UUID UNIQUEIDENTIFIER NOT NULL,
+    DocumentID INT NOT NULL,
+    Descripcion NVARCHAR(300) NULL,
+    FechaDeteccion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    Revisada BIT NOT NULL DEFAULT 0,
+    FechaRevision DATETIME2 NULL
+);
 -- Estado del servicio (latido y ultimas pasadas), para la pantalla Salud. Solo local.
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ServicioEstado')
 CREATE TABLE ServicioEstado (

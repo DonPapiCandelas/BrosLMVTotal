@@ -19,7 +19,7 @@ namespace BrosLMV.Descargas.Pruebas
         public readonly bool Disponible;
         public SqlConnection Conn;
 
-        private string Cadena(string bd) => "Server=" + Servidor + ";Database=" + bd + ";Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=5;";
+        public string Cadena(string bd) => "Server=" + Servidor + ";Database=" + bd + ";Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=5;";
 
         public BaseDesechable()
         {
@@ -36,6 +36,25 @@ namespace BrosLMV.Descargas.Pruebas
                 Disponible = true;
             }
             catch { Disponible = false; }
+        }
+
+        // Crea otra base desechable (p. ej. una "Comercial" minima); se borra en Dispose.
+        private readonly List<string> _otras = new List<string>();
+        public string CrearOtraBase(string sufijo, string ddl)
+        {
+            string nombre = Nombre + "_" + sufijo;
+            using (var master = new SqlConnection(Cadena("master")))
+            {
+                master.Open();
+                using (var cmd = new SqlCommand("CREATE DATABASE [" + nombre + "]", master)) cmd.ExecuteNonQuery();
+            }
+            _otras.Add(nombre);
+            using (var cn = new SqlConnection(Cadena(nombre)))
+            {
+                cn.Open();
+                using (var cmd = new SqlCommand(ddl, cn)) cmd.ExecuteNonQuery();
+            }
+            return Cadena(nombre);
         }
 
         public void Ejecutar(string sql)
@@ -58,7 +77,8 @@ namespace BrosLMV.Descargas.Pruebas
                 using (var master = new SqlConnection(Cadena("master")))
                 {
                     master.Open();
-                    using (var cmd = new SqlCommand("ALTER DATABASE [" + Nombre + "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [" + Nombre + "]", master)) cmd.ExecuteNonQuery();
+                    foreach (var nombre in _otras.Concat(new[] { Nombre }))
+                        using (var cmd = new SqlCommand("ALTER DATABASE [" + nombre + "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [" + nombre + "]", master)) cmd.ExecuteNonQuery();
                 }
             }
             catch { }
@@ -190,6 +210,88 @@ namespace BrosLMV.Descargas.Pruebas
             m.EstatusSat = "Vigente"; // una foto vieja no debe revivirlo
             BrosSatDb.GuardarMetadata(_bd.Conn, m, "Recibidos", "no-existe");
             Assert.Equal("Cancelado", _bd.Escalar<string>("SELECT EstatusSat FROM CfdiRecibido WHERE CfdiID=" + id));
+        }
+
+        [Fact]
+        public void Cancelacion_ConDocumento_QuedaParaRevisar_YSaludAvisa()
+        {
+            if (!_bd.Disponible) return;
+            var uuid = Guid.NewGuid();
+            int id = NuevoCfdi(uuid, "AAA010101AAA", BaseDesechable.Rfc, new DateTime(2026, 2, 6));
+            _bd.Ejecutar("UPDATE CfdiRecibido SET FechaSincronizadoComercial = SYSUTCDATETIME() WHERE CfdiID=" + id);
+            BrosSatDb.ActualizarEstatusCfdi(_bd.Conn, id, "Cancelado");
+
+            var sinPropagar = BrosSatDb.ObtenerCancelacionesSinPropagar(_bd.Conn, BaseDesechable.Rfc);
+            Assert.Contains(sinPropagar, x => x.CfdiID == id);
+
+            BrosSatDb.MarcarCancelacionPropagada(_bd.Conn, id, 777, "Modulo 4 · F123 · total 116.00");
+            Assert.DoesNotContain(BrosSatDb.ObtenerCancelacionesSinPropagar(_bd.Conn, BaseDesechable.Rfc), x => x.CfdiID == id);
+
+            var pendientes = BrosSatDb.ObtenerCancelacionesConDocumento(_bd.Conn, false);
+            var fila = pendientes.Single(x => x.UUID == uuid);
+            Assert.False(fila.Revisada);
+
+            var empresa = new EmpresaFila { RFC = BaseDesechable.Rfc, Nombre = "Prueba", Activa = true, AnioInicioDescargas = 2026 };
+            Assert.Contains(Salud.Evaluar(_bd.Conn, empresa), h => h.Tema == "Cancelaciones con documento");
+
+            BrosSatDb.MarcarCancelacionRevisada(_bd.Conn, fila.Id);
+            Assert.DoesNotContain(BrosSatDb.ObtenerCancelacionesConDocumento(_bd.Conn, false), x => x.UUID == uuid);
+        }
+
+        [Fact]
+        public async System.Threading.Tasks.Task PropagarCancelaciones_MarcaCanceladoEnComercial_YNoTocaElDocumento()
+        {
+            if (!_bd.Disponible) return;
+            // Una "Comercial" minima con las dos tablas que se tocan
+            string cadenaComercial = _bd.CrearOtraBase("com", @"
+CREATE TABLE docDocumentCFDiSAT (DocSATID INT IDENTITY PRIMARY KEY, UUID NVARCHAR(40), Status NVARCHAR(20), FechaCancelacion DATETIME NULL, DocumentID INT NOT NULL DEFAULT 0);
+CREATE TABLE docDocument (DocumentID INT PRIMARY KEY, ModuleID INT, FolioPrefix NVARCHAR(10), Folio INT, Total DECIMAL(18,2));
+INSERT INTO docDocument VALUES (900, 4, 'F', 123, 116.00);");
+
+            var libre = Guid.NewGuid(); var vinculado = Guid.NewGuid();
+            int idLibre = NuevoCfdi(libre, "AAA010101AAA", BaseDesechable.Rfc, new DateTime(2026, 2, 8));
+            int idVinc = NuevoCfdi(vinculado, "AAA010101AAA", BaseDesechable.Rfc, new DateTime(2026, 2, 9));
+            foreach (var id in new[] { idLibre, idVinc })
+            {
+                _bd.Ejecutar("UPDATE CfdiRecibido SET FechaSincronizadoComercial = SYSUTCDATETIME() WHERE CfdiID=" + id);
+                BrosSatDb.ActualizarEstatusCfdi(_bd.Conn, id, "Cancelado");
+            }
+            using (var com = new SqlConnection(cadenaComercial))
+            {
+                com.Open();
+                foreach (var u in new[] { libre, vinculado })
+                    using (var cmd = new SqlCommand("INSERT INTO docDocumentCFDiSAT (UUID, Status, DocumentID) VALUES (@u, 'Vigente', @d)", com))
+                    { cmd.Parameters.AddWithValue("@u", u.ToString().ToUpper()); cmd.Parameters.AddWithValue("@d", u == vinculado ? 900 : 0); cmd.ExecuteNonQuery(); }
+            }
+
+            var empresa = new EmpresaFila { RFC = BaseDesechable.Rfc, Nombre = "Prueba", Activa = true, ComercialConexionSql = cadenaComercial };
+            int marcados = await ComercialSync.PropagarCancelacionesAsync(_bd.Conn, empresa);
+            Assert.True(marcados >= 2);
+
+            using (var com = new SqlConnection(cadenaComercial))
+            {
+                com.Open();
+                using (var cmd = new SqlCommand("SELECT COUNT(*) FROM docDocumentCFDiSAT WHERE Status='Cancelado' AND FechaCancelacion IS NOT NULL", com))
+                    Assert.Equal(2, (int)cmd.ExecuteScalar());
+                using (var cmd = new SqlCommand("SELECT COUNT(*) FROM docDocument", com))
+                    Assert.Equal(1, (int)cmd.ExecuteScalar()); // el documento sigue intacto
+            }
+            // solo el vinculado queda para revisar, con la descripcion del documento
+            var pend = BrosSatDb.ObtenerCancelacionesConDocumento(_bd.Conn, false).Where(x => x.UUID == vinculado || x.UUID == libre).ToList();
+            Assert.Single(pend);
+            Assert.Equal(vinculado, pend[0].UUID);
+            Assert.Contains("F123", pend[0].Descripcion);
+        }
+
+        [Fact]
+        public void ValidacionEfos_SeGuardaYSaludAvisaSiNoEs200o201()
+        {
+            if (!_bd.Disponible) return;
+            int id = NuevoCfdi(Guid.NewGuid(), "AAA010101AAA", BaseDesechable.Rfc, new DateTime(2026, 2, 7));
+            BrosSatDb.ActualizarEstatusCfdi(_bd.Conn, id, "Vigente", null, "Consulta", "100");
+            Assert.Equal("100", _bd.Escalar<string>("SELECT ValidacionEFOS FROM CfdiRecibido WHERE CfdiID=" + id));
+            var empresa = new EmpresaFila { RFC = BaseDesechable.Rfc, Nombre = "Prueba", Activa = true, AnioInicioDescargas = 2026 };
+            Assert.Contains(Salud.Evaluar(_bd.Conn, empresa), h => h.Tema == "Lista 69-B (EFOS)");
         }
 
         [Fact]

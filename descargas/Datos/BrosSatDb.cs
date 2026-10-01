@@ -783,6 +783,69 @@ WHERE s.RfcSolicitante = @Rfc AND s.TipoSolicitud = @Tipo AND s.Tipo = @TipoRecE
             }
         }
 
+        // CFDI cancelados (segun el SAT) que aun no se han marcado Cancelado en Comercial.
+        public static List<(int CfdiID, Guid UUID, DateTime? Fecha)> ObtenerCancelacionesSinPropagar(SqlConnection conn, string rfc)
+        {
+            const string sql = @"
+SELECT CfdiID, UUID, FechaCambioEstatus FROM CfdiRecibido
+WHERE (RFCReceptor = @r OR RFCEmisor = @r) AND EstatusSat = 'Cancelado' AND FechaCancelacionComercial IS NULL
+  AND FechaSincronizadoComercial IS NOT NULL;";
+            var lista = new List<(int, Guid, DateTime?)>();
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@r", rfc);
+                using (var l = cmd.ExecuteReader())
+                    while (l.Read())
+                        lista.Add((l.GetInt32(0), l.GetGuid(1), l.IsDBNull(2) ? (DateTime?)null : DateTime.SpecifyKind(l.GetDateTime(2), DateTimeKind.Utc)));
+            }
+            return lista;
+        }
+
+        public static void MarcarCancelacionPropagada(SqlConnection conn, int cfdiId, int documentId, string descripcion)
+        {
+            const string sql = @"
+UPDATE CfdiRecibido SET FechaCancelacionComercial = SYSUTCDATETIME() WHERE CfdiID = @Id;
+IF @Doc <> 0 AND NOT EXISTS (SELECT 1 FROM CfdiCancelacionComercial WHERE CfdiID = @Id)
+    INSERT INTO CfdiCancelacionComercial (CfdiID, UUID, DocumentID, Descripcion)
+    SELECT CfdiID, UUID, @Doc, @Desc FROM CfdiRecibido WHERE CfdiID = @Id;";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Id", cfdiId);
+                cmd.Parameters.AddWithValue("@Doc", documentId);
+                cmd.Parameters.AddWithValue("@Desc", (object)Recortar(descripcion, 300) ?? DBNull.Value);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static List<(int Id, DateTime Fecha, string Empresa, Guid UUID, string Descripcion, bool Revisada)> ObtenerCancelacionesConDocumento(SqlConnection conn, bool incluirRevisadas)
+        {
+            const string sql = @"
+SELECT k.CfdiCancelacionComercialID, k.FechaDeteccion, ISNULL(e.Nombre, c.RFCEmisor), k.UUID, k.Descripcion, k.Revisada
+FROM CfdiCancelacionComercial k
+JOIN CfdiRecibido c ON c.CfdiID = k.CfdiID
+LEFT JOIN Empresa e ON e.RFC = c.RFCReceptor OR e.RFC = c.RFCEmisor
+WHERE (@Todas = 1 OR k.Revisada = 0)
+ORDER BY k.FechaDeteccion DESC;";
+            var lista = new List<(int, DateTime, string, Guid, string, bool)>();
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Todas", incluirRevisadas);
+                using (var l = cmd.ExecuteReader())
+                    while (l.Read())
+                        lista.Add((l.GetInt32(0), DateTime.SpecifyKind(l.GetDateTime(1), DateTimeKind.Utc), l.GetString(2), l.GetGuid(3), l.IsDBNull(4) ? "" : l.GetString(4), l.GetBoolean(5)));
+            }
+            return lista;
+        }
+
+        public static void MarcarCancelacionRevisada(SqlConnection conn, int id)
+        {
+            using (var cmd = new SqlCommand("UPDATE CfdiCancelacionComercial SET Revisada = 1, FechaRevision = SYSUTCDATETIME() WHERE CfdiCancelacionComercialID = @i", conn))
+            {
+                cmd.Parameters.AddWithValue("@i", id);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
         // Estado del servicio (latido, ultimas pasadas): una fila por clave.
         public static void GuardarEstado(SqlConnection conn, string clave, string valor = null)
         {
@@ -1256,7 +1319,7 @@ WHERE CfdiID = @Id;";
         // Vigente real con eso borraria informacion buena; solo se marca la fecha de revision.
         // Si el estatus cambia, queda una fila en CfdiEstatusHistorial.
         public static void ActualizarEstatusCfdi(SqlConnection conn, int cfdiId, string estatusSat,
-            string estatusCancelacion = null, string fuente = "Consulta")
+            string estatusCancelacion = null, string fuente = "Consulta", string validacionEfos = null)
         {
             bool valido = estatusSat == "Vigente" || estatusSat == "Cancelado";
             const string sql = @"
@@ -1267,7 +1330,8 @@ UPDATE CfdiRecibido
 SET FechaUltimaVerificacionEstatus = SYSUTCDATETIME(),
     EstatusSat = CASE WHEN @Valido = 1 THEN @Estatus ELSE EstatusSat END,
     EstatusCancelacion = CASE WHEN @Valido = 1 THEN @EstatusCancelacion ELSE EstatusCancelacion END,
-    FechaCambioEstatus = CASE WHEN @Valido = 1 AND @Anterior <> @Estatus THEN SYSUTCDATETIME() ELSE FechaCambioEstatus END
+    FechaCambioEstatus = CASE WHEN @Valido = 1 AND @Anterior <> @Estatus THEN SYSUTCDATETIME() ELSE FechaCambioEstatus END,
+    ValidacionEFOS = ISNULL(@Efos, ValidacionEFOS)
 WHERE CfdiID = @Id;
 
 IF @Valido = 1 AND @Anterior IS NOT NULL AND @Anterior <> @Estatus
@@ -1278,6 +1342,7 @@ IF @Valido = 1 AND @Anterior IS NOT NULL AND @Anterior <> @Estatus
                 cmd.Parameters.AddWithValue("@Estatus", estatusSat ?? "");
                 cmd.Parameters.AddWithValue("@Valido", valido);
                 cmd.Parameters.AddWithValue("@EstatusCancelacion", (object)Recortar(estatusCancelacion, 60) ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Efos", (object)Recortar(validacionEfos, 10) ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@Fuente", fuente);
                 cmd.Parameters.AddWithValue("@Id", cfdiId);
                 cmd.ExecuteNonQuery();

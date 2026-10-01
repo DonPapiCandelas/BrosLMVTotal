@@ -127,6 +127,15 @@ namespace BrosLMV.Descargas.Datos
             if (sinVerificar > 0) Agregar(NivelSalud.Aviso, "Estatus (cancelaciones)", sinVerificar.ToString("N0") + " CFDI sin verificar su estatus en el SAT desde hace mas de 48 h (o nunca).");
             else Agregar(NivelSalud.Ok, "Estatus (cancelaciones)", "Todos los CFDI se verificaron en las ultimas 48 h.");
 
+            // 6b) Cancelaciones que tocan documentos de Comercial, y emisores en la lista EFOS
+            var canceladosConDoc = Contar(conn, @"SELECT COUNT(*) FROM CfdiCancelacionComercial k JOIN CfdiRecibido c ON c.CfdiID=k.CfdiID
+                WHERE (c.RFCReceptor=@r OR c.RFCEmisor=@r) AND k.Revisada=0", empresa.RFC);
+            if (canceladosConDoc > 0)
+                Agregar(NivelSalud.Aviso, "Cancelaciones con documento", canceladosConDoc + " CFDI se cancelaron en el SAT y ya estaban vinculados a un documento de Comercial: hay que revisar si se cancela o se ajusta (Salud > Cancelaciones con documento).");
+            var efos = Contar(conn, @"SELECT COUNT(*) FROM CfdiRecibido WHERE RFCReceptor=@r AND ValidacionEFOS IS NOT NULL AND ValidacionEFOS NOT IN ('200','201')", empresa.RFC);
+            if (efos > 0)
+                Agregar(NivelSalud.Aviso, "Lista 69-B (EFOS)", efos + " CFDI recibido(s) cuyo emisor figura en la lista de operaciones inexistentes del SAT segun la ultima consulta de estatus.");
+
             // 7) Archivos en disco
             int sinArchivo = 0;
             using (var cmd = new SqlCommand("SELECT RutaArchivoXml FROM CfdiRecibido WHERE (RFCReceptor=@r OR RFCEmisor=@r) AND RutaArchivoXml IS NOT NULL", conn))

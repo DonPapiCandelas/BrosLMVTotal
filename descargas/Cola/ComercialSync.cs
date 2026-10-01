@@ -46,6 +46,59 @@ namespace BrosLMV.Descargas.Cola
 
     internal static class ComercialSync
     {
+        // Cuando el SAT informa que un CFDI ya descargado se CANCELO, se refleja en la lista de XML de
+        // Comercial (docDocumentCFDiSAT.Status='Cancelado' + FechaCancelacion, igual que lo marca el propio
+        // Comercial). NUNCA se tocan los documentos de Comercial: si el CFDI ya estaba vinculado a un
+        // documento (compra, gasto, factura...), eso tiene efectos contables y de inventario que solo una
+        // persona debe decidir; queda en la lista «Cancelaciones con documento» para que lo revise.
+        public static async Task<int> PropagarCancelacionesAsync(SqlConnection conn, EmpresaFila empresa)
+        {
+            if (string.IsNullOrWhiteSpace(empresa.ComercialConexionSql)) return 0;
+            var pendientes = BrosSatDb.ObtenerCancelacionesSinPropagar(conn, empresa.RFC);
+            if (pendientes.Count == 0) return 0;
+
+            int marcados = 0, conDocumento = 0;
+            using (var comercial = new SqlConnection(DpapiHelper.DescifrarConexionSql(empresa.ComercialConexionSql)))
+            {
+                await comercial.OpenAsync().ConfigureAwait(false);
+                foreach (var (cfdiId, uuid, fecha) in pendientes)
+                {
+                    DateTime fechaLocal = (fecha ?? DateTime.UtcNow).ToLocalTime();
+                    using (var cmd = new SqlCommand(@"
+UPDATE docDocumentCFDiSAT SET Status = 'Cancelado', FechaCancelacion = ISNULL(FechaCancelacion, @f)
+WHERE UUID = @u AND Status <> 'Cancelado';", comercial))
+                    {
+                        cmd.Parameters.AddWithValue("@f", fechaLocal);
+                        cmd.Parameters.AddWithValue("@u", uuid.ToString());
+                        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+                    }
+
+                    int documentId = 0; string descripcion = null;
+                    using (var cmd = new SqlCommand(@"
+SELECT TOP 1 s.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.Total
+FROM docDocumentCFDiSAT s LEFT JOIN docDocument d ON d.DocumentID = s.DocumentID
+WHERE s.UUID = @u AND s.DocumentID <> 0;", comercial))
+                    {
+                        cmd.Parameters.AddWithValue("@u", uuid.ToString());
+                        using (var l = await cmd.ExecuteReaderAsync().ConfigureAwait(false))
+                            if (await l.ReadAsync().ConfigureAwait(false))
+                            {
+                                documentId = l.GetInt32(0);
+                                descripcion = l.IsDBNull(1) ? "Documento " + documentId :
+                                    "Modulo " + l.GetValue(1) + " · " + (l.IsDBNull(2) ? "" : l.GetValue(2).ToString()) + (l.IsDBNull(3) ? "" : l.GetValue(3).ToString()) +
+                                    (l.IsDBNull(4) ? "" : " · total " + Convert.ToDecimal(l.GetValue(4)).ToString("N2"));
+                            }
+                    }
+                    BrosSatDb.MarcarCancelacionPropagada(conn, cfdiId, documentId, descripcion);
+                    marcados++;
+                    if (documentId != 0) conDocumento++;
+                }
+            }
+            Bitacora.Escribir("  " + empresa.Nombre + ": " + marcados + " CFDI cancelado(s) marcado(s) en Comercial" +
+                (conDocumento > 0 ? "; " + conDocumento + " tenian un documento vinculado y quedan en «Cancelaciones con documento» para revisar." : "."));
+            return marcados;
+        }
+
         public static async Task<ResultadoSincronizacion> SincronizarTodoAsync(SqlConnection conn, EmpresaFila empresa)
         {
             var resultado = new ResultadoSincronizacion();

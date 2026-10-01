@@ -551,7 +551,7 @@ namespace BrosLMV.Descargas
                         using (var conn = new SqlConnection(conexionSql))
                         {
                             conn.Open();
-                            BrosSatDb.ActualizarEstatusCfdi(conn, c.CfdiID, r.Estado, r.EstatusCancelacion);
+                            BrosSatDb.ActualizarEstatusCfdi(conn, c.CfdiID, r.Estado, r.EstatusCancelacion, "Consulta", r.ValidacionEFOS);
                         }
 
                         if (r.Estado != "Vigente" && r.Estado != "Cancelado")
@@ -805,6 +805,7 @@ namespace BrosLMV.Descargas
                                 await SolicitudWorker.EjecutarPasadaAsync(conn, cert, llave,
                                     empresa.CarpetaXml, empresa.EstructuraCarpetas, empresa.PlantillaNombreArchivo, empresa.RFC,
                                     empresa.ComercialCarpetaXmlRecibidos, empresa.ComercialCarpetaXmlEmitidos, empresa.ComercialConexionSql);
+                            await ComercialSync.PropagarCancelacionesAsync(conn, empresa).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
