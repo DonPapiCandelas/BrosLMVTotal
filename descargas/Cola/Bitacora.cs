@@ -44,25 +44,40 @@ namespace BrosLMV.Descargas.Cola
         public static void Escribir(string mensaje)
         {
             Console.WriteLine(mensaje);
-            string linea = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + mensaje;
-            lock (Candado)
-            {
-                Directory.CreateDirectory(CarpetaLogs);
-                string archivo = Path.Combine(CarpetaLogs, "broslmv-" + DateTime.Now.ToString("yyyy-MM") + ".log");
-                File.AppendAllText(archivo, linea + Environment.NewLine);
-            }
+            Anotar(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + mensaje);
         }
 
         public static void EscribirError(string mensaje)
         {
             Console.Error.WriteLine(mensaje);
-            string linea = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  ERROR: " + mensaje;
+            Anotar(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  ERROR: " + mensaje);
+        }
+
+        // La bitacora NUNCA debe tumbar a quien la usa. Visto en vivo (2026-10-01): una pasada
+        // lanzada por un usuario fallo con "Access denied" al escribir el log que el servicio
+        // (cuenta SYSTEM) habia creado, y la excepcion mataba el proceso. En el servicio, esa misma
+        // excepcion fuera de un try detenia las descargas hasta reiniciarlo a mano. Si la ruta
+        // compartida no se puede escribir se usa una de respaldo en el perfil del usuario, y si
+        // tampoco se puede, se descarta la linea en silencio.
+        private static void Anotar(string linea)
+        {
             lock (Candado)
             {
-                Directory.CreateDirectory(CarpetaLogs);
-                string archivo = Path.Combine(CarpetaLogs, "broslmv-" + DateTime.Now.ToString("yyyy-MM") + ".log");
-                File.AppendAllText(archivo, linea + Environment.NewLine);
+                string archivo = "broslmv-" + DateTime.Now.ToString("yyyy-MM") + ".log";
+                foreach (var carpeta in new[] { CarpetaLogs, CarpetaLogsRespaldo })
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(carpeta);
+                        File.AppendAllText(Path.Combine(carpeta, archivo), linea + Environment.NewLine);
+                        return;
+                    }
+                    catch { /* se prueba la siguiente ubicacion */ }
+                }
             }
         }
+
+        public static string CarpetaLogsRespaldo =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BrosLMV", "Descargas", "logs");
     }
 }

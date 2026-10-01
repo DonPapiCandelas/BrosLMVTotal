@@ -77,7 +77,11 @@ namespace BrosLMV.Descargas.Cola
                     DateTime inicioHistorico = empresa.AnioInicioDescargas.HasValue
                         ? new DateTime(empresa.AnioInicioDescargas.Value, 1, 1)
                         : DateTime.Today.AddDays(-90);
+                    // Un hueco que el SAT rechazo hace menos de 6 h se deja para despues y se sigue con el
+                    // SIGUIENTE (antes un rechazo -p. ej. 5002 en enero- detenia toda la direccion y los demas
+                    // meses nunca se pedian).
                     var rangosCubiertos = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "CFDI", tipoRecEmi);
+                    rangosCubiertos.AddRange(BrosSatDb.ObtenerRangosRechazadosRecientes(conn, empresa.RFC, "CFDI", tipoRecEmi, 6));
                     var hueco = Huecos.PrimerHueco(rangosCubiertos, inicioHistorico, hasta);
                     DateTime desde = hueco?.Desde ?? hasta.AddDays(1);
                     var cubierta = hueco.HasValue ? (DateTime?)null : hasta;
@@ -100,20 +104,6 @@ namespace BrosLMV.Descargas.Cola
                         continue;
                     }
 
-                    int rechazosSeguidosCfdi = BrosSatDb.ContarRechazosConsecutivos(conn, empresa.RFC, tipoRecEmi, "CFDI");
-                    if (rechazosSeguidosCfdi >= UmbralRechazosConsecutivos)
-                    {
-                        // Antes el freno era definitivo (hacia falta forzar a mano) y por eso el sistema
-                        // "dejaba de descargar" hasta que alguien abria la app. Ahora solo espacia los
-                        // intentos: uno cada 6 h, para no gastar cupo en rechazos pero sin rendirse nunca.
-                        var ultimoCfdi = BrosSatDb.ObtenerFechaUltimaSolicitudDe(conn, empresa.RFC, tipoRecEmi, "CFDI");
-                        if (ultimoCfdi.HasValue && (DateTime.UtcNow - ultimoCfdi.Value).TotalHours < 6)
-                        {
-                            Bitacora.EscribirError("  [" + tipoRecEmi + "] " + rechazosSeguidosCfdi + " rechazos seguidos del SAT (CFDI) -- se reintenta cada 6 h, proximo intento pasadas " + ultimoCfdi.Value.AddHours(6).ToLocalTime().ToString("HH:mm") + ".");
-                            continue;
-                        }
-                    }
-
                     string passwordEmpresa = DpapiHelper.Descifrar(empresa.PasswordCifrada);
                     var cert = SatFirmaXml.CargarFiel(empresa.RutaCer, empresa.RutaKey, passwordEmpresa, out var llave);
                     using (llave)
@@ -124,9 +114,10 @@ namespace BrosLMV.Descargas.Cola
                         string rfcEmisor = tipoRecEmi == "Emitidos" ? empresa.RFC : null;
                         string rfcReceptor = tipoRecEmi == "Recibidos" ? empresa.RFC : null;
 
-                        // Sin tope de "un tramo por pasada": se piden TODOS los huecos (hasta MaxTramosPorPasada)
+                        // Sin tope de "un tramo por pasada": se piden TODOS los huecos (hasta MaxTramosPorPasada = 36 meses)
                         // en la misma pasada, el mas antiguo primero. El cupo del SAT no es una preocupacion
                         // aqui: lo que importa es que no quede ningun CFDI sin descargar.
+                        int tramosPedidos = 0;
                         for (int vuelta = 0; hayTramoPendiente && vuelta < MaxTramosPorPasada; vuelta++)
                         {
                             var tramo = SolicitudChunker.PartirEnMeses(desde, hueco.Value.Hasta).First();
@@ -155,10 +146,29 @@ namespace BrosLMV.Descargas.Cola
                             var solicCfdi = await SatSoapClient.SolicitarDescargaAsync(
                                 cert, llave, auth.Token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
                                 desde: tramo.Desde, hasta: tramo.Hasta, tipoSolicitud: "CFDI");
+                            // 5002 = el SAT ya recibio demasiadas veces ESTOS mismos parametros (aunque las haya
+                            // hecho otro sistema con el mismo RFC). No se espera: se repite de inmediato con el
+                            // inicio un dia antes (rango distinto, mismo contenido + un dia de traslape), hasta 5 veces.
+                            for (int ensanche = 1; !solicCfdi.Exito && solicCfdi.CodEstatus == "5002" && ensanche <= 5; ensanche++)
+                            {
+                                BrosSatDb.RegistrarIntentoFallido(conn, empresa.RFC, tipoRecEmi, tramo.Desde, tramo.Hasta, "Automatica", "CFDI", solicCfdi.CodEstatus, solicCfdi.Mensaje);
+                                tramo = (tramo.Desde.AddDays(-1), tramo.Hasta);
+                                Bitacora.Escribir("  [" + tipoRecEmi + "] 5002 (parametros repetidos); se reintenta con el inicio en " + tramo.Desde.ToString("yyyy-MM-dd") + "...");
+                                solicCfdi = await SatSoapClient.SolicitarDescargaAsync(
+                                    cert, llave, auth.Token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                                    desde: tramo.Desde, hasta: tramo.Hasta, tipoSolicitud: "CFDI");
+                            }
                             if (!solicCfdi.Exito)
                             {
                                 BrosSatDb.RegistrarIntentoFallido(conn, empresa.RFC, tipoRecEmi, tramo.Desde, tramo.Hasta, "Automatica", "CFDI", solicCfdi.CodEstatus, solicCfdi.Mensaje);
-                                throw new Exception("SolicitaDescarga (CFDI): " + solicCfdi.Error);
+                                errores++;
+                                Bitacora.EscribirError("  [" + tipoRecEmi + "] SAT rechazo " + tramo.Desde.ToString("yyyy-MM-dd") + " a " + tramo.Hasta.ToString("yyyy-MM-dd") + ": " + solicCfdi.Error + " -- se reintenta en 6 h (con el rango ensanchado) y se sigue con el siguiente tramo.");
+                                rangosCubiertos = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "CFDI", tipoRecEmi);
+                                rangosCubiertos.AddRange(BrosSatDb.ObtenerRangosRechazadosRecientes(conn, empresa.RFC, "CFDI", tipoRecEmi, 6));
+                                hueco = Huecos.PrimerHueco(rangosCubiertos, inicioHistorico, hasta);
+                                desde = hueco?.Desde ?? hasta.AddDays(1);
+                                hayTramoPendiente = hueco.HasValue;
+                                continue;
                             }
                             BrosSatDb.RegistrarSolicitud(conn, solicCfdi.IdSolicitud, empresa.RFC, tipoRecEmi, tramo.Desde, tramo.Hasta, "Automatica", "CFDI");
 
@@ -171,10 +181,12 @@ namespace BrosLMV.Descargas.Cola
                                 BrosSatDb.RegistrarSolicitud(conn, solicMetadata.IdSolicitud, empresa.RFC, tipoRecEmi, tramo.Desde, tramo.Hasta, "Automatica", "Metadata");
                             }
                             Bitacora.Escribir("  [" + tipoRecEmi + "] Solicitado.");
+                            tramosPedidos++;
 
                             // La solicitud recien registrada ya cuenta como cubierta (Aceptada): se busca el
                             // siguiente hueco para pedirlo en esta misma pasada.
                             rangosCubiertos = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "CFDI", tipoRecEmi);
+                            rangosCubiertos.AddRange(BrosSatDb.ObtenerRangosRechazadosRecientes(conn, empresa.RFC, "CFDI", tipoRecEmi, 6));
                             hueco = Huecos.PrimerHueco(rangosCubiertos, inicioHistorico, hasta);
                             desde = hueco?.Desde ?? hasta.AddDays(1);
                             hayTramoPendiente = hueco.HasValue;
@@ -200,7 +212,8 @@ namespace BrosLMV.Descargas.Cola
                         // hecho) se vuelven a pedir los ultimos MesesBarrido meses COMPLETOS, para asegurar
                         // que no falte ningun XML aunque una solicitud anterior haya salido "Terminada"
                         // incompleta. Es seguro repetirlo (guardado idempotente por UUID).
-                        await BarridoAsync(conn, empresa, tipoRecEmi, cert, llave, auth.Token, rfcEmisor, rfcReceptor, hasta);
+                        // (no en la misma pasada que acaba de pedir huecos: seria repetir los mismos meses al instante)
+                        if (tramosPedidos == 0) await BarridoAsync(conn, empresa, tipoRecEmi, cert, llave, auth.Token, rfcEmisor, rfcReceptor, hasta);
 
                         // Verificacion contra Metadata: si el SAT informo (Metadata) CFDI vigentes que NO tenemos
                         // como XML, el mes completo se vuelve a pedir ya mismo (no espera al barrido semanal).
@@ -219,7 +232,7 @@ namespace BrosLMV.Descargas.Cola
 
         // Cuantos meses hacia atras revisa el barrido semanal (mes actual incluido).
         private const int MesesBarrido = 12;
-        private const int MaxTramosPorPasada = 12;
+        private const int MaxTramosPorPasada = 36;
 
         // Meses con CFDI vigentes que el SAT reporta (Metadata) y que no tenemos descargados. Se pide de
         // nuevo el mes completo (a lo mas cada 6 h por mes) ampliando el inicio un dia por intento previo.

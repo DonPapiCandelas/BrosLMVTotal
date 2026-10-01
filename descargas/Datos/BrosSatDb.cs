@@ -844,6 +844,28 @@ WHERE s.RfcSolicitante = @Rfc AND s.TipoSolicitud = @Tipo AND s.Tipo = @TipoRecE
             return rangos;
         }
 
+        // Rangos que el SAT rechazo de inmediato en las ultimas 'horas' horas (1 h si fue 5002, que se
+        // reintenta ensanchando el rango): no se vuelven a pedir hasta que pase ese tiempo (y se siga con los demas huecos).
+        public static List<(DateTime Desde, DateTime Hasta)> ObtenerRangosRechazadosRecientes(SqlConnection conn, string rfc, string tipoSolicitud, string tipo, int horas)
+        {
+            const string sql = @"
+SELECT FechaInicial, FechaFinal FROM SolicitudDescarga
+WHERE RfcSolicitante = @Rfc AND TipoSolicitud = @Tipo AND Tipo = @TipoRecEmi
+  AND Estatus = 'Rechazada'
+  AND FechaSolicitud > DATEADD(MINUTE, -CASE WHEN UltimoCodEstatus = '5002' THEN 60 ELSE @Horas * 60 END, SYSUTCDATETIME());";
+            var rangos = new List<(DateTime, DateTime)>();
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Tipo", tipoSolicitud);
+                cmd.Parameters.AddWithValue("@TipoRecEmi", tipo);
+                cmd.Parameters.AddWithValue("@Horas", horas);
+                using (var reader = cmd.ExecuteReader())
+                    while (reader.Read()) rangos.Add((reader.GetDateTime(0), reader.GetDateTime(1)));
+            }
+            return rangos;
+        }
+
         // Cuantas veces ya se pidio EXACTAMENTE este rango (cualquier resultado, rechazos incluidos).
         // El SAT limita las solicitudes con los mismos parametros (CodEstatus 5002 "de por vida"),
         // asi que un reintento del mismo hueco amplia el rango un dia por cada intento previo.
