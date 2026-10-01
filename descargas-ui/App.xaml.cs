@@ -44,6 +44,16 @@ namespace BrosLMV.DescargasUI
         {
             base.OnStartup(e);
 
+            // Una excepcion en cualquier manejador de la interfaz (p. ej. doble clic en una celda de
+            // una tabla de reportes, 2026-10-01) cerraba TODA la aplicacion. Ahora se anota en la
+            // bitacora y se avisa, y la ventana sigue abierta.
+            DispatcherUnhandledException += (s, ex) =>
+            {
+                try { BrosLMV.Descargas.Cola.Bitacora.EscribirError("UI: " + ex.Exception); } catch { }
+                try { MessageBox.Show("Ocurrio un error y la accion no se completo:\n\n" + ex.Exception.Message + "\n\nQuedo anotado en la bitacora.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning); } catch { }
+                ex.Handled = true;
+            };
+
             bool esNueva;
             try
             {

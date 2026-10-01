@@ -4,6 +4,11 @@
 
 ## Historial de versiones del instalador
 
+### 2.2.3 — 2026-10-01 — Reportes sin cierres
+
+- **Corregido**: doble clic en una fila de las tablas de Reportes cerraba la aplicación (bug 23). Cualquier error de la interfaz se anota y se avisa en vez de cerrar el programa.
+- **2.2.2 no se instaló en ningún equipo**; la 2.2.3 la reemplaza.
+
 ### 2.2.2 — 2026-10-01 — XML visibles en Comercial
 
 - **Corregido**: «Archivo no encontrado» al abrir un XML recibido/emitido importado por Descargas (el archivo no se colocaba donde Comercial lo busca ni existía la ruta configurada) y CFDI de predial que no se podían importar por `CondicionesDePago` demasiado largo (bug 21); archivos nombrados literalmente `[UUID].xml` (bug 22).
@@ -179,6 +184,7 @@ La BD vive separada de la de Comercial Pro a propósito: Comercial solo la **con
     - **La bitácora ya no puede tumbar el proceso**: una pasada lanzada por un usuario falló con *Access denied* al escribir el log creado por el servicio (cuenta SYSTEM) y la excepción mataba el proceso; en el servicio eso mismo lo habría detenido. `Bitacora.Anotar` prueba la ruta compartida, luego la carpeta `BrosLMV\Descargas\logs` del perfil del usuario, y si ninguna sirve descarta la línea.
 21. **«Archivo no encontrado: \Procesado\<uuid>.xml» al abrir un XML en Comercial** (reportado 2026-10-01). Comercial no guarda el XML en su base: la fila de `docDocumentCFDiSAT` solo trae `XMLFileName` y la ventana *XML Recibidos/Emitidos* lo busca en `<orgBusinessEntityCFD.RutaXMLRecibidos|RutaXMLEmitidos>\Procesado\<nombre>.xml` (donde Comercial deja lo que importa él mismo). El importador directo escribía **solo la fila** y nunca el archivo, y además la empresa no tenía registro en `orgBusinessEntityCFD`, por eso la ruta salía vacía (`\Procesado\…`). Arreglo (`ComercialImportador.AsegurarArchivoProcesadoAsync`, también para filas ya existentes): lee la ruta de esa tabla; si está vacía usa la carpeta configurada en la empresa de Descargas y la **llena solo si estaba vacía** (nunca pisa una ruta del usuario); si la empresa no tiene registro, crea el mínimo con **solo las rutas**; y deja el XML en `Procesado` (no en la raíz: ahí Comercial lee lo pendiente por importar y se duplicaría la fila). `CondicionesDePago` se recorta a 100 caracteres (la columna mide 100; los CFDI de predial traen texto largo y fallaban). Con la empresa real: 12,408 XML colocados y 0 errores de importación. Para deshacer el registro creado: `DELETE FROM orgBusinessEntityCFD WHERE BusinessEntityID = 1` en esa base de Comercial.
 22. **Archivos llamados literalmente «[UUID].xml»** (empresa dada de alta con la plantilla de nombre escrita con corchetes en lugar de `{UUID}`): los 12,411 XML quedaron como `[UUID].xml`, `[UUID]_0009caa1.xml`… `OrganizadorArchivos` ahora acepta `[UUID]` como `{UUID}` y `RepararNombresLiterales` renombra los existentes a `<uuid>.xml` (se renombraron los que el usuario podía modificar; los creados por el servicio con otra cuenta dieron *acceso denegado* y se quedan con su nombre, sin afectar a Comercial).
+23. **Doble clic en una fila de Reportes cerraba toda la aplicación** (reportado 2026-10-01, en «Top proveedores»). Las tablas de `ReportesWindow` no eran de solo lectura y sus filas son tipos anónimos (propiedades sin `set`): el doble clic abre la celda en edición, el enlace bidireccional contra una propiedad de solo lectura lanza `InvalidOperationException` y, sin manejador global, WPF cierra el proceso. Arreglo: las 6 tablas de reportes con `IsReadOnly="True"`, y `App` registra `DispatcherUnhandledException` (anota en la bitácora, avisa y deja la ventana abierta) para que ningún error de interfaz vuelva a cerrar la aplicación. Causa deducida del código; no se reprodujo con la interfaz en pantalla.
 
 ## 7. Historial de la interfaz de escritorio
 

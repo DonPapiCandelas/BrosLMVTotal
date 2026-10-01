@@ -117,7 +117,7 @@
 
             <TextBlock Text="Top proveedores del mes" FontWeight="SemiBold" Foreground="#16263A" Margin="0,16,0,8"/>
             <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0,0,0,10">
-              <DataGrid x:Name="GridProveedores" Height="260">
+              <DataGrid x:Name="GridProveedores" IsReadOnly="True" Height="260">
                 <DataGrid.Columns>
                   <DataGridTextColumn Header="RFC" Binding="{Binding RFC}" Width="140"/>
                   <DataGridTextColumn Header="Proveedor" Binding="{Binding Nombre}" Width="*"/>
@@ -135,7 +135,7 @@
           <TextBlock DockPanel.Dock="Top" Foreground="#64748B" Margin="0,0,0,8" TextWrapping="Wrap"
                      Text="Facturas donde MetodoPago y FormaPago no son coherentes segun la regla del SAT: PUE nunca debe traer FormaPago=99, PPD siempre debe traer FormaPago=99 (el pago real se declara despues via complemento de pago). Se muestran todas, sin filtrar por mes."/>
           <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0">
-            <DataGrid x:Name="GridErrores">
+            <DataGrid x:Name="GridErrores" IsReadOnly="True">
               <DataGrid.Columns>
                 <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="90"/>
                 <DataGridTextColumn Header="RFC emisor" Binding="{Binding RFCEmisor}" Width="130"/>
@@ -162,7 +162,7 @@
           <TextBlock DockPanel.Dock="Top" Foreground="#64748B" Margin="0,0,0,8" TextWrapping="Wrap"
                      Text="Facturas a credito (PPD) con saldo pendiente segun los complementos de pago recibidos -- incluye las que no tienen ningun complemento y las que ya tienen uno o mas pero quedaron con pago parcial. Se muestran todas, sin filtrar por mes."/>
           <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0">
-            <DataGrid x:Name="GridCuentasPorPagar">
+            <DataGrid x:Name="GridCuentasPorPagar" IsReadOnly="True">
               <DataGrid.Columns>
                 <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="90"/>
                 <DataGridTextColumn Header="RFC emisor" Binding="{Binding RFCEmisor}" Width="130"/>
@@ -191,7 +191,7 @@
           <TextBlock DockPanel.Dock="Top" Foreground="#64748B" Margin="0,0,0,8" TextWrapping="Wrap"
                      Text="Facturas emitidas a credito (PPD) con saldo pendiente de cobro segun los complementos de pago recibidos -- incluye las que no tienen ningun complemento y las que ya tienen uno o mas pero quedaron con pago parcial. Se muestran todas, sin filtrar por mes."/>
           <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0">
-            <DataGrid x:Name="GridCuentasPorCobrar">
+            <DataGrid x:Name="GridCuentasPorCobrar" IsReadOnly="True">
               <DataGrid.Columns>
                 <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="90"/>
                 <DataGridTextColumn Header="RFC cliente" Binding="{Binding RFCReceptor}" Width="130"/>
@@ -219,7 +219,7 @@
           <TextBlock DockPanel.Dock="Top" Foreground="#64748B" Margin="0,0,0,8" TextWrapping="Wrap"
                      Text="Notas de credito (Egreso) y la factura original que ajustan. Se muestran todas, sin filtrar por mes."/>
           <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0">
-            <DataGrid x:Name="GridNotasCredito">
+            <DataGrid x:Name="GridNotasCredito" IsReadOnly="True">
               <DataGrid.Columns>
                 <DataGridTextColumn Header="Fecha NC" Binding="{Binding FechaNcTexto}" Width="90"/>
                 <DataGridTextColumn Header="Serie/Folio NC" Binding="{Binding SerieFolioNc}" Width="110"/>
@@ -241,7 +241,7 @@
 
       <TabItem Header="Usos de CFDI">
         <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0,14,0,0">
-          <DataGrid x:Name="GridUsos">
+          <DataGrid x:Name="GridUsos" IsReadOnly="True">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Uso CFDI" Binding="{Binding UsoCFDI}" Width="140"/>
               <DataGridTextColumn Header="Descripcion" Binding="{Binding Descripcion}" Width="*"/>
