@@ -1,0 +1,532 @@
+// lang: csharp
+// AppKey recomendado: PDF_MASIVO_DOCUMENTOS
+// Plantilla: PDF masivo de documentos
+// Categoria: Documentos
+// Documentacion: PDF_MASIVO_DOCUMENTOS.html
+// job: safe-offline
+// PDF masivo: genera el PDF de TODOS los documentos que selecciones en la lista de Comercial (no solo el primero), con el formato HTML de cada módulo.
+// Una sola instancia del motor de PDF para todo el lote (rápido), barra de avance con «Cancelar», un documento con problemas NO detiene a los demás y al final
+// ves un reporte de cuáles salieron y cuáles no. Puedes dejarlos sueltos en una carpeta, comprimirlos en un ZIP, unirlos en un solo PDF o ambas cosas.
+// Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
+//
+// Usa las MISMAS etiquetas, formatos, patrón de nombre y carpeta que «Configuración de formato» y «Generar documento (PDF)»: nada va escrito a mano.
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;
+
+var ci = CultureInfo.InvariantCulture;
+var ser = new JavaScriptSerializer { MaxJsonLength = 64 * 1024 * 1024 };
+string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v, ci);
+long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v, ci); } catch { return 0; } }
+int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
+string Esc(string s) => (s ?? "").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
+
+int empresa = ctx.erp.OwnedBusinessEntityId;
+const int MaxDocs = 2000;
+
+string prueba = Environment.GetEnvironmentVariable("BROSLMV_PDFM_TEST");        // solo para pruebas automáticas: JSON, sin ventanas
+bool modoPrueba = !string.IsNullOrEmpty(prueba);
+Dictionary<string, object> parPrueba = modoPrueba ? ser.Deserialize<Dictionary<string, object>>(prueba) : null;
+
+// ---------- 1) Documentos seleccionados ----------
+var ids = new List<long>();
+if (modoPrueba && parPrueba.ContainsKey("ids") && parPrueba["ids"] is System.Collections.IEnumerable lp) foreach (var x in lp) ids.Add(L(x));
+else ids = (ctx.GetSelectedIds() ?? new List<long>()).ToList();
+if (ids.Count == 0)
+{
+    ctx.Msg("Selecciona uno o más documentos en la lista de Comercial antes de generar los PDF.", "PDF masivo");
+    return "SIN SELECCION";
+}
+if (ids.Count > MaxDocs)
+{
+    ctx.Msg("Seleccionaste " + ids.Count + " documentos; el máximo por lote es " + MaxDocs + ". Divide la selección y repite.", "PDF masivo");
+    return "DEMASIADOS";
+}
+
+var docs = ctx.Query(
+    "SELECT d.DocumentID, d.ModuleID, ISNULL(m.ModuleName,'') AS ModuloNombre, ISNULL(d.FolioPrefix,'') AS Serie, ISNULL(CAST(d.Folio AS NVARCHAR(30)),'') AS Folio, " +
+    "d.DateDocument, ISNULL(be.CommercialName, be.OfficialName) AS Entidad, d.CancelledOn " +
+    "FROM docDocument d LEFT JOIN engModule m ON m.ModuleID=d.ModuleID LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID=d.BusinessEntityID " +
+    "WHERE d.OwnedBusinessEntityID=" + empresa + " AND d.DeletedOn IS NULL AND d.DocumentID IN (" + string.Join(",", ids) + ") ORDER BY d.ModuleID, d.DateDocument, d.DocumentID");
+if (docs.Count == 0) { ctx.Msg("Ninguno de los documentos seleccionados existe o pertenece a esta empresa.", "PDF masivo"); return "SIN DOCUMENTOS"; }
+var modulosSel = docs.Select(d => I(d["ModuleID"])).Distinct().ToList();
+
+// ---------- 2) Formatos HTML de cada módulo y configuración de BrosLMV ----------
+var formatosPorModulo = new Dictionary<int, List<Dictionary<string, object>>>();
+foreach (var f in ctx.Query("SELECT ModuleID, PrintFormatID, FormatName, FileName, FormatIsDefault FROM engModulePrintFormat WHERE ModuleID IN (" + string.Join(",", modulosSel) +
+    ") AND ISNULL(FileName,'')<>'' AND (FileName LIKE '%.html' OR FileName LIKE '%.htm') ORDER BY ModuleID, FormatIsDefault DESC, FormatName"))
+{
+    int mid = I(f["ModuleID"]);
+    if (!formatosPorModulo.ContainsKey(mid)) formatosPorModulo[mid] = new List<Dictionary<string, object>>();
+    formatosPorModulo[mid].Add(f);
+}
+var formatoPreferido = new Dictionary<int, long>();
+string rutaPdfConfig = "", patronConfig = "[Serie][Folio] - [Modulo]";
+bool abrirCarpetaConfig = true;
+try
+{
+    Dictionary<string, object> rowGen = null;
+    foreach (var row in ctx.Query("SELECT * FROM zzBrosFormatoConfig WHERE OwnedBusinessEntityID=" + empresa + " AND ModuleID IN (0," + string.Join(",", modulosSel) + ")"))
+    {
+        int mid = I(row["ModuleID"]);
+        if (mid == 0) rowGen = row;
+        else if (row["PrintFormatID"] != null && !(row["PrintFormatID"] is DBNull)) formatoPreferido[mid] = L(row["PrintFormatID"]);
+    }
+    if (rowGen != null)
+    {
+        rutaPdfConfig = S(rowGen["RutaPdf"]);
+        if (!string.IsNullOrWhiteSpace(S(rowGen["PatronNombre"]))) patronConfig = S(rowGen["PatronNombre"]);
+        if (rowGen["AbrirTrasGenerar"] != null && !(rowGen["AbrirTrasGenerar"] is DBNull)) abrirCarpetaConfig = Convert.ToBoolean(rowGen["AbrirTrasGenerar"]);
+    }
+}
+catch { /* sin la tabla de configuración se usan los valores por omisión */ }
+
+long FormatoInicial(int modulo)
+{
+    if (!formatosPorModulo.ContainsKey(modulo)) return 0;
+    var lista = formatosPorModulo[modulo];
+    if (formatoPreferido.ContainsKey(modulo) && lista.Any(f => L(f["PrintFormatID"]) == formatoPreferido[modulo])) return formatoPreferido[modulo];
+    return L(lista[0]["PrintFormatID"]);
+}
+
+// ---------- 3) Motor de etiquetas (las mismas de Comercial y de «Generar documento (PDF)») ----------
+var cacheRef = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+var refsExisten = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+var sinResolver = new HashSet<string>();
+
+List<Dictionary<string, object>> CargarFilas(long doc)
+{
+    foreach (var tvf in new[] { "vwLBSDocDocumentPrint40-DocumentID", "vwLBSDocDocumentPrint33-DocumentID", "vwLBSDocDocumentPrint-DocumentID" })
+    {
+        try { var f = ctx.Query("SELECT * FROM dbo.[" + tvf + "](" + doc + ")"); if (f.Count > 0) return f; } catch { }
+    }
+    return new List<Dictionary<string, object>>();
+}
+
+string ResolverRef(string clave, long doc, long item)
+{
+    string ck = clave + "|" + doc + "|" + item;
+    if (cacheRef.TryGetValue(ck, out var hit)) return hit;
+    string val = "";
+    try
+    {
+        var r = ctx.Query("SELECT SQL FROM engAddendaFieldRef WHERE FieldRefKey=N'" + clave.Replace("'", "''") + "' AND DeletedOn IS NULL");
+        if (r.Count > 0)
+        {
+            refsExisten.Add(clave);
+            string sql = S(r[0]["SQL"]);
+            if (sql.Trim().Length > 0)
+            {
+                sql = sql.Replace("{DocumentID}", doc.ToString()).Replace("{DocumentItemID}", item.ToString());
+                var o = ctx.Scalar(sql);
+                val = o == null || o is DBNull ? "" : (o is DateTime dref ? dref.ToString("dd/MM/yyyy") : Convert.ToString(o, ci));
+            }
+        }
+    }
+    catch { val = ""; }
+    cacheRef[ck] = val;
+    return val;
+}
+
+string FmtValor(object o) => o == null || o is DBNull ? "" : (o is DateTime dt ? dt.ToString("dd/MM/yyyy") : Convert.ToString(o, ci));
+
+var reFormat = new Regex(@"\[Format\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([^\)\]]+?)\s*\)\]", RegexOptions.IgnoreCase);
+var reTag = new Regex(@"\[([A-Za-z_][A-Za-z0-9_]*)\]");
+
+string Resolver(string txt, Dictionary<string, object> fila, long doc, long item)
+{
+    txt = reFormat.Replace(txt, m =>
+    {
+        string col = m.Groups[1].Value, mask = m.Groups[2].Value.Trim();
+        object raw = fila != null && fila.ContainsKey(col) ? fila[col] : (object)ResolverRef(col, doc, item);
+        if (raw == null || raw is DBNull || Convert.ToString(raw) == "") return "";
+        double d;
+        if (double.TryParse(Convert.ToString(raw, ci), NumberStyles.Any, ci, out d))
+        {
+            try { return d.ToString(mask, ci); } catch { return d.ToString("#,##0.00"); }
+        }
+        return Convert.ToString(raw);
+    });
+    txt = reTag.Replace(txt, m =>
+    {
+        string tag = m.Groups[1].Value;
+        if (tag == "QRBros" || tag == "QRPayload" || tag == "DesgloseImpuestos") return m.Value;
+        if (fila != null && fila.ContainsKey(tag)) return System.Net.WebUtility.HtmlEncode(FmtValor(fila[tag]));
+        string viaRef = ResolverRef(tag, doc, item);
+        if (!string.IsNullOrEmpty(viaRef)) return System.Net.WebUtility.HtmlEncode(viaRef);
+        if (!refsExisten.Contains(tag)) sinResolver.Add(tag);
+        return "";
+    });
+    return txt;
+}
+
+string IncrustarImagenes(string html, string baseDir)
+{
+    return Regex.Replace(html, "src\\s*=\\s*\"([^\"]+)\"", m =>
+    {
+        string src = m.Groups[1].Value;
+        if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase) || src.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return m.Value;
+        string ruta = src;
+        try { if (!Path.IsPathRooted(ruta)) ruta = Path.Combine(baseDir, src); } catch { }
+        if (!File.Exists(ruta)) return "src=\"\"";
+        string ext = Path.GetExtension(ruta).TrimStart('.').ToLowerInvariant();
+        if (ext == "jpg") ext = "jpeg";
+        try { return "src=\"data:image/" + ext + ";base64," + Convert.ToBase64String(File.ReadAllBytes(ruta)) + "\""; } catch { return "src=\"\""; }
+    }, RegexOptions.IgnoreCase);
+}
+
+var cacheFormatos = new Dictionary<string, string>();
+string LeerFormato(string archivo)
+{
+    if (cacheFormatos.TryGetValue(archivo, out var hit)) return hit;
+    if (!File.Exists(archivo)) throw new Exception("No existe el archivo de formato: " + archivo);
+    byte[] bytes = File.ReadAllBytes(archivo);
+    string html;
+    if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) html = new UTF8Encoding(false).GetString(bytes, 3, bytes.Length - 3);
+    else { try { html = new UTF8Encoding(false, true).GetString(bytes); } catch { html = Encoding.GetEncoding(1252).GetString(bytes); } }
+    cacheFormatos[archivo] = html;
+    return html;
+}
+
+// HTML ya resuelto de UN documento con el formato elegido
+string ConstruirHtml(long doc, string archivoFormato)
+{
+    string html = LeerFormato(archivoFormato);
+    var protegidos = new List<string>();
+    html = Regex.Replace(html, @"<(script|style)\b[\s\S]*?</\1>", mm => { protegidos.Add(mm.Value); return "@@BROSPROT" + (protegidos.Count - 1) + "@@"; }, RegexOptions.IgnoreCase);
+
+    var filas = CargarFilas(doc);
+    var fila0 = filas.Count > 0 ? filas[0] : new Dictionary<string, object>();
+    long Item(Dictionary<string, object> f) => f.ContainsKey("DocumentItemID") && f["DocumentItemID"] != null && !(f["DocumentItemID"] is DBNull) ? Convert.ToInt64(f["DocumentItemID"]) : 0;
+    long item0 = Item(fila0);
+
+    var mDet = Regex.Match(html, @"<DETAIL>(.*?)</DETAIL>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    var sb = new StringBuilder();
+    if (mDet.Success)
+    {
+        sb.Append(Resolver(html.Substring(0, mDet.Index), fila0, doc, item0));
+        foreach (var f in filas) sb.Append(Resolver(mDet.Groups[1].Value, f, doc, Item(f)));
+        sb.Append(Resolver(html.Substring(mDet.Index + mDet.Length), fila0, doc, item0));
+    }
+    else sb.Append(Resolver(html, fila0, doc, item0));
+
+    string outHtml = IncrustarImagenes(sb.ToString(), Path.GetDirectoryName(archivoFormato));
+    outHtml = Regex.Replace(outHtml, "windows-1252", "utf-8", RegexOptions.IgnoreCase);
+
+    if (outHtml.IndexOf("[QRPayload]", StringComparison.Ordinal) >= 0)
+    {
+        string payload = System.Net.WebUtility.HtmlDecode(Resolver("[EmisorRfc]|[Serie][Folio]|[FechaDocumento]|[Format(Total,#,##0.00)] [Moneda]", fila0, doc, item0));
+        payload = payload.Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;");
+        outHtml = outHtml.Replace("[QRPayload]", payload);
+    }
+    if (outHtml.IndexOf("[QRBros]", StringComparison.Ordinal) >= 0)
+        outHtml = Regex.Replace(outHtml, @"<img[^>]*\[QRBros\][^>]*>", "").Replace("[QRBros]", "");
+    if (outHtml.IndexOf("[DesgloseImpuestos]", StringComparison.Ordinal) >= 0)
+    {
+        var sbtx = new StringBuilder();
+        try
+        {
+            foreach (var t in ctx.Query("SELECT TaxName, CAST(Retention AS INT) AS Ret, SUM(Amount) AS Monto FROM docDocumentTaxDetail WHERE DocumentID=" + doc +
+                " GROUP BY TaxName, CAST(Retention AS INT) HAVING ABS(SUM(Amount)) > 0.005 ORDER BY CAST(Retention AS INT), TaxName"))
+            {
+                bool ret = I(t["Ret"]) == 1;
+                double mt = Convert.ToDouble(t["Monto"], ci);
+                sbtx.Append("<div class=\"row keep\"><span class=\"k\">" + (ret ? "Ret. " : "") + System.Net.WebUtility.HtmlEncode(S(t["TaxName"])) + "</span><span class=\"v\">" +
+                    (ret ? "-" : "") + "$" + mt.ToString("#,##0.00", ci) + "</span></div>");
+            }
+        }
+        catch { }
+        outHtml = outHtml.Replace("[DesgloseImpuestos]", sbtx.ToString());
+    }
+    for (int i = 0; i < protegidos.Count; i++) outHtml = outHtml.Replace("@@BROSPROT" + i + "@@", protegidos[i]);
+    return outHtml;
+}
+
+// Nombre del archivo a partir del patrón ([Serie][Folio] - [Modulo], etc.); sin caracteres inválidos
+string NombreDe(Dictionary<string, object> d, string patron)
+{
+    long doc = L(d["DocumentID"]);
+    try
+    {
+        var fs = CargarFilas(doc);
+        var f0 = fs.Count > 0 ? fs[0] : new Dictionary<string, object>();
+        long it0 = f0.ContainsKey("DocumentItemID") && f0["DocumentItemID"] != null && !(f0["DocumentItemID"] is DBNull) ? Convert.ToInt64(f0["DocumentItemID"]) : 0;
+        string pat = (patron ?? "").Replace("[Modulo]", S(d["ModuloNombre"]));
+        string n = System.Net.WebUtility.HtmlDecode(Resolver(pat, f0, doc, it0) ?? "");
+        n = Regex.Replace(n, "<[^>]+>", "").Trim();
+        foreach (char ch in Path.GetInvalidFileNameChars()) n = n.Replace(ch, '_');
+        return string.IsNullOrWhiteSpace(n) ? "doc_" + doc : n;
+    }
+    catch { return "doc_" + doc; }
+}
+
+string ExeHtmlToPdf()
+{
+    string forzado = Environment.GetEnvironmentVariable("BROSLMV_HTMLTOPDF_EXE");        // desarrollo y pruebas
+    if (!string.IsNullOrEmpty(forzado) && File.Exists(forzado)) return forzado;
+    foreach (var p in new[] { @"C:\BrosLMV\htmlpdf\BrosLMV.HtmlToPdf.exe", @"C:\MLVTotal\htmlpdf\bin\Release\net8.0-windows\BrosLMV.HtmlToPdf.exe" })
+        if (File.Exists(p)) return p;
+    return null;
+}
+
+bool SoportaLote(string exe)
+{
+    try
+    {
+        var psi = new ProcessStartInfo { FileName = exe, Arguments = "--soporta-lote", UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        using (var p = Process.Start(psi)) { string o = p.StandardOutput.ReadToEnd(); p.WaitForExit(15000); return p.ExitCode == 0 && o.Contains("lote=1"); }
+    }
+    catch { return false; }
+}
+
+// ---------- 4) Parámetros del lote ----------
+class Parametros
+{
+    public string Carpeta = "", Patron = "", Modo = "sueltos";            // sueltos | zip | unido | zip+unido
+    public bool AbrirCarpeta = true;
+    public Dictionary<int, long> Formato = new Dictionary<int, long>();    // módulo -> PrintFormatID
+}
+
+string CarpetaSugerida()
+{
+    string baseDir = !string.IsNullOrWhiteSpace(rutaPdfConfig) && Directory.Exists(rutaPdfConfig) ? rutaPdfConfig
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "BrosLMV PDF");
+    return Path.Combine(baseDir, "Lote " + DateTime.Now.ToString("yyyyMMdd_HHmm"));
+}
+
+string PaginaOpciones(Parametros p, string mensaje)
+{
+    var sb = new StringBuilder("<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><style>:root{--f:#f4f6f9;--t:#fff;--x:#16263a;--s:#64748b;--l:#cbd5e1;--a:#2d6fe0;--am:#b45309}*{box-sizing:border-box}" +
+        "body{margin:0;font:13px 'Segoe UI',Arial,sans-serif;background:var(--f);color:var(--x)}.w{padding:18px 24px}h1{margin:0 0 4px;font-size:20px}.sub{color:var(--s);margin-bottom:12px}" +
+        ".card{background:var(--t);border:1px solid var(--l);border-radius:9px;padding:14px 16px;margin-bottom:12px}.card h2{margin:0 0 8px;font-size:14px}label{display:block;margin:8px 0 3px;color:var(--s);font-size:12px}" +
+        "select,input[type=text]{width:100%;padding:6px 8px;border:1px solid var(--l);border-radius:6px;font:inherit;background:#fff}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e5eaf1}" +
+        "th{color:var(--s);font-size:11.5px}button{border:1px solid var(--l);background:#fff;border-radius:6px;padding:7px 16px;cursor:pointer;font:inherit}button.p{background:var(--a);color:#fff;border-color:var(--a)}" +
+        ".acc{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}.fila{display:flex;gap:8px}.fila input{flex:1}.r label{display:block;color:var(--x);font-size:13px;margin:5px 0}.av{color:var(--am);margin:4px 0}</style></head><body><div class='w'>");
+    sb.Append("<h1>PDF masivo</h1><div class='sub'>" + docs.Count + " documento(s) seleccionado(s). " + Esc(mensaje ?? "") + "</div>");
+    sb.Append("<div class='card'><h2>1 · Formato de cada tipo de documento</h2><table><tr><th>Tipo de documento</th><th>Documentos</th><th>Formato</th></tr>");
+    foreach (var g in docs.GroupBy(d => I(d["ModuleID"])))
+    {
+        int mid = g.Key; string nombre = S(g.First()["ModuloNombre"]);
+        sb.Append("<tr><td>" + Esc(nombre) + "</td><td>" + g.Count() + "</td><td>");
+        if (!formatosPorModulo.ContainsKey(mid)) sb.Append("<span class='av'>Sin formato HTML: se omitirán estos documentos</span>");
+        else
+        {
+            long sel = p.Formato.ContainsKey(mid) ? p.Formato[mid] : FormatoInicial(mid);
+            sb.Append("<select id='fmt" + mid + "'>");
+            foreach (var f in formatosPorModulo[mid]) sb.Append("<option value='" + S(f["PrintFormatID"]) + "'" + (L(f["PrintFormatID"]) == sel ? " selected" : "") + ">" + Esc(S(f["FormatName"])) + (I(f["FormatIsDefault"]) == 1 ? " (predeterminado)" : "") + "</option>");
+            sb.Append("</select>");
+        }
+        sb.Append("</td></tr>");
+    }
+    sb.Append("</table></div>");
+    sb.Append("<div class='card'><h2>2 · Dónde y cómo se llaman</h2><label>Carpeta de destino</label><div class='fila'><input type='text' id='carpeta' value=\"" + Esc(p.Carpeta) + "\"><button onclick=\"enviar({accion:'examinar',carpeta:v('carpeta')})\">Examinar…</button></div>" +
+        "<label>Patrón del nombre (etiquetas de Comercial; [Modulo] = tipo de documento)</label><input type='text' id='patron' value=\"" + Esc(p.Patron) + "\"></div>");
+    sb.Append("<div class='card'><h2>3 · Qué quieres obtener</h2><div class='r'>" +
+        "<label><input type='radio' name='modo' value='sueltos'" + (p.Modo == "sueltos" ? " checked" : "") + "> Un PDF por documento, sueltos en la carpeta</label>" +
+        "<label><input type='radio' name='modo' value='zip'" + (p.Modo == "zip" ? " checked" : "") + "> Un archivo ZIP con todos los PDF</label>" +
+        "<label><input type='radio' name='modo' value='unido'" + (p.Modo == "unido" ? " checked" : "") + "> Un solo PDF con todos los documentos juntos</label>" +
+        "<label><input type='radio' name='modo' value='zip+unido'" + (p.Modo == "zip+unido" ? " checked" : "") + "> ZIP y además un solo PDF unido</label>" +
+        "<label><input type='checkbox' id='abrir'" + (p.AbrirCarpeta ? " checked" : "") + "> Abrir la carpeta al terminar</label></div></div>");
+    sb.Append("<div class='acc'><button onclick=\"enviar({accion:'cancelar'})\">Cancelar</button><button class='p' onclick='ir()'>Generar los PDF</button></div></div>" +
+        "<script>function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}function v(i){return document.getElementById(i).value;}" +
+        "function ir(){var f={};[].slice.call(document.querySelectorAll('select[id^=fmt]')).forEach(function(s){f[s.id.substring(3)]=+s.value;});" +
+        "var m=document.querySelector('input[name=modo]:checked');enviar({accion:'generar',carpeta:v('carpeta'),patron:v('patron'),modo:m?m.value:'sueltos',abrir:document.getElementById('abrir').checked,formatos:f});}</script></body></html>");
+    return sb.ToString();
+}
+
+Parametros LeerParametros(Dictionary<string, object> r)
+{
+    var p = new Parametros { Carpeta = S(r.ContainsKey("carpeta") ? r["carpeta"] : ""), Patron = S(r.ContainsKey("patron") ? r["patron"] : ""), Modo = S(r.ContainsKey("modo") ? r["modo"] : "sueltos") };
+    p.AbrirCarpeta = !r.ContainsKey("abrir") || Convert.ToBoolean(r["abrir"]);
+    if (r.ContainsKey("formatos") && r["formatos"] is Dictionary<string, object> fm) foreach (var kv in fm) p.Formato[int.Parse(kv.Key)] = L(kv.Value);
+    if (string.IsNullOrWhiteSpace(p.Patron)) p.Patron = patronConfig;
+    return p;
+}
+
+// ---------- 5) El lote ----------
+class Resultado { public string Documento, Estado, Motivo, Archivo; }
+
+Dictionary<string, object> Ejecutar(Parametros p, Action<int, int, string> avance, Func<bool> cancelado, Action<Process> registrar)
+{
+    string exe = ExeHtmlToPdf();
+    if (exe == null) throw new Exception("No se encontró BrosLMV.HtmlToPdf.exe. Reinstala BrosLMV.");
+    if (!SoportaLote(exe)) throw new Exception("El motor de PDF instalado es una versión anterior y no admite lotes. Actualiza BrosLMV a la versión que incluye «PDF masivo».");
+    string carpeta = string.IsNullOrWhiteSpace(p.Carpeta) ? CarpetaSugerida() : p.Carpeta;
+    Directory.CreateDirectory(carpeta);
+    string temporal = Path.Combine(Path.GetTempPath(), "BrosLMV_PDFMasivo_" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(temporal);
+
+    var resultados = new List<Resultado>();
+    var manifiesto = new List<string>();
+    var nombresUsados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var porPdf = new Dictionary<string, Resultado>(StringComparer.OrdinalIgnoreCase);
+    // 5a) HTML de cada documento (aquí mismo, por SQL: no se puede hacer fuera de Comercial)
+    int hechos = 0;
+    foreach (var d in docs)
+    {
+        if (cancelado()) break;
+        long doc = L(d["DocumentID"]); int mid = I(d["ModuleID"]);
+        string etiqueta = (S(d["ModuloNombre"]) + " " + S(d["Serie"]) + S(d["Folio"])).Trim();
+        hechos++; avance(hechos, docs.Count * 2, "Preparando " + etiqueta);
+        try
+        {
+            if (!formatosPorModulo.ContainsKey(mid)) { resultados.Add(new Resultado { Documento = etiqueta, Estado = "OMITIDO", Motivo = "su módulo no tiene un formato HTML" }); continue; }
+            long fid = p.Formato.ContainsKey(mid) ? p.Formato[mid] : FormatoInicial(mid);
+            var fmt = formatosPorModulo[mid].FirstOrDefault(f => L(f["PrintFormatID"]) == fid) ?? formatosPorModulo[mid][0];
+            string html = ConstruirHtml(doc, S(fmt["FileName"]));
+            string nombre = NombreDe(d, p.Patron), final = nombre; int k = 2;
+            while (!nombresUsados.Add(final)) final = nombre + " (" + (k++) + ")";
+            string rutaHtml = Path.Combine(temporal, "d" + doc + ".html");
+            File.WriteAllText(rutaHtml, html, new UTF8Encoding(false));
+            string rutaPdf = Path.Combine(carpeta, final + ".pdf");
+            manifiesto.Add(rutaHtml + "\t" + rutaPdf);
+            var r = new Resultado { Documento = etiqueta, Estado = "PENDIENTE", Archivo = rutaPdf };
+            resultados.Add(r); porPdf[rutaPdf] = r;
+        }
+        catch (Exception ex) { resultados.Add(new Resultado { Documento = etiqueta, Estado = "ERROR", Motivo = ex.Message }); }
+    }
+
+    string unidoRuta = null, zipRuta = null;
+    string estampa = DateTime.Now.ToString("yyyyMMdd_HHmm");
+    if (p.Modo.Contains("unido")) unidoRuta = Path.Combine(carpeta, "Documentos unidos " + estampa + ".pdf");
+    if (p.Modo.Contains("zip")) zipRuta = Path.Combine(carpeta, "Documentos " + estampa + ".zip");
+
+    int generados = 0;
+    if (manifiesto.Count > 0 && !cancelado())
+    {
+        string rutaManifiesto = Path.Combine(temporal, "lote.txt");
+        File.WriteAllLines(rutaManifiesto, manifiesto, new UTF8Encoding(false));
+        string args = "--lote \"" + rutaManifiesto + "\"" + (unidoRuta != null ? " --unir \"" + unidoRuta + "\"" : "") + (zipRuta != null ? " --zip \"" + zipRuta + "\"" : "");
+        var psi = new ProcessStartInfo { FileName = exe, Arguments = args, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = new UTF8Encoding(false) };
+        using (var proc = new Process { StartInfo = psi })
+        {
+            var cola = new System.Collections.Concurrent.ConcurrentQueue<string>();
+            proc.OutputDataReceived += (s, e) => { if (e.Data != null) cola.Enqueue(e.Data); };
+            proc.Start(); proc.BeginOutputReadLine(); proc.BeginErrorReadLine(); registrar(proc);
+            Action vaciar = () =>
+            {
+                string linea;
+                while (cola.TryDequeue(out linea))
+                {
+                    var c = linea.Split('\t');
+                    if (c.Length >= 3 && (c[1] == "OK" || c[1] == "ERR") && porPdf.TryGetValue(c[2], out var res))
+                    {
+                        if (c[1] == "OK") res.Estado = "OK"; else { res.Estado = "ERROR"; res.Motivo = c.Length > 3 ? c[3] : "falló"; }
+                        generados++; avance(docs.Count + generados, docs.Count * 2, "Generando PDF " + generados + " de " + manifiesto.Count);
+                    }
+                    else if (c[0] == "ERRUNIR" || c[0] == "ERRZIP") resultados.Add(new Resultado { Documento = c[0] == "ERRUNIR" ? "PDF unido" : "ZIP", Estado = "ERROR", Motivo = c.Length > 1 ? c[1] : "falló" });
+                }
+            };
+            while (!proc.HasExited)
+            {
+                vaciar();
+                if (cancelado()) { try { proc.Kill(); } catch { } break; }
+                System.Threading.Thread.Sleep(40);
+            }
+            proc.WaitForExit(30000);
+            vaciar();
+        }
+    }
+    foreach (var r in resultados.Where(x => x.Estado == "PENDIENTE")) { r.Estado = cancelado() ? "CANCELADO" : "ERROR"; if (r.Motivo == null) r.Motivo = cancelado() ? "se canceló el lote" : "el motor no devolvió resultado"; }
+    try { Directory.Delete(temporal, true); } catch { }
+    if (sinResolver.Count > 0) ctx.Log("PDF masivo: etiquetas sin resolver -> " + string.Join(", ", sinResolver.OrderBy(x => x)));
+
+    // Si pediste ZIP y/o PDF unido, los PDF sueltos sobran: ya van dentro de lo que pediste. Solo se quitan si TODO lo pedido se creó bien.
+    if (p.Modo != "sueltos")
+    {
+        bool zipOk = zipRuta == null || File.Exists(zipRuta), unidoOk = unidoRuta == null || File.Exists(unidoRuta);
+        if (zipOk && unidoOk)
+            foreach (var r in resultados.Where(x => x.Estado == "OK" && x.Archivo != null)) { try { File.Delete(r.Archivo); } catch { } }
+    }
+
+    return new Dictionary<string, object>
+    {
+        ["carpeta"] = carpeta, ["ok"] = resultados.Count(x => x.Estado == "OK"), ["errores"] = resultados.Count(x => x.Estado == "ERROR"),
+        ["omitidos"] = resultados.Count(x => x.Estado == "OMITIDO"), ["cancelados"] = resultados.Count(x => x.Estado == "CANCELADO"),
+        ["unido"] = unidoRuta != null && File.Exists(unidoRuta) ? unidoRuta : "", ["zip"] = zipRuta != null && File.Exists(zipRuta) ? zipRuta : "",
+        ["detalle"] = resultados.Select(x => new Dictionary<string, object> { ["documento"] = x.Documento, ["estado"] = x.Estado, ["motivo"] = x.Motivo ?? "", ["archivo"] = x.Archivo ?? "" }).ToList()
+    };
+}
+
+// ---------- Modo de pruebas: sin ventanas ----------
+if (modoPrueba)
+{
+    var pp = LeerParametros(parPrueba);
+    var res = Ejecutar(pp, (a, b, c) => { }, () => false, pr => { });
+    string salida = Environment.GetEnvironmentVariable("BROSLMV_PDFM_OUT");
+    string json = ser.Serialize(res);
+    if (!string.IsNullOrEmpty(salida)) File.WriteAllText(salida, json, new UTF8Encoding(false));
+    return json;
+}
+
+// ---------- Interfaz ----------
+Parametros actual = new Parametros { Carpeta = CarpetaSugerida(), Patron = patronConfig, AbrirCarpeta = abrirCarpetaConfig };
+string aviso = null;
+while (true)
+{
+    var r = ctx.ShowHtmlFormulario(PaginaOpciones(actual, aviso), "PDF masivo", 940, 760, 0);
+    aviso = null;
+    if (!r.ContainsKey("submitted") || !(bool)r["submitted"]) return "OK";
+    string accion = S(r.ContainsKey("accion") ? r["accion"] : "");
+    if (accion == "examinar")
+    {
+        actual = LeerParametros(r);
+        using (var dlg = new FolderBrowserDialog { Description = "Carpeta donde se guardarán los PDF", SelectedPath = Directory.Exists(actual.Carpeta) ? actual.Carpeta : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) })
+            if (dlg.ShowDialog() == DialogResult.OK) actual.Carpeta = Path.Combine(dlg.SelectedPath, "Lote " + DateTime.Now.ToString("yyyyMMdd_HHmm"));
+        continue;
+    }
+    if (accion != "generar") return "OK";
+    actual = LeerParametros(r);
+
+    // Ventana de avance con «Cancelar»
+    bool cancelar = false; Process procActual = null;
+    var frm = new Form { Text = "PDF masivo", Width = 560, Height = 300, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false, ControlBox = false, Font = new Font("Segoe UI", 9f), BackColor = Color.White };
+    var lbl = new Label { Left = 20, Top = 20, Width = 510, Height = 40, Text = "Preparando…" };
+    var barra = new ProgressBar { Left = 20, Top = 66, Width = 510, Height = 22, Minimum = 0, Maximum = 100 };
+    var registro = new ListBox { Left = 20, Top = 100, Width = 510, Height = 110, IntegralHeight = false };
+    var btnCancelar = new Button { Text = "Cancelar", Left = 440, Top = 222, Width = 90, Height = 30 };
+    btnCancelar.Click += (s, e) => { cancelar = true; btnCancelar.Enabled = false; lbl.Text = "Cancelando…"; try { if (procActual != null && !procActual.HasExited) procActual.Kill(); } catch { } };
+    frm.Controls.AddRange(new Control[] { lbl, barra, registro, btnCancelar });
+
+    Dictionary<string, object> resultado = null; Exception fallo = null;
+    // El armado usa ctx.Query (puente COM de Comercial): corre en ESTE hilo; el motor externo corre aparte y se lee sin bloquear (DoEvents)
+    frm.Shown += (s, e) =>
+    {
+        try { resultado = Ejecutar(actual, (a, tt, m) => { barra.Maximum = Math.Max(1, tt); barra.Value = Math.Min(a, barra.Maximum); lbl.Text = m; Application.DoEvents(); }, () => { Application.DoEvents(); return cancelar; }, pr => procActual = pr); }
+        catch (Exception ex) { fallo = ex; }
+        frm.Close();
+    };
+    frm.ShowDialog();
+
+    if (fallo != null) { ctx.Msg("No se generaron los PDF:\n" + fallo.Message, "PDF masivo"); aviso = fallo.Message; continue; }
+    if (resultado == null) return "OK";
+
+    var sb = new StringBuilder("<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><style>body{margin:0;font:13px 'Segoe UI',Arial,sans-serif;background:#f4f6f9;color:#16263a}.w{padding:18px 24px}h1{margin:0 0 6px;font-size:20px}" +
+        ".card{background:#fff;border:1px solid #cbd5e1;border-radius:9px;padding:14px 16px;margin:10px 0}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e5eaf1}th{color:#64748b;font-size:11.5px}" +
+        ".ok{color:#16803b;font-weight:600}.er{color:#c82828;font-weight:600}.am{color:#b45309;font-weight:600}button{border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:7px 16px;cursor:pointer;font:inherit;margin-left:8px}button.p{background:#2d6fe0;color:#fff;border-color:#2d6fe0}</style></head><body><div class='w'>");
+    sb.Append("<h1>" + ((int)resultado["errores"] == 0 && (int)resultado["omitidos"] == 0 && (int)resultado["cancelados"] == 0 ? "Listo" : "Terminó con avisos") + "</h1>");
+    sb.Append("<div class='card'><span class='ok'>" + resultado["ok"] + " PDF generado(s)</span> · <span class='er'>" + resultado["errores"] + " con error</span> · <span class='am'>" + resultado["omitidos"] + " omitido(s)</span>" +
+        ((int)resultado["cancelados"] > 0 ? " · " + resultado["cancelados"] + " cancelado(s)" : "") + "<div style='margin-top:6px;color:#64748b'>Carpeta: " + Esc(S(resultado["carpeta"])) + "</div>" +
+        (S(resultado["unido"]) != "" ? "<div>PDF unido: " + Esc(S(resultado["unido"])) + "</div>" : "") + (S(resultado["zip"]) != "" ? "<div>ZIP: " + Esc(S(resultado["zip"])) + "</div>" : "") + "</div>");
+    var malos = ((List<Dictionary<string, object>>)resultado["detalle"]).Where(x => S(x["estado"]) != "OK").ToList();
+    if (malos.Count > 0)
+    {
+        sb.Append("<div class='card'><b>Documentos que no salieron</b><table><tr><th>Documento</th><th>Estado</th><th>Motivo</th></tr>");
+        foreach (var m in malos) sb.Append("<tr><td>" + Esc(S(m["documento"])) + "</td><td class='" + (S(m["estado"]) == "ERROR" ? "er" : "am") + "'>" + Esc(S(m["estado"])) + "</td><td>" + Esc(S(m["motivo"])) + "</td></tr>");
+        sb.Append("</table></div>");
+    }
+    sb.Append("<div style='text-align:right'><button onclick=\"window.chrome.webview.postMessage(JSON.stringify({accion:'carpeta'}))\">Abrir la carpeta</button><button class='p' onclick=\"window.chrome.webview.postMessage(JSON.stringify({accion:'cerrar'}))\">Cerrar</button></div></div></body></html>");
+    var fin = ctx.ShowHtmlFormulario(sb.ToString(), "PDF masivo — resultado", 900, 620, 0);
+    if (actual.AbrirCarpeta || (fin.ContainsKey("accion") && S(fin["accion"]) == "carpeta"))
+        try { Process.Start(new ProcessStartInfo { FileName = S(resultado["carpeta"]), UseShellExecute = true }); } catch { }
+    return "OK";
+}

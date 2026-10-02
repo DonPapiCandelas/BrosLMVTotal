@@ -27,6 +27,7 @@
 | [`CREAR_BOTON.md`](CREAR_BOTON.md) | Asistente «Crear botón…»: pestañas, módulos, usuarios, íconos, editar botones existentes |
 | [`TRAZABILIDAD_DOCUMENTO.md`](TRAZABILIDAD_DOCUMENTO.md) | Plantilla de fábrica «Trazabilidad del documento»: de dónde viene y a dónde fue (los cuatro tipos de vínculo, vínculos manuales) |
 | [`ASIGNAR_CENTRO_COSTO.md`](ASIGNAR_CENTRO_COSTO.md) | Plantilla de fábrica: asignar un centro de costo a muchos documentos, con vista previa y deshacer |
+| [`PDF_MASIVO_DOCUMENTOS.md`](PDF_MASIVO_DOCUMENTOS.md) | Plantilla de fábrica: PDF de todos los documentos seleccionados (sueltos, ZIP o unidos) y modo lote del motor HtmlToPdf |
 | [`CAPACIDADES.md`](CAPACIDADES.md) | Qué se puede construir: reportes, análisis, integraciones |
 | [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) | Reportes HTML rápidos y portables (`ctx.dashboard()`, `ctx.show_html`) |
 

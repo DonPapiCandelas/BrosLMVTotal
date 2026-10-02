@@ -17,6 +17,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   Si un vínculo existe **solo** por `DestinationDocumentID` (el caso de «varias órdenes → una factura», que el sistema no puede expresar con un único `SourceDocumentID`) lo dibuja discontinuo y lo marca como manual.
   Muestra cantidades por partida, pagos/cobros aplicados, saldo y documentos cancelados; clic centra, doble clic abre el documento, exporta a CSV. Solo lee.
 - **Datos de demostración en el laboratorio** (`build/laboratorio/sembrar_demo_trazabilidad.ps1`): 3 órdenes de compra → 1 factura consolidada («DEMO TRAZ…» en `BROSLMV_DESARROLLO`) para ver el caso de varios orígenes hacia un destino sin abrir otras bases.
+- **Plantilla «PDF masivo de documentos»** (`instalador/scripts/PDF_MASIVO_DOCUMENTOS.ctx`, `docs/PDF_MASIVO_DOCUMENTOS.md`): genera el PDF de **todos** los documentos seleccionados (los botones de PDF solo procesaban el primero), con el formato HTML de cada módulo,
+  el patrón de nombre y la carpeta de «Configuración de formato». Avance con **Cancelar**, un documento con problemas no detiene a los demás, reporte final con el motivo de cada fallo, y salida como PDF sueltos, ZIP, un solo PDF unido o ZIP + unido.
+- **`BrosLMV.HtmlToPdf.exe` — modo lote** (`--lote <manifiesto> [--timeout-doc] [--unir] [--zip]`, `--soporta-lote`): una sola instancia de WebView2 para todo el lote (antes se pagaba el arranque por documento), salida línea por línea en UTF-8 y códigos de salida (0 todo bien, 7 hubo fallos).
+  Unir usa PDFsharp (MIT). Probado con 4 documentos (uno inexistente), unir y ZIP: 3 PDF, un unido de 3 páginas y un ZIP de 3 archivos en unos 3 s.
+- **Prueba de humo #37** (`build/humo/casos/37_pdf_masivo.ps1`): corre la plantilla real contra el laboratorio con el motor del repositorio: PDF sueltos, ZIP, unido, ZIP+unido y un módulo sin formato que se omite.
 - **Prueba de humo #35** (`build/humo/casos/35_trazabilidad_documento.ps1`): corre la plantilla real con `BrosLMV.Runner` contra el laboratorio (`BROSLMV_DESARROLLO`) y comprueba la cadena, la raíz, la evidencia y el documento aislado.
 
 - **Plantilla «Asignar centro de costo de forma masiva»** (`instalador/scripts/ASIGNAR_CENTRO_COSTO.ctx`, `docs/ASIGNAR_CENTRO_COSTO.md`): pone un centro de costo ya existente a muchos documentos de una vez. Elige por selección de la lista o
