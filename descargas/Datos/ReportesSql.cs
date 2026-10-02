@@ -59,9 +59,46 @@ namespace BrosLMV.Descargas.Datos
         public string Folio;
         public string MetodoPago;
         public string FormaPago;
+        public string UsoCFDI;
         public decimal? Total;
         public DateTime FechaEmision;
         public string Motivo;
+    }
+
+    internal sealed class CedulaImpuestosMensualFila
+    {
+        public decimal VentasSubtotalPue;
+        public decimal VentasIvaPue;
+        public decimal VentasSubtotalPpd;
+        public decimal VentasIvaPpd;
+        public decimal VentasTotal;
+        public decimal VentasIvaTotal;
+
+        public decimal ComprasSubtotalPue;
+        public decimal ComprasIvaPue;
+        public decimal ComprasSubtotalPpd;
+        public decimal ComprasIvaPpd;
+        public decimal ComprasTotal;
+        public decimal ComprasIvaTotal;
+
+        public decimal IvaDiferencialEfectivo => VentasIvaPue - ComprasIvaPue;
+
+        public decimal RetencionesEmitidas;
+        public decimal RetencionesRecibidas;
+    }
+
+    internal sealed class FacturaRiesgoRepFila
+    {
+        public int CfdiID;
+        public Guid UUID;
+        public string RFCEmisor;
+        public string NombreEmisor;
+        public string SerieFolio;
+        public DateTime FechaEmision;
+        public decimal Total;
+        public decimal IVA;
+        public int DiasTranscurridos;
+        public string Riesgo;
     }
 
     // "Cuentas por pagar" segun el SAT: PPD cuyo Total no esta cubierto todavia por la suma de
@@ -121,6 +158,28 @@ namespace BrosLMV.Descargas.Datos
         public string UsoCFDI;
         public int Count;
         public decimal Total;
+    }
+
+    internal sealed class CfdiMesFila
+    {
+        public Guid UUID;
+        public string TipoComprobante;
+        public string Flujo;
+        public string RFCEmisor;
+        public string NombreEmisor;
+        public string RFCReceptor;
+        public string Serie;
+        public string Folio;
+        public DateTime FechaEmision;
+        public decimal? Subtotal;
+        public decimal? Descuento;
+        public decimal? IVA;
+        public decimal? Retenciones;
+        public decimal? Total;
+        public string Moneda;
+        public string FormaPago;
+        public string MetodoPago;
+        public string EstatusSat;
     }
 
     internal static class ReportesSql
@@ -204,19 +263,109 @@ ORDER BY Total DESC;";
             return resultado;
         }
 
+        public static List<ProveedorResumenFila> ObtenerTopClientes(SqlConnection conn, string rfc, int anio, int mes, int top = 10)
+        {
+            var desde = new DateTime(anio, mes, 1);
+            var hasta = desde.AddMonths(1);
+
+            string sql = $@"
+SELECT TOP ({top}) RFCReceptor, NULL AS Nombre, SUM(Total) AS Total, COUNT(*) AS Cantidad
+FROM CfdiRecibido
+WHERE RFCEmisor = @Rfc AND TipoComprobante = 'I' AND Archivado = 0
+  AND FechaEmision >= @Desde AND FechaEmision < @Hasta
+GROUP BY RFCReceptor
+ORDER BY Total DESC;";
+
+            var resultado = new List<ProveedorResumenFila>();
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Desde", desde);
+                cmd.Parameters.AddWithValue("@Hasta", hasta);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        resultado.Add(new ProveedorResumenFila
+                        {
+                            RFC = reader.GetString(0),
+                            Nombre = reader.IsDBNull(1) ? null : reader.GetString(1),
+                            Total = reader.GetDecimal(2),
+                            Count = reader.GetInt32(3)
+                        });
+                    }
+                }
+            }
+            return resultado;
+        }
+
+        public static List<CfdiMesFila> ObtenerCfdisMes(SqlConnection conn, string rfc, int anio, int mes)
+        {
+            var desde = new DateTime(anio, mes, 1);
+            var hasta = desde.AddMonths(1);
+
+            const string sql = @"
+SELECT UUID, TipoComprobante,
+       CASE WHEN RFCEmisor = @Rfc THEN 'Emitido' ELSE 'Recibido' END AS Flujo,
+       RFCEmisor, NombreEmisor, RFCReceptor, Serie, Folio, FechaEmision,
+       Subtotal, Descuento, IVA, Retenciones, Total, Moneda, FormaPago, MetodoPago, EstatusSat
+FROM CfdiRecibido
+WHERE (RFCEmisor = @Rfc OR RFCReceptor = @Rfc) AND Archivado = 0
+  AND FechaEmision >= @Desde AND FechaEmision < @Hasta
+ORDER BY FechaEmision DESC;";
+
+            var resultado = new List<CfdiMesFila>();
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Desde", desde);
+                cmd.Parameters.AddWithValue("@Hasta", hasta);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        resultado.Add(new CfdiMesFila
+                        {
+                            UUID = reader.GetGuid(0),
+                            TipoComprobante = reader.IsDBNull(1) ? null : reader.GetString(1),
+                            Flujo = reader.GetString(2),
+                            RFCEmisor = reader.GetString(3),
+                            NombreEmisor = reader.IsDBNull(4) ? null : reader.GetString(4),
+                            RFCReceptor = reader.GetString(5),
+                            Serie = reader.IsDBNull(6) ? null : reader.GetString(6),
+                            Folio = reader.IsDBNull(7) ? null : reader.GetString(7),
+                            FechaEmision = reader.GetDateTime(8),
+                            Subtotal = reader.IsDBNull(9) ? (decimal?)null : reader.GetDecimal(9),
+                            Descuento = reader.IsDBNull(10) ? (decimal?)null : reader.GetDecimal(10),
+                            IVA = reader.IsDBNull(11) ? (decimal?)null : reader.GetDecimal(11),
+                            Retenciones = reader.IsDBNull(12) ? (decimal?)null : reader.GetDecimal(12),
+                            Total = reader.IsDBNull(13) ? (decimal?)null : reader.GetDecimal(13),
+                            Moneda = reader.IsDBNull(14) ? null : reader.GetString(14),
+                            FormaPago = reader.IsDBNull(15) ? null : reader.GetString(15),
+                            MetodoPago = reader.IsDBNull(16) ? null : reader.GetString(16),
+                            EstatusSat = reader.IsDBNull(17) ? null : reader.GetString(17)
+                        });
+                    }
+                }
+            }
+            return resultado;
+        }
+
         // Regla real del SAT (Anexo 20): MetodoPago=PUE debe traer una FormaPago especifica
         // (nunca "99 - Por definir", porque se paga de contado y ya se sabe como). MetodoPago=PPD
         // debe traer FormaPago="99" siempre (el pago real se declara despues via complemento de
         // pago) -- cualquier otro valor en PPD es una factura mal emitida por el proveedor.
+        // Ademas: UsoCFDI=P01 (Por definir) ya fue derogado en CFDI 4.0 por el SAT.
         public static List<ErrorCoherenciaFila> ObtenerErroresCoherenciaPago(SqlConnection conn, string rfc)
         {
             const string sql = @"
-SELECT CfdiID, UUID, RFCEmisor, NombreEmisor, Serie, Folio, MetodoPago, FormaPago, Total, FechaEmision
+SELECT CfdiID, UUID, RFCEmisor, NombreEmisor, Serie, Folio, MetodoPago, FormaPago, Total, FechaEmision, UsoCFDI
 FROM CfdiRecibido
 WHERE RFCReceptor = @Rfc AND TipoComprobante = 'I' AND Archivado = 0
   AND (
         (MetodoPago = 'PUE' AND FormaPago = '99')
      OR (MetodoPago = 'PPD' AND FormaPago IS NOT NULL AND FormaPago <> '99')
+     OR (UsoCFDI = 'P01')
       )
 ORDER BY FechaEmision DESC;";
 
@@ -230,9 +379,14 @@ ORDER BY FechaEmision DESC;";
                     {
                         string metodoPago = reader.IsDBNull(6) ? null : reader.GetString(6);
                         string formaPago = reader.IsDBNull(7) ? null : reader.GetString(7);
-                        string motivo = metodoPago == "PUE"
-                            ? "PUE con FormaPago=99 (deberia traer la forma de pago real)"
-                            : "PPD con FormaPago=" + formaPago + " (deberia ser 99, el pago se declara en el complemento)";
+                        string usoCfdi = reader.IsDBNull(10) ? null : reader.GetString(10);
+                        string motivo;
+                        if (usoCfdi == "P01")
+                            motivo = "Uso CFDI P01 (Por definir): clave derogada e inválida en CFDI 4.0 según catálogo SAT";
+                        else if (metodoPago == "PUE")
+                            motivo = "PUE con Forma 99 (Violación Anexo 20: no deducible, debe declarar la forma de pago real de contado)";
+                        else
+                            motivo = "PPD con Forma " + formaPago + " (Violación Anexo 20: debe ser 99; el medio de pago se declara en el Complemento REP)";
 
                         resultado.Add(new ErrorCoherenciaFila
                         {
@@ -244,6 +398,7 @@ ORDER BY FechaEmision DESC;";
                             Folio = reader.IsDBNull(5) ? null : reader.GetString(5),
                             MetodoPago = metodoPago,
                             FormaPago = formaPago,
+                            UsoCFDI = usoCfdi,
                             Total = reader.IsDBNull(8) ? (decimal?)null : reader.GetDecimal(8),
                             FechaEmision = reader.GetDateTime(9),
                             Motivo = motivo
@@ -252,6 +407,105 @@ ORDER BY FechaEmision DESC;";
                 }
             }
             return resultado;
+        }
+
+        // Auditoría fiscal de facturas a crédito recibidas (PPD) con más de N días sin Complemento de Pago (REP).
+        // Sin el REP del proveedor, el acreditamiento de IVA queda desprotegido ante revisiones del SAT.
+        public static List<FacturaRiesgoRepFila> ObtenerFacturasRiesgoRep(SqlConnection conn, string rfc, int diasMinimos = 60)
+        {
+            const string sql = @"
+SELECT c.CfdiID, c.UUID, c.RFCEmisor, c.NombreEmisor, ISNULL(c.Serie + ' ', '') + ISNULL(c.Folio, '') AS SerieFolio,
+       c.FechaEmision, c.Total, ISNULL(c.IVA, 0) AS IVA, DATEDIFF(day, c.FechaEmision, GETDATE()) AS Dias
+FROM CfdiRecibido c
+WHERE c.RFCReceptor = @Rfc AND c.TipoComprobante = 'I' AND c.MetodoPago = 'PPD' AND c.Archivado = 0
+  AND DATEDIFF(day, c.FechaEmision, GETDATE()) >= @DiasMinimos
+  AND NOT EXISTS (SELECT 1 FROM CfdiPagoDocto p WHERE p.UUIDRelacionado = c.UUID)
+ORDER BY c.FechaEmision ASC;";
+
+            var resultado = new List<FacturaRiesgoRepFila>();
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@DiasMinimos", diasMinimos);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int dias = reader.GetInt32(8);
+                        string riesgo = dias >= 180 ? "Crítico (> 180 días sin REP)" :
+                                        dias >= 90 ? "Alto (> 90 días sin REP)" : "Moderado (> 60 días sin REP)";
+                        resultado.Add(new FacturaRiesgoRepFila
+                        {
+                            CfdiID = reader.GetInt32(0),
+                            UUID = reader.GetGuid(1),
+                            RFCEmisor = reader.GetString(2),
+                            NombreEmisor = reader.IsDBNull(3) ? null : reader.GetString(3),
+                            SerieFolio = reader.IsDBNull(4) ? "" : reader.GetString(4).Trim(),
+                            FechaEmision = reader.GetDateTime(5),
+                            Total = reader.IsDBNull(6) ? 0 : reader.GetDecimal(6),
+                            IVA = reader.IsDBNull(7) ? 0 : reader.GetDecimal(7),
+                            DiasTranscurridos = dias,
+                            Riesgo = riesgo
+                        });
+                    }
+                }
+            }
+            return resultado;
+        }
+
+        // Cédula fiscal y de conciliación de impuestos para auditoría: desglosa ventas y compras en PUE y PPD,
+        // IVA cobrado vs efectivamente pagado, y retenciones.
+        public static CedulaImpuestosMensualFila ObtenerCedulaImpuestos(SqlConnection conn, string rfc, int anio, int mes)
+        {
+            var desde = new DateTime(anio, mes, 1);
+            var hasta = desde.AddMonths(1);
+
+            const string sql = @"
+SELECT
+  ISNULL((SELECT SUM(Subtotal) FROM CfdiRecibido WHERE RFCEmisor = @Rfc AND TipoComprobante = 'I' AND MetodoPago = 'PUE' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(IVA) FROM CfdiRecibido WHERE RFCEmisor = @Rfc AND TipoComprobante = 'I' AND MetodoPago = 'PUE' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(Subtotal) FROM CfdiRecibido WHERE RFCEmisor = @Rfc AND TipoComprobante = 'I' AND MetodoPago = 'PPD' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(IVA) FROM CfdiRecibido WHERE RFCEmisor = @Rfc AND TipoComprobante = 'I' AND MetodoPago = 'PPD' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(Total) FROM CfdiRecibido WHERE RFCEmisor = @Rfc AND TipoComprobante = 'I' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(IVA) FROM CfdiRecibido WHERE RFCEmisor = @Rfc AND TipoComprobante = 'I' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(Retenciones) FROM CfdiRecibido WHERE RFCEmisor = @Rfc AND TipoComprobante = 'I' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+
+  ISNULL((SELECT SUM(Subtotal) FROM CfdiRecibido WHERE RFCReceptor = @Rfc AND TipoComprobante = 'I' AND MetodoPago = 'PUE' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(IVA) FROM CfdiRecibido WHERE RFCReceptor = @Rfc AND TipoComprobante = 'I' AND MetodoPago = 'PUE' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(Subtotal) FROM CfdiRecibido WHERE RFCReceptor = @Rfc AND TipoComprobante = 'I' AND MetodoPago = 'PPD' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(IVA) FROM CfdiRecibido WHERE RFCReceptor = @Rfc AND TipoComprobante = 'I' AND MetodoPago = 'PPD' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(Total) FROM CfdiRecibido WHERE RFCReceptor = @Rfc AND TipoComprobante = 'I' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(IVA) FROM CfdiRecibido WHERE RFCReceptor = @Rfc AND TipoComprobante = 'I' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0),
+  ISNULL((SELECT SUM(Retenciones) FROM CfdiRecibido WHERE RFCReceptor = @Rfc AND TipoComprobante = 'I' AND Archivado = 0 AND FechaEmision >= @Desde AND FechaEmision < @Hasta), 0);";
+
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Desde", desde);
+                cmd.Parameters.AddWithValue("@Hasta", hasta);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    reader.Read();
+                    return new CedulaImpuestosMensualFila
+                    {
+                        VentasSubtotalPue = reader.GetDecimal(0),
+                        VentasIvaPue = reader.GetDecimal(1),
+                        VentasSubtotalPpd = reader.GetDecimal(2),
+                        VentasIvaPpd = reader.GetDecimal(3),
+                        VentasTotal = reader.GetDecimal(4),
+                        VentasIvaTotal = reader.GetDecimal(5),
+                        RetencionesEmitidas = reader.GetDecimal(6),
+
+                        ComprasSubtotalPue = reader.GetDecimal(7),
+                        ComprasIvaPue = reader.GetDecimal(8),
+                        ComprasSubtotalPpd = reader.GetDecimal(9),
+                        ComprasIvaPpd = reader.GetDecimal(10),
+                        ComprasTotal = reader.GetDecimal(11),
+                        ComprasIvaTotal = reader.GetDecimal(12),
+                        RetencionesRecibidas = reader.GetDecimal(13)
+                    };
+                }
+            }
         }
 
         // Cuentas por pagar segun el SAT: para cada factura PPD, suma ImpPagado de todos sus

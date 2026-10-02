@@ -69,13 +69,19 @@ namespace BrosLMV.Descargas.Cola
                 Bitacora.EscribirError("ERROR de Autenticacion, se aborta la pasada: " + auth.Error);
                 return;
             }
-            string token = auth.Token;
+            var tok = TokenSat.Para(cert, llave, auth.Token); // el token dura ~5 min: se renueva solo pasados 4
 
-            foreach (var s in pendientes)
+            for (int i = 0; i < pendientes.Count; i++)
             {
+                var s = pendientes[i];
                 try
                 {
-                    await ProcesarUnaAsync(conn, cert, llave, token, s, carpetaXml, estructuraCarpetas, plantillaNombreArchivo,
+                    if (i > 0)
+                    {
+                        // Pausa anti-throttling para no saturar el WAF de CloudA del SAT ni causar errores 404 por ráfaga
+                        await Task.Delay(2000).ConfigureAwait(false);
+                    }
+                    await ProcesarUnaAsync(conn, cert, llave, tok, s, carpetaXml, estructuraCarpetas, plantillaNombreArchivo,
                         comercialCarpetaXmlRecibidos, comercialCarpetaXmlEmitidos, comercialConexionSql);
                 }
                 catch (Exception ex)
@@ -87,13 +93,13 @@ namespace BrosLMV.Descargas.Cola
             }
         }
 
-        private static async Task ProcesarUnaAsync(SqlConnection conn, X509Certificate2 cert, RSA llave, string token,
+        private static async Task ProcesarUnaAsync(SqlConnection conn, X509Certificate2 cert, RSA llave, TokenSat tok,
             SolicitudPendiente s, string carpetaXml, string estructuraCarpetas, string plantillaNombreArchivo,
             string comercialCarpetaXmlRecibidos, string comercialCarpetaXmlEmitidos, string comercialConexionSql)
         {
             if (s.Estatus == "Aceptada" || s.Estatus == "EnProceso")
             {
-                var verif = await SatSoapClient.VerificarSolicitudAsync(cert, llave, token, s.IdSolicitud, s.RfcSolicitante);
+                var verif = await SatSoapClient.VerificarSolicitudAsync(cert, llave, await tok.ObtenerAsync(), s.IdSolicitud, s.RfcSolicitante);
                 if (!verif.Exito)
                 {
                     Bitacora.EscribirError("  " + s.IdSolicitud + ": ERROR VerificaSolicitud: " + verif.Error);
@@ -109,8 +115,15 @@ namespace BrosLMV.Descargas.Cola
                     // perdieron las 20 de Metadata y 6 de CFDI de este equipo). Ahora se conserva el
                     // estatus, se anota lo que dijo el SAT y se reintenta en la siguiente pasada.
                     BrosSatDb.RegistrarVerificacionSinEstado(conn, s.IdSolicitud, verif.CodEstatus, verif.Mensaje);
-                    Bitacora.Escribir("  " + s.IdSolicitud + ": el SAT no dio un estado valido (EstadoSolicitud='" + verif.EstadoSolicitud +
-                        "' CodEstatus='" + verif.CodEstatus + "' CodigoEstadoSolicitud='" + verif.CodigoEstadoSolicitud + "' Mensaje='" + verif.Mensaje + "') -- se vuelve a verificar en la siguiente pasada.");
+                    if (verif.CodEstatus == "404")
+                    {
+                        Bitacora.Escribir("  " + s.IdSolicitud + ": SAT ocupado o intermitente (CodEstatus='404' Mensaje='" + verif.Mensaje + "') -- se mantiene en cola para reintento.");
+                    }
+                    else
+                    {
+                        Bitacora.Escribir("  " + s.IdSolicitud + ": el SAT no dio un estado valido (EstadoSolicitud='" + verif.EstadoSolicitud +
+                            "' CodEstatus='" + verif.CodEstatus + "' CodigoEstadoSolicitud='" + verif.CodigoEstadoSolicitud + "' Mensaje='" + verif.Mensaje + "') -- se vuelve a verificar en la siguiente pasada.");
+                    }
                     return;
                 }
                 string estadoTexto = nombresEstado[n];
@@ -125,7 +138,7 @@ namespace BrosLMV.Descargas.Cola
             var pendientesDescarga = BrosSatDb.ObtenerPaquetesSinDescargar(conn, s.IdSolicitud);
             foreach (var idPaquete in pendientesDescarga)
             {
-                var desc = await SatSoapClient.DescargarAsync(cert, llave, token, idPaquete, s.RfcSolicitante);
+                var desc = await SatSoapClient.DescargarAsync(cert, llave, await tok.ObtenerAsync(), idPaquete, s.RfcSolicitante);
                 if (!desc.Exito)
                 {
                     Bitacora.EscribirError("  " + idPaquete + ": ERROR Descarga: " + desc.Error);

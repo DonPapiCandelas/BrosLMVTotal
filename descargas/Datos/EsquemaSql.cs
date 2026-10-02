@@ -114,6 +114,9 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('Empresa') AN
 -- AutoSolicitador.SolicitarSiguienteTramoAsync).
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('Empresa') AND name='AnioInicioDescargas')
     ALTER TABLE Empresa ADD AnioInicioDescargas INT NULL;
+-- Ocultar comprobantes de nómina (TipoComprobante = 'N') del historial y reportes por default
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('Empresa') AND name='OcultarNominas')
+    ALTER TABLE Empresa ADD OcultarNominas BIT NOT NULL DEFAULT 1;
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SolicitudDescarga')
 CREATE TABLE SolicitudDescarga (

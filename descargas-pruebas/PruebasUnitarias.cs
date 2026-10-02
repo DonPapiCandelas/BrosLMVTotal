@@ -2,8 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Xml;
 using BrosLMV.Descargas.Cola;
 using BrosLMV.Descargas.Datos;
+using BrosLMV.Descargas.Sat;
 using Xunit;
 
 namespace BrosLMV.Descargas.Pruebas
@@ -172,6 +176,144 @@ namespace BrosLMV.Descargas.Pruebas
         public void ContrasenaCorta_SeRechaza()
         {
             Assert.Throws<ArgumentException>(() => Respaldo.Cifrar("x", "corta"));
+        }
+    }
+
+    public class SatFirmaXmlTests
+    {
+        private static (X509Certificate2 cert, RSA rsa) GenerarCertificadoPrueba()
+        {
+            var rsa = RSA.Create(2048);
+            var req = new CertificateRequest("CN=TEST", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            var cert = req.CreateSelfSigned(DateTimeOffset.Now.AddDays(-1), DateTimeOffset.Now.AddDays(1));
+            return (cert, rsa);
+        }
+
+        [Fact]
+        public void SolicitaDescarga_CFDI_IncluyeEstadoVigente()
+        {
+            var (cert, rsa) = GenerarCertificadoPrueba();
+            using (cert)
+            using (rsa)
+            {
+                var doc = new XmlDocument();
+                var elem = SatFirmaXml.FirmarSolicitud(doc, cert, rsa, "AAA010101AAA", "AAA010101AAA", null,
+                    new DateTime(2026, 1, 1), new DateTime(2026, 1, 31), "CFDI");
+
+                Assert.Equal("Vigente", elem.GetAttribute("EstadoComprobante"));
+                Assert.Equal("CFDI", elem.GetAttribute("TipoSolicitud"));
+            }
+        }
+
+        [Fact]
+        public void SolicitaDescarga_Metadata_OmiteEstadoComprobante_ParaConsultarTodos()
+        {
+            var (cert, rsa) = GenerarCertificadoPrueba();
+            using (cert)
+            using (rsa)
+            {
+                var doc = new XmlDocument();
+                var elem = SatFirmaXml.FirmarSolicitud(doc, cert, rsa, "AAA010101AAA", "AAA010101AAA", null,
+                    new DateTime(2026, 1, 1), new DateTime(2026, 1, 31), "Metadata");
+
+                Assert.False(elem.HasAttribute("EstadoComprobante"));
+                Assert.Equal("Metadata", elem.GetAttribute("TipoSolicitud"));
+            }
+        }
+
+        [Fact]
+        public void SolicitaDescarga_Metadata_OmiteEstadoComprobante_SiSePasaTodos()
+        {
+            var (cert, rsa) = GenerarCertificadoPrueba();
+            using (cert)
+            using (rsa)
+            {
+                var doc = new XmlDocument();
+                var elem = SatFirmaXml.FirmarSolicitud(doc, cert, rsa, "AAA010101AAA", "AAA010101AAA", null,
+                    new DateTime(2026, 1, 1), new DateTime(2026, 1, 31), "Metadata", "Todos");
+
+                Assert.False(elem.HasAttribute("EstadoComprobante"));
+            }
+        }
+
+        [Fact]
+        public void SolicitaDescarga_Metadata_EstadoTodosExplicito_AlEstiloSmartXML()
+        {
+            var (cert, rsa) = GenerarCertificadoPrueba();
+            using (cert)
+            using (rsa)
+            {
+                var doc = new XmlDocument();
+                var elem = SatFirmaXml.FirmarSolicitud(doc, cert, rsa, "AAA010101AAA", null, "AAA010101AAA",
+                    new DateTime(2026, 1, 1), new DateTime(2026, 10, 2, 23, 59, 59), "Metadata", estadoTodos: true);
+
+                Assert.Equal("Todos", elem.GetAttribute("EstadoComprobante"));
+                Assert.Equal("2026-10-02T23:59:59", elem.GetAttribute("FechaFinal"));
+            }
+        }
+
+        [Fact]
+        public void SolicitaDescarga_Cfdi_IgnoraEstadoTodos()
+        {
+            var (cert, rsa) = GenerarCertificadoPrueba();
+            using (cert)
+            using (rsa)
+            {
+                var doc = new XmlDocument();
+                var elem = SatFirmaXml.FirmarSolicitud(doc, cert, rsa, "AAA010101AAA", null, "AAA010101AAA",
+                    new DateTime(2026, 1, 1), new DateTime(2026, 1, 31), "CFDI", estadoTodos: true);
+
+                Assert.Equal("Vigente", elem.GetAttribute("EstadoComprobante"));
+            }
+        }
+
+        [Fact]
+        public void SolicitaDescarga_Metadata_PermiteEstadoEspecifico()
+        {
+            var (cert, rsa) = GenerarCertificadoPrueba();
+            using (cert)
+            using (rsa)
+            {
+                var doc = new XmlDocument();
+                var elem = SatFirmaXml.FirmarSolicitud(doc, cert, rsa, "AAA010101AAA", "AAA010101AAA", null,
+                    new DateTime(2026, 1, 1), new DateTime(2026, 1, 31), "Metadata", "Cancelado");
+
+                Assert.Equal("Cancelado", elem.GetAttribute("EstadoComprobante"));
+            }
+        }
+    }
+
+    public class TokenSatTests
+    {
+        [Fact]
+        public async System.Threading.Tasks.Task ReutilizaElTokenAntesDeLos4Minutos_YLoRenuevaDespues()
+        {
+            var ahora = new DateTime(2026, 10, 2, 10, 0, 0, DateTimeKind.Utc);
+            int llamadas = 0;
+            var tok = new TokenSat(() => System.Threading.Tasks.Task.FromResult("token-" + (++llamadas)), "token-inicial", () => ahora);
+
+            Assert.Equal("token-inicial", await tok.ObtenerAsync());            // recien obtenido: se reutiliza
+            ahora = ahora.AddMinutes(3).AddSeconds(59);
+            Assert.Equal("token-inicial", await tok.ObtenerAsync());            // 3:59: aun vale
+            Assert.Equal(0, llamadas);
+
+            ahora = ahora.AddSeconds(2);                                          // 4:01: se renueva
+            Assert.Equal("token-1", await tok.ObtenerAsync());
+            Assert.Equal("token-1", await tok.ObtenerAsync());                  // y vuelve a reutilizarse
+            Assert.Equal(1, llamadas);
+            Assert.Equal(1, tok.Renovaciones);
+
+            ahora = ahora.AddMinutes(10);                                         // una pasada larguisima: renueva otra vez
+            Assert.Equal("token-2", await tok.ObtenerAsync());
+        }
+
+        [Fact]
+        public async System.Threading.Tasks.Task SinTokenInicial_AutenticaALaPrimeraPeticion()
+        {
+            int llamadas = 0;
+            var tok = new TokenSat(() => System.Threading.Tasks.Task.FromResult("nuevo" + (++llamadas)));
+            Assert.Equal("nuevo1", await tok.ObtenerAsync());
+            Assert.Equal(0, tok.Renovaciones);   // la primera autenticacion no cuenta como renovacion
         }
     }
 }

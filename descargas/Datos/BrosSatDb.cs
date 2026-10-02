@@ -39,6 +39,7 @@ namespace BrosLMV.Descargas.Datos
         public string ComercialCarpetaXmlEmitidos; // NULL = no copiar a Comercial Pro
         public string ComercialConexionSql; // NULL = no automatizar el Importar (solo copiar archivo)
         public int? AnioInicioDescargas; // Año elegido para la descarga historica inicial (NULL = default viejo de 90 dias)
+        public bool OcultarNominas = true; // Ocultar comprobantes de nómina (Tipo N) por defecto en UI y reportes
     }
 
     internal sealed class SolicitudFila
@@ -65,6 +66,8 @@ namespace BrosLMV.Descargas.Datos
         public string RFCEmisor;
         public string NombreEmisor;
         public string RFCReceptor;
+        public string Serie;
+        public string Folio;
         public string TipoComprobante;
         public DateTime FechaEmision;
         public decimal? Subtotal;
@@ -990,6 +993,37 @@ WHERE RfcSolicitante = @Rfc AND Estatus IN ('Aceptada','EnProceso')
             }
         }
 
+        // Metadata al estilo SmartXML: una solicitud de Metadata "Aceptada/EnProceso" que lleva mas de N horas sin
+        // avanzar se abandona (SmartXML tardaba ~10 min, maximo 38; pasadas 6 h ya no va a terminar) para que el
+        // siguiente ciclo horario pida una nueva. Solo Metadata: las de CFDI conservan su plazo de 3 dias.
+        public static int VencerMetadataAtorada(SqlConnection conn, string rfc, string tipo, int horas)
+        {
+            const string sql = @"
+UPDATE SolicitudDescarga
+SET Estatus = 'Vencida', UltimoMensaje = 'Metadata sin resultado del SAT tras ' + CAST(@Horas AS NVARCHAR(5)) + ' h; se vuelve a pedir.'
+WHERE RfcSolicitante = @Rfc AND Tipo = @Tipo AND TipoSolicitud = 'Metadata' AND Estatus IN ('Aceptada','EnProceso')
+  AND FechaSolicitud < DATEADD(HOUR, -@Horas, SYSUTCDATETIME());";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Tipo", tipo);
+                cmd.Parameters.AddWithValue("@Horas", horas);
+                return cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static int ContarMetadataPendientes(SqlConnection conn, string rfc, string tipo)
+        {
+            const string sql = @"SELECT COUNT(*) FROM SolicitudDescarga
+WHERE RfcSolicitante = @Rfc AND Tipo = @Tipo AND TipoSolicitud = 'Metadata' AND Estatus IN ('Aceptada','EnProceso');";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Rfc", rfc);
+                cmd.Parameters.AddWithValue("@Tipo", tipo);
+                return (int)cmd.ExecuteScalar();
+            }
+        }
+
         // Fecha (UTC) de la solicitud mas reciente de este tipo/origen, o null.
         public static DateTime? ObtenerFechaUltimaSolicitudDe(SqlConnection conn, string rfc, string tipo, string tipoSolicitud, string origen = null)
         {
@@ -1104,28 +1138,32 @@ WHERE (RFCReceptor = @Rfc OR RFCEmisor = @Rfc) AND RutaArchivoXml IS NOT NULL AN
         // en la grilla aunque ya estuvieran descargados en la BD.
         public static List<CfdiFila> ObtenerCfdiRecientes(SqlConnection conn, string rfc, int top = 100,
             string estatusSat = null, string tipoComprobante = null, string busqueda = null, bool incluirArchivados = false,
-            string tipo = "Recibidos")
+            string tipo = "Recibidos", DateTime? fechaDesde = null, DateTime? fechaHasta = null, bool ocultarNominas = false)
         {
             bool esEmitidos = tipo == "Emitidos";
             string sql = $@"
 SELECT TOP ({top}) CfdiID, UUID, RFCEmisor, NombreEmisor, RFCReceptor, TipoComprobante, FechaEmision,
        Subtotal, Descuento, IVA, Retenciones, Total, Moneda, TipoCambio, FormaPago, MetodoPago,
-       EstatusSat, Archivado, RutaArchivoXml, FechaSincronizadoComercial
+       EstatusSat, Archivado, RutaArchivoXml, FechaSincronizadoComercial, Serie, Folio
 FROM CfdiRecibido
 WHERE {(esEmitidos ? "RFCEmisor" : "RFCReceptor")} = @Rfc
   AND (@IncluirArchivados = 1 OR Archivado = 0)
   AND (@EstatusSat IS NULL OR EstatusSat = @EstatusSat)
   AND (@TipoComprobante IS NULL OR TipoComprobante = @TipoComprobante)
+  AND (@OcultarNominas = 0 OR TipoComprobante <> 'N')
+  AND (@FechaDesde IS NULL OR FechaEmision >= @FechaDesde)
+  AND (@FechaHasta IS NULL OR FechaEmision <= @FechaHasta)
   AND (@Busqueda IS NULL OR
        RFCEmisor LIKE @Busqueda OR
        NombreEmisor LIKE @Busqueda OR
+       RFCReceptor LIKE @Busqueda OR
        CAST(UUID AS NVARCHAR(50)) LIKE @Busqueda OR
        Folio LIKE @Busqueda OR
        Serie LIKE @Busqueda OR
        CAST(Total AS NVARCHAR(30)) LIKE @Busqueda OR
        CAST(Subtotal AS NVARCHAR(30)) LIKE @Busqueda OR
        CONVERT(NVARCHAR(10), FechaEmision, 23) LIKE @Busqueda)
-ORDER BY FechaDescarga DESC;";
+ORDER BY FechaEmision DESC;";
 
             var resultado = new List<CfdiFila>();
             using (var cmd = new SqlCommand(sql, conn))
@@ -1134,6 +1172,9 @@ ORDER BY FechaDescarga DESC;";
                 cmd.Parameters.AddWithValue("@IncluirArchivados", incluirArchivados);
                 cmd.Parameters.AddWithValue("@EstatusSat", (object)estatusSat ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@TipoComprobante", (object)tipoComprobante ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@OcultarNominas", ocultarNominas);
+                cmd.Parameters.AddWithValue("@FechaDesde", (object)fechaDesde ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@FechaHasta", (object)fechaHasta ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@Busqueda", busqueda == null ? (object)DBNull.Value : "%" + busqueda + "%");
                 using (var reader = cmd.ExecuteReader())
                 {
@@ -1160,7 +1201,9 @@ ORDER BY FechaDescarga DESC;";
                             EstatusSat = reader.GetString(16),
                             Archivado = reader.GetBoolean(17),
                             RutaArchivoXml = reader.IsDBNull(18) ? null : reader.GetString(18),
-                            FechaSincronizadoComercial = reader.IsDBNull(19) ? (DateTime?)null : reader.GetDateTime(19)
+                            FechaSincronizadoComercial = reader.IsDBNull(19) ? (DateTime?)null : reader.GetDateTime(19),
+                            Serie = reader.IsDBNull(20) ? null : reader.GetString(20),
+                            Folio = reader.IsDBNull(21) ? null : reader.GetString(21)
                         });
                     }
                 }
@@ -1433,7 +1476,7 @@ WHERE (@IncluirArchivados = 1 OR Archivado = 0);";
 SELECT EmpresaID, Nombre, RFC, RutaCer, RutaKey, PasswordCifrada, Activa,
        CarpetaXml, EstructuraCarpetas, PlantillaNombreArchivo,
        ComercialCarpetaXmlRecibidos, ComercialCarpetaXmlEmitidos, ComercialConexionSql,
-       AnioInicioDescargas
+       AnioInicioDescargas, ISNULL(OcultarNominas, 1)
 FROM Empresa
 ORDER BY Nombre;";
 
@@ -1458,7 +1501,8 @@ ORDER BY Nombre;";
                         ComercialCarpetaXmlRecibidos = reader.IsDBNull(10) ? null : reader.GetString(10),
                         ComercialCarpetaXmlEmitidos = reader.IsDBNull(11) ? null : reader.GetString(11),
                         ComercialConexionSql = reader.IsDBNull(12) ? null : reader.GetString(12),
-                        AnioInicioDescargas = reader.IsDBNull(13) ? (int?)null : reader.GetInt32(13)
+                        AnioInicioDescargas = reader.IsDBNull(13) ? (int?)null : reader.GetInt32(13),
+                        OcultarNominas = reader.IsDBNull(14) || reader.GetBoolean(14)
                     });
                 }
             }
@@ -1468,14 +1512,14 @@ ORDER BY Nombre;";
         public static int GuardarEmpresaNueva(SqlConnection conn, string nombre, string rfc, string rutaCer, string rutaKey, byte[] passwordCifrada,
             string carpetaXml = null, string estructuraCarpetas = "AnioTipoMes", string plantillaNombreArchivo = "{UUID}",
             string comercialCarpetaXmlRecibidos = null, string comercialCarpetaXmlEmitidos = null, string comercialConexionSql = null,
-            int? anioInicioDescargas = null)
+            int? anioInicioDescargas = null, bool ocultarNominas = true)
         {
             const string sql = @"
 INSERT INTO Empresa (Nombre, RFC, RutaCer, RutaKey, PasswordCifrada, CarpetaXml, EstructuraCarpetas, PlantillaNombreArchivo,
-                      ComercialCarpetaXmlRecibidos, ComercialCarpetaXmlEmitidos, ComercialConexionSql, AnioInicioDescargas)
+                      ComercialCarpetaXmlRecibidos, ComercialCarpetaXmlEmitidos, ComercialConexionSql, AnioInicioDescargas, OcultarNominas)
 OUTPUT INSERTED.EmpresaID
 VALUES (@Nombre, @Rfc, @RutaCer, @RutaKey, @Pwd, @CarpetaXml, @EstructuraCarpetas, @Plantilla,
-        @ComercialRecibidos, @ComercialEmitidos, @ComercialConexionSql, @AnioInicio);";
+        @ComercialRecibidos, @ComercialEmitidos, @ComercialConexionSql, @AnioInicio, @OcultarNominas);";
 
             using (var cmd = new SqlCommand(sql, conn))
             {
@@ -1491,6 +1535,7 @@ VALUES (@Nombre, @Rfc, @RutaCer, @RutaKey, @Pwd, @CarpetaXml, @EstructuraCarpeta
                 cmd.Parameters.AddWithValue("@ComercialEmitidos", (object)comercialCarpetaXmlEmitidos ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@ComercialConexionSql", (object)comercialConexionSql ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@AnioInicio", (object)anioInicioDescargas ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@OcultarNominas", ocultarNominas);
                 return (int)cmd.ExecuteScalar();
             }
         }
@@ -1499,7 +1544,8 @@ VALUES (@Nombre, @Rfc, @RutaCer, @RutaKey, @Pwd, @CarpetaXml, @EstructuraCarpeta
         // para "mostrarla" al editar, asi que un campo en blanco significa "no tocar").
         public static void ActualizarEmpresa(SqlConnection conn, int empresaId, string nombre, string rutaCer, string rutaKey,
             byte[] passwordCifrada, string carpetaXml, string estructuraCarpetas, string plantillaNombreArchivo,
-            string comercialCarpetaXmlRecibidos, string comercialCarpetaXmlEmitidos, string comercialConexionSql)
+            string comercialCarpetaXmlRecibidos, string comercialCarpetaXmlEmitidos, string comercialConexionSql,
+            bool? ocultarNominas = null)
         {
             string sql = @"
 UPDATE Empresa
@@ -1507,7 +1553,8 @@ SET Nombre = @Nombre, RutaCer = @RutaCer, RutaKey = @RutaKey,
     CarpetaXml = @CarpetaXml, EstructuraCarpetas = @EstructuraCarpetas, PlantillaNombreArchivo = @Plantilla,
     ComercialCarpetaXmlRecibidos = @ComercialRecibidos, ComercialCarpetaXmlEmitidos = @ComercialEmitidos,
     ComercialConexionSql = @ComercialConexionSql"
-                + (passwordCifrada != null ? ", PasswordCifrada = @Pwd" : "") + @"
+                + (passwordCifrada != null ? ", PasswordCifrada = @Pwd" : "")
+                + (ocultarNominas != null ? ", OcultarNominas = @OcultarNominas" : "") + @"
 WHERE EmpresaID = @Id;";
 
             using (var cmd = new SqlCommand(sql, conn))
@@ -1523,6 +1570,7 @@ WHERE EmpresaID = @Id;";
                 cmd.Parameters.AddWithValue("@ComercialConexionSql", (object)comercialConexionSql ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@Id", empresaId);
                 if (passwordCifrada != null) cmd.Parameters.AddWithValue("@Pwd", passwordCifrada);
+                if (ocultarNominas != null) cmd.Parameters.AddWithValue("@OcultarNominas", ocultarNominas.Value);
                 cmd.ExecuteNonQuery();
             }
         }

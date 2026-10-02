@@ -157,7 +157,8 @@ namespace BrosLMV.Descargas.Sat
         public static XmlElement FirmarSolicitud(
             XmlDocument docDestino, X509Certificate2 cert, RSA llavePrivada,
             string rfcSolicitante, string rfcEmisor, string rfcReceptor,
-            DateTime desde, DateTime hasta, string tipoSolicitud)
+            DateTime desde, DateTime hasta, string tipoSolicitud,
+            string estadoComprobante = null, bool estadoTodos = false)
         {
             var docSolicitud = new XmlDocument { PreserveWhitespace = true };
             var solicitud = docSolicitud.CreateElement(null, "solicitud", NsDescarga);
@@ -169,14 +170,31 @@ namespace BrosLMV.Descargas.Sat
             solicitud.SetAttribute("RfcSolicitante", rfcSolicitante);
             solicitud.SetAttribute("TipoSolicitud", tipoSolicitud);
             if (!string.IsNullOrEmpty(rfcReceptor)) solicitud.SetAttribute("RfcReceptor", rfcReceptor);
-            // Confirmado tras un rechazo real (CodEstatus 301 "no se encuentren cancelados"):
-            // para TipoSolicitud=CFDI (descarga de XML, a diferencia de Metadata) el SAT SOLO
-            // acepta EstadoComprobante="Vigente" -- "Todos"/"Cancelados" son rechazados en la
-            // descarga de XML (si tiene sentido: un CFDI cancelado no tiene XML descargable).
-            // Metadata: la libreria de referencia (phpcfdi/sat-ws-descarga-masiva), que SI funciona con el
-            // mismo RFC, manda SIEMPRE EstadoComprobante ("Todos" cuando no se filtra). Nosotros lo omitiamos
-            // en Metadata y el SAT aceptaba la solicitud (5000) pero nunca la terminaba (bug 18).
-            solicitud.SetAttribute("EstadoComprobante", tipoSolicitud == "CFDI" ? "Vigente" : "Todos");
+
+            // EstadoComprobante:
+            // - Para TipoSolicitud="CFDI" (descarga de XML): el SAT SOLO acepta EstadoComprobante="Vigente"
+            //   (confirmado con CodEstatus 301 si se manda "Todos" o se omite en CFDI).
+            // - Para TipoSolicitud="Metadata": el SAT espera consultar tanto vigentes como cancelados.
+            //   El catalogo XSD oficial solo enumera "Vigente" y "Cancelado"; el valor "Todos" NO existe en el esquema.
+            //   La especificacion oficial y la libreria de referencia (phpcfdi) OMITEN el atributo EstadoComprobante
+            //   cuando se desean todos los comprobantes (DocumentStatus::undefined()).
+            //   Mandar "Todos" causaba que el batch interno del SAT quedara congelado con 0 CFDI o error 404 (bug 24/25).
+            //   Si se envia un valor especifico ("Vigente" o "Cancelado"), se agrega; si es null, vacio o "Todos",
+            //   en Metadata se omite el atributo por completo.
+            if (tipoSolicitud == "CFDI")
+            {
+                solicitud.SetAttribute("EstadoComprobante", "Vigente");
+            }
+            else if (!string.IsNullOrEmpty(estadoComprobante) && !string.Equals(estadoComprobante, "Todos", StringComparison.OrdinalIgnoreCase))
+            {
+                solicitud.SetAttribute("EstadoComprobante", estadoComprobante);
+            }
+            else if (estadoTodos)
+            {
+                // Metadata Recibidos al estilo SmartXML (que SI descargaba metadatos): EstadoComprobante="Todos"
+                // explicito. Solo se manda cuando el llamador lo pide (ver AutoSolicitador.MetadatosAsync).
+                solicitud.SetAttribute("EstadoComprobante", "Todos");
+            }
 
             FirmarElementoEnveloped(docSolicitud, solicitud, cert, llavePrivada);
             return (XmlElement)docDestino.ImportNode(solicitud, true);

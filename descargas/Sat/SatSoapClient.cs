@@ -157,7 +157,8 @@ namespace BrosLMV.Descargas.Sat
         public static async Task<SatSolicitaDescargaResultado> SolicitarDescargaAsync(
             X509Certificate2 cert, RSA llavePrivada, string token,
             string rfcSolicitante, string rfcEmisor, string rfcReceptor,
-            DateTime desde, DateTime hasta, string tipoSolicitud = "CFDI")
+            DateTime desde, DateTime hasta, string tipoSolicitud = "CFDI",
+            string estadoComprobante = null, bool estadoTodos = false)
         {
             if (string.IsNullOrEmpty(rfcEmisor) == string.IsNullOrEmpty(rfcReceptor))
                 throw new ArgumentException("Indica exactamente uno: rfcEmisor (EMITIDOS) o rfcReceptor (RECIBIDOS), no ambos ni ninguno.");
@@ -178,7 +179,7 @@ namespace BrosLMV.Descargas.Sat
             body.AppendChild(solicitaDescarga);
 
             var solicitudFirmada = SatFirmaXml.FirmarSolicitud(
-                doc, cert, llavePrivada, rfcSolicitante, rfcEmisor, rfcReceptor, desde, hasta, tipoSolicitud);
+                doc, cert, llavePrivada, rfcSolicitante, rfcEmisor, rfcReceptor, desde, hasta, tipoSolicitud, estadoComprobante, estadoTodos);
             solicitaDescarga.AppendChild(solicitudFirmada);
 
             using (var http = new HttpClient())

@@ -98,9 +98,9 @@ namespace BrosLMV.Descargas.Cola
                     var ultimaRetroactiva = BrosSatDb.ObtenerFechaUltimaSolicitudRetroactiva(conn, empresa.RFC, tipoRecEmi);
                     bool pedirRetroactivo = !ultimaRetroactiva.HasValue || (DateTime.UtcNow - ultimaRetroactiva.Value).TotalHours >= 20;
 
-                    var metaHuecoInicial = Huecos.PrimerHueco(BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "Metadata", tipoRecEmi)
-                        .Concat(BrosSatDb.ObtenerRangosRechazadosRecientes(conn, empresa.RFC, "Metadata", tipoRecEmi, 6)).ToList(), inicioHistorico, hasta);
-                    if (!hayTramoPendiente && !pedirRetroactivo && !metaHuecoInicial.HasValue && !BarridoToca(conn, empresa, tipoRecEmi))
+                    // Metadata ya no se pide por huecos mensuales: va por su propio ciclo horario (MetadatosAsync).
+                    bool metadatosToca = MetadatosToca(conn, empresa, tipoRecEmi);
+                    if (!hayTramoPendiente && !pedirRetroactivo && !metadatosToca && !BarridoToca(conn, empresa, tipoRecEmi))
                     {
                         Bitacora.Escribir("  [" + tipoRecEmi + "] Ya al dia (cubierto hasta " + (cubierta?.ToString("yyyy-MM-dd") ?? "-") + "), nada que solicitar.");
                         continue;
@@ -112,6 +112,7 @@ namespace BrosLMV.Descargas.Cola
                     {
                         var auth = await SatSoapClient.AutenticarAsync(cert, llave);
                         if (!auth.Exito) throw new Exception("Autenticacion: " + auth.Error);
+                        var tok = TokenSat.Para(cert, llave, auth.Token); // se renueva solo pasados 4 min
 
                         string rfcEmisor = tipoRecEmi == "Emitidos" ? empresa.RFC : null;
                         string rfcReceptor = tipoRecEmi == "Recibidos" ? empresa.RFC : null;
@@ -134,19 +135,16 @@ namespace BrosLMV.Descargas.Cola
                                 tramo = (ampliado, tramo.Hasta);
                             }
 
-                            // Metadata es el UNICO canal del SAT que informa CFDI cancelados desde su origen
-                            // (TipoSolicitud=CFDI solo acepta EstadoComprobante=Vigente). Se creia atorado
-                            // (13 de 13 intentos, 2026-08-19) pero era el bug 18 (estado "0" que sacaba la
-                            // solicitud de la cola), asi que se pide con CADA tramo cuyo rango aun no tenga
-                            // Metadata en curso o terminada.
-                            var rangosMetadata = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "Metadata", tipoRecEmi);
-                            bool pedirMetadata = Huecos.PrimerHueco(rangosMetadata, tramo.Desde, tramo.Hasta).HasValue;
+                            // Metadata (unico canal del SAT que informa cancelados) ya NO se pide por tramo mensual
+                            // junto al CFDI: asi fallaron las 86 solicitudes (ninguna Terminada). Ahora va por su
+                            // propio ciclo al estilo SmartXML, que si descargaba metadatos (ver MetadatosAsync).
+                            bool pedirMetadata = false;
 
                             Bitacora.Escribir("  [" + tipoRecEmi + "] Pendiente desde " + desde.ToString("yyyy-MM-dd") + " -- pidiendo tramo " + tramo.Desde.ToString("yyyy-MM-dd") + " a " + tramo.Hasta.ToString("yyyy-MM-dd") +
                                 (pedirMetadata ? " (CFDI + Metadata)..." : " (solo CFDI -- su Metadata ya esta pedida)..."));
 
                             var solicCfdi = await SatSoapClient.SolicitarDescargaAsync(
-                                cert, llave, auth.Token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                                cert, llave, await tok.ObtenerAsync(), rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
                                 desde: tramo.Desde, hasta: tramo.Hasta, tipoSolicitud: "CFDI");
                             // 5002 = el SAT ya recibio demasiadas veces ESTOS mismos parametros (aunque las haya
                             // hecho otro sistema con el mismo RFC). No se espera: se repite de inmediato con el
@@ -157,7 +155,7 @@ namespace BrosLMV.Descargas.Cola
                                 tramo = (tramo.Desde.AddDays(-1), tramo.Hasta);
                                 Bitacora.Escribir("  [" + tipoRecEmi + "] 5002 (parametros repetidos); se reintenta con el inicio en " + tramo.Desde.ToString("yyyy-MM-dd") + "...");
                                 solicCfdi = await SatSoapClient.SolicitarDescargaAsync(
-                                    cert, llave, auth.Token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                                    cert, llave, await tok.ObtenerAsync(), rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
                                     desde: tramo.Desde, hasta: tramo.Hasta, tipoSolicitud: "CFDI");
                             }
                             if (!solicCfdi.Exito)
@@ -177,7 +175,7 @@ namespace BrosLMV.Descargas.Cola
                             if (pedirMetadata)
                             {
                                 var solicMetadata = await SatSoapClient.SolicitarDescargaAsync(
-                                    cert, llave, auth.Token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                                    cert, llave, await tok.ObtenerAsync(), rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
                                     desde: tramo.Desde, hasta: tramo.Hasta, tipoSolicitud: "Metadata");
                                 if (!solicMetadata.Exito) throw new Exception("SolicitaDescarga (Metadata): " + solicMetadata.Error);
                                 BrosSatDb.RegistrarSolicitud(conn, solicMetadata.IdSolicitud, empresa.RFC, tipoRecEmi, tramo.Desde, tramo.Hasta, "Automatica", "Metadata");
@@ -194,38 +192,15 @@ namespace BrosLMV.Descargas.Cola
                             hayTramoPendiente = hueco.HasValue;
                         }
 
-                        // Metadata: sus propios huecos (cobertura aparte de la de CFDI), un mes a la vez.
-                        {
-                            var rangosMeta = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "Metadata", tipoRecEmi);
-                            rangosMeta.AddRange(BrosSatDb.ObtenerRangosRechazadosRecientes(conn, empresa.RFC, "Metadata", tipoRecEmi, 6));
-                            var huecoM = Huecos.PrimerHueco(rangosMeta, inicioHistorico, hasta);
-                            for (int vm = 0; huecoM.HasValue && vm < MaxTramosPorPasada; vm++)
-                            {
-                                var trM = SolicitudChunker.PartirEnMeses(huecoM.Value.Desde, huecoM.Value.Hasta).First();
-                                int prevM = BrosSatDb.ContarSolicitudesDelRango(conn, empresa.RFC, "Metadata", tipoRecEmi, trM.Desde, trM.Hasta);
-                                if (prevM > 0) trM = (trM.Desde.AddDays(-Math.Min(prevM, 10)), trM.Hasta);
-                                Bitacora.Escribir("  [" + tipoRecEmi + "] Metadata: pidiendo " + trM.Desde.ToString("yyyy-MM-dd") + " a " + trM.Hasta.ToString("yyyy-MM-dd") + "...");
-                                var sm = await SatSoapClient.SolicitarDescargaAsync(cert, llave, auth.Token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
-                                    desde: trM.Desde, hasta: trM.Hasta, tipoSolicitud: "Metadata");
-                                if (!sm.Exito)
-                                {
-                                    BrosSatDb.RegistrarIntentoFallido(conn, empresa.RFC, tipoRecEmi, trM.Desde, trM.Hasta, "Automatica", "Metadata", sm.CodEstatus, sm.Mensaje);
-                                    errores++;
-                                    Bitacora.EscribirError("  [" + tipoRecEmi + "] Metadata rechazada por el SAT: " + sm.Error);
-                                }
-                                else BrosSatDb.RegistrarSolicitud(conn, sm.IdSolicitud, empresa.RFC, tipoRecEmi, trM.Desde, trM.Hasta, "Automatica", "Metadata");
-                                rangosMeta = BrosSatDb.ObtenerRangosCubiertos(conn, empresa.RFC, "Metadata", tipoRecEmi);
-                                rangosMeta.AddRange(BrosSatDb.ObtenerRangosRechazadosRecientes(conn, empresa.RFC, "Metadata", tipoRecEmi, 6));
-                                huecoM = Huecos.PrimerHueco(rangosMeta, inicioHistorico, hasta);
-                            }
-                        }
+                        // Metadata al estilo SmartXML: ciclo horario con dos rangos que terminan hoy.
+                        await MetadatosAsync(conn, empresa, tipoRecEmi, cert, llave, tok, rfcEmisor, rfcReceptor);
 
                         if (pedirRetroactivo)
                         {
                             var desdeRetro = hasta.AddDays(-6);
                             Bitacora.Escribir("  [" + tipoRecEmi + "] Retroactivo: repidiendo " + desdeRetro.ToString("yyyy-MM-dd") + " a " + hasta.ToString("yyyy-MM-dd") + " (por si hay XML timbrado tarde, hasta 72h despues de su Fecha)...");
                             var solicRetro = await SatSoapClient.SolicitarDescargaAsync(
-                                cert, llave, auth.Token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                                cert, llave, await tok.ObtenerAsync(), rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
                                 desde: desdeRetro, hasta: hasta, tipoSolicitud: "CFDI");
                             if (!solicRetro.Exito)
                             {
@@ -241,11 +216,11 @@ namespace BrosLMV.Descargas.Cola
                         // que no falte ningun XML aunque una solicitud anterior haya salido "Terminada"
                         // incompleta. Es seguro repetirlo (guardado idempotente por UUID).
                         // (no en la misma pasada que acaba de pedir huecos: seria repetir los mismos meses al instante)
-                        if (tramosPedidos == 0) await BarridoAsync(conn, empresa, tipoRecEmi, cert, llave, auth.Token, rfcEmisor, rfcReceptor, hasta);
+                        if (tramosPedidos == 0) await BarridoAsync(conn, empresa, tipoRecEmi, cert, llave, tok, rfcEmisor, rfcReceptor, hasta);
 
                         // Verificacion contra Metadata: si el SAT informo (Metadata) CFDI vigentes que NO tenemos
                         // como XML, el mes completo se vuelve a pedir ya mismo (no espera al barrido semanal).
-                        await FaltantesAsync(conn, empresa, tipoRecEmi, cert, llave, auth.Token, rfcEmisor, rfcReceptor, hasta);
+                        await FaltantesAsync(conn, empresa, tipoRecEmi, cert, llave, tok, rfcEmisor, rfcReceptor, hasta);
                     }
                 }
                 catch (Exception ex)
@@ -258,6 +233,65 @@ namespace BrosLMV.Descargas.Cola
             return errores;
         }
 
+        // ---- Metadata al estilo SmartXML -------------------------------------------------------------
+        // SmartXML (sistema previo, mismo dueno) SI descargaba metadatos todos los dias: cada hora, por
+        // empresa y direccion, pedia DOS rangos que terminan HOY 23:59:59 -- [1-ene del anio -> hoy] y
+        // [hoy-3 dias -> hoy] -- y nunca un mes cerrado del pasado. Recibidos con EstadoComprobante="Todos";
+        // Emitidos sin ese atributo. Las 86 solicitudes mensuales que hacia Descargas nunca llegaron a
+        // "Terminada". Que rango/hora/forma es la que importa para el SAT no esta demostrado; esto replica
+        // lo que si funcionaba.
+        private const int MinutosEntreCiclosMetadata = 55;
+        private const int HorasLimiteMetadataAtorada = 6;
+        private const int MaxMetadataPendientes = 8;
+
+        // Cada hora, y no entre 00:00 y 00:59: las solicitudes de medianoche fallaron el 77 % de las veces en SmartXML.
+        private static bool MetadatosToca(SqlConnection conn, EmpresaFila empresa, string tipoRecEmi)
+        {
+            if (DateTime.Now.Hour == 0) return false;
+            var ultimo = BrosSatDb.ObtenerFechaUltimaSolicitudDe(conn, empresa.RFC, tipoRecEmi, "Metadata", "SmartXML");
+            return !ultimo.HasValue || (DateTime.UtcNow - ultimo.Value).TotalMinutes >= MinutosEntreCiclosMetadata;
+        }
+
+        private static async Task MetadatosAsync(SqlConnection conn, EmpresaFila empresa, string tipoRecEmi,
+            System.Security.Cryptography.X509Certificates.X509Certificate2 cert, System.Security.Cryptography.RSA llave,
+            TokenSat tok, string rfcEmisor, string rfcReceptor)
+        {
+            if (!MetadatosToca(conn, empresa, tipoRecEmi)) return;
+
+            int vencidas = BrosSatDb.VencerMetadataAtorada(conn, empresa.RFC, tipoRecEmi, HorasLimiteMetadataAtorada);
+            if (vencidas > 0) Bitacora.Escribir("  [" + tipoRecEmi + "] Metadata: " + vencidas + " solicitud(es) sin avanzar tras " + HorasLimiteMetadataAtorada + " h -> Vencida, se vuelve a pedir.");
+
+            // Tope de seguridad: si el SAT no esta terminando nada, no se acumulan solicitudes sin fin.
+            int pendientes = BrosSatDb.ContarMetadataPendientes(conn, empresa.RFC, tipoRecEmi);
+            if (pendientes >= MaxMetadataPendientes)
+            {
+                Bitacora.EscribirError("  [" + tipoRecEmi + "] Metadata: " + pendientes + " solicitudes sin terminar; no se piden mas hasta que el SAT las resuelva o venzan.");
+                return;
+            }
+
+            DateTime hoyFin = DateTime.Today.AddHours(23).AddMinutes(59).AddSeconds(59);
+            var rangos = new[]
+            {
+                (Nombre: "anio", Desde: new DateTime(DateTime.Today.Year, 1, 1)),
+                (Nombre: "3 dias", Desde: DateTime.Today.AddDays(-3)),
+            };
+            bool recibidos = tipoRecEmi == "Recibidos";
+            foreach (var r in rangos)
+            {
+                var sm = await SatSoapClient.SolicitarDescargaAsync(cert, llave, await tok.ObtenerAsync(), rfcSolicitante: empresa.RFC,
+                    rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor, desde: r.Desde, hasta: hoyFin,
+                    tipoSolicitud: "Metadata", estadoTodos: recibidos);
+                if (!sm.Exito)
+                {
+                    BrosSatDb.RegistrarIntentoFallido(conn, empresa.RFC, tipoRecEmi, r.Desde, hoyFin, "SmartXML", "Metadata", sm.CodEstatus, sm.Mensaje);
+                    Bitacora.EscribirError("  [" + tipoRecEmi + "] Metadata (" + r.Nombre + ") rechazada por el SAT: " + sm.Error + " -- se reintenta en el siguiente ciclo horario.");
+                    return;
+                }
+                BrosSatDb.RegistrarSolicitud(conn, sm.IdSolicitud, empresa.RFC, tipoRecEmi, r.Desde, hoyFin, "SmartXML", "Metadata");
+                Bitacora.Escribir("  [" + tipoRecEmi + "] Metadata (" + r.Nombre + ") solicitada " + r.Desde.ToString("yyyy-MM-dd") + " a " + hoyFin.ToString("yyyy-MM-dd HH:mm:ss") + ".");
+            }
+        }
+
         // Cuantos meses hacia atras revisa el barrido semanal (mes actual incluido).
         private const int MesesBarrido = 12;
         private const int MaxTramosPorPasada = 36;
@@ -266,7 +300,7 @@ namespace BrosLMV.Descargas.Cola
         // nuevo el mes completo (a lo mas cada 6 h por mes) ampliando el inicio un dia por intento previo.
         private static async Task FaltantesAsync(SqlConnection conn, EmpresaFila empresa, string tipoRecEmi,
             System.Security.Cryptography.X509Certificates.X509Certificate2 cert, System.Security.Cryptography.RSA llave,
-            string token, string rfcEmisor, string rfcReceptor, DateTime hasta)
+            TokenSat tok, string rfcEmisor, string rfcReceptor, DateTime hasta)
         {
             var meses = BrosSatDb.ObtenerMesesConFaltantes(conn, empresa.RFC, tipoRecEmi);
             foreach (var (anio, mes, faltan) in meses)
@@ -282,7 +316,7 @@ namespace BrosLMV.Descargas.Cola
                 int previos = BrosSatDb.ContarSolicitudesDelRango(conn, empresa.RFC, "CFDI", tipoRecEmi, primero, fin);
                 var desde = primero.AddDays(-Math.Min(previos, 10));
                 Bitacora.Escribir("  [" + tipoRecEmi + "] Faltan " + faltan + " CFDI vigentes de " + anio + "-" + mes.ToString("00") + " segun Metadata; se pide el mes completo " + desde.ToString("yyyy-MM-dd") + " a " + fin.ToString("yyyy-MM-dd") + "...");
-                var solic = await SatSoapClient.SolicitarDescargaAsync(cert, llave, token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                var solic = await SatSoapClient.SolicitarDescargaAsync(cert, llave, await tok.ObtenerAsync(), rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
                     desde: desde, hasta: fin, tipoSolicitud: "CFDI");
                 if (!solic.Exito)
                 {
@@ -308,7 +342,7 @@ namespace BrosLMV.Descargas.Cola
 
         private static async Task BarridoAsync(SqlConnection conn, EmpresaFila empresa, string tipoRecEmi,
             System.Security.Cryptography.X509Certificates.X509Certificate2 cert, System.Security.Cryptography.RSA llave,
-            string token, string rfcEmisor, string rfcReceptor, DateTime hasta)
+            TokenSat tok, string rfcEmisor, string rfcReceptor, DateTime hasta)
         {
             if (!BarridoToca(conn, empresa, tipoRecEmi)) return;
 
@@ -324,7 +358,7 @@ namespace BrosLMV.Descargas.Cola
                 int previos = BrosSatDb.ContarSolicitudesDelRango(conn, empresa.RFC, "CFDI", tipoRecEmi, primero, fin);
                 var desde = primero.AddDays(-Math.Min(previos, 10));
                 Bitacora.Escribir("  [" + tipoRecEmi + "] Barrido: " + desde.ToString("yyyy-MM-dd") + " a " + fin.ToString("yyyy-MM-dd") + " (verificar que no falte ningun XML)...");
-                var solic = await SatSoapClient.SolicitarDescargaAsync(cert, llave, token, rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
+                var solic = await SatSoapClient.SolicitarDescargaAsync(cert, llave, await tok.ObtenerAsync(), rfcSolicitante: empresa.RFC, rfcEmisor: rfcEmisor, rfcReceptor: rfcReceptor,
                     desde: desde, hasta: fin, tipoSolicitud: "CFDI");
                 if (!solic.Exito)
                 {
