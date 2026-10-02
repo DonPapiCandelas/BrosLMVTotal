@@ -41,7 +41,15 @@ $docsPlant = Join-Path $root "instalador\docs\plantillas"
 New-Item -ItemType Directory -Force $docsPlant | Out-Null
 $py = Get-Command python -ErrorAction SilentlyContinue
 if ($py) {
-    & python (Join-Path $root "build\md_a_html.py") (Join-Path $root "docs\CREAR_DOC_DESDE_XML.md") (Join-Path $docsPlant "CREAR_DOC_DESDE_XML.html")
+    # Cada plantilla de fabrica declara «Documentacion: X.html» en su cabecera; se genera desde docs\X.md (sin lista fija).
+    foreach ($f in Get-ChildItem (Join-Path $root "instalador\scripts") -File | Where-Object { $_.Extension -in ".ctx",".csx",".py",".sql" }) {
+        $cab = (Get-Content $f.FullName -TotalCount 40) -join "`n"
+        if ($cab -match '(?im)^\s*(//|#|--)\s*Documentaci.n\s*:\s*([A-Za-z0-9_]+)\.html') {
+            $md = Join-Path $root ("docs\" + $Matches[2] + ".md")
+            if (Test-Path $md) { & python (Join-Path $root "build\md_a_html.py") $md (Join-Path $docsPlant ($Matches[2] + ".html")) }
+            else { Write-Host ("   AVISO: la plantilla {0} declara documentacion {1}.html pero no existe docs\{1}.md" -f $f.Name, $Matches[2]) -ForegroundColor Yellow }
+        }
+    }
     & python (Join-Path $root "build\md_a_html.py") (Join-Path $root "docs\CREAR_BOTON.md") (Join-Path $docsPlant "CREAR_BOTON.html")
     & python (Join-Path $root "build\sdk\generar_referencia_sdk.py")
 } else {

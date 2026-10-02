@@ -1,0 +1,334 @@
+// lang: csharp
+// AppKey recomendado: COBRO_PAGO_WINFORMS
+// Plantilla: Cobro a cliente / Pago a proveedor (C# · ventana Windows Forms)
+// Categoria: Tesorería
+// Documentacion: COBRO_PAGO.html
+// job: safe-offline
+// ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un cobro a cliente o un pago a proveedor y lo aplica a uno o varios documentos con saldo.
+// Comercial no ofrece una función para esto: la plantilla escribe directo en las tablas de Tesorería (una transacción por documento) y NO genera la póliza contable.
+// Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+//
+// Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
+// el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Drawing;
+using System.Text;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;
+
+var ci = CultureInfo.InvariantCulture;
+var ser = new JavaScriptSerializer { MaxJsonLength = 128 * 1024 * 1024 };
+
+string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v, ci);
+long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v, ci); } catch { return 0; } }
+int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
+double D(object v) { try { return v == null || v is DBNull ? 0.0 : Convert.ToDouble(v, ci); } catch { return 0.0; } }
+bool Nulo(object v) => v == null || v is DBNull;
+string Sq(string s) => (s ?? "").Replace("'", "''");                       // texto para un literal SQL
+string Num(double d) => d.ToString("0.########", ci);                       // número para un literal SQL (siempre con punto)
+
+int empresa = ctx.erp.OwnedBusinessEntityId;
+
+// ===================================================================================================================================
+// COBRO A CLIENTE / PAGO A PROVEEDOR.
+// ⚠ PLANTILLA AVANZADA, NO NATIVA: Comercial no ofrece ninguna función para aplicar un cobro o un pago (se buscó en el SDK y en el motor, véase MANUAL §10.5).
+// Esta plantilla repite, con SQL directo y en UNA sola transacción por documento, lo que hace la pantalla de Tesorería: la operación financiera, la aplicación al
+// documento, su espejo, la transferencia bancaria, el reparto proporcional de impuestos y el nuevo saldo. La receta se validó contra cobros reales y contra el laboratorio.
+// NO genera la póliza contable del cobro/pago (eso lo hace el Motor de Asientos al contabilizar). Pruébala SIEMPRE primero en una base de pruebas.
+// ===================================================================================================================================
+// Tipos: clave · nombre · lado (C/P) · módulo de la operación (248 cobro, 247 pago) · DocRecipientID · DocumentTypeID de la operación · prefijo de folio
+Dictionary<string, object> TP(string clave, string nombre, string lado, int modOp, int recip, int tipoOp, string prefijo) =>
+    new Dictionary<string, object> { ["clave"] = clave, ["nombre"] = nombre, ["lado"] = lado, ["modOp"] = modOp, ["recip"] = recip, ["tipoOp"] = tipoOp, ["prefijo"] = prefijo };
+var TIPOS = new List<Dictionary<string, object>>
+{
+    TP("cobro", "Cobro a cliente",     "C", 248, 1, 31, "COB"),
+    TP("pago",  "Pago a proveedor",    "P", 247, 2, 32, "PAG"),
+};
+var tipoPor = TIPOS.ToDictionary(t => (string)t["clave"]);
+string[] CLAVES = TIPOS.Select(t => (string)t["clave"]).ToArray();
+
+// ---------- Qué módulos generan cuentas por cobrar / por pagar ----------
+// Se leen de los parámetros del módulo (DocRecipient 1 = cliente, 2 = proveedor; FinancialAffectation ≠ 0) por ModuleIDBase, así los módulos clonados cuentan igual.
+// Solo documentos que SUMAN saldo (facturas, notas de cargo, gastos): una nota de crédito no se cobra ni se paga, se aplica.
+var modulos = ctx.Query(
+    "SELECT m.ModuleID, m.ModuleName, pv.Rec, pv.Af FROM engModule m JOIN (" +
+    "  SELECT ModuleID, MAX(CASE WHEN ParameterKey='DocRecipient' THEN TRY_CONVERT(int, Value) END) AS Rec, MAX(CASE WHEN ParameterKey='DocumentTypeID' THEN TRY_CONVERT(int, Value) END) AS Tipo, " +
+    "         MAX(CASE WHEN ParameterKey='FinancialAffectation' THEN TRY_CONVERT(int, Value) END) AS Af, MAX(CASE WHEN ParameterKey='TableName' THEN Value END) AS Tabla " +
+    "  FROM engModuleParameter WHERE ParameterKey IN ('DocRecipient','DocumentTypeID','FinancialAffectation','TableName') GROUP BY ModuleID" +
+    ") pv ON pv.ModuleID = ISNULL(NULLIF(m.ModuleIDBase,0), m.ModuleID) WHERE pv.Tabla = 'docDocument' AND pv.Rec IN (1,2) AND ((pv.Rec = 1 AND pv.Af = 1) OR (pv.Rec = 2 AND pv.Af = -1)) AND ISNULL(pv.Tipo,0) NOT IN (40,44)");
+var modulosLado = new Dictionary<string, List<int>> { ["C"] = new List<int>(), ["P"] = new List<int>() };
+var nombreMod = new Dictionary<int, string>();
+foreach (var r in modulos) { modulosLado[I(r["Rec"]) == 1 ? "C" : "P"].Add(I(r["ModuleID"])); nombreMod[I(r["ModuleID"])] = S(r["ModuleName"]); }
+
+// ---------- Catálogos y documentos con saldo para el formulario ----------
+Dictionary<string, object> Catalogos()
+{
+    var cat = new Dictionary<string, object>();
+    string ent(string tabla) =>
+        "SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc FROM " + tabla + " x " +
+        "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID WHERE be.DeletedOn IS NULL ORDER BY nombre";
+    Func<string, List<Dictionary<string, object>>> lista = tabla => ctx.Query(ent(tabla))
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["rfc"] = S(r["rfc"]) }).ToList();
+    cat["clientes"] = lista("orgCustomer");
+    cat["proveedores"] = lista("orgSupplier");
+    cat["cuentas"] = ctx.Query("SELECT FinancialEntityID AS id, FinancialEntityName AS nombre FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY FinancialEntityName")
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
+    cat["formas"] = ctx.Query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
+    // Documentos con saldo pendiente de cada lado. Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero).
+    foreach (var lado in new[] { "C", "P" })
+    {
+        var mods = modulosLado[lado];
+        if (mods.Count == 0) { cat["docs" + lado] = new List<Dictionary<string, object>>(); continue; }
+        cat["docs" + lado] = ctx.Query(
+            "SELECT TOP 30000 d.DocumentID AS id, d.ModuleID AS modulo, d.BusinessEntityID AS ent, d.FolioPrefix, d.Folio, d.DateDocument AS fecha, ISNULL(d.Total,0) AS total, ISNULL(d.Balance,0) AS saldo, ISNULL(d.Title,'') AS titulo, " +
+            "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS vence " +
+            "FROM docDocument d WHERE d.ModuleID IN (" + string.Join(",", mods) + ") AND d.OwnedBusinessEntityID = " + empresa + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) > 0.004 ORDER BY d.DateDocument")
+            .Select(r => new Dictionary<string, object> { ["id"] = L(r["id"]), ["modulo"] = I(r["modulo"]), ["tipo"] = nombreMod[I(r["modulo"])], ["ent"] = I(r["ent"]), ["folio"] = (S(r["FolioPrefix"]) + S(r["Folio"])).Trim(),
+                ["fecha"] = Nulo(r["fecha"]) ? "" : Convert.ToDateTime(r["fecha"], ci).ToString("yyyy-MM-dd"), ["vence"] = Nulo(r["vence"]) ? "" : Convert.ToDateTime(r["vence"], ci).ToString("yyyy-MM-dd"),
+                ["total"] = D(r["total"]), ["saldo"] = D(r["saldo"]), ["titulo"] = S(r["titulo"]) }).ToList();
+    }
+    return cat;
+}
+
+// ---------- Aplicar ----------
+// «spec»: tipo, entidad, cuenta, forma (c_FormaPago), fecha (yyyy-MM-dd), referencia, aplicaciones [{doc, monto}]
+// Una operación financiera por documento (así lo hace Tesorería). Cada documento va en su propia transacción: si uno falla, los anteriores ya quedaron aplicados y el mensaje lo dice.
+// Regresa un resumen legible con los folios.
+string Aplicar(Dictionary<string, object> spec)
+{
+    string clave = S(spec["tipo"]);
+    if (!tipoPor.ContainsKey(clave)) throw new Exception("Tipo desconocido: " + clave);
+    var t = tipoPor[clave]; string lado = (string)t["lado"];
+    int entidad = I(spec["entidad"]), cuenta = I(spec["cuenta"]), forma = I(spec["forma"]);
+    if (entidad <= 0) throw new Exception("Elige el " + (lado == "C" ? "cliente" : "proveedor") + ".");
+    if (cuenta <= 0) throw new Exception("Elige la cuenta bancaria o caja " + (lado == "C" ? "donde entra" : "de donde sale") + " el dinero.");
+    if (forma <= 0) throw new Exception("Elige la forma de pago.");
+    var aps = ((System.Collections.IEnumerable)spec["aplicaciones"]).Cast<object>().Select(o => (Dictionary<string, object>)o).Where(a => D(a["monto"]) > 0).ToList();
+    if (aps.Count == 0) throw new Exception("Marca al menos un documento y captura cuánto aplicar.");
+    string fecha = S(spec.ContainsKey("fecha") ? spec["fecha"] : ""); if (fecha.Length < 10) throw new Exception("Captura la fecha.");
+    string f8 = Sq(fecha.Substring(0, 10).Replace("-", ""));
+    string tracking = S(spec.ContainsKey("referencia") ? spec["referencia"] : "");
+    int modOp = (int)t["modOp"], recip = (int)t["recip"], tipoOp = (int)t["tipoOp"]; string pref = (string)t["prefijo"];
+    var resumen = new List<string>(); double totalAplicado = 0;
+
+    foreach (var a in aps)
+    {
+        long doc = L(a["doc"]); double monto = Math.Round(D(a["monto"]), 2);
+        var d = ctx.Query("SELECT Total, Balance, TotalPaid, BusinessEntityID, OwnedBusinessEntityID, CurrencyID, ModuleID, FolioPrefix, Folio FROM docDocument WHERE DocumentID=" + doc + " AND DeletedOn IS NULL AND CancelledOn IS NULL");
+        string etiqueta = "documento " + doc;
+        try
+        {
+            if (d.Count == 0) throw new Exception("el documento no existe o está cancelado.");
+            var x = d[0]; etiqueta = nombreMod.ContainsKey(I(x["ModuleID"])) ? nombreMod[I(x["ModuleID"])] + " " + (S(x["FolioPrefix"]) + S(x["Folio"])).Trim() : etiqueta;
+            if (!modulosLado[lado].Contains(I(x["ModuleID"]))) throw new Exception("no es un documento que se " + (lado == "C" ? "cobre" : "pague") + ".");
+            if (I(x["BusinessEntityID"]) != entidad) throw new Exception("pertenece a otro " + (lado == "C" ? "cliente" : "proveedor") + ".");
+            double total = D(x["Total"]), saldo = D(x["Balance"]), pagado = D(x["TotalPaid"]);
+            if (monto > saldo + 0.005) throw new Exception("el monto (" + monto.ToString("N2") + ") es mayor que su saldo (" + saldo.ToString("N2") + ").");
+            if (total <= 0) throw new Exception("tiene total cero.");
+            double aplicado = Math.Min(monto, saldo), nuevo = Math.Round(saldo - aplicado, 2), prop = aplicado / total;
+            long owned = L(x["OwnedBusinessEntityID"]); int moneda = I(x["CurrencyID"]);
+            var sb = new StringBuilder();
+            sb.Append("DECLARE @out TABLE(FinancialOperationID BIGINT); DECLARE @outPay TABLE(DocumentPaymentID BIGINT);\nBEGIN TRY BEGIN TRAN;\n");
+            // Folio serializado: el candado se toma dentro de la transacción y se libera solo al terminar, así dos cobros simultáneos nunca calculan el mismo folio
+            sb.Append("DECLARE @lk INT; EXEC @lk = sp_getapplock @Resource = 'BrosCobroFolio_" + modOp + "_" + pref + "', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000;\n");
+            sb.Append("IF @lk < 0 THROW 50001, 'No se pudo obtener el candado del folio (otro cobro/pago en curso).', 1;\n");
+            // El saldo se vuelve a comprobar DENTRO de la transacción: si alguien más aplicó algo mientras tanto, no se aplica de más
+            sb.Append("IF (SELECT ISNULL(Balance,0) FROM docDocument WHERE DocumentID=" + doc + ") < " + Num(aplicado - 0.005) + " THROW 50002, 'El saldo del documento cambió mientras se capturaba.', 1;\n");
+            sb.Append("DECLARE @folio BIGINT = ISNULL((SELECT MAX(TRY_CONVERT(BIGINT, Folio)) FROM docFinancialOperation WHERE ModuleID=" + modOp + " AND FolioPrefix=N'" + pref + "'),0)+1;\n");
+            sb.Append("DECLARE @f DATETIME = '" + f8 + "'; DECLARE @opId BIGINT, @payId BIGINT;\n");
+            sb.Append("INSERT INTO docFinancialOperation (ModuleID, DocRecipientID, DocumentTypeID, OwnedBusinessEntityID, BusinessEntityID, DateOperation, FinancialEntityID, Amount, CurrencyID, PaymentMethodID, PartialityNumber, PartialityTotal, DocumentID, FolioPrefix, Folio, CreatedOn, CreatedBy) OUTPUT INSERTED.FinancialOperationID INTO @out ");
+            sb.Append("VALUES (" + modOp + "," + recip + "," + tipoOp + "," + owned + "," + entidad + ",@f," + cuenta + "," + Num(aplicado) + "," + moneda + "," + forma + ",1,1," + doc + ",N'" + pref + "',CONVERT(NVARCHAR(50),@folio),GETDATE()," + ctx.erp.UserId + ");\n");
+            sb.Append("SELECT @opId = FinancialOperationID FROM @out;\n");
+            sb.Append("INSERT INTO docDocumentPayment (DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber, SaldoAnterior, SaldoInsoluto) OUTPUT INSERTED.DocumentPaymentID INTO @outPay VALUES (" +
+                doc + ",@opId,@f," + Num(aplicado) + ",1," + Num(aplicado) + ",1," + Num(saldo) + "," + Num(nuevo) + ");\nSELECT @payId = DocumentPaymentID FROM @outPay;\n");
+            // docDocumentPaymentEspejo.DocumentPaymentID NO es identity: espeja el mismo id recién generado
+            sb.Append("INSERT INTO docDocumentPaymentEspejo (DocumentPaymentID, DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber) VALUES (@payId," + doc + ",@opId,@f," + Num(aplicado) + ",1," + Num(aplicado) + ",1);\n");
+            if (forma != 1)       // efectivo no lleva transferencia; cualquier otra forma deja su registro bancario
+                sb.Append("INSERT INTO docBankTransfer (FinancialOperationID, FinancialEntityID, TrackingNumber, CreatedOn, CreatedBy) VALUES (@opId," + cuenta + "," + (tracking == "" ? "NULL" : "N'" + Sq(tracking) + "'") + ",GETDATE()," + ctx.erp.UserId + ");\n");
+            // Reparto proporcional de impuestos: lo aplicado de esta operación entre el total del documento
+            foreach (var tx in ctx.Query("SELECT DocumentTaxDetailID, DocumentItemID, TaxTypeID, Amount, TaxBase, TaxPerc, TaxName, TaxTypeName FROM docDocumentTaxDetail WHERE DocumentID=" + doc))
+                sb.Append("INSERT INTO docFinancialOperationTaxDetail (DocumentTaxDetailID, FinancialOperationID, DocumentID, DocumentItemID, Proporcion, Amount, TaxTypeID, TaxName, TaxTypeName, TaxBase, TaxPerc) VALUES (" +
+                    L(tx["DocumentTaxDetailID"]) + ",@opId," + doc + "," + (Nulo(tx["DocumentItemID"]) ? "NULL" : L(tx["DocumentItemID"]).ToString()) + "," + Num(prop) + "," + Num(D(tx["Amount"]) * prop) + "," + I(tx["TaxTypeID"]) +
+                    ",N'" + Sq(S(tx["TaxName"])) + "',N'" + Sq(S(tx["TaxTypeName"])) + "'," + Num(D(tx["TaxBase"]) * prop) + "," + Num(D(tx["TaxPerc"])) + ");\n");
+            sb.Append("UPDATE docDocument SET TotalPaid=" + Num(pagado + aplicado) + ", Balance=" + Num(nuevo) + ", StatusPaidID=" + (nuevo <= 0.0049 ? 1 : 2) + " WHERE DocumentID=" + doc + ";\n");
+            sb.Append("COMMIT TRAN;\nSELECT @folio AS Folio;\nEND TRY BEGIN CATCH IF @@TRANCOUNT>0 ROLLBACK TRAN; THROW; END CATCH;");
+            var res = ctx.Query(sb.ToString(), soloLectura: false);
+            long folio = res.Count > 0 ? L(res[0]["Folio"]) : -1;
+            totalAplicado += aplicado;
+            resumen.Add(pref + "-" + folio + " · " + etiqueta + " · " + aplicado.ToString("N2") + (nuevo <= 0.0049 ? " (liquidado)" : " (queda " + nuevo.ToString("N2") + ")"));
+        }
+        catch (Exception ex)
+        {
+            throw new Exception("No se pudo aplicar a " + etiqueta + ": " + ex.Message + (resumen.Count > 0 ? "\n\nYa quedaron aplicados antes:\n" + string.Join("\n", resumen) : ""));
+        }
+    }
+    return (string)t["nombre"] + " registrado: " + totalAplicado.ToString("N2") + "\n" + string.Join("\n", resumen);
+}
+
+// ---------- Pruebas automáticas (sin ventanas): BROSLMV_PAGO_TEST = JSON con el «spec»; el resultado va al archivo BROSLMV_PAGO_OUT ----------
+string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_TEST");
+if (!string.IsNullOrEmpty(modoPrueba))
+{
+    var spec = ser.Deserialize<Dictionary<string, object>>(modoPrueba);
+    string resultado;
+    if (spec.ContainsKey("catalogo") && (bool)spec["catalogo"]) resultado = ser.Serialize(Catalogos());
+    else { try { resultado = "OK " + Aplicar(spec); } catch (Exception ex) { resultado = "ERROR " + ex.Message; } }
+    string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_OUT");
+    if (!string.IsNullOrEmpty(salidaPrueba)) System.IO.File.WriteAllText(salidaPrueba, resultado, new System.Text.UTF8Encoding(false));
+    return resultado;
+}
+
+
+// ===================================================================================================================================
+// VENTANA (Windows Forms, modeless). Los manejadores llevan try/catch porque, en modeless, el script «ya terminó» cuando se hace clic.
+// ===================================================================================================================================
+class Opcion { public int Id { get; set; } public string Nombre { get; set; } public override string ToString() => Nombre; }
+
+var catalogo = Catalogos();
+Func<string, List<Dictionary<string, object>>> cat = k => (List<Dictionary<string, object>>)catalogo[k];
+var seleccion = new Dictionary<long, double>();      // documento → monto a aplicar
+var docsVis = new List<Dictionary<string, object>>();
+long entidadSel = 0;
+bool bloquea = false;
+
+var frm = new Form { Text = "Cobro o pago", ClientSize = new Size(1080, 700), StartPosition = FormStartPosition.CenterScreen, BackColor = Color.FromArgb(244, 246, 249), Font = new Font("Segoe UI", 9f), KeyPreview = true };
+Label Et(string t, int x, int y) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = Color.FromArgb(100, 116, 139) }; frm.Controls.Add(l); return l; }
+TC Poner<TC>(TC c, int x, int y, int w, int h = 24) where TC : Control { c.Location = new Point(x, y); c.Size = new Size(w, h); frm.Controls.Add(c); return c; }
+void Seguro(Action a) { try { a(); } catch (Exception ex) { MessageBox.Show(ex.Message, "Cobro o pago", MessageBoxButtons.OK, MessageBoxIcon.Warning); } }
+
+var aviso = Poner(new Label { AutoSize = false, Text = "PLANTILLA AVANZADA, NO NATIVA: escribe directo en las tablas de Tesorería (una transacción por documento) y no genera la póliza contable. Pruébala primero en una base de pruebas.",
+    ForeColor = Color.FromArgb(180, 83, 9), BackColor = Color.FromArgb(253, 240, 220), BorderStyle = BorderStyle.FixedSingle, Padding = new Padding(6, 4, 6, 4) }, 16, 10, 1048, 38);
+
+Et("Qué vas a registrar", 16, 58);
+var cmbTipo = Poner(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }, 16, 78, 220);
+foreach (var t in TIPOS) cmbTipo.Items.Add((string)t["nombre"]);
+cmbTipo.SelectedIndex = 0;
+var lblEnt = Et("Cliente", 256, 58);
+var txtEnt = Poner(new TextBox(), 256, 78, 400);
+var lstEnt = new ListBox { Visible = false, Location = new Point(256, 102), Size = new Size(400, 150) }; frm.Controls.Add(lstEnt);
+var lblCta = Et("Cuenta donde entra el dinero", 676, 58);
+var cmbCta = Poner(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }, 676, 78, 220);
+foreach (var c in cat("cuentas")) cmbCta.Items.Add(new Opcion { Id = I(c["id"]), Nombre = S(c["nombre"]) });
+if (cmbCta.Items.Count > 0) cmbCta.SelectedIndex = 0;
+Et("Forma de pago", 916, 58);
+var cmbForma = Poner(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }, 916, 78, 148);
+foreach (var f in cat("formas")) cmbForma.Items.Add(new Opcion { Id = I(f["id"]), Nombre = S(f["nombre"]) });
+for (int i = 0; i < cmbForma.Items.Count; i++) if (((Opcion)cmbForma.Items[i]).Id == 3) cmbForma.SelectedIndex = i;
+if (cmbForma.SelectedIndex < 0 && cmbForma.Items.Count > 0) cmbForma.SelectedIndex = 0;
+
+Et("Fecha", 16, 112); var dtFecha = Poner(new DateTimePicker { Format = DateTimePickerFormat.Short }, 16, 132, 130);
+Et("Referencia o número de rastreo (opcional)", 166, 112); var txtRef = Poner(new TextBox { MaxLength = 60 }, 166, 132, 490);
+
+Et("Documentos con saldo (marca los que quieras cobrar/pagar y ajusta el monto; por omisión, todo el saldo)", 16, 166);
+var grid = Poner(new DataGridView { AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, BackgroundColor = Color.White,
+    BorderStyle = BorderStyle.FixedSingle, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill }, 16, 186, 1048, 420);
+grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Marca", HeaderText = "", FillWeight = 4 });
+foreach (var c in new[] { ("Tipo", "Tipo", 16f), ("Folio", "Folio", 14f), ("Fecha", "Fecha", 9f), ("Vence", "Vence", 9f), ("Total", "Total", 10f), ("Saldo", "Saldo", 10f) })
+    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = c.Item1, HeaderText = c.Item2, ReadOnly = true, FillWeight = c.Item3 });
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Aplicar", HeaderText = "Aplicar", FillWeight = 12 });
+foreach (var c in new[] { "Total", "Saldo", "Aplicar" }) grid.Columns[c].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+var lblTot = Poner(new Label { AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Font = new Font("Segoe UI", 10f, FontStyle.Bold) }, 560, 612, 504, 26);
+var btnAplicar = Poner(new Button { Text = "Registrar", BackColor = Color.FromArgb(45, 111, 224), ForeColor = Color.White, FlatStyle = FlatStyle.Flat }, 826, 656, 150, 32);
+var btnCancelar = Poner(new Button { Text = "Cancelar" }, 986, 656, 78, 32);
+
+// ---------- lógica ----------
+Dictionary<string, object> TipoActual() => TIPOS[cmbTipo.SelectedIndex];
+IEnumerable<Dictionary<string, object>> FuenteEntidad() => cat((string)TipoActual()["lado"] == "C" ? "clientes" : "proveedores");
+void Totales() { lblTot.Text = seleccion.Count + " documento(s) marcado(s)   TOTAL A APLICAR " + seleccion.Values.Sum().ToString("N2"); }
+void PintarDocs()
+{
+    bloquea = true; grid.Rows.Clear(); docsVis.Clear();
+    if (entidadSel != 0)
+    {
+        string hoy = dtFecha.Value.ToString("yyyy-MM-dd");
+        foreach (var d in cat((string)TipoActual()["lado"] == "C" ? "docsC" : "docsP").Where(d => I(d["ent"]) == entidadSel))
+        {
+            docsVis.Add(d); bool on = seleccion.ContainsKey(L(d["id"]));
+            int r = grid.Rows.Add(on, S(d["tipo"]), S(d["folio"]), S(d["fecha"]), S(d["vence"]), D(d["total"]).ToString("N2"), D(d["saldo"]).ToString("N2"), on ? seleccion[L(d["id"])].ToString("0.00") : "");
+            if (S(d["vence"]) != "" && string.CompareOrdinal(S(d["vence"]), hoy) < 0) grid.Rows[r].Cells["Vence"].Style.ForeColor = Color.FromArgb(200, 40, 40);
+        }
+    }
+    bloquea = false; Totales();
+}
+void CambioTipo()
+{
+    var t = TipoActual(); lblEnt.Text = (string)t["lado"] == "C" ? "Cliente" : "Proveedor";
+    lblCta.Text = (string)t["lado"] == "C" ? "Cuenta donde entra el dinero" : "Cuenta de donde sale el dinero";
+    entidadSel = 0; txtEnt.Text = ""; seleccion.Clear(); PintarDocs();
+}
+cmbTipo.SelectedIndexChanged += (_, __) => Seguro(CambioTipo);
+dtFecha.ValueChanged += (_, __) => Seguro(PintarDocs);
+
+void Buscar()
+{
+    var q = txtEnt.Text.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+    var vis = FuenteEntidad().Where(x => { var h = (S(x["nombre"]) + " " + S(x["rfc"])).ToLowerInvariant(); return q.All(w => h.Contains(w)); }).Take(40).ToList();
+    lstEnt.Items.Clear(); foreach (var x in vis) lstEnt.Items.Add(new Opcion { Id = I(x["id"]), Nombre = S(x["nombre"]) + (S(x["rfc"]) != "" ? "  [" + S(x["rfc"]) + "]" : "") });
+    lstEnt.Visible = lstEnt.Items.Count > 0; if (lstEnt.Visible) { lstEnt.BringToFront(); lstEnt.SelectedIndex = 0; }
+}
+void ElegirEntidad()
+{
+    var o = lstEnt.SelectedItem as Opcion; if (o == null) return;
+    entidadSel = o.Id; bloquea = true; txtEnt.Text = o.Nombre.Split(new[] { "  [" }, StringSplitOptions.None)[0]; bloquea = false; lstEnt.Visible = false; seleccion.Clear(); PintarDocs();
+}
+txtEnt.TextChanged += (_, __) => Seguro(() => { if (!bloquea && txtEnt.Focused) { entidadSel = 0; seleccion.Clear(); PintarDocs(); Buscar(); } });
+txtEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Down && lstEnt.Visible) { lstEnt.Focus(); ev.Handled = true; } if (ev.KeyCode == Keys.Enter) { Seguro(ElegirEntidad); ev.SuppressKeyPress = true; } };
+lstEnt.Click += (_, __) => Seguro(ElegirEntidad);
+lstEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Seguro(ElegirEntidad); ev.SuppressKeyPress = true; } };
+
+grid.CurrentCellDirtyStateChanged += (_, __) => { if (grid.IsCurrentCellDirty && grid.CurrentCell is DataGridViewCheckBoxCell) grid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
+grid.CellValueChanged += (_, ev) => Seguro(() =>
+{
+    if (bloquea || ev.RowIndex < 0 || ev.RowIndex >= docsVis.Count) return;
+    var d = docsVis[ev.RowIndex]; long id = L(d["id"]); double saldo = D(d["saldo"]); string col = grid.Columns[ev.ColumnIndex].Name;
+    bloquea = true;
+    if (col == "Marca")
+    {
+        bool on = Convert.ToBoolean(grid.Rows[ev.RowIndex].Cells["Marca"].Value);
+        if (on) { seleccion[id] = saldo; grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = saldo.ToString("0.00"); } else { seleccion.Remove(id); grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = ""; }
+    }
+    else if (col == "Aplicar" && seleccion.ContainsKey(id))
+    {
+        double n; double.TryParse(Convert.ToString(grid.Rows[ev.RowIndex].Cells["Aplicar"].Value, CultureInfo.CurrentCulture), NumberStyles.Any, CultureInfo.CurrentCulture, out n);
+        if (n < 0) n = 0; if (n > saldo) n = saldo; seleccion[id] = n; grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = n.ToString("0.00");
+    }
+    else if (col == "Aplicar") grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = "";
+    bloquea = false; Totales();
+});
+grid.DataError += (_, ev) => ev.ThrowException = false;
+
+void Registrar()
+{
+    var t = TipoActual();
+    if (entidadSel == 0) throw new Exception("Elige el " + ((string)t["lado"] == "C" ? "cliente" : "proveedor") + " de la lista (escribe y selecciona).");
+    if (seleccion.Count == 0 || seleccion.Values.All(v => v <= 0)) throw new Exception("Marca al menos un documento y captura cuánto aplicar.");
+    var spec = new Dictionary<string, object>
+    {
+        ["tipo"] = (string)t["clave"], ["entidad"] = (int)entidadSel, ["cuenta"] = ((Opcion)cmbCta.SelectedItem)?.Id ?? 0, ["forma"] = ((Opcion)cmbForma.SelectedItem)?.Id ?? 0,
+        ["fecha"] = dtFecha.Value.ToString("yyyy-MM-dd"), ["referencia"] = txtRef.Text,
+        ["aplicaciones"] = seleccion.Where(kv => kv.Value > 0).Select(kv => (object)new Dictionary<string, object> { ["doc"] = kv.Key, ["monto"] = kv.Value }).ToList()
+    };
+    btnAplicar.Enabled = false; Cursor.Current = Cursors.WaitCursor;
+    try
+    {
+        string resumen = Aplicar(spec);
+        try { ctx.erp.RefreshGrid(); } catch { }
+        MessageBox.Show(resumen, "Cobro o pago registrado", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        frm.Close();
+    }
+    catch { catalogo = Catalogos(); PintarDocs(); throw; }          // si falló, los saldos pudieron cambiar
+    finally { btnAplicar.Enabled = true; Cursor.Current = Cursors.Default; }
+}
+btnAplicar.Click += (_, __) => Seguro(Registrar);
+btnCancelar.Click += (_, __) => frm.Close();
+frm.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Escape && !lstEnt.Visible) { frm.Close(); ev.Handled = true; } };
+
+// ---------- Arranque: modeless ----------
+CambioTipo();
+frm.Show();
+return "Ventana de cobro/pago abierta.";

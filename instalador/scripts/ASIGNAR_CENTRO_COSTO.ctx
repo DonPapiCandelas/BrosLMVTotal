@@ -1,0 +1,378 @@
+// lang: csharp
+// AppKey recomendado: ASIGNAR_CENTRO_COSTO
+// Plantilla: Asignar centro de costo de forma masiva
+// Categoria: Documentos
+// Documentacion: ASIGNAR_CENTRO_COSTO.html
+// job: safe-offline
+// Asignar centro de costo de forma masiva: pone un centro de costo (ya dado de alta en tu catálogo) a muchos documentos de una vez.
+// Elige los documentos con la selección de la lista de Comercial o con filtros (fechas, módulos, cliente/proveedor, centro actual), mira la vista previa y confirma.
+// Cada lote queda en la bitácora zzBrosCentroCostoLog y se puede DESHACER. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
+//
+// Qué escribe (igual que la pantalla de Comercial): docDocument.CostCenterID (encabezado) y, si lo pides, docDocumentItem.CostCenterID (partidas).
+// Qué NO toca: documentos cancelados o eliminados, documentos que otro usuario tiene abiertos, pólizas ya generadas (guardan su propio centro de costo) ni cobros/pagos.
+// Nada va escrito a mano: el catálogo de centros y los módulos salen de la empresa activa.
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Web.Script.Serialization;
+
+var ci = CultureInfo.InvariantCulture;
+var ser = new JavaScriptSerializer { MaxJsonLength = 64 * 1024 * 1024 };
+string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v, ci);
+long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v, ci); } catch { return 0; } }
+int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
+string Q(string s) => "N'" + (s ?? "").Replace("'", "''") + "'";
+string FechaTxt(object v) => v == null || v is DBNull ? "" : Convert.ToDateTime(v, ci).ToString("yyyy-MM-dd");
+
+int empresa = ctx.erp.OwnedBusinessEntityId;
+int usuario = ctx.erp.UserId;
+const int MaxDocs = 5000;            // tope duro por lote
+const int AvisoDocs = 500;           // a partir de aquí se pide confirmación expresa
+
+// ---------- Bitácora (una por empresa): permite deshacer ----------
+void AsegurarBitacora()
+{
+    using (var cn = ctx.OpenConn())
+    using (var cmd = cn.CreateCommand())
+    {
+        cmd.CommandText = @"SET NOCOUNT ON;
+IF OBJECT_ID('zzBrosCentroCostoLog') IS NULL
+CREATE TABLE zzBrosCentroCostoLog (
+    ID BIGINT IDENTITY PRIMARY KEY, Lote UNIQUEIDENTIFIER NOT NULL, Fecha DATETIME2 NOT NULL DEFAULT SYSDATETIME(), UserID INT NOT NULL,
+    DocumentID BIGINT NOT NULL, DocumentItemID BIGINT NULL, CCAnterior BIGINT NULL, CCNuevo BIGINT NOT NULL, Deshecho BIT NOT NULL DEFAULT 0);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_zzBrosCentroCostoLog_Lote' AND object_id=OBJECT_ID('zzBrosCentroCostoLog'))
+    CREATE INDEX IX_zzBrosCentroCostoLog_Lote ON zzBrosCentroCostoLog (Lote, Deshecho);";
+        cmd.ExecuteNonQuery();
+    }
+}
+
+// ---------- Catálogos de la empresa ----------
+List<Dictionary<string, object>> Centros() => ctx.Query(
+    "SELECT CostCenterID, CostCenterName, ISNULL(Segmento,'') AS Segmento FROM orgCostCenter WHERE DeletedOn IS NULL AND OwnedBusinessEntityID=" + empresa + " ORDER BY CostCenterName");
+
+List<Dictionary<string, object>> Modulos() => ctx.Query(
+    "SELECT m.ModuleID, m.ModuleName, COUNT(*) AS N FROM docDocument d JOIN engModule m ON m.ModuleID=d.ModuleID " +
+    "WHERE d.OwnedBusinessEntityID=" + empresa + " AND d.DeletedOn IS NULL GROUP BY m.ModuleID, m.ModuleName ORDER BY m.ModuleName");
+
+// ---------- Parámetros ----------
+class Pars
+{
+    public string Alcance = "seleccion";         // seleccion | filtro
+    public List<long> Ids = new List<long>();
+    public string Desde = "", Hasta = "", Entidad = "", Titulo = "";
+    public List<int> Modulos = new List<int>();
+    public string CcActual = "cualquiera";        // cualquiera | vacio | <id>
+    public long CcNuevo;
+    public string Donde = "encabezado";           // encabezado | partidas | ambos
+    public string Modo = "vacios";                // vacios | todos
+}
+
+Pars LeerPars(Dictionary<string, object> r, List<long> seleccion)
+{
+    var p = new Pars { Alcance = S(r.ContainsKey("alcance") ? r["alcance"] : "seleccion"), CcNuevo = L(r.ContainsKey("ccNuevo") ? r["ccNuevo"] : 0) };
+    p.Donde = S(r.ContainsKey("donde") ? r["donde"] : "encabezado"); p.Modo = S(r.ContainsKey("modo") ? r["modo"] : "vacios");
+    p.Desde = S(r.ContainsKey("desde") ? r["desde"] : ""); p.Hasta = S(r.ContainsKey("hasta") ? r["hasta"] : "");
+    p.Entidad = S(r.ContainsKey("entidad") ? r["entidad"] : ""); p.Titulo = S(r.ContainsKey("titulo") ? r["titulo"] : "");
+    p.CcActual = S(r.ContainsKey("ccActual") ? r["ccActual"] : "cualquiera");
+    if (r.ContainsKey("modulos") && r["modulos"] is System.Collections.IEnumerable lst && !(r["modulos"] is string))
+        foreach (var x in lst) p.Modulos.Add(I(x));
+    if (r.ContainsKey("ids") && r["ids"] is System.Collections.IEnumerable lid && !(r["ids"] is string))
+        foreach (var x in lid) p.Ids.Add(L(x));
+    if (p.Alcance == "seleccion" && p.Ids.Count == 0) p.Ids = seleccion ?? new List<long>();
+    return p;
+}
+
+class DocFila
+{
+    public long Id; public int Modulo; public string ModuloNombre, Folio, Fecha, Entidad, CcNombre; public long Cc; public int EnUso, Partidas;
+}
+
+// Documentos candidatos: vigentes (ni cancelados ni eliminados) de la empresa activa
+List<DocFila> BuscarDocs(Pars p, out int excedido)
+{
+    excedido = 0;
+    var w = new List<string> { "d.OwnedBusinessEntityID=" + empresa, "d.DeletedOn IS NULL", "d.CancelledOn IS NULL" };
+    if (p.Alcance == "seleccion")
+    {
+        if (p.Ids.Count == 0) return new List<DocFila>();
+        w.Add("d.DocumentID IN (" + string.Join(",", p.Ids.Take(MaxDocs + 1)) + ")");
+    }
+    else
+    {
+        DateTime f;
+        if (DateTime.TryParse(p.Desde, ci, DateTimeStyles.None, out f)) w.Add("d.DateDocument >= '" + f.ToString("yyyy-MM-dd") + "'");
+        if (DateTime.TryParse(p.Hasta, ci, DateTimeStyles.None, out f)) w.Add("d.DateDocument < '" + f.AddDays(1).ToString("yyyy-MM-dd") + "'");
+        if (p.Modulos.Count > 0) w.Add("d.ModuleID IN (" + string.Join(",", p.Modulos) + ")");
+        if (!string.IsNullOrWhiteSpace(p.Entidad)) w.Add("(be.OfficialName LIKE " + Q("%" + p.Entidad.Trim() + "%") + " OR be.CommercialName LIKE " + Q("%" + p.Entidad.Trim() + "%") + ")");
+        if (!string.IsNullOrWhiteSpace(p.Titulo)) w.Add("d.Title LIKE " + Q("%" + p.Titulo.Trim() + "%"));
+        if (p.CcActual == "vacio") w.Add("ISNULL(d.CostCenterID,0)=0");
+        else if (long.TryParse(p.CcActual, out var cca) && cca > 0) w.Add("d.CostCenterID=" + cca);
+    }
+    // Modo «solo vacíos»: en encabezado, el documento debe tener el suyo vacío; en partidas, basta con que alguna partida lo tenga vacío
+    if (p.Modo == "vacios")
+    {
+        if (p.Donde == "encabezado") w.Add("ISNULL(d.CostCenterID,0)=0");
+        else if (p.Donde == "partidas") w.Add("EXISTS (SELECT 1 FROM docDocumentItem i WHERE i.DocumentID=d.DocumentID AND i.DeletedOn IS NULL AND ISNULL(i.CostCenterID,0)=0)");
+        else w.Add("(ISNULL(d.CostCenterID,0)=0 OR EXISTS (SELECT 1 FROM docDocumentItem i WHERE i.DocumentID=d.DocumentID AND i.DeletedOn IS NULL AND ISNULL(i.CostCenterID,0)=0))");
+    }
+    var filas = ctx.Query(
+        "SELECT TOP " + (MaxDocs + 1) + " d.DocumentID, d.ModuleID, ISNULL(m.ModuleName,'') AS ModuloNombre, ISNULL(d.FolioPrefix,'') + ISNULL(CAST(d.Folio AS NVARCHAR(30)),'') AS Folio, d.DateDocument, " +
+        "ISNULL(be.CommercialName, be.OfficialName) AS Entidad, ISNULL(d.CostCenterID,0) AS Cc, ISNULL(cc.CostCenterName,'') AS CcNombre, ISNULL(d.UserID,0) AS EnUso, " +
+        "(SELECT COUNT(*) FROM docDocumentItem i WHERE i.DocumentID=d.DocumentID AND i.DeletedOn IS NULL) AS Partidas " +
+        "FROM docDocument d LEFT JOIN engModule m ON m.ModuleID=d.ModuleID LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID=d.BusinessEntityID " +
+        "LEFT JOIN orgCostCenter cc ON cc.CostCenterID=d.CostCenterID WHERE " + string.Join(" AND ", w) + " ORDER BY d.DateDocument, d.DocumentID");
+    var res = filas.Select(r => new DocFila
+    {
+        Id = L(r["DocumentID"]), Modulo = I(r["ModuleID"]), ModuloNombre = S(r["ModuloNombre"]), Folio = S(r["Folio"]), Fecha = FechaTxt(r["DateDocument"]),
+        Entidad = S(r["Entidad"]), Cc = L(r["Cc"]), CcNombre = S(r["CcNombre"]), EnUso = I(r["EnUso"]), Partidas = I(r["Partidas"])
+    }).ToList();
+    if (res.Count > MaxDocs) { excedido = res.Count - MaxDocs; res = res.Take(MaxDocs).ToList(); }
+    return res;
+}
+
+// ---------- Aplicar y deshacer (todo en una transacción) ----------
+Dictionary<string, object> Aplicar(Pars p, List<DocFila> docs)
+{
+    var libres = docs.Where(d => d.EnUso == 0 || d.EnUso == usuario).ToList();
+    var enUso = docs.Where(d => !(d.EnUso == 0 || d.EnUso == usuario)).ToList();
+    var lote = Guid.NewGuid();
+    int cambiadosEnc = 0, cambiadosPart = 0;
+    using (var cn = ctx.OpenConn())
+    using (var tx = cn.BeginTransaction())
+    {
+        try
+        {
+            foreach (var grupo in libres.Select((d, i) => new { d, i }).GroupBy(x => x.i / 400).Select(g => g.Select(x => x.d.Id).ToList()))
+            {
+                string ids = string.Join(",", grupo);
+                if (p.Donde == "encabezado" || p.Donde == "ambos")
+                {
+                    string cond = "OwnedBusinessEntityID=" + empresa + " AND DocumentID IN (" + ids + ") AND ISNULL(CostCenterID,0)<>" + p.CcNuevo + (p.Modo == "vacios" ? " AND ISNULL(CostCenterID,0)=0" : "");
+                    using (var cmd = cn.CreateCommand())
+                    {
+                        cmd.Transaction = tx;
+                        cmd.CommandText = "SET NOCOUNT ON; INSERT INTO zzBrosCentroCostoLog (Lote, UserID, DocumentID, DocumentItemID, CCAnterior, CCNuevo) " +
+                            "SELECT @lote, @u, DocumentID, NULL, NULLIF(CostCenterID,0), @cc FROM docDocument WHERE " + cond + "; " +
+                            "UPDATE docDocument SET CostCenterID=@cc WHERE " + cond + "; SELECT @@ROWCOUNT;";
+                        cmd.Parameters.AddWithValue("@lote", lote); cmd.Parameters.AddWithValue("@u", usuario); cmd.Parameters.AddWithValue("@cc", p.CcNuevo);
+                        cambiadosEnc += I(cmd.ExecuteScalar());
+                    }
+                }
+                if (p.Donde == "partidas" || p.Donde == "ambos")
+                {
+                    string cond = "i.DocumentID IN (" + ids + ") AND i.DeletedOn IS NULL AND ISNULL(i.CostCenterID,0)<>" + p.CcNuevo + (p.Modo == "vacios" ? " AND ISNULL(i.CostCenterID,0)=0" : "");
+                    using (var cmd = cn.CreateCommand())
+                    {
+                        cmd.Transaction = tx;
+                        cmd.CommandText = "SET NOCOUNT ON; INSERT INTO zzBrosCentroCostoLog (Lote, UserID, DocumentID, DocumentItemID, CCAnterior, CCNuevo) " +
+                            "SELECT @lote, @u, i.DocumentID, i.DocumentItemID, NULLIF(i.CostCenterID,0), @cc FROM docDocumentItem i JOIN docDocument d ON d.DocumentID=i.DocumentID AND d.OwnedBusinessEntityID=" + empresa + " WHERE " + cond + "; " +
+                            "UPDATE i SET CostCenterID=@cc FROM docDocumentItem i JOIN docDocument d ON d.DocumentID=i.DocumentID AND d.OwnedBusinessEntityID=" + empresa + " WHERE " + cond + "; SELECT @@ROWCOUNT;";
+                        cmd.Parameters.AddWithValue("@lote", lote); cmd.Parameters.AddWithValue("@u", usuario); cmd.Parameters.AddWithValue("@cc", p.CcNuevo);
+                        cambiadosPart += I(cmd.ExecuteScalar());
+                    }
+                }
+            }
+            tx.Commit();
+        }
+        catch { try { tx.Rollback(); } catch { } throw; }
+    }
+    return new Dictionary<string, object>
+    {
+        ["lote"] = lote.ToString(), ["documentos"] = libres.Count, ["encabezados"] = cambiadosEnc, ["partidas"] = cambiadosPart,
+        ["omitidosEnUso"] = enUso.Select(d => d.ModuloNombre + " " + d.Folio).ToList()
+    };
+}
+
+Dictionary<string, object> DeshacerUltimo()
+{
+    using (var cn = ctx.OpenConn())
+    using (var tx = cn.BeginTransaction())
+    {
+        try
+        {
+            string lote = null;
+            using (var cmd = cn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "SET NOCOUNT ON; SELECT TOP 1 CAST(Lote AS NVARCHAR(40)) FROM zzBrosCentroCostoLog WHERE UserID=@u AND Deshecho=0 ORDER BY ID DESC";
+                cmd.Parameters.AddWithValue("@u", usuario);
+                var o = cmd.ExecuteScalar(); lote = o == null || o is DBNull ? null : Convert.ToString(o);
+            }
+            if (lote == null) { tx.Rollback(); return new Dictionary<string, object> { ["lote"] = "", ["encabezados"] = 0, ["partidas"] = 0 }; }
+            int enc = 0, par = 0;
+            // Solo se restaura lo que SIGUE valiendo lo que puso el lote: si alguien lo cambió después, no se pisa
+            using (var cmd = cn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "SET NOCOUNT ON; UPDATE d SET CostCenterID=l.CCAnterior FROM docDocument d JOIN zzBrosCentroCostoLog l ON l.DocumentID=d.DocumentID " +
+                    "WHERE l.Lote=@l AND l.Deshecho=0 AND l.DocumentItemID IS NULL AND ISNULL(d.CostCenterID,0)=l.CCNuevo AND d.OwnedBusinessEntityID=" + empresa + "; SELECT @@ROWCOUNT;";
+                cmd.Parameters.AddWithValue("@l", Guid.Parse(lote)); enc = I(cmd.ExecuteScalar());
+            }
+            using (var cmd = cn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "SET NOCOUNT ON; UPDATE i SET CostCenterID=l.CCAnterior FROM docDocumentItem i JOIN zzBrosCentroCostoLog l ON l.DocumentItemID=i.DocumentItemID " +
+                    "WHERE l.Lote=@l AND l.Deshecho=0 AND ISNULL(i.CostCenterID,0)=l.CCNuevo; SELECT @@ROWCOUNT;";
+                cmd.Parameters.AddWithValue("@l", Guid.Parse(lote)); par = I(cmd.ExecuteScalar());
+            }
+            using (var cmd = cn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "SET NOCOUNT ON; UPDATE zzBrosCentroCostoLog SET Deshecho=1 WHERE Lote=@l";
+                cmd.Parameters.AddWithValue("@l", Guid.Parse(lote)); cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+            return new Dictionary<string, object> { ["lote"] = lote, ["encabezados"] = enc, ["partidas"] = par };
+        }
+        catch { try { tx.Rollback(); } catch { } throw; }
+    }
+}
+
+AsegurarBitacora();
+
+// ---------- Modo de pruebas (sin ventanas): BROSLMV_CC_TEST = JSON con {accion: previsualizar|aplicar|deshacer, ...} ----------
+string prueba = Environment.GetEnvironmentVariable("BROSLMV_CC_TEST");
+if (!string.IsNullOrEmpty(prueba))
+{
+    var rp = ser.Deserialize<Dictionary<string, object>>(prueba);
+    var pp = LeerPars(rp, new List<long>());
+    string acc = S(rp.ContainsKey("accion") ? rp["accion"] : "previsualizar");
+    var resultado = new Dictionary<string, object>();
+    if (acc == "deshacer") resultado = DeshacerUltimo();
+    else
+    {
+        var dd = BuscarDocs(pp, out int exc);
+        resultado["docs"] = dd.Count; resultado["excedido"] = exc;
+        resultado["ids"] = dd.Select(x => x.Id).ToList();
+        if (acc == "aplicar") { if (pp.CcNuevo <= 0) throw new Exception("Falta ccNuevo."); resultado["aplicado"] = Aplicar(pp, dd); }
+    }
+    string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_CC_OUT");
+    string json = ser.Serialize(resultado);
+    if (!string.IsNullOrEmpty(salidaPrueba)) File.WriteAllText(salidaPrueba, json, new UTF8Encoding(false));
+    return json;
+}
+
+// ---------- Interfaz ----------
+var seleccionLista = ctx.GetSelectedIds() ?? new List<long>();
+var centros = Centros();
+if (centros.Count == 0)
+{
+    ctx.Msg("Esta empresa no tiene centros de costo dados de alta.\nDa de alta los centros en Comercial (catálogo de Centros de costo) y vuelve a ejecutar.", "Asignar centro de costo");
+    return "SIN CENTROS";
+}
+var modulos = Modulos();
+
+string Esc(string s) => (s ?? "").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
+string Css() => @"<style>:root{--f:#f4f6f9;--t:#fff;--x:#16263a;--s:#64748b;--l:#cbd5e1;--a:#2d6fe0;--r:#c82828;--am:#b45309;--v:#16803b}*{box-sizing:border-box}
+body{margin:0;font:13px 'Segoe UI',Arial,sans-serif;background:var(--f);color:var(--x)}.w{padding:18px 24px}h1{margin:0 0 4px;font-size:20px}.sub{color:var(--s);margin-bottom:14px}
+.card{background:var(--t);border:1px solid var(--l);border-radius:9px;padding:14px 16px;margin-bottom:12px}.card h2{margin:0 0 10px;font-size:14px}
+label{display:block;margin:8px 0 3px;color:var(--s);font-size:12px}select,input[type=text],input[type=date]{width:100%;padding:6px 8px;border:1px solid var(--l);border-radius:6px;font:inherit;background:#fff}
+.fila{display:flex;gap:12px}.fila>*{flex:1}.radios label{display:inline;margin-right:16px;color:var(--x);font-size:13px}
+button{border:1px solid var(--l);background:#fff;border-radius:6px;padding:7px 16px;cursor:pointer;font:inherit}button.p{background:var(--a);color:#fff;border-color:var(--a)}button.d{background:#fff;color:var(--am);border-color:var(--am)}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e5eaf1}th{color:var(--s);font-size:11.5px}.av{color:var(--am);margin:4px 0}.ok{color:var(--v)}
+.acc{margin-top:14px;display:flex;gap:10px;justify-content:flex-end}select[multiple]{height:130px}</style>";
+
+string PaginaFiltros(Pars p, string mensaje)
+{
+    var opCentros = new StringBuilder("<option value=''>— elige un centro de costo —</option>");
+    foreach (var c in centros) opCentros.Append("<option value='" + S(c["CostCenterID"]) + "'" + (p != null && p.CcNuevo == L(c["CostCenterID"]) ? " selected" : "") + ">" + Esc(S(c["CostCenterName"])) + (S(c["Segmento"]) != "" ? " (" + Esc(S(c["Segmento"])) + ")" : "") + "</option>");
+    var opActual = new StringBuilder("<option value='cualquiera'>Cualquiera</option><option value='vacio'>Sin centro de costo</option>");
+    foreach (var c in centros) opActual.Append("<option value='" + S(c["CostCenterID"]) + "'>" + Esc(S(c["CostCenterName"])) + "</option>");
+    var opMods = new StringBuilder();
+    foreach (var m in modulos) opMods.Append("<option value='" + S(m["ModuleID"]) + "'>" + Esc(S(m["ModuleName"])) + " (" + S(m["N"]) + ")</option>");
+    bool haySel = seleccionLista.Count > 0;
+    return "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'>" + Css() + "</head><body><div class='w'><h1>Asignar centro de costo</h1>" +
+        "<div class='sub'>Elige qué documentos y qué centro de costo. Antes de cambiar nada verás una vista previa. " + Esc(mensaje ?? "") + "</div>" +
+        "<div class='card'><h2>1 · Documentos</h2><div class='radios'>" +
+        "<label><input type='radio' name='alc' value='seleccion'" + (haySel ? " checked" : " disabled") + "> Los " + seleccionLista.Count + " seleccionados en la lista</label>" +
+        "<label><input type='radio' name='alc' value='filtro'" + (haySel ? "" : " checked") + "> Buscarlos con filtros</label></div>" +
+        "<div id='filtros' style='margin-top:8px'><div class='fila'><div><label>Desde</label><input type='date' id='desde'></div><div><label>Hasta</label><input type='date' id='hasta'></div></div>" +
+        "<div class='fila'><div><label>Cliente o proveedor contiene</label><input type='text' id='entidad'></div><div><label>Título del documento contiene</label><input type='text' id='titulo'></div></div>" +
+        "<div class='fila'><div><label>Módulos (Ctrl para varios; vacío = todos)</label><select id='modulos' multiple>" + opMods + "</select></div>" +
+        "<div><label>Centro de costo que tienen ahora</label><select id='ccActual'>" + opActual + "</select></div></div></div></div>" +
+        "<div class='card'><h2>2 · Qué centro de costo y dónde</h2><label>Centro de costo nuevo</label><select id='ccNuevo'>" + opCentros + "</select>" +
+        "<div class='radios' style='margin-top:10px'><b>Dónde:</b> <label><input type='radio' name='dnd' value='encabezado' checked> Encabezado del documento (lo normal)</label>" +
+        "<label><input type='radio' name='dnd' value='partidas'> Partidas</label><label><input type='radio' name='dnd' value='ambos'> Ambos</label></div>" +
+        "<div class='radios' style='margin-top:6px'><b>A cuáles:</b> <label><input type='radio' name='modo' value='vacios' checked> Solo donde esté vacío</label>" +
+        "<label><input type='radio' name='modo' value='todos'> Reemplazar el que tengan</label></div></div>" +
+        "<div class='acc'><button class='d' onclick=\"enviar({accion:'deshacer'})\">Deshacer mi último lote</button><button class='p' onclick='preview()'>Ver vista previa</button></div></div>" +
+        "<script>function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}function v(i){return document.getElementById(i).value;}" +
+        "function r(n){var x=document.querySelector('input[name='+n+']:checked');return x?x.value:'';}" +
+        "function preview(){if(!v('ccNuevo')){alert('Elige el centro de costo nuevo.');return;}var m=[].slice.call(document.getElementById('modulos').selectedOptions).map(function(o){return +o.value;});" +
+        "enviar({accion:'previsualizar',alcance:r('alc'),desde:v('desde'),hasta:v('hasta'),entidad:v('entidad'),titulo:v('titulo'),modulos:m,ccActual:v('ccActual'),ccNuevo:+v('ccNuevo'),donde:r('dnd'),modo:r('modo')});}" +
+        "function tg(){document.getElementById('filtros').style.opacity=r('alc')=='filtro'?1:.45;}document.querySelectorAll('input[name=alc]').forEach(function(x){x.onchange=tg;});tg();</script></body></html>";
+}
+
+string PaginaPrevia(Pars p, List<DocFila> docs, int excedido, string nombreCc)
+{
+    var libres = docs.Where(d => d.EnUso == 0 || d.EnUso == usuario).ToList();
+    var enUso = docs.Except(libres).ToList();
+    var porMod = libres.GroupBy(d => d.ModuloNombre).OrderByDescending(g => g.Count()).ToList();
+    var sb = new StringBuilder("<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'>" + Css() + "</head><body><div class='w'><h1>Vista previa</h1>");
+    sb.Append("<div class='sub'>Centro de costo nuevo: <b>" + Esc(nombreCc) + "</b> · dónde: <b>" + (p.Donde == "encabezado" ? "encabezado" : p.Donde == "partidas" ? "partidas" : "encabezado y partidas") + "</b> · " + (p.Modo == "vacios" ? "solo donde esté vacío" : "reemplazando el que tengan") + "</div>");
+    sb.Append("<div class='card'><h2>" + libres.Count + " documento(s) se modificarán</h2>");
+    foreach (var g in porMod) sb.Append("<div>" + Esc(g.Key) + ": <b>" + g.Count() + "</b></div>");
+    if (libres.Count == 0) sb.Append("<div class='av'>No hay documentos que cambiar con estos criterios.</div>");
+    if (libres.Count > AvisoDocs) sb.Append("<div class='av'>⚠ Son más de " + AvisoDocs + " documentos. Revisa bien los criterios antes de aplicar.</div>");
+    if (excedido > 0) sb.Append("<div class='av'>⚠ Se alcanzó el máximo de " + MaxDocs + " documentos por lote; quedan " + excedido + " fuera. Aplica este lote y repite.</div>");
+    if (enUso.Count > 0) sb.Append("<div class='av'>⚠ " + enUso.Count + " documento(s) están abiertos por otro usuario y se omitirán: " + Esc(string.Join(", ", enUso.Take(8).Select(d => d.ModuloNombre + " " + d.Folio))) + (enUso.Count > 8 ? "…" : "") + "</div>");
+    sb.Append("<div class='av'>Las pólizas contables que ya se generaron conservan su propio centro de costo: este lote cambia el documento, no sus pólizas.</div></div>");
+    sb.Append("<div class='card'><h2>Primeros documentos</h2><table><tr><th>Fecha</th><th>Documento</th><th>Cliente / proveedor</th><th>Centro de costo ahora</th><th>Partidas</th></tr>");
+    foreach (var d in libres.Take(25)) sb.Append("<tr><td>" + d.Fecha + "</td><td>" + Esc(d.ModuloNombre + " " + d.Folio) + "</td><td>" + Esc(d.Entidad) + "</td><td>" + (d.Cc == 0 ? "<i>(vacío)</i>" : Esc(d.CcNombre)) + "</td><td>" + d.Partidas + "</td></tr>");
+    sb.Append("</table></div><div class='acc'><button onclick=\"enviar({accion:'volver'})\">← Cambiar criterios</button>");
+    if (libres.Count > 0) sb.Append("<button class='p' onclick=\"enviar({accion:'aplicar'})\">Aplicar a " + libres.Count + " documento(s)</button>");
+    sb.Append("</div></div><script>function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}</script></body></html>");
+    return sb.ToString();
+}
+
+string PaginaResultado(string titulo, string detalle, List<string> avisos)
+{
+    var sb = new StringBuilder("<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'>" + Css() + "</head><body><div class='w'><h1>" + Esc(titulo) + "</h1><div class='card'><div class='ok'>" + detalle + "</div>");
+    foreach (var a in avisos ?? new List<string>()) sb.Append("<div class='av'>⚠ " + Esc(a) + "</div>");
+    sb.Append("</div><div class='acc'><button class='p' onclick=\"window.chrome.webview.postMessage(JSON.stringify({accion:'cerrar'}))\">Cerrar</button></div></div></body></html>");
+    return sb.ToString();
+}
+
+Pars actual = null; string aviso = null;
+while (true)
+{
+    var r = ctx.ShowHtmlFormulario(PaginaFiltros(actual, aviso), "Asignar centro de costo", 920, 780, 0);
+    aviso = null;
+    if (!r.ContainsKey("submitted") || !(bool)r["submitted"]) return "OK";
+    string accion = S(r.ContainsKey("accion") ? r["accion"] : "");
+
+    if (accion == "deshacer")
+    {
+        var d = DeshacerUltimo();
+        if (S(d["lote"]) == "") aviso = "No tienes ningún lote por deshacer.";
+        else { try { ctx.erp.RefreshGrid(); } catch { } ctx.ShowHtmlFormulario(PaginaResultado("Lote deshecho", "Se restauró el centro de costo anterior en <b>" + d["encabezados"] + "</b> encabezado(s) y <b>" + d["partidas"] + "</b> partida(s).", new List<string> { "Solo se restaura lo que sigue teniendo el valor que puso el lote." }), "Asignar centro de costo", 640, 340, 0); }
+        continue;
+    }
+    if (accion != "previsualizar") return "OK";
+
+    actual = LeerPars(r, seleccionLista);
+    if (actual.CcNuevo <= 0) { aviso = "Elige el centro de costo nuevo."; continue; }
+    int exc;
+    var docs = BuscarDocs(actual, out exc);
+    string nombreCc = S(centros.First(c => L(c["CostCenterID"]) == actual.CcNuevo)["CostCenterName"]);
+    var rp = ctx.ShowHtmlFormulario(PaginaPrevia(actual, docs, exc, nombreCc), "Vista previa", 980, 780, 0);
+    if (!rp.ContainsKey("submitted") || !(bool)rp["submitted"]) return "OK";
+    if (S(rp["accion"]) != "aplicar") continue;
+
+    try
+    {
+        var res = Aplicar(actual, docs);
+        try { ctx.erp.RefreshGrid(); } catch { }
+        var avisos = new List<string>();
+        var omit = (List<string>)res["omitidosEnUso"];
+        if (omit.Count > 0) avisos.Add(omit.Count + " documento(s) abiertos por otro usuario se omitieron: " + string.Join(", ", omit.Take(8)) + (omit.Count > 8 ? "…" : ""));
+        avisos.Add("Si algo no es lo que esperabas, usa «Deshacer mi último lote».");
+        ctx.ShowHtmlFormulario(PaginaResultado("Listo", "Documentos procesados: <b>" + res["documentos"] + "</b> · encabezados cambiados: <b>" + res["encabezados"] + "</b> · partidas cambiadas: <b>" + res["partidas"] + "</b>", avisos), "Asignar centro de costo", 700, 380, 0);
+    }
+    catch (Exception ex) { ctx.Msg("No se aplicó nada (se revirtió todo):\n" + ex.Message, "Asignar centro de costo"); }
+    return "OK";
+}

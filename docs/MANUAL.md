@@ -1246,7 +1246,7 @@ contra las capturas nativas de `Entrenamiento` (ventas):
 | Devolución (159) → Remisión (157) | partida | `SourceDocumentItemID` (encabezado → Pedido) | ~730 partidas |
 | Nota de crédito de proveedor (187) → Factura de Compra (152) | partida | `SourceDocumentItemID` | (pocas) |
 | Entrada/Salida (202/203), OC, Cotización | encabezado | `SourceDocumentID` = 0 | capturas nativas + producción |
-| Cualquiera | encabezado | `docDocument.DestinationDocumentID` — **no se usa** (0 en todos los datos observados); no construyas lógica sobre ella | producción |
+| Cualquiera | encabezado | `docDocument.DestinationDocumentID` — el origen apunta a su destino. **Comercial la LEE:** seis vistas nativas la consultan (globalización de ventas a factura global, `vwLBSAssignarFacturaCompraAOrdenDeCompra`…) y esas mismas vistas existen en una base creada de fábrica, así que son del propio producto. **Quién la ESCRIBE de forma nativa no está demostrado:** en dos empresas de clientes (que tienen scripts propios) 97 y 221 documentos la traen (OC → Factura de compra con el vínculo en ambos lados, y varias Recepciones → una sola venta) y no se puede distinguir si lo escribió una función nativa o un script. Es el único vínculo de encabezado que admite **varios orígenes → un destino** (el `SourceDocumentID` guarda solo uno). Léela en ambos lados; no la escribas sin necesidad. Plantilla que la toma en cuenta: `TRAZABILIDAD_DOCUMENTO` | vistas nativas (base de fábrica) + datos de clientes (2026-10-02) |
 | Pago/cobro → documento | aplicación | `docDocumentPayment` (`DocumentID`, `FinancialOperationID`, `PaymentWithDocumentID`, `Amount`, `AmountPaidCurrency`, `SaldoAnterior`, `SaldoInsoluto`) | esquema; ver `MOTOR_ASIENTOS_CONTABLES.md` |
 
 Reglas para recorrerla:

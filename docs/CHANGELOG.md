@@ -8,6 +8,40 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.0.0] — 2026-10-02 — Plantillas de fábrica para publicar
+
+### Agregado
+- **Plantilla «Trazabilidad del documento»** (`instalador/scripts/TRAZABILIDAD_DOCUMENTO.ctx`, documentación en `docs/TRAZABILIDAD_DOCUMENTO.md`): muestra de dónde viene y a dónde fue cualquier documento, en las dos direcciones
+  y a través de todos los pasos (Solicitud → Orden de compra → Recepción → Factura → Pago; Cotización → Pedido → Remisión → Factura → Cobro), incluidos los módulos clonados (se clasifica por `ModuleIDBase`).
+  Junta las **cuatro** formas en que se ligan los documentos: `SourceDocumentID` y `DestinationDocumentID` del encabezado, `SourceDocumentItemID`/`SourceDocumentID` de la partida y `DeliverDocumentItemID`.
+  Si un vínculo existe **solo** por `DestinationDocumentID` (el caso de «varias órdenes → una factura», que el sistema no puede expresar con un único `SourceDocumentID`) lo dibuja discontinuo y lo marca como manual.
+  Muestra cantidades por partida, pagos/cobros aplicados, saldo y documentos cancelados; clic centra, doble clic abre el documento, exporta a CSV. Solo lee.
+- **Datos de demostración en el laboratorio** (`build/laboratorio/sembrar_demo_trazabilidad.ps1`): 3 órdenes de compra → 1 factura consolidada («DEMO TRAZ…» en `BROSLMV_DESARROLLO`) para ver el caso de varios orígenes hacia un destino sin abrir otras bases.
+- **Plantilla «PDF masivo de documentos»** (`instalador/scripts/PDF_MASIVO_DOCUMENTOS.ctx`, `docs/PDF_MASIVO_DOCUMENTOS.md`): genera el PDF de **todos** los documentos seleccionados (los botones de PDF solo procesaban el primero), con el formato HTML de cada módulo,
+  el patrón de nombre y la carpeta de «Configuración de formato». Avance con **Cancelar**, un documento con problemas no detiene a los demás, reporte final con el motivo de cada fallo, y salida como PDF sueltos, ZIP, un solo PDF unido o ZIP + unido.
+- **`BrosLMV.HtmlToPdf.exe` — modo lote** (`--lote <manifiesto> [--timeout-doc] [--unir] [--zip]`, `--soporta-lote`): una sola instancia de WebView2 para todo el lote (antes se pagaba el arranque por documento), salida línea por línea en UTF-8 y códigos de salida (0 todo bien, 7 hubo fallos).
+  Unir usa PDFsharp (MIT). Probado con 4 documentos (uno inexistente), unir y ZIP: 3 PDF, un unido de 3 páginas y un ZIP de 3 archivos en unos 3 s.
+- **Prueba de humo #37** (`build/humo/casos/37_pdf_masivo.ps1`): corre la plantilla real contra el laboratorio con el motor del repositorio: PDF sueltos, ZIP, unido, ZIP+unido y un módulo sin formato que se omite.
+- **Prueba de humo #35** (`build/humo/casos/35_trazabilidad_documento.ps1`): corre la plantilla real con `BrosLMV.Runner` contra el laboratorio (`BROSLMV_DESARROLLO`) y comprueba la cadena, la raíz, la evidencia y el documento aislado.
+
+- **Plantilla «Asignar centro de costo de forma masiva»** (`instalador/scripts/ASIGNAR_CENTRO_COSTO.ctx`, `docs/ASIGNAR_CENTRO_COSTO.md`): pone un centro de costo ya existente a muchos documentos de una vez. Elige por selección de la lista o
+  por filtros (fechas, módulos de la empresa, cliente/proveedor, título, centro actual); dónde (encabezado, partidas o ambos) y a cuáles (solo vacíos o reemplazar); vista previa; todo el lote en una transacción;
+  bitácora `zzBrosCentroCostoLog` y **Deshacer** del último lote (solo restaura lo que sigue valiendo lo que puso el lote). Omite cancelados, eliminados y documentos abiertos por otro usuario; no toca pólizas ya generadas ni cobros/pagos.
+  Medido en bases reales: el centro de costo del **encabezado** es el que usan decenas de miles de documentos; el de partida casi nadie.
+- **Prueba de humo #36** (`build/humo/casos/36_asignar_centro_costo.ps1`): corre la plantilla real contra el laboratorio (`BROSLMV_DESARROLLO`) y lo deja todo como estaba.
+- **Plantilla «Saldos y estados de cuenta»** (`instalador/scripts/SALDOS_ESTADOS_CUENTA.ctx`, `docs/SALDOS_ESTADOS_CUENTA.md`): cuentas por cobrar y por pagar con **fecha de corte** y antigüedad (vigente, 1-30, 31-60, 61-90, más de 90), documentos con saldo (doble clic abre el documento) y estado de cuenta de cada cliente o proveedor con saldo inicial y saldo corriente; exporta a CSV (Excel). El saldo se reconstruye desde los hechos (Total − pagos vigentes ≤ corte − notas de crédito aplicadas) y no de `Balance`; qué es cliente/proveedor y qué suma/resta sale de los parámetros del módulo (`DocRecipient`, `FinancialAffectation`), clones incluidos. Solo lee.
+- **Datos de demostración de saldos** (`build/laboratorio/sembrar_demo_saldos.ps1`): 10 facturas de cliente y de compra «DEMO SALDOS…» en `BROSLMV_DESARROLLO`, con fechas atrasadas, cobros y pagos aplicados (receta SQL de `AplicarCobro.ctx`).
+- **Prueba de humo #38** (`build/humo/casos/38_saldos_estados_cuenta.ps1`): el saldo reconstruido coincide documento por documento con `Balance` (corte = hoy) y con un cálculo independiente en SQL (corte anterior).
+- **Plantillas «Crear documento»** (cuatro variantes: C# y Python × ventana HTML y Windows Forms; `instalador/scripts/CREAR_DOCUMENTO_*`, `docs/CREAR_DOCUMENTO.md`): crean factura de cliente, pedido, remisión, factura de compra, orden de compra y recepción de compra con el patrón completo (perfil del módulo, partidas con descuento e impuesto, inventario según `StockAffectation`, agenda de pago rehecha desde la condición de pago) y **documentos derivados**: partir de una o varias órdenes de compra (o un pedido) con solo lo que falta por surtir **por tipo**, ligando cada partida a la suya. El núcleo y el formulario HTML se escriben una sola vez en `build/plantillas_documentos/` y `generar.py` arma las cuatro.
+- **Pruebas #39 y Python** (`build/humo/casos/39_crear_documento.ps1`, `build/plantillas_documentos/prueba_python.py`): la primera crea de verdad los seis tipos en el laboratorio y comprueba totales, vínculos, pendientes, kardex y agenda 50%-50%; la segunda ejecuta el núcleo Python con un `broslmv` simulado.
+- **Plantillas «Cobro a cliente / Pago a proveedor»** (avanzadas, no nativas; cuatro variantes C#/Python × HTML/Windows Forms; `instalador/scripts/COBRO_PAGO_*`, `docs/COBRO_PAGO.md`): aplican un cobro o un pago a uno o varios documentos con saldo con la receta de SQL directo de siete tablas (operación financiera 248/247, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo), una transacción por documento, folio con candado y saldo revalidado dentro de la transacción. No generan póliza ni manejan multimoneda; el aviso está en la ventana y en la documentación.
+- **Pruebas #40 y Python de cobros** (`build/humo/casos/40_cobro_pago.ps1`, `build/plantillas_documentos/prueba_python_pagos.py`): la primera aplica cobros y pagos de verdad en el laboratorio (parcial, liquidación en efectivo, pago a dos facturas, rechazos); la segunda ejecuta el núcleo Python con un `broslmv` simulado.
+
+### Cambiado
+- **Las plantillas ya no se escriben a mano en `Consola.cs`**: una plantilla de fábrica es cualquier script de la carpeta `scripts` cuya cabecera diga `// Plantilla: <nombre>` (en Python `# Plantilla:`, en SQL `-- Plantilla:`),
+  con `Categoria:` (carpeta del árbol) y `Documentacion:` opcionales. Agregar una plantilla ya no exige tocar el código del addon.
+- **Instaladores** (`Instalar.ps1` y el `.exe`): refrescan en cada instalación todas las plantillas que traen ese marcador. `generar_instalador.ps1` convierte la documentación de cada plantilla desde `docs/<nombre>.md`.
+- **Manual (§10.5):** `DestinationDocumentID` **no es letra muerta**: seis vistas nativas la leen (globalización de ventas y «asignar factura de compra a orden de compra»), también en una base de fábrica limpia. Quién la escribe de forma nativa **no está demostrado**: en dos empresas de clientes la traen 97 y 221 documentos, pero esas empresas tienen scripts propios. La nota anterior («no se usa») se corrigió.
 ## [2.99.0] — 2026-10-01 — SDK: funciones nativas de Comercial
 
 ### Agregado

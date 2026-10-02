@@ -21,6 +21,11 @@
 //   --html <e> --pdf <s>        headless: exporta a PDF y termina.
 //   --html <e> --preview        ventana visible con [Guardar PDF] [Imprimir] [Cerrar].
 //   --timeout <seg>             tope de tiempo total (default 45). Si se pasa -> exit 5.
+//   --lote <manifiesto.txt>     LOTE: una sola instancia de WebView2 para muchos documentos. Cada linea del manifiesto es
+//                               "<entrada.html><TAB><salida.pdf>". Un documento que falla NO detiene a los demas. Escribe una linea por
+//                               documento en la salida estandar ("n/total<TAB>OK|ERR<TAB>pdf[<TAB>motivo]"). Opciones:
+//                               --timeout-doc <seg> (default 45, por documento) · --unir <salida.pdf> (junta los PDF buenos en uno)
+//                               · --zip <salida.zip> (los comprime). Salida: 0 todos ok | 7 hubo fallos | otros como arriba.
 //
 // Codigos de salida:  0 ok | 1 argumentos | 2 navegacion fallo | 3 falta WebView2 Runtime
 //                     4 PrintToPdf fallo | 5 timeout | 6 excepcion
@@ -28,8 +33,10 @@
 // Siempre deja rastro en C:\BrosLMV\logs\htmltopdf_YYYYMMDD.txt (append).
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -47,17 +54,35 @@ namespace BrosLMV.HtmlToPdf
         private static int Main(string[] args)
         {
             _sw = Stopwatch.StartNew();
+            if (args.Length == 1 && args[0] == "--soporta-lote") { Console.WriteLine("lote=1"); return 0; }   // para que las plantillas sepan si este motor admite lotes
             string rutaHtml = null, rutaPdf = null;
             bool preview = false;
             int timeoutSeg = 45;
+            string lote = null, unirPdf = null, zipSalida = null;
+            int timeoutDocSeg = 45;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--html" && i + 1 < args.Length) rutaHtml = args[++i];
                 else if (args[i] == "--pdf" && i + 1 < args.Length) rutaPdf = args[++i];
                 else if (args[i] == "--preview") preview = true;
                 else if (args[i] == "--timeout" && i + 1 < args.Length) int.TryParse(args[++i], out timeoutSeg);
+                else if (args[i] == "--lote" && i + 1 < args.Length) lote = args[++i];
+                else if (args[i] == "--unir" && i + 1 < args.Length) unirPdf = args[++i];
+                else if (args[i] == "--zip" && i + 1 < args.Length) zipSalida = args[++i];
+                else if (args[i] == "--timeout-doc" && i + 1 < args.Length) int.TryParse(args[++i], out timeoutDocSeg);
             }
             if (timeoutSeg < 5) timeoutSeg = 5;
+
+            if (lote != null)
+            {
+                if (timeoutDocSeg < 5) timeoutDocSeg = 5;
+                Log("== inicio LOTE == manifiesto=" + lote + " unir=" + unirPdf + " zip=" + zipSalida + " timeoutDoc=" + timeoutDocSeg + "s");
+                int rcl;
+                try { rcl = EjecutarLote(lote, timeoutDocSeg, unirPdf, zipSalida); }
+                catch (Exception ex) { rcl = Salir(6, "Excepcion en el lote: " + ex); }
+                Log("== fin LOTE == rc=" + rcl + " (" + _sw.ElapsedMilliseconds + " ms)");
+                return rcl;
+            }
 
             Log("== inicio == html=" + rutaHtml + " pdf=" + rutaPdf + (preview ? " (preview)" : "") + " timeout=" + timeoutSeg + "s");
 
@@ -146,6 +171,124 @@ namespace BrosLMV.HtmlToPdf
                 Application.Run(form);
             }
             return codigoSalida;
+        }
+
+        // ---- modo lote: UN solo WebView2 para muchos documentos (arrancarlo es lo caro: ~1-2 s por documento si se hiciera uno por proceso) ----
+        private static int EjecutarLote(string manifiesto, int timeoutDocSeg, string unirPdf, string zipSalida)
+        {
+            // Las rutas llevan acentos (p. ej. "Ordenes"): la salida va en UTF-8 por un flujo propio (Console.OutputEncoding falla en una aplicacion WinExe).
+            var salida = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true };
+            var items = new List<(string html, string pdf)>();
+            if (!File.Exists(manifiesto)) return Salir(1, "No existe el manifiesto: " + manifiesto);
+            foreach (var linea in File.ReadAllLines(manifiesto, new UTF8Encoding(false)))
+            {
+                var p = linea.Split('\t');
+                if (p.Length >= 2 && p[0].Trim().Length > 0 && p[1].Trim().Length > 0) items.Add((p[0].Trim(), p[1].Trim()));
+            }
+            if (items.Count == 0) return Salir(1, "El manifiesto no tiene documentos.");
+
+            try
+            {
+                string ver = CoreWebView2Environment.GetAvailableBrowserVersionString();
+                if (string.IsNullOrEmpty(ver)) return Salir(3, "No se encontro el WebView2 Runtime en este equipo.");
+            }
+            catch (Exception ex) { return Salir(3, "No se encontro el WebView2 Runtime (" + ex.Message + ")."); }
+
+            // tope total de seguridad: cada documento puede tardar su timeout + un margen
+            int topeMs = (items.Count * timeoutDocSeg + 90) * 1000;
+            var watchdog = new System.Threading.Timer(_ => { Log("TIMEOUT del lote."); Console.Error.WriteLine("TIMEOUT del lote."); Environment.Exit(5); }, null, topeMs, System.Threading.Timeout.Infinite);
+
+            int codigo = 6, fallos = 0;
+            var buenos = new List<string>();
+            using (var form = new Form { WindowState = FormWindowState.Minimized, ShowInTaskbar = false, Width = 1, Height = 1 })
+            using (var webView = new WebView2 { Dock = DockStyle.Fill })
+            {
+                form.Controls.Add(webView);
+                form.Load += async (s, e) =>
+                {
+                    string perfilTemporal = null;
+                    try
+                    {
+                        var (entorno, perfil) = await CrearEntornoAsync();
+                        perfilTemporal = perfil;
+                        await webView.EnsureCoreWebView2Async(entorno);
+                        int n = 0;
+                        foreach (var it in items)
+                        {
+                            n++;
+                            string resultado;
+                            try
+                            {
+                                var tarea = ImprimirUnoAsync(webView, it.html, it.pdf);
+                                if (await Task.WhenAny(tarea, Task.Delay(timeoutDocSeg * 1000)) != tarea)
+                                {
+                                    try { webView.CoreWebView2.Stop(); } catch { }
+                                    fallos++; resultado = "ERR\t" + it.pdf + "\ttiempo agotado (" + timeoutDocSeg + " s)";
+                                }
+                                else
+                                {
+                                    string error = await tarea;
+                                    if (error == null) { buenos.Add(it.pdf); resultado = "OK\t" + it.pdf; }
+                                    else { fallos++; resultado = "ERR\t" + it.pdf + "\t" + error; }
+                                }
+                            }
+                            catch (Exception ex) { fallos++; resultado = "ERR\t" + it.pdf + "\t" + ex.Message; }
+                            salida.WriteLine(n + "/" + items.Count + "\t" + resultado);
+                            Log(resultado);
+                        }
+                        if (buenos.Count > 0 && !string.IsNullOrEmpty(unirPdf))
+                        {
+                            try { UnirPdf(buenos, unirPdf); salida.WriteLine("UNIDO\t" + unirPdf); }
+                            catch (Exception ex) { salida.WriteLine("ERRUNIR\t" + ex.Message); Log("ERRUNIR: " + ex); fallos++; }
+                        }
+                        if (buenos.Count > 0 && !string.IsNullOrEmpty(zipSalida))
+                        {
+                            try { ComprimirPdf(buenos, zipSalida); salida.WriteLine("ZIP\t" + zipSalida); }
+                            catch (Exception ex) { salida.WriteLine("ERRZIP\t" + ex.Message); Log("ERRZIP: " + ex); fallos++; }
+                        }
+                        codigo = fallos == 0 ? 0 : 7;
+                    }
+                    catch (Exception ex) { codigo = 6; Console.Error.WriteLine("Error en el lote: " + ex); Log("EXCEPCION lote: " + ex.Message); }
+                    finally { LimpiarPerfil(perfilTemporal); Application.Exit(); }
+                };
+                Application.Run(form);
+            }
+            watchdog.Dispose();
+            return codigo;
+        }
+
+        // Un documento del lote. Regresa null si salio bien, o el motivo del fallo.
+        private static async Task<string> ImprimirUnoAsync(WebView2 webView, string rutaHtml, string rutaPdf)
+        {
+            if (!File.Exists(rutaHtml)) return "no existe el HTML";
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(rutaPdf)));
+            if (File.Exists(rutaPdf)) { try { File.Delete(rutaPdf); } catch { } }
+            if (!await NavegarAsync(webView, rutaHtml)) return "la navegacion al HTML fallo";
+            await EsperarListoAsync(webView);
+            bool ok = await webView.CoreWebView2.PrintToPdfAsync(Path.GetFullPath(rutaPdf), AjustesImpresion(webView));
+            if (!ok) return "PrintToPdf regreso false";
+            if (!File.Exists(rutaPdf) || new FileInfo(rutaPdf).Length < 200) return "el PDF no se creo o quedo vacio";
+            return null;
+        }
+
+        private static void UnirPdf(List<string> pdfs, string salida)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(salida)));
+            using (var unido = new PdfSharp.Pdf.PdfDocument())
+            {
+                foreach (var ruta in pdfs)
+                    using (var origen = PdfSharp.Pdf.IO.PdfReader.Open(ruta, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
+                        for (int i = 0; i < origen.PageCount; i++) unido.AddPage(origen.Pages[i]);
+                unido.Save(salida);
+            }
+        }
+
+        private static void ComprimirPdf(List<string> pdfs, string salida)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(salida)));
+            if (File.Exists(salida)) File.Delete(salida);
+            using (var zip = System.IO.Compression.ZipFile.Open(salida, System.IO.Compression.ZipArchiveMode.Create))
+                foreach (var ruta in pdfs) System.IO.Compression.ZipFileExtensions.CreateEntryFromFile(zip, ruta, Path.GetFileName(ruta));
         }
 
         // ---- modo preview: ventana visible con barra [Guardar PDF] [Imprimir] [Cerrar] ----

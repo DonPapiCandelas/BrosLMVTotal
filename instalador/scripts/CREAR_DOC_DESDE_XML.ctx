@@ -2,6 +2,9 @@
 #r "C:\BrosLMV\bin\Microsoft.Web.WebView2.WinForms.dll"
 // lang: csharp
 // AppKey recomendado: CREAR_DOC_DESDE_XML
+// Plantilla: Crear documentos desde XML
+// Categoria: Documentos
+// Documentacion: CREAR_DOC_DESDE_XML.html
 // Crear documentos desde XML: convierte los CFDI recibidos seleccionados en Facturas de Compra, Gastos y demás módulos que reciben XML.
 // Selecciona los XML en la lista de Comercial y ejecuta. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
 

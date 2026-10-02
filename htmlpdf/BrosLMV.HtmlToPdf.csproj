@@ -25,6 +25,8 @@
     <!-- Misma version que ya usa src/BrosLMV.csproj para ctx.show_html: una sola version de
          WebView2 en todo el proyecto. -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+    <!-- Solo para unir los PDF de un lote en uno solo (modo lote, opcion unir). Licencia MIT. -->
+    <PackageReference Include="PDFsharp" Version="6.1.1" />
   </ItemGroup>
 
 </Project>
