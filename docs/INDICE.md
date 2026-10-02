@@ -29,6 +29,7 @@
 | [`ASIGNAR_CENTRO_COSTO.md`](ASIGNAR_CENTRO_COSTO.md) | Plantilla de fábrica: asignar un centro de costo a muchos documentos, con vista previa y deshacer |
 | [`PDF_MASIVO_DOCUMENTOS.md`](PDF_MASIVO_DOCUMENTOS.md) | Plantilla de fábrica: PDF de todos los documentos seleccionados (sueltos, ZIP o unidos) y modo lote del motor HtmlToPdf |
 | [`SALDOS_ESTADOS_CUENTA.md`](SALDOS_ESTADOS_CUENTA.md) | Plantilla de fábrica: cuentas por cobrar y por pagar con fecha de corte y antigüedad, y estados de cuenta de clientes y proveedores |
+| [`CREAR_DOCUMENTO.md`](CREAR_DOCUMENTO.md) | Plantillas de fábrica «Crear documento» (C#/Python × HTML/Windows Forms): factura, pedido, remisión, compra, OC y recepción, con documentos derivados |
 | [`CAPACIDADES.md`](CAPACIDADES.md) | Qué se puede construir: reportes, análisis, integraciones |
 | [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) | Reportes HTML rápidos y portables (`ctx.dashboard()`, `ctx.show_html`) |
 

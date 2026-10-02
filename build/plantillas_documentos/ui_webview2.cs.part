@@ -1,0 +1,38 @@
+
+// ===================================================================================================================================
+// VENTANA (WebView2). El formulario es una página HTML; al presionar «Crear documento» regresa lo capturado y aquí se crea el documento.
+// Si falla, la ventana se vuelve a abrir con lo que ya capturó la persona (no se pierde nada).
+// ===================================================================================================================================
+string PAGINA = @"__HTML_CS__";
+
+var catalogo = Catalogos(CLAVES);
+var origenes = Origenes(seleccion);
+Dictionary<string, object> inicial = null;
+string htmlPrueba = Environment.GetEnvironmentVariable("BROSLMV_DOC_HTML");           // pruebas: escribe la página (con sus datos) en un archivo y no abre ventana
+if (!string.IsNullOrEmpty(htmlPrueba))
+{
+    var d0 = new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["origenes"] = origenes, ["inicial"] = null };
+    System.IO.File.WriteAllText(htmlPrueba, PAGINA.Replace("__DATOS__", ser.Serialize(d0).Replace("</", "<\\/")), new System.Text.UTF8Encoding(false));
+    return "HTML";
+}
+while (true)
+{
+    var datos = new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["origenes"] = origenes, ["inicial"] = inicial };
+    string json = ser.Serialize(datos).Replace("</", "<\\/");
+    var r = ctx.ShowHtmlFormulario(PAGINA.Replace("__DATOS__", json), "Crear documento", 1180, 880, 0);
+    if (!r.ContainsKey("submitted") || !(bool)r["submitted"] || S(r.ContainsKey("accion") ? r["accion"] : "") != "crear") return "CANCELADO";
+    var spec = ser.Deserialize<Dictionary<string, object>>(S(r["spec"]));
+    try
+    {
+        long doc = CrearDocumento(spec);
+        int modulo = (int)tipoPor[S(spec["tipo"])]["modulo"];
+        try { ctx.erp.RefreshGrid(); } catch { }
+        try { ctx.erp.AbrirDocumento((int)doc, modulo); } catch { }
+        return "OK " + S(tipoPor[S(spec["tipo"])]["nombre"]) + " id=" + doc;
+    }
+    catch (Exception ex)
+    {
+        ctx.Msg(ex.Message, "Crear documento");
+        inicial = spec;
+    }
+}

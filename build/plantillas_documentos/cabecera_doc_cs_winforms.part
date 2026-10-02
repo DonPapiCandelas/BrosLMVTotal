@@ -1,0 +1,22 @@
+// lang: csharp
+// AppKey recomendado: CREAR_DOCUMENTO_WINFORMS
+// Plantilla: Crear documento (C# · ventana Windows Forms)
+// Categoria: Documentos
+// Documentacion: CREAR_DOCUMENTO.html
+// job: safe-offline
+// Crea un documento de Comercial desde una ventana de Windows Forms: factura de cliente, pedido, remisión, factura de compra, orden de compra o recepción.
+// Es una plantilla de EJEMPLO funcional: ábrela, pruébala, y copia lo que necesites. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+//
+// Qué enseña:
+//   · El patrón completo de creación: NuevoDocumento → perfil del módulo → AgregarArticulo × N → RecalcCompleto → AffectStockNEW (solo si el módulo lo pide) → Save → agenda de pago.
+//   · Documentos DERIVADOS: selecciona antes una o varias órdenes de compra (o un pedido) en la lista y la ventana ofrece partir de ellas con lo que aún falta por surtir.
+//   · Ventana modeless (Show, nunca ShowDialog) con try/catch en cada manejador, como exige MANUAL §10.2.
+// Para un botón de un solo tipo (por ejemplo solo «Orden de compra») deja esa fila en la tabla TIPOS y borra las demás.
+
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Globalization;
+using System.Linq;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;

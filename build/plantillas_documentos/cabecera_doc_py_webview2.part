@@ -1,0 +1,15 @@
+# lang: python
+# timeout: 1800
+# AppKey recomendado: CREAR_DOCUMENTO_PYTHON_WEBVIEW2
+# Plantilla: Crear documento (Python · ventana HTML)
+# Categoria: Documentos
+# Documentacion: CREAR_DOCUMENTO.html
+# Crea un documento de Comercial desde una ventana HTML (WebView2): factura de cliente, pedido, remisión, factura de compra, orden de compra o recepción.
+# Es una plantilla de EJEMPLO funcional: ábrela, pruébala, y copia lo que necesites. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+#
+# Qué enseña:
+#   · El patrón completo de creación: NuevoDocumento → perfil del módulo → AgregarArticulo × N → RecalcCompleto → AffectStockNEW (solo si el módulo lo pide) → Save → agenda de pago.
+#   · Documentos DERIVADOS: selecciona antes una o varias órdenes de compra (o un pedido) en la lista y la ventana ofrece partir de ellas con lo que aún falta por surtir.
+#   · ctx.show_html_formulario: una ventana HTML de dos vías que devuelve lo capturado (el timeout de arriba es del script completo: la persona puede tardar).
+# Para un botón de un solo tipo (por ejemplo solo «Orden de compra») deja esa fila en la tabla TIPOS y borra las demás.
+# Nota: el cuerpo de la página (HTML) es idéntico al de la plantilla de C#; la diferencia está solo en el lenguaje que crea el documento.

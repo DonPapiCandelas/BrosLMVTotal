@@ -1,0 +1,234 @@
+var ci = CultureInfo.InvariantCulture;
+var ser = new JavaScriptSerializer { MaxJsonLength = 128 * 1024 * 1024 };
+
+string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v, ci);
+long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v, ci); } catch { return 0; } }
+int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
+double D(object v) { try { return v == null || v is DBNull ? 0.0 : Convert.ToDouble(v, ci); } catch { return 0.0; } }
+bool Nulo(object v) => v == null || v is DBNull;
+string Sq(string s) => (s ?? "").Replace("'", "''");                       // texto para un literal SQL
+string Num(double d) => d.ToString("0.########", ci);                       // número para un literal SQL (siempre con punto)
+
+int empresa = ctx.erp.OwnedBusinessEntityId;
+
+// ===================================================================================================================================
+// TIPOS DE DOCUMENTO. Cada fila es el «perfil» que Comercial espera de ese módulo (confirmado contra capturas del documento nativo).
+// Para quitar un tipo del formulario borra su fila; para agregar otro, copia una fila y ajusta sus datos. Nada más depende de esta tabla.
+//   clave · nombre · módulo · lado (C = cliente, P = proveedor) · de dónde sale el precio (venta/compra) · perfil SQL de encabezado ·
+//   ¿lleva condición de pago? · ¿lleva fecha de entrega? · cómo se liga al origen (""/cabecera/partida/entrega) · módulo de origen
+// ===================================================================================================================================
+Dictionary<string, object> T(string clave, string nombre, int modulo, string lado, string precio, string perfil, bool condicion, bool entrega, string vinculo, int origen) =>
+    new Dictionary<string, object> { ["clave"] = clave, ["nombre"] = nombre, ["modulo"] = modulo, ["lado"] = lado, ["precio"] = precio, ["perfil"] = perfil,
+        ["condicion"] = condicion, ["entrega"] = entrega, ["vinculo"] = vinculo, ["origen"] = origen };
+var TIPOS = new List<Dictionary<string, object>>
+{
+    T("factura_cliente", "Factura de cliente",   21,  "C", "venta",  "DepotIDFrom=0, StatusDeliveryID=0",                                  true,  false, "",         0),
+    T("pedido",          "Pedido de cliente",    967, "C", "venta",  "DepotIDFrom=0, StatusDeliveryID=3, StatusPaidID=0",                  true,  true,  "",         0),
+    T("remision",        "Remisión (entrega)",   157, "C", "venta",  "DepotIDFrom=0, PaymentTermID=0, StatusDeliveryID=0",                 false, true,  "cabecera", 967),
+    T("factura_compra",  "Factura de compra",    152, "P", "compra", "DepotIDFrom=0, StatusPaidID=3",                                      true,  false, "partida",  183),
+    T("orden_compra",    "Orden de compra",      183, "P", "compra", "DepotIDFrom=0, UserID=0",                                            true,  true,  "",         0),
+    T("recepcion",       "Recepción de compra",  184, "P", "compra", "DepotIDFrom=0, UserID=0, PaymentTermID=0, StatusDeliveryID=0",        false, true,  "entrega",  183),
+};
+var tipoPor = TIPOS.ToDictionary(t => (string)t["clave"]);
+
+// ---------- Catálogos para el formulario ----------
+Dictionary<string, object> Catalogos(IEnumerable<string> claves)
+{
+    var cat = new Dictionary<string, object>();
+    cat["almacenes"] = ctx.Query("SELECT DepotID AS id, DepotName AS nombre FROM orgDepot WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = " + empresa + " ORDER BY DepotName")
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
+    string ent(string tabla) =>
+        "SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc FROM " + tabla + " x " +
+        "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID " +
+        "WHERE be.DeletedOn IS NULL ORDER BY nombre";
+    Func<string, List<Dictionary<string, object>>> lista = tabla => ctx.Query(ent(tabla))
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["rfc"] = S(r["rfc"]) }).ToList();
+    var lados = TIPOS.Where(t => claves.Contains((string)t["clave"])).Select(t => (string)t["lado"]).Distinct().ToList();
+    cat["clientes"] = lados.Contains("C") ? lista("orgCustomer") : new List<Dictionary<string, object>>();
+    cat["proveedores"] = lados.Contains("P") ? lista("orgSupplier") : new List<Dictionary<string, object>>();
+    cat["condiciones"] = ctx.Query("SELECT PaymentTermID AS id, PaymentTermName AS nombre, Sales AS v, Buys AS c FROM engPaymentTerm WHERE DeletedOn IS NULL ORDER BY PaymentTermID")
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["venta"] = I(r["v"]) == 1, ["compra"] = I(r["c"]) == 1 }).ToList();
+    cat["impuestos"] = ctx.Query("SELECT t.TaxTypeID AS id, t.TaxTypeName AS nombre, ISNULL(tp.IVA_Perc,0) AS perc FROM vwLBSTaxType t LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = t.TaxTypeID ORDER BY t.TaxTypeName")
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["perc"] = D(r["perc"]) }).ToList();
+    // Productos: lo mínimo para buscar y poner precio. Tope de seguridad: un catálogo enorme se carga por completo pero se avisa.
+    cat["productos"] = ctx.Query("SELECT TOP 30000 ProductID AS id, ISNULL(ProductKey,'') AS clave, ProductName AS nombre, ISNULL(Unit,'') AS unidad, ISNULL(TaxTypeID,0) AS imp, " +
+        "ISNULL(PriceList,0) AS venta, ISNULL(CostPrice,0) AS costo FROM orgProduct WHERE DeletedOn IS NULL ORDER BY ProductName")
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["clave"] = S(r["clave"]), ["nombre"] = S(r["nombre"]), ["unidad"] = S(r["unidad"]), ["imp"] = I(r["imp"]),
+            ["venta"] = D(r["venta"]), ["costo"] = D(r["costo"]) }).ToList();
+    return cat;
+}
+
+// ---------- Documentos de origen (los que estaban seleccionados al lanzar el botón) ----------
+// Para cada documento seleccionado cuyo módulo sirve de origen de algún tipo: sus partidas con lo que AÚN falta por surtir PARA CADA TIPO DERIVADO
+// (una orden de compra puede estar toda recibida y aún sin facturar). «Lo ya surtido» se cuenta por la columna de vínculo propia de cada tipo:
+//   Recepción → DeliverDocumentItemID · Factura de compra → SourceDocumentItemID · Remisión → por producto, dentro de las remisiones que apuntan al pedido (SourceDocumentID).
+List<Dictionary<string, object>> Origenes(IList<long> ids)
+{
+    var res = new List<Dictionary<string, object>>();
+    if (ids == null || ids.Count == 0) return res;
+    var docs = ctx.Query("SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.BusinessEntityID, d.DepotID, ISNULL(be.CommercialName, be.OfficialName) AS Entidad FROM docDocument d " +
+        "LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID WHERE d.DocumentID IN (" + string.Join(",", ids.Select(x => x.ToString(ci))) + ") " +
+        "AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND d.OwnedBusinessEntityID = " + empresa);
+    foreach (var d in docs)
+    {
+        int mod = I(d["ModuleID"]); long id = L(d["DocumentID"]);
+        var derivados = TIPOS.Where(t => (int)t["origen"] == mod).ToList();
+        if (derivados.Count == 0) continue;
+        var porTipo = new Dictionary<string, object>();
+        foreach (var t in derivados)
+        {
+            string v = (string)t["vinculo"]; int mDer = (int)t["modulo"];
+            string sql;
+            if (v == "cabecera")
+                sql = "SELECT MIN(i.DocumentItemID) AS Item, i.ProductID, ISNULL(MAX(p.ProductKey),'') AS Clave, MAX(i.Description) AS Descr, ISNULL(MAX(i.Unit),'') AS Unidad, " +
+                      "SUM(i.Quantity) - ISNULL((SELECT SUM(x.Quantity) FROM docDocumentItem x JOIN docDocument xd ON xd.DocumentID = x.DocumentID WHERE x.DeletedOn IS NULL AND xd.DeletedOn IS NULL AND xd.CancelledOn IS NULL " +
+                      "  AND xd.SourceDocumentID = " + id + " AND xd.ModuleID = " + mDer + " AND x.ProductID = i.ProductID), 0) AS Pend, MAX(ISNULL(i.UnitPrice,0)) AS Precio, MAX(ISNULL(i.DiscountPerc,0)) AS Descuento, MAX(ISNULL(i.TaxTypeID,0)) AS Imp " +
+                      "FROM docDocumentItem i LEFT JOIN orgProduct p ON p.ProductID = i.ProductID WHERE i.DocumentID = " + id + " AND i.DeletedOn IS NULL AND i.ProductID > 0 GROUP BY i.ProductID ORDER BY MIN(i.DocumentItemID)";
+            else
+            {
+                string col = v == "entrega" ? "x.DeliverDocumentItemID" : "x.SourceDocumentItemID";
+                sql = "SELECT i.DocumentItemID AS Item, i.ProductID, ISNULL(p.ProductKey,'') AS Clave, i.Description AS Descr, ISNULL(i.Unit,'') AS Unidad, " +
+                      "i.Quantity - ISNULL((SELECT SUM(x.Quantity) FROM docDocumentItem x JOIN docDocument xd ON xd.DocumentID = x.DocumentID WHERE x.DeletedOn IS NULL AND xd.DeletedOn IS NULL AND xd.CancelledOn IS NULL " +
+                      "  AND " + col + " = i.DocumentItemID AND xd.ModuleID = " + mDer + "), 0) AS Pend, ISNULL(i.UnitPrice,0) AS Precio, ISNULL(i.DiscountPerc,0) AS Descuento, ISNULL(i.TaxTypeID,0) AS Imp " +
+                      "FROM docDocumentItem i LEFT JOIN orgProduct p ON p.ProductID = i.ProductID WHERE i.DocumentID = " + id + " AND i.DeletedOn IS NULL AND i.ProductID > 0 ORDER BY i.DocumentItemID";
+            }
+            var items = new List<Dictionary<string, object>>();
+            foreach (var p in ctx.Query(sql))
+            {
+                double pend = D(p["Pend"]);
+                if (pend <= 0.00001) continue;
+                items.Add(new Dictionary<string, object> { ["origenItem"] = L(p["Item"]), ["id"] = I(p["ProductID"]), ["clave"] = S(p["Clave"]), ["nombre"] = S(p["Descr"]),
+                    ["unidad"] = S(p["Unidad"]), ["cant"] = pend, ["precio"] = D(p["Precio"]), ["desc"] = Math.Round(D(p["Descuento"]) * 100.0, 4), ["imp"] = I(p["Imp"]) });
+            }
+            porTipo[(string)t["clave"]] = items;
+        }
+        res.Add(new Dictionary<string, object> { ["id"] = id, ["modulo"] = mod, ["folio"] = (S(d["FolioPrefix"]) + S(d["Folio"])).Trim(), ["entidad"] = I(d["BusinessEntityID"]),
+            ["entidadNombre"] = S(d["Entidad"]), ["almacen"] = I(d["DepotID"]), ["partidasPor"] = porTipo });
+    }
+    return res;
+}
+
+// ---------- Agenda de pago ----------
+// NuevoDocumento deja una parcialidad «de relleno» con importe 0; después de guardar hay que rehacerla con el total real y la condición de pago elegida.
+// Cada renglón de engPaymentTermDetail vence en (fecha + PaymentUnit × días del periodo) y lleva su porcentaje; el último absorbe el redondeo.
+void ArmarAgenda(int doc, int condicion, DateTime fecha)
+{
+    double total = D(ctx.Scalar("SELECT Total FROM docDocument WHERE DocumentID=" + doc));
+    var det = ctx.Query("SELECT d.PaymentPerc, d.PaymentUnit, ISNULL(p.Dias,1) AS Dias, ISNULL(d.ForceEndOfMonth,0) AS FinMes FROM engPaymentTermDetail d " +
+        "LEFT JOIN vwcboPaymentTermDays p ON p.PaymentPeriodID = d.PaymentPeriodID WHERE d.PaymentTermID = " + condicion + " ORDER BY d.PaymentTermDetailID");
+    if (det.Count == 0) return;
+    ctx.NonQuery("UPDATE docDocumentPaymentAgenda SET DeletedOn=GETDATE(), DeletedBy=" + ctx.erp.UserId + " WHERE DeletedOn IS NULL AND DocumentID=" + doc);
+    double acumulado = 0; int n = 0;
+    foreach (var d in det)
+    {
+        n++;
+        DateTime vence = fecha.AddDays(D(d["PaymentUnit"]) * D(d["Dias"]));
+        if (I(d["FinMes"]) == 1) vence = new DateTime(vence.Year, vence.Month, DateTime.DaysInMonth(vence.Year, vence.Month));
+        double perc = D(d["PaymentPerc"]);
+        double monto = n == det.Count ? Math.Round(total - acumulado, 2) : Math.Round(total * perc / 100.0, 2);
+        acumulado += monto;
+        ctx.NonQuery("INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" + doc + ", '" +
+            vence.ToString("yyyyMMdd") + "', " + Num(perc) + ", " + Num(monto) + ", " + n + ", GETDATE(), " + ctx.erp.UserId + ")");
+    }
+}
+
+// ---------- Crear el documento ----------
+// «spec»: tipo, almacen, entidad, condicion, fecha (yyyy-MM-dd), entrega (yyyy-MM-dd), titulo, comentarios, origenes [ids], partidas [{id, cant, precio, desc (0-100), imp, origenItem}]
+// Regresa el DocumentID. Si algo no es válido lanza una excepción con un mensaje que se le puede mostrar a la persona.
+long CrearDocumento(Dictionary<string, object> spec)
+{
+    string clave = S(spec["tipo"]);
+    if (!tipoPor.ContainsKey(clave)) throw new Exception("Tipo de documento desconocido: " + clave);
+    var t = tipoPor[clave];
+    int modulo = (int)t["modulo"]; string vinculo = (string)t["vinculo"]; bool venta = (string)t["precio"] == "venta";
+    int almacen = I(spec["almacen"]), entidad = I(spec["entidad"]);
+    if (almacen <= 0) throw new Exception("Elige el almacén.");
+    if (entidad <= 0) throw new Exception("Elige el " + ((string)t["lado"] == "C" ? "cliente" : "proveedor") + ".");
+    var partidas = ((System.Collections.IEnumerable)spec["partidas"]).Cast<object>().Select(o => (Dictionary<string, object>)o).ToList();
+    if (partidas.Count == 0) throw new Exception("Agrega al menos una partida.");
+    int n = 0;
+    foreach (var p in partidas)
+    {
+        n++;
+        if (I(p["id"]) <= 0) throw new Exception("La partida " + n + " no tiene producto.");
+        if (D(p["cant"]) <= 0) throw new Exception("La partida " + n + " debe tener cantidad mayor a cero.");
+        if (D(p["precio"]) < 0) throw new Exception("La partida " + n + " tiene precio negativo.");
+        double dsc = D(p["desc"]); if (dsc < 0 || dsc > 100) throw new Exception("El descuento de la partida " + n + " debe estar entre 0 y 100.");
+    }
+    var origenes = spec.ContainsKey("origenes") && spec["origenes"] != null ? ((System.Collections.IEnumerable)spec["origenes"]).Cast<object>().Select(o => L(o)).Where(x => x > 0).ToList() : new List<long>();
+    if (vinculo == "" && origenes.Count > 0) origenes.Clear();
+
+    int doc = ctx.erp.NuevoDocumento(modulo, almacen, entidad);
+    if (doc <= 0 || !string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("No se pudo crear el documento: " + ctx.erp.LastError);
+
+    try
+    {
+    // Encabezado: perfil del módulo + lo que capturó la persona
+    var set = new List<string> { (string)t["perfil"], "CampaignID=NULL", "CostCenterID=NULL", "ProjectID=NULL" };
+    if ((bool)t["condicion"]) set.Add("PaymentTermID=" + I(spec["condicion"]));
+    string fecha = S(spec.ContainsKey("fecha") ? spec["fecha"] : ""); if (fecha.Length >= 10) set.Add("DateDocument='" + Sq(fecha.Substring(0, 10).Replace("-", "")) + "'");
+    string entrega = S(spec.ContainsKey("entrega") ? spec["entrega"] : ""); if ((bool)t["entrega"] && entrega.Length >= 10) set.Add("DateDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "', DateDocDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "'");
+    string titulo = S(spec.ContainsKey("titulo") ? spec["titulo"] : ""); if (titulo != "") set.Add("Title=N'" + Sq(titulo) + "'");
+    string coment = S(spec.ContainsKey("comentarios") ? spec["comentarios"] : ""); if (coment != "") set.Add("Comments=N'" + Sq(coment) + "'");
+    if (origenes.Count > 0) set.Add("SourceDocumentID=" + origenes[0]);          // el sistema solo guarda UN origen en el encabezado; cada partida liga el suyo
+    ctx.NonQuery("UPDATE docDocument SET " + string.Join(", ", set) + " WHERE DocumentID=" + doc);
+
+    foreach (var p in partidas)
+    {
+        int pid = I(p["id"]); double cant = D(p["cant"]), precio = D(p["precio"]); int imp = I(p["imp"]); long origenItem = p.ContainsKey("origenItem") ? L(p["origenItem"]) : 0;
+        // Costo: compra → el precio pactado; remisión → costo promedio del producto; el resto de ventas no lleva costo
+        double costo = -1;
+        if (!venta) costo = precio;
+        else if (modulo == 157) costo = D(ctx.Scalar("SELECT ISNULL(MAX(TOT_Cost),0) FROM orgProductCostComercial WHERE ProductID=" + pid + " AND DepotID=" + almacen));
+        int item = ctx.erp.AgregarArticulo(doc, pid, cant, precio, costo, imp > 0 ? imp : -1, D(p["desc"]) / 100.0, vinculo == "entrega" ? (int)origenItem : 0);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("No se pudo agregar la partida de «" + S(p.ContainsKey("nombre") ? p["nombre"] : pid) + "»: " + ctx.erp.LastError);
+        if (vinculo == "partida" && origenItem > 0) ctx.NonQuery("UPDATE docDocumentItem SET SourceDocumentItemID=" + origenItem + " WHERE DocumentItemID=" + item);
+    }
+    ctx.erp.RecalcCompleto(doc);
+    // ¿Mueve o compromete inventario? Lo decide el módulo (StockAffectation ≠ 0), no el tipo de documento
+    if (I(ctx.Scalar("SELECT ISNULL(MAX(TRY_CONVERT(int, Value)),0) FROM engModuleParameter WHERE ParameterKey='StockAffectation' AND ModuleID=" + modulo)) != 0)
+    {
+        ctx.erp.AffectStockNEW(doc);
+        if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("AffectStockNEW: " + ctx.erp.LastError);
+    }
+    ctx.erp.Save(doc);
+    if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("Save: " + ctx.erp.LastError);
+    if ((bool)t["condicion"])
+    {
+        DateTime fechaBase = DateTime.Today; if (fecha.Length >= 10) DateTime.TryParse(fecha.Substring(0, 10), ci, DateTimeStyles.None, out fechaBase);
+        ArmarAgenda(doc, I(spec["condicion"]), fechaBase);                                                   // agenda de pago con los montos reales
+        try { ctx.erp.UpdateDocumentPaidInfo(doc); } catch { }                                                // saldo y balance
+    }
+    if (vinculo != "") { try { ctx.erp.UpdateStatusDelivery(doc); } catch { } }                       // estado de entrega del documento de origen
+    return doc;
+    }
+    catch (Exception ex)
+    {
+        // El documento ya existe como borrador: se avisa su número para que no quede perdido
+        throw new Exception(ex.Message + "\n\nQuedó un documento incompleto (id " + doc + "): elimínalo o cancélalo desde Comercial.");
+    }
+}
+
+// ---------- Qué documentos seleccionados sirven de origen ----------
+string[] CLAVES = TIPOS.Select(t => (string)t["clave"]).ToArray();
+var seleccion = new List<long>();
+try { var sel = ctx.GetSelectedIds(); if (sel != null) seleccion.AddRange(sel.Select(x => (long)x)); } catch { }
+
+// ---------- Pruebas automáticas (sin ventanas): BROSLMV_DOC_TEST = JSON con el «spec» de un documento; el resultado va al archivo BROSLMV_DOC_OUT ----------
+string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_DOC_TEST");
+if (!string.IsNullOrEmpty(modoPrueba))
+{
+    var spec = ser.Deserialize<Dictionary<string, object>>(modoPrueba);
+    if (spec.ContainsKey("seleccion")) seleccion = ((System.Collections.IEnumerable)spec["seleccion"]).Cast<object>().Select(o => L(o)).ToList();
+    string resultado;
+    if (spec.ContainsKey("pendientes") && (bool)spec["pendientes"]) resultado = ser.Serialize(Origenes(seleccion));
+    else if (spec.ContainsKey("catalogo") && (bool)spec["catalogo"]) resultado = ser.Serialize(Catalogos(CLAVES));
+    else
+    {
+        try { resultado = "DOC " + CrearDocumento(spec); }
+        catch (Exception ex) { resultado = "ERROR " + ex.Message; }
+    }
+    string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_DOC_OUT");
+    if (!string.IsNullOrEmpty(salidaPrueba)) System.IO.File.WriteAllText(salidaPrueba, resultado, new System.Text.UTF8Encoding(false));
+    return resultado;
+}

@@ -1,0 +1,34 @@
+# lang: python
+# timeout: 1800
+# AppKey recomendado: CREAR_DOCUMENTO_PYTHON_WINFORMS
+# Plantilla: Crear documento (Python · ventana Windows Forms)
+# Categoria: Documentos
+# Documentacion: CREAR_DOCUMENTO.html
+# Crea un documento de Comercial desde una ventana de Windows Forms (pythonnet): factura de cliente, pedido, remisión, factura de compra, orden de compra o recepción.
+# Es una plantilla de EJEMPLO funcional: ábrela, pruébala, y copia lo que necesites. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+#
+# Qué enseña:
+#   · El patrón completo de creación: NuevoDocumento → perfil del módulo → AgregarArticulo × N → RecalcCompleto → AffectStockNEW (solo si el módulo lo pide) → Save → agenda de pago.
+#   · Documentos DERIVADOS: selecciona antes una o varias órdenes de compra (o un pedido) en la lista y la ventana ofrece partir de ellas con lo que aún falta por surtir.
+#   · Windows Forms desde Python (pythonnet). Python corre en su propio proceso: la ventana es automáticamente independiente y un error nunca tumba Comercial.
+# Para un botón de un solo tipo (por ejemplo solo «Orden de compra») deja esa fila en la tabla TIPOS y borra las demás.
+
+import pythonnet
+pythonnet.load("netfx")
+
+import clr
+clr.AddReference("System.Windows.Forms")
+clr.AddReference("System.Drawing")
+
+import System
+import System.Threading
+from System.Drawing import Point, Size, Color, Font, FontStyle, ContentAlignment
+from System.Windows.Forms import (
+    Form, FormStartPosition, Label, TextBox, ComboBox, ComboBoxStyle, Button, FlatStyle, DataGridView,
+    DataGridViewTextBoxColumn, DataGridViewComboBoxColumn, DataGridViewContentAlignment, DataGridViewAutoSizeColumnsMode,
+    DataGridViewSelectionMode, DateTimePicker, DateTimePickerFormat, ListBox, CheckedListBox, CheckState, BorderStyle,
+    Cursors, Keys, MessageBox, MessageBoxButtons, MessageBoxIcon,
+)
+
+System.Threading.Thread.CurrentThread.SetApartmentState(System.Threading.ApartmentState.STA)
+
