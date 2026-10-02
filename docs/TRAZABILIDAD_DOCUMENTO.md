@@ -31,7 +31,7 @@ Comercial no guarda la relación en un solo lugar. La plantilla lee las cuatro y
 | Evidencia | Columna | Qué significa |
 |---|---|---|
 | **Source** | `docDocument.SourceDocumentID` | El documento de origen. Es lo que escribe el sistema al convertir un documento en otro. Solo admite **un** origen por documento. |
-| **Destination** | `docDocument.DestinationDocumentID` | El documento destino. El sistema la usa en la **globalización de ventas** y en **«asignar factura de compra a orden de compra»**; además muchos scripts y personas la llenan a mano. |
+| **Destination** | `docDocument.DestinationDocumentID` | El documento destino. Comercial la **lee** en la **globalización de ventas** y en **«asignar factura de compra a orden de compra»**; además muchos scripts y personas la llenan a mano. |
 | **Partida** | `docDocumentItem.SourceDocumentItemID` (y `docDocumentItem.SourceDocumentID`) | La partida del documento nuevo apunta a la partida del origen. Es el vínculo que sí admite **varios** orígenes para un mismo destino. |
 | **Entrega** | `docDocumentItem.DeliverDocumentItemID` | La «entrega» de una orden de compra: así se liga la **Recepción** a su orden. |
 

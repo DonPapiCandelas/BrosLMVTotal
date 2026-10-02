@@ -28,8 +28,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 - **Las plantillas ya no se escriben a mano en `Consola.cs`**: una plantilla de fábrica es cualquier script de la carpeta `scripts` cuya cabecera diga `// Plantilla: <nombre>` (en Python `# Plantilla:`, en SQL `-- Plantilla:`),
   con `Categoria:` (carpeta del árbol) y `Documentacion:` opcionales. Agregar una plantilla ya no exige tocar el código del addon.
 - **Instaladores** (`Instalar.ps1` y el `.exe`): refrescan en cada instalación todas las plantillas que traen ese marcador. `generar_instalador.ps1` convierte la documentación de cada plantilla desde `docs/<nombre>.md`.
-- **Manual (§10.5):** `DestinationDocumentID` **sí se usa**. Medido en dos empresas reales: 97 y 221 documentos la traen, y seis vistas nativas la leen (globalización de ventas y «asignar factura de compra a orden de compra»).
-  La nota anterior («no se usa») se corrigió.
+- **Manual (§10.5):** `DestinationDocumentID` **no es letra muerta**: seis vistas nativas la leen (globalización de ventas y «asignar factura de compra a orden de compra»), también en una base de fábrica limpia. Quién la escribe de forma nativa **no está demostrado**: en dos empresas de clientes la traen 97 y 221 documentos, pero esas empresas tienen scripts propios. La nota anterior («no se usa») se corrigió.
 
 ## [2.98.0] — 2026-09-29 — Manual y catálogo del SDK
 

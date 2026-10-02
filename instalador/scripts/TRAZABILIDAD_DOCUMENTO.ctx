@@ -9,7 +9,7 @@
 //
 // Lee las cuatro formas en que Comercial (y los scripts) ligan documentos, y las junta en un solo mapa:
 //   · SourceDocumentID del encabezado         (el documento de origen; lo que escribe el sistema nativo)
-//   · DestinationDocumentID del encabezado    (el documento destino; lo usan la globalización, «asignar factura a OC» y los scripts/personas
+//   · DestinationDocumentID del encabezado    (el documento destino; lo leen la globalización, «asignar factura a OC» y lo llenan scripts/personas
 //                                              cuando de VARIOS orígenes sale UN solo documento: el sistema solo guarda UN SourceDocumentID)
 //   · SourceDocumentItemID / SourceDocumentID por partida
 //   · DeliverDocumentItemID por partida       (la «entrega» de una Orden de Compra: así liga la Recepción)
