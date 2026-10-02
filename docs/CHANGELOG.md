@@ -8,7 +8,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
-## [2.100.0] — 2026-10-02 — Plantillas de fábrica: trazabilidad
+## [3.0.0] — 2026-10-02 — Plantillas de fábrica para publicar
 
 ### Agregado
 - **Plantilla «Trazabilidad del documento»** (`instalador/scripts/TRAZABILIDAD_DOCUMENTO.ctx`, documentación en `docs/TRAZABILIDAD_DOCUMENTO.md`): muestra de dónde viene y a dónde fue cualquier documento, en las dos direcciones
