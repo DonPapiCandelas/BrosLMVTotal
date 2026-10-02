@@ -10,6 +10,8 @@
 > **P1** = siguiente trabajo con valor real demostrado; **P2** = útil, sin urgencia;
 > **Ideas** = sin compromiso ni evidencia suficiente todavía.
 > Última revisión: 2026-09-29 (v2.98.0; avance en 1.8).
+>
+> **Plan de publicación (2026-10-02):** plantillas para todos (trazabilidad, PDF masivo, centros de costo, reportes de saldos, ejemplos de cada documento) y lanzamiento: [`PLAN_PUBLICACION.md`](PLAN_PUBLICACION.md).
 
 ## P0 — Ahora
 
