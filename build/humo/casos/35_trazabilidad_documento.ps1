@@ -1,11 +1,11 @@
-# Caso de humo #35: la plantilla de fabrica TRAZABILIDAD_DOCUMENTO.ctx corriendo headless (BrosLMV.Runner) contra el sandbox.
+# Caso de humo #35: la plantilla de fabrica TRAZABILIDAD_DOCUMENTO.ctx corriendo headless (BrosLMV.Runner) contra el laboratorio (BROSLMV_DESARROLLO, la base de pruebas oficial).
 # Registra la PLANTILLA REAL (instalador\scripts\TRAZABILIDAD_DOCUMENTO.ctx, la misma que se instala) como boton de prueba, y con
 # BROSLMV_TRAZA_DOC / BROSLMV_TRAZA_OUT la corre sin ventanas para que escriba su modelo en JSON. Es SOLO LECTURA: no crea ni cambia nada.
 # Comprueba: (1) un documento con vinculos reconstruye su cadena y reconoce su evidencia, (2) un documento aislado da 1 nodo y 0 aristas,
 # (3) un documento inexistente no revienta. Devuelve 0 si paso, 1 si fallo.
 param(
     [string]$Server   = "localhost\compac",
-    [string]$Database = "ComercialSP",
+    [string]$Database = "BROSLMV_DESARROLLO",
     [string]$RunnerExe = (Join-Path $PSScriptRoot "..\..\..\runner\bin\Release\BrosLMV.Runner.exe")
 )
 $ErrorActionPreference = "Continue"

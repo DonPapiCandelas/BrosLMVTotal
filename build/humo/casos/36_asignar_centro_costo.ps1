@@ -1,11 +1,11 @@
-# Caso de humo #36: la plantilla de fabrica ASIGNAR_CENTRO_COSTO.ctx corriendo headless (BrosLMV.Runner) contra el sandbox.
+# Caso de humo #36: la plantilla de fabrica ASIGNAR_CENTRO_COSTO.ctx corriendo headless (BrosLMV.Runner) contra el laboratorio (BROSLMV_DESARROLLO, la base de pruebas oficial).
 # Registra la PLANTILLA REAL (la que se instala) y la corre sin ventanas con BROSLMV_CC_TEST (JSON) / BROSLMV_CC_OUT.
 # ESCRIBE en el sandbox (CostCenterID de 4 documentos y de sus partidas, y 2 centros de costo de prueba) y lo deja todo como estaba.
 # Comprueba: vista previa, aplicar solo-vacios, que repetir no cambia nada, reemplazar, deshacer en orden inverso, partidas,
 # que un documento abierto por otro usuario se omite y que la bitacora registra cada lote. Devuelve 0 si paso, 1 si fallo.
 param(
     [string]$Server   = "localhost\compac",
-    [string]$Database = "ComercialSP",
+    [string]$Database = "BROSLMV_DESARROLLO",
     [string]$RunnerExe = (Join-Path $PSScriptRoot "..\..\..\runner\bin\Release\BrosLMV.Runner.exe")
 )
 $ErrorActionPreference = "Continue"

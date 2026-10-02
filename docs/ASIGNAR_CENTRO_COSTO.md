@@ -49,7 +49,7 @@ solo aparece en muy pocos documentos de un solo módulo. Por eso «Encabezado» 
 - **Empresa activa:** el catálogo de centros, los módulos y los documentos salen de `OwnedBusinessEntityID`; nada va escrito a mano.
 - **Transacción y bitácora:** nada queda a medias y todo se puede deshacer.
 - **Conexión propia** (`ctx.OpenConn`) para escribir por lotes; `RefreshGrid` una sola vez al final.
-- **Probada:** `build/humo/casos/36_asignar_centro_costo.ps1` corre la plantilla real contra el sandbox (vista previa, solo-vacíos, repetir, reemplazar, documento en uso, deshacer en orden inverso, partidas) y lo deja todo como estaba.
+- **Probada:** `build/humo/casos/36_asignar_centro_costo.ps1` corre la plantilla real contra el laboratorio (`BROSLMV_DESARROLLO`) (vista previa, solo-vacíos, repetir, reemplazar, documento en uso, deshacer en orden inverso, partidas) y lo deja todo como estaba.
 
 ## Para desarrolladores
 
