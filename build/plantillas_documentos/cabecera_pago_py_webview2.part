@@ -1,0 +1,13 @@
+# lang: python
+# timeout: 1800
+# AppKey recomendado: COBRO_PAGO_PYTHON_WEBVIEW2
+# Plantilla: Cobro a cliente / Pago a proveedor (Python · ventana HTML)
+# Categoria: Tesorería
+# Documentacion: COBRO_PAGO.html
+# ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un cobro a cliente o un pago a proveedor y lo aplica a uno o varios documentos con saldo.
+# Comercial no ofrece una función para esto: la plantilla escribe directo en las tablas de Tesorería (una transacción por documento) y NO genera la póliza contable.
+# Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+#
+# Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
+# el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
+# Nota: el cuerpo de la página (HTML) es idéntico al de la plantilla de C#; la diferencia está solo en el lenguaje que aplica el movimiento.

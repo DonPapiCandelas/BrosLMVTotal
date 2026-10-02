@@ -1,16 +1,3 @@
-var ci = CultureInfo.InvariantCulture;
-var ser = new JavaScriptSerializer { MaxJsonLength = 128 * 1024 * 1024 };
-
-string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v, ci);
-long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v, ci); } catch { return 0; } }
-int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
-double D(object v) { try { return v == null || v is DBNull ? 0.0 : Convert.ToDouble(v, ci); } catch { return 0.0; } }
-bool Nulo(object v) => v == null || v is DBNull;
-string Sq(string s) => (s ?? "").Replace("'", "''");                       // texto para un literal SQL
-string Num(double d) => d.ToString("0.########", ci);                       // número para un literal SQL (siempre con punto)
-
-int empresa = ctx.erp.OwnedBusinessEntityId;
-
 // ===================================================================================================================================
 // TIPOS DE DOCUMENTO. Cada fila es el «perfil» que Comercial espera de ese módulo (confirmado contra capturas del documento nativo).
 // Para quitar un tipo del formulario borra su fila; para agregar otro, copia una fila y ajusta sus datos. Nada más depende de esta tabla.

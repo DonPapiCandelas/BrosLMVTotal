@@ -1,0 +1,149 @@
+
+// ===================================================================================================================================
+// VENTANA (Windows Forms, modeless). Los manejadores llevan try/catch porque, en modeless, el script «ya terminó» cuando se hace clic.
+// ===================================================================================================================================
+class Opcion { public int Id { get; set; } public string Nombre { get; set; } public override string ToString() => Nombre; }
+
+var catalogo = Catalogos();
+Func<string, List<Dictionary<string, object>>> cat = k => (List<Dictionary<string, object>>)catalogo[k];
+var seleccion = new Dictionary<long, double>();      // documento → monto a aplicar
+var docsVis = new List<Dictionary<string, object>>();
+long entidadSel = 0;
+bool bloquea = false;
+
+var frm = new Form { Text = "Cobro o pago", ClientSize = new Size(1080, 700), StartPosition = FormStartPosition.CenterScreen, BackColor = Color.FromArgb(244, 246, 249), Font = new Font("Segoe UI", 9f), KeyPreview = true };
+Label Et(string t, int x, int y) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = Color.FromArgb(100, 116, 139) }; frm.Controls.Add(l); return l; }
+TC Poner<TC>(TC c, int x, int y, int w, int h = 24) where TC : Control { c.Location = new Point(x, y); c.Size = new Size(w, h); frm.Controls.Add(c); return c; }
+void Seguro(Action a) { try { a(); } catch (Exception ex) { MessageBox.Show(ex.Message, "Cobro o pago", MessageBoxButtons.OK, MessageBoxIcon.Warning); } }
+
+var aviso = Poner(new Label { AutoSize = false, Text = "PLANTILLA AVANZADA, NO NATIVA: escribe directo en las tablas de Tesorería (una transacción por documento) y no genera la póliza contable. Pruébala primero en una base de pruebas.",
+    ForeColor = Color.FromArgb(180, 83, 9), BackColor = Color.FromArgb(253, 240, 220), BorderStyle = BorderStyle.FixedSingle, Padding = new Padding(6, 4, 6, 4) }, 16, 10, 1048, 38);
+
+Et("Qué vas a registrar", 16, 58);
+var cmbTipo = Poner(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }, 16, 78, 220);
+foreach (var t in TIPOS) cmbTipo.Items.Add((string)t["nombre"]);
+cmbTipo.SelectedIndex = 0;
+var lblEnt = Et("Cliente", 256, 58);
+var txtEnt = Poner(new TextBox(), 256, 78, 400);
+var lstEnt = new ListBox { Visible = false, Location = new Point(256, 102), Size = new Size(400, 150) }; frm.Controls.Add(lstEnt);
+var lblCta = Et("Cuenta donde entra el dinero", 676, 58);
+var cmbCta = Poner(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }, 676, 78, 220);
+foreach (var c in cat("cuentas")) cmbCta.Items.Add(new Opcion { Id = I(c["id"]), Nombre = S(c["nombre"]) });
+if (cmbCta.Items.Count > 0) cmbCta.SelectedIndex = 0;
+Et("Forma de pago", 916, 58);
+var cmbForma = Poner(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }, 916, 78, 148);
+foreach (var f in cat("formas")) cmbForma.Items.Add(new Opcion { Id = I(f["id"]), Nombre = S(f["nombre"]) });
+for (int i = 0; i < cmbForma.Items.Count; i++) if (((Opcion)cmbForma.Items[i]).Id == 3) cmbForma.SelectedIndex = i;
+if (cmbForma.SelectedIndex < 0 && cmbForma.Items.Count > 0) cmbForma.SelectedIndex = 0;
+
+Et("Fecha", 16, 112); var dtFecha = Poner(new DateTimePicker { Format = DateTimePickerFormat.Short }, 16, 132, 130);
+Et("Referencia o número de rastreo (opcional)", 166, 112); var txtRef = Poner(new TextBox { MaxLength = 60 }, 166, 132, 490);
+
+Et("Documentos con saldo (marca los que quieras cobrar/pagar y ajusta el monto; por omisión, todo el saldo)", 16, 166);
+var grid = Poner(new DataGridView { AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, BackgroundColor = Color.White,
+    BorderStyle = BorderStyle.FixedSingle, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill }, 16, 186, 1048, 420);
+grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Marca", HeaderText = "", FillWeight = 4 });
+foreach (var c in new[] { ("Tipo", "Tipo", 16f), ("Folio", "Folio", 14f), ("Fecha", "Fecha", 9f), ("Vence", "Vence", 9f), ("Total", "Total", 10f), ("Saldo", "Saldo", 10f) })
+    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = c.Item1, HeaderText = c.Item2, ReadOnly = true, FillWeight = c.Item3 });
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Aplicar", HeaderText = "Aplicar", FillWeight = 12 });
+foreach (var c in new[] { "Total", "Saldo", "Aplicar" }) grid.Columns[c].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+var lblTot = Poner(new Label { AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Font = new Font("Segoe UI", 10f, FontStyle.Bold) }, 560, 612, 504, 26);
+var btnAplicar = Poner(new Button { Text = "Registrar", BackColor = Color.FromArgb(45, 111, 224), ForeColor = Color.White, FlatStyle = FlatStyle.Flat }, 826, 656, 150, 32);
+var btnCancelar = Poner(new Button { Text = "Cancelar" }, 986, 656, 78, 32);
+
+// ---------- lógica ----------
+Dictionary<string, object> TipoActual() => TIPOS[cmbTipo.SelectedIndex];
+IEnumerable<Dictionary<string, object>> FuenteEntidad() => cat((string)TipoActual()["lado"] == "C" ? "clientes" : "proveedores");
+void Totales() { lblTot.Text = seleccion.Count + " documento(s) marcado(s)   TOTAL A APLICAR " + seleccion.Values.Sum().ToString("N2"); }
+void PintarDocs()
+{
+    bloquea = true; grid.Rows.Clear(); docsVis.Clear();
+    if (entidadSel != 0)
+    {
+        string hoy = dtFecha.Value.ToString("yyyy-MM-dd");
+        foreach (var d in cat((string)TipoActual()["lado"] == "C" ? "docsC" : "docsP").Where(d => I(d["ent"]) == entidadSel))
+        {
+            docsVis.Add(d); bool on = seleccion.ContainsKey(L(d["id"]));
+            int r = grid.Rows.Add(on, S(d["tipo"]), S(d["folio"]), S(d["fecha"]), S(d["vence"]), D(d["total"]).ToString("N2"), D(d["saldo"]).ToString("N2"), on ? seleccion[L(d["id"])].ToString("0.00") : "");
+            if (S(d["vence"]) != "" && string.CompareOrdinal(S(d["vence"]), hoy) < 0) grid.Rows[r].Cells["Vence"].Style.ForeColor = Color.FromArgb(200, 40, 40);
+        }
+    }
+    bloquea = false; Totales();
+}
+void CambioTipo()
+{
+    var t = TipoActual(); lblEnt.Text = (string)t["lado"] == "C" ? "Cliente" : "Proveedor";
+    lblCta.Text = (string)t["lado"] == "C" ? "Cuenta donde entra el dinero" : "Cuenta de donde sale el dinero";
+    entidadSel = 0; txtEnt.Text = ""; seleccion.Clear(); PintarDocs();
+}
+cmbTipo.SelectedIndexChanged += (_, __) => Seguro(CambioTipo);
+dtFecha.ValueChanged += (_, __) => Seguro(PintarDocs);
+
+void Buscar()
+{
+    var q = txtEnt.Text.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+    var vis = FuenteEntidad().Where(x => { var h = (S(x["nombre"]) + " " + S(x["rfc"])).ToLowerInvariant(); return q.All(w => h.Contains(w)); }).Take(40).ToList();
+    lstEnt.Items.Clear(); foreach (var x in vis) lstEnt.Items.Add(new Opcion { Id = I(x["id"]), Nombre = S(x["nombre"]) + (S(x["rfc"]) != "" ? "  [" + S(x["rfc"]) + "]" : "") });
+    lstEnt.Visible = lstEnt.Items.Count > 0; if (lstEnt.Visible) { lstEnt.BringToFront(); lstEnt.SelectedIndex = 0; }
+}
+void ElegirEntidad()
+{
+    var o = lstEnt.SelectedItem as Opcion; if (o == null) return;
+    entidadSel = o.Id; bloquea = true; txtEnt.Text = o.Nombre.Split(new[] { "  [" }, StringSplitOptions.None)[0]; bloquea = false; lstEnt.Visible = false; seleccion.Clear(); PintarDocs();
+}
+txtEnt.TextChanged += (_, __) => Seguro(() => { if (!bloquea && txtEnt.Focused) { entidadSel = 0; seleccion.Clear(); PintarDocs(); Buscar(); } });
+txtEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Down && lstEnt.Visible) { lstEnt.Focus(); ev.Handled = true; } if (ev.KeyCode == Keys.Enter) { Seguro(ElegirEntidad); ev.SuppressKeyPress = true; } };
+lstEnt.Click += (_, __) => Seguro(ElegirEntidad);
+lstEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Seguro(ElegirEntidad); ev.SuppressKeyPress = true; } };
+
+grid.CurrentCellDirtyStateChanged += (_, __) => { if (grid.IsCurrentCellDirty && grid.CurrentCell is DataGridViewCheckBoxCell) grid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
+grid.CellValueChanged += (_, ev) => Seguro(() =>
+{
+    if (bloquea || ev.RowIndex < 0 || ev.RowIndex >= docsVis.Count) return;
+    var d = docsVis[ev.RowIndex]; long id = L(d["id"]); double saldo = D(d["saldo"]); string col = grid.Columns[ev.ColumnIndex].Name;
+    bloquea = true;
+    if (col == "Marca")
+    {
+        bool on = Convert.ToBoolean(grid.Rows[ev.RowIndex].Cells["Marca"].Value);
+        if (on) { seleccion[id] = saldo; grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = saldo.ToString("0.00"); } else { seleccion.Remove(id); grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = ""; }
+    }
+    else if (col == "Aplicar" && seleccion.ContainsKey(id))
+    {
+        double n; double.TryParse(Convert.ToString(grid.Rows[ev.RowIndex].Cells["Aplicar"].Value, CultureInfo.CurrentCulture), NumberStyles.Any, CultureInfo.CurrentCulture, out n);
+        if (n < 0) n = 0; if (n > saldo) n = saldo; seleccion[id] = n; grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = n.ToString("0.00");
+    }
+    else if (col == "Aplicar") grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = "";
+    bloquea = false; Totales();
+});
+grid.DataError += (_, ev) => ev.ThrowException = false;
+
+void Registrar()
+{
+    var t = TipoActual();
+    if (entidadSel == 0) throw new Exception("Elige el " + ((string)t["lado"] == "C" ? "cliente" : "proveedor") + " de la lista (escribe y selecciona).");
+    if (seleccion.Count == 0 || seleccion.Values.All(v => v <= 0)) throw new Exception("Marca al menos un documento y captura cuánto aplicar.");
+    var spec = new Dictionary<string, object>
+    {
+        ["tipo"] = (string)t["clave"], ["entidad"] = (int)entidadSel, ["cuenta"] = ((Opcion)cmbCta.SelectedItem)?.Id ?? 0, ["forma"] = ((Opcion)cmbForma.SelectedItem)?.Id ?? 0,
+        ["fecha"] = dtFecha.Value.ToString("yyyy-MM-dd"), ["referencia"] = txtRef.Text,
+        ["aplicaciones"] = seleccion.Where(kv => kv.Value > 0).Select(kv => (object)new Dictionary<string, object> { ["doc"] = kv.Key, ["monto"] = kv.Value }).ToList()
+    };
+    btnAplicar.Enabled = false; Cursor.Current = Cursors.WaitCursor;
+    try
+    {
+        string resumen = Aplicar(spec);
+        try { ctx.erp.RefreshGrid(); } catch { }
+        MessageBox.Show(resumen, "Cobro o pago registrado", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        frm.Close();
+    }
+    catch { catalogo = Catalogos(); PintarDocs(); throw; }          // si falló, los saldos pudieron cambiar
+    finally { btnAplicar.Enabled = true; Cursor.Current = Cursors.Default; }
+}
+btnAplicar.Click += (_, __) => Seguro(Registrar);
+btnCancelar.Click += (_, __) => frm.Close();
+frm.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Escape && !lstEnt.Visible) { frm.Close(); ev.Handled = true; } };
+
+// ---------- Arranque: modeless ----------
+CambioTipo();
+frm.Show();
+return "Ventana de cobro/pago abierta.";

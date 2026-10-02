@@ -1,0 +1,21 @@
+// lang: csharp
+// AppKey recomendado: COBRO_PAGO_WINFORMS
+// Plantilla: Cobro a cliente / Pago a proveedor (C# · ventana Windows Forms)
+// Categoria: Tesorería
+// Documentacion: COBRO_PAGO.html
+// job: safe-offline
+// ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un cobro a cliente o un pago a proveedor y lo aplica a uno o varios documentos con saldo.
+// Comercial no ofrece una función para esto: la plantilla escribe directo en las tablas de Tesorería (una transacción por documento) y NO genera la póliza contable.
+// Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+//
+// Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
+// el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Drawing;
+using System.Text;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;

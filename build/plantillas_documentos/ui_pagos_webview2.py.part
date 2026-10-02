@@ -1,0 +1,45 @@
+
+
+# ===================================================================================================================================
+# VENTANA (WebView2). Al presionar «Registrar» regresa lo capturado y aquí se aplica. Si falla, la ventana se vuelve a abrir con lo capturado.
+# ===================================================================================================================================
+PAGINA = r'''__HTML_PY__'''
+
+
+def principal():
+    global result
+    catalogo = catalogos()
+    inicial = None
+    barra = chr(92)
+    html_prueba = os.environ.get("BROSLMV_PAGO_HTML")   # pruebas: escribe la página (con sus datos) en un archivo y no abre ventana
+    if html_prueba:
+        d0 = {"tipos": TIPOS, "cat": catalogo, "inicial": None}
+        with open(html_prueba, "w", encoding="utf-8") as f:
+            f.write(PAGINA.replace("__DATOS__", json.dumps(d0, ensure_ascii=False, default=str).replace("</", "<" + barra + "/")))
+        result = "HTML"
+        return
+    while True:
+        datos = {"tipos": TIPOS, "cat": catalogo, "inicial": inicial}
+        json_txt = json.dumps(datos, ensure_ascii=False, default=str).replace("</", "<" + barra + "/")
+        r = ctx.show_html_formulario(PAGINA.replace("__DATOS__", json_txt), "Cobro o pago", 1180, 900, 1800000)
+        if not r.get("submitted") or r.get("accion") != "aplicar":
+            result = "CANCELADO"
+            return
+        spec = json.loads(r["spec"])
+        try:
+            resumen = aplicar(spec)
+            try:
+                ctx.erp.RefreshGrid()
+            except Exception:
+                pass
+            ctx.msg(resumen, "Cobro o pago registrado")
+            result = resumen
+            return
+        except Exception as ex:
+            ctx.msg(str(ex), "Cobro o pago")
+            inicial = spec
+            catalogo = catalogos()          # los saldos pudieron cambiar
+
+
+if not _modo_prueba:
+    principal()

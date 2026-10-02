@@ -1,0 +1,43 @@
+import json
+import datetime
+import os
+
+from broslmv import ctx
+
+
+def S(v):
+    return "" if v is None else str(v)
+
+
+def I(v):
+    try:
+        return int(float(v))
+    except Exception:
+        return 0
+
+
+def D(v):
+    try:
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def Sq(s):
+    """Texto para un literal SQL."""
+    return S(s).replace("'", "''")
+
+
+def Num(x):
+    """Número para un literal SQL (siempre con punto)."""
+    t = ("%.8f" % float(x)).rstrip("0").rstrip(".")
+    return t if t not in ("", "-") else "0"
+
+
+def fecha_txt(v):
+    if v is None:
+        return ""
+    return v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else S(v)[:10]
+
+
+empresa = ctx.erp.OwnedBusinessEntityId

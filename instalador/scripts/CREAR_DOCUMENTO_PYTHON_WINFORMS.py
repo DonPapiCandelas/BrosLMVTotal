@@ -77,7 +77,6 @@ def fecha_txt(v):
 
 empresa = ctx.erp.OwnedBusinessEntityId
 
-
 # ===================================================================================================================================
 # TIPOS DE DOCUMENTO. Cada fila es el «perfil» que Comercial espera de ese módulo (confirmado contra capturas del documento nativo).
 # Para quitar un tipo del formulario borra su fila; para agregar otro, copia una fila y ajusta sus datos. Nada más depende de esta tabla.
