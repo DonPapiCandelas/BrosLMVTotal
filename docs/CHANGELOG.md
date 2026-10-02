@@ -8,6 +8,23 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.100.0] — 2026-10-02 — Plantillas de fábrica: trazabilidad
+
+### Agregado
+- **Plantilla «Trazabilidad del documento»** (`instalador/scripts/TRAZABILIDAD_DOCUMENTO.ctx`, documentación en `docs/TRAZABILIDAD_DOCUMENTO.md`): muestra de dónde viene y a dónde fue cualquier documento, en las dos direcciones
+  y a través de todos los pasos (Solicitud → Orden de compra → Recepción → Factura → Pago; Cotización → Pedido → Remisión → Factura → Cobro), incluidos los módulos clonados (se clasifica por `ModuleIDBase`).
+  Junta las **cuatro** formas en que se ligan los documentos: `SourceDocumentID` y `DestinationDocumentID` del encabezado, `SourceDocumentItemID`/`SourceDocumentID` de la partida y `DeliverDocumentItemID`.
+  Si un vínculo existe **solo** por `DestinationDocumentID` (el caso de «varias órdenes → una factura», que el sistema no puede expresar con un único `SourceDocumentID`) lo dibuja discontinuo y lo marca como manual.
+  Muestra cantidades por partida, pagos/cobros aplicados, saldo y documentos cancelados; clic centra, doble clic abre el documento, exporta a CSV. Solo lee.
+- **Prueba de humo #35** (`build/humo/casos/35_trazabilidad_documento.ps1`): corre la plantilla real con `BrosLMV.Runner` contra el sandbox y comprueba la cadena, la raíz, la evidencia y el documento aislado.
+
+### Cambiado
+- **Las plantillas ya no se escriben a mano en `Consola.cs`**: una plantilla de fábrica es cualquier script de la carpeta `scripts` cuya cabecera diga `// Plantilla: <nombre>` (en Python `# Plantilla:`, en SQL `-- Plantilla:`),
+  con `Categoria:` (carpeta del árbol) y `Documentacion:` opcionales. Agregar una plantilla ya no exige tocar el código del addon.
+- **Instaladores** (`Instalar.ps1` y el `.exe`): refrescan en cada instalación todas las plantillas que traen ese marcador. `generar_instalador.ps1` convierte la documentación de cada plantilla desde `docs/<nombre>.md`.
+- **Manual (§10.5):** `DestinationDocumentID` **sí se usa**. Medido en dos empresas reales: 97 y 221 documentos la traen, y seis vistas nativas la leen (globalización de ventas y «asignar factura de compra a orden de compra»).
+  La nota anterior («no se usa») se corrigió.
+
 ## [2.98.0] — 2026-09-29 — Manual y catálogo del SDK
 
 ### Agregado

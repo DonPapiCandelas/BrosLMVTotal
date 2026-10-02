@@ -76,8 +76,23 @@ namespace BrosLMV.Empresas
             }
             catch { }
 
-            var coreScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Cotizador.ctx", "ConfiguracionFormato.ctx", "CREAR_DOC_DESDE_XML.ctx" };
+            // CORE fijos + toda plantilla de fabrica del paquete (cabecera «Plantilla: <nombre>» con //, # o --): se refrescan siempre.
+            var coreScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Cotizador.ctx", "ConfiguracionFormato.ctx" };
             string srcScripts = Path.Combine(tmp, "scripts");
+            if (Directory.Exists(srcScripts))
+                foreach (var f in Directory.GetFiles(srcScripts))
+                {
+                    try
+                    {
+                        string ext = Path.GetExtension(f).ToLowerInvariant();
+                        if (ext != ".ctx" && ext != ".csx" && ext != ".py" && ext != ".sql") continue;
+                        string cab = File.ReadAllText(f);
+                        if (cab.Length > 3000) cab = cab.Substring(0, 3000);
+                        if (System.Text.RegularExpressions.Regex.IsMatch(cab, @"^\s*(?://|#|--)\s*Plantilla\s*:", System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                            coreScripts.Add(Path.GetFileName(f));
+                    }
+                    catch { }
+                }
             if (Directory.Exists(srcScripts))
                 foreach (var f in Directory.GetFiles(srcScripts))
                 {

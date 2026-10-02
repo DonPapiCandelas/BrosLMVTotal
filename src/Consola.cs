@@ -132,23 +132,61 @@ namespace BrosLMV
         private static readonly MetodoCtx[] METODOS_PYTHON = DesdeCatalogo("py");
         private static readonly MetodoCtx[] METODOS_SQL = DesdeCatalogo("sql");
 
-        // ---- Plantillas (v2.94.0) ----
-        // Desde la 2.94.0 hay UNA sola plantilla: «Crear documentos desde XML». Las anteriores (Orden de Compra, Recepción, Factura, Requisición,
-        // extracción de datos, dashboards…) se retiraron por estar desactualizadas (usaban métodos que hoy sabemos que no hacen lo que decían o
-        // dejaban documentos sin póliza ni refresco de grid). Se conservan archivadas en docs\archivo\plantillas_2.93.0\ y se irán rehaciendo.
-        // Cada plantilla trae su documentación completa aparte (instalador\docs\plantillas\<archivo>.html): clic secundario → «Ver documentación».
+        // ---- Plantillas de fábrica ----
+        // Una plantilla de fábrica es CUALQUIER script de la carpeta raíz de scripts\ (C:\BrosLMV\scripts, junto a la DLL o en el paquete) cuya
+        // cabecera declare «// Plantilla: Nombre visible» (en Python: «# Plantilla: …»; en SQL: «-- Plantilla: …»). Opcionales en la misma cabecera:
+        //   «Categoria: X»      carpeta donde aparece en el árbol (por defecto «Plantillas»)
+        //   «Documentacion: X.html»   documentación completa (clic secundario → «Ver documentación»); se incrusta desde instalador\docs\plantillas
+        // Así agregar una plantilla NO requiere tocar este archivo: basta dejar el script con su cabecera. Los instaladores refrescan en cada
+        // instalación todas las que traen ese marcador; las demás herramientas de la carpeta (GESTOR_RIBBON, DIAGNOSTICO…) no se tratan como plantillas.
         private class PlantillaDef
         {
             public string Categoria, Nombre, Codigo, Documentacion;
             public string AppKey => AppKeySugerido(Codigo);
             public PlantillaDef(string cat, string n, string c, string doc = null) { Categoria = cat; Nombre = n; Codigo = c; Documentacion = doc; }
         }
-        private static readonly PlantillaDef[] PLANTILLAS_DEF = new[]
+
+        private static string CabeceraPlantilla(string codigo, string campo)
         {
-            new PlantillaDef("C#", "Crear documentos desde XML",
-                CargarPlantillaArchivo("CREAR_DOC_DESDE_XML.ctx", "// No se encontró la plantilla.\r\n"),
-                "CREAR_DOC_DESDE_XML.html"),
-        };
+            if (string.IsNullOrEmpty(codigo)) return null;
+            string cab = codigo.Length > 3000 ? codigo.Substring(0, 3000) : codigo;
+            var m = Regex.Match(cab, @"^\s*(?://|#|--)\s*" + campo + @"\s*:\s*(.+?)\s*$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value.Trim() : null;
+        }
+
+        private static PlantillaDef[] CargarPlantillasDeFabrica()
+        {
+            var lista = new List<PlantillaDef>();
+            var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var dir in new[]
+            {
+                Rutas.Scripts,
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "scripts"),
+            })
+            {
+                try
+                {
+                    if (!Directory.Exists(dir)) continue;
+                    foreach (var f in Directory.GetFiles(dir))
+                    {
+                        string ext = Path.GetExtension(f).ToLowerInvariant();
+                        if (ext != ".ctx" && ext != ".csx" && ext != ".py" && ext != ".sql") continue;
+                        string nombreArchivo = Path.GetFileName(f);
+                        if (vistos.Contains(nombreArchivo)) continue;
+                        string codigo = File.ReadAllText(f);
+                        string nombre = CabeceraPlantilla(codigo, "Plantilla");
+                        if (string.IsNullOrEmpty(nombre)) continue;            // sin marcador: es una herramienta, no una plantilla
+                        vistos.Add(nombreArchivo);
+                        lista.Add(new PlantillaDef(CabeceraPlantilla(codigo, "Categor[ií]a") ?? "Plantillas", nombre, codigo, CabeceraPlantilla(codigo, "Documentaci[oó]n")));
+                    }
+                }
+                catch { }
+            }
+            return lista.OrderBy(p => p.Categoria, StringComparer.OrdinalIgnoreCase).ThenBy(p => p.Nombre, StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+
+        private static readonly PlantillaDef[] PLANTILLAS_DEF = CargarPlantillasDeFabrica();
 
         // «AppKey recomendado: X» en la cabecera de una plantilla = nombre con el que se guarda como botón (BrosLMV.X).
         private static readonly Regex RX_APPKEY_SUG = new Regex(@"AppKey\s+recomendado\s*:\s*([A-Za-z0-9_]+)", RegexOptions.IgnoreCase);

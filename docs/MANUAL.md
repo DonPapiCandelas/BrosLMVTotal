@@ -1246,7 +1246,7 @@ contra las capturas nativas de `Entrenamiento` (ventas):
 | Devolución (159) → Remisión (157) | partida | `SourceDocumentItemID` (encabezado → Pedido) | ~730 partidas |
 | Nota de crédito de proveedor (187) → Factura de Compra (152) | partida | `SourceDocumentItemID` | (pocas) |
 | Entrada/Salida (202/203), OC, Cotización | encabezado | `SourceDocumentID` = 0 | capturas nativas + producción |
-| Cualquiera | encabezado | `docDocument.DestinationDocumentID` — **no se usa** (0 en todos los datos observados); no construyas lógica sobre ella | producción |
+| Cualquiera | encabezado | `docDocument.DestinationDocumentID` — el origen apunta a su destino. **Sí se usa, aunque poco:** seis vistas nativas la leen (globalización de ventas a factura global, `vwLBSAssignarFacturaCompraAOrdenDeCompra`…) y en dos empresas reales la traen 97 y 221 documentos (OC → Factura de compra con el vínculo en ambos lados, y varias Recepciones → una sola venta). Es el único vínculo de encabezado que admite **varios orígenes → un destino** (el `SourceDocumentID` guarda solo uno). Lee ambos lados; no la escribas por tu cuenta sin necesidad. Plantilla que la toma en cuenta: `TRAZABILIDAD_DOCUMENTO` | producción (2026-10-02) |
 | Pago/cobro → documento | aplicación | `docDocumentPayment` (`DocumentID`, `FinancialOperationID`, `PaymentWithDocumentID`, `Amount`, `AmountPaidCurrency`, `SaldoAnterior`, `SaldoInsoluto`) | esquema; ver `MOTOR_ASIENTOS_CONTABLES.md` |
 
 Reglas para recorrerla:

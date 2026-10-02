@@ -74,10 +74,18 @@ if ($obsoletas.Count -gt 0) {
     Write-Host ("Plantillas anteriores retiradas ({0}): movidas a {1}" -f $obsoletas.Count, $arch)
 }
 
-# 4b) Scripts CORE de BrosLMV y la plantilla vigente: SI se refrescan en cada instalacion.
-foreach ($core in "Cotizador.ctx","ConfiguracionFormato.ctx","CREAR_DOC_DESDE_XML.ctx") {
+# 4b) Scripts CORE de BrosLMV y las plantillas de fabrica: SI se refrescan en cada instalacion. Una plantilla de fabrica es todo script del paquete
+#     cuya cabecera declara "Plantilla: <nombre>" (// en C#, # en Python, -- en SQL); asi agregar una plantilla no exige tocar este instalador.
+$coreFijos = @("Cotizador.ctx","ConfiguracionFormato.ctx")
+$plantillasFabrica = @()
+Get-ChildItem "$pkg\scripts" -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in ".ctx",".csx",".py",".sql" } | ForEach-Object {
+    $cab = (Get-Content $_.FullName -TotalCount 40 -ErrorAction SilentlyContinue) -join "`n"
+    if ($cab -match '(?im)^\s*(//|#|--)\s*Plantilla\s*:') { $plantillasFabrica += $_.Name }
+}
+foreach ($core in ($coreFijos + $plantillasFabrica)) {
     if (Test-Path "$pkg\scripts\$core") { Copy-Item "$pkg\scripts\$core" (Join-Path "$base\scripts" $core) -Force }
 }
+if ($plantillasFabrica.Count -gt 0) { Write-Host ("Plantillas de fabrica refrescadas ({0}): {1}" -f $plantillasFabrica.Count, ($plantillasFabrica -join ", ")) }
 # Resto de scripts del paquete (herramientas como GESTOR_RIBBON.py, DIAGNOSTICO.csx): sin sobrescribir los que ya existan.
 Get-ChildItem "$pkg\scripts\*.ctx","$pkg\scripts\*.csx","$pkg\scripts\*.py","$pkg\scripts\*.sql" -ErrorAction SilentlyContinue | ForEach-Object {
     $dst = Join-Path "$base\scripts" $_.Name

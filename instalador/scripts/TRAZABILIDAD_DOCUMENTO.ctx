@@ -1,0 +1,373 @@
+// lang: csharp
+// AppKey recomendado: TRAZABILIDAD_DOCUMENTO
+// Plantilla: Trazabilidad del documento
+// Categoria: Trazabilidad
+// Documentacion: TRAZABILIDAD_DOCUMENTO.html
+// job: safe-offline
+// Trazabilidad del documento: de dónde viene y a dónde fue, en las dos direcciones, para CUALQUIER módulo (incluidos los clones).
+// Selecciona un documento en la lista (o ábrelo) y ejecuta. Solo LEE: no cambia nada. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
+//
+// Lee las cuatro formas en que Comercial (y los scripts) ligan documentos, y las junta en un solo mapa:
+//   · SourceDocumentID del encabezado         (el documento de origen; lo que escribe el sistema nativo)
+//   · DestinationDocumentID del encabezado    (el documento destino; lo usan la globalización, «asignar factura a OC» y los scripts/personas
+//                                              cuando de VARIOS orígenes sale UN solo documento: el sistema solo guarda UN SourceDocumentID)
+//   · SourceDocumentItemID / SourceDocumentID por partida
+//   · DeliverDocumentItemID por partida       (la «entrega» de una Orden de Compra: así liga la Recepción)
+// Cada flecha dice con qué evidencia existe; si solo existe por DestinationDocumentID se marca como «vínculo manual».
+//
+// Nada va escrito a mano: la empresa activa se toma del contexto; los módulos se clasifican por su ModuleIDBase (los clones se comportan como el original).
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;
+
+var ci = CultureInfo.InvariantCulture;
+var ser = new JavaScriptSerializer { MaxJsonLength = 64 * 1024 * 1024 };
+
+string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v, ci);
+long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v, ci); } catch { return 0; } }
+int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
+decimal M(object v) { try { return v == null || v is DBNull ? 0m : Convert.ToDecimal(v, ci); } catch { return 0m; } }
+bool Nulo(object v) => v == null || v is DBNull;
+string FechaTxt(object v) => Nulo(v) ? "" : Convert.ToDateTime(v, ci).ToString("yyyy-MM-dd");
+
+// ---------- 1) ¿De qué documento? ----------
+long raiz = 0;
+string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_TRAZA_DOC");   // solo para pruebas automáticas (sin ventanas)
+if (!string.IsNullOrEmpty(modoPrueba)) long.TryParse(modoPrueba, out raiz);
+if (raiz == 0) { try { raiz = ctx.ObtenerIdDeVentanaActiva() ?? 0; } catch { } }
+if (raiz == 0)
+{
+    var sel = ctx.GetSelectedIds();
+    if (sel != null && sel.Count > 0) raiz = sel[0];
+}
+if (raiz == 0)
+{
+    ctx.Msg("Selecciona un documento en la lista (o ábrelo ya guardado) antes de ejecutar la trazabilidad.", "Trazabilidad del documento");
+    return "SIN DOCUMENTO";
+}
+
+int empresa = ctx.erp.OwnedBusinessEntityId;
+const int MaxNodos = 300;      // tope de seguridad: una cadena real rara vez pasa de unas decenas
+const int MaxNiveles = 25;
+
+string Lista(IEnumerable<long> ids) => string.Join(",", ids.Select(x => x.ToString(ci)));
+IEnumerable<List<long>> Lotes(IEnumerable<long> ids, int n)
+{
+    var lote = new List<long>();
+    foreach (var id in ids) { lote.Add(id); if (lote.Count >= n) { yield return lote; lote = new List<long>(); } }
+    if (lote.Count > 0) yield return lote;
+}
+
+// ---------- 2) El modelo ----------
+var nodos = new Dictionary<long, Dictionary<string, object>>();
+var aristas = new Dictionary<string, Dictionary<string, object>>();            // "desde>hasta" -> arista
+var avisos = new List<string>();
+
+Dictionary<string, object> Arista(long desde, long hasta)
+{
+    string k = desde + ">" + hasta;
+    if (!aristas.TryGetValue(k, out var a))
+        aristas[k] = a = new Dictionary<string, object> { ["desde"] = desde, ["hasta"] = hasta, ["tipos"] = new List<string>(), ["partidas"] = new List<Dictionary<string, object>>() };
+    return a;
+}
+void Evidencia(long desde, long hasta, string tipo)
+{
+    if (desde <= 0 || hasta <= 0 || desde == hasta) return;
+    var t = (List<string>)Arista(desde, hasta)["tipos"];
+    if (!t.Contains(tipo)) t.Add(tipo);
+}
+
+var vistos = new HashSet<long> { raiz };
+var frontera = new List<long> { raiz };
+for (int nivel = 0; nivel < MaxNiveles && frontera.Count > 0 && vistos.Count < MaxNodos; nivel++)
+{
+    var nuevos = new HashSet<long>();
+    foreach (var lote in Lotes(frontera, 400))
+    {
+        string ids = Lista(lote);
+
+        // 2a) Encabezados: Source y Destination, hacia los dos lados
+        var enc = ctx.Query(
+            "SELECT DocumentID, ISNULL(SourceDocumentID,0) AS Src, ISNULL(DestinationDocumentID,0) AS Dst FROM docDocument " +
+            "WHERE OwnedBusinessEntityID=" + empresa + " AND DeletedOn IS NULL AND " +
+            "(DocumentID IN (" + ids + ") OR SourceDocumentID IN (" + ids + ") OR DestinationDocumentID IN (" + ids + "))");
+        foreach (var r in enc)
+        {
+            long id = L(r["DocumentID"]), src = L(r["Src"]), dst = L(r["Dst"]);
+            Evidencia(src, id, "S");           // Source: origen -> este documento
+            Evidencia(id, dst, "D");           // Destination: este documento -> destino
+            foreach (var x in new[] { id, src, dst }) if (x > 0) nuevos.Add(x);
+        }
+
+        // 2b) Partidas: SourceDocumentItemID (conversión) y DeliverDocumentItemID (entrega), y SourceDocumentID de la partida
+        foreach (var par in new[] { new[] { "SourceDocumentItemID", "P" }, new[] { "DeliverDocumentItemID", "E" } })
+        {
+            var pr = ctx.Query(
+                "SELECT d.DocumentID AS DocDest, o.DocumentID AS DocOrig, i.ProductID AS Prod, o.Quantity AS QOrig, i.Quantity AS QDest, " +
+                "ISNULL(p.ProductKey,'') AS Clave, ISNULL(p.ProductName, i.Description) AS Producto " +
+                "FROM docDocumentItem i " +
+                "JOIN docDocument d ON d.DocumentID = i.DocumentID " +
+                "JOIN docDocumentItem o ON o.DocumentItemID = i." + par[0] + " " +
+                "JOIN docDocument od ON od.DocumentID = o.DocumentID " +
+                "LEFT JOIN orgProduct p ON p.ProductID = i.ProductID " +
+                "WHERE i." + par[0] + " > 0 AND i.DeletedOn IS NULL AND o.DeletedOn IS NULL AND d.DeletedOn IS NULL AND od.DeletedOn IS NULL " +
+                "AND d.OwnedBusinessEntityID=" + empresa + " AND (i.DocumentID IN (" + ids + ") OR o.DocumentID IN (" + ids + "))");
+            foreach (var r in pr)
+            {
+                long dd = L(r["DocDest"]), oo = L(r["DocOrig"]);
+                Evidencia(oo, dd, par[1]);
+                ((List<Dictionary<string, object>>)Arista(oo, dd)["partidas"]).Add(new Dictionary<string, object>
+                {
+                    ["via"] = par[1], ["clave"] = S(r["Clave"]), ["producto"] = S(r["Producto"]), ["origen"] = M(r["QOrig"]), ["destino"] = M(r["QDest"])
+                });
+                nuevos.Add(dd); nuevos.Add(oo);
+            }
+        }
+        var ps = ctx.Query(
+            "SELECT i.DocumentID AS DocDest, i.SourceDocumentID AS DocOrig FROM docDocumentItem i JOIN docDocument d ON d.DocumentID=i.DocumentID " +
+            "WHERE i.DeletedOn IS NULL AND d.DeletedOn IS NULL AND d.OwnedBusinessEntityID=" + empresa + " AND ISNULL(i.SourceDocumentID,0) > 0 AND " +
+            "(i.DocumentID IN (" + ids + ") OR i.SourceDocumentID IN (" + ids + ")) GROUP BY i.DocumentID, i.SourceDocumentID");
+        foreach (var r in ps) { Evidencia(L(r["DocOrig"]), L(r["DocDest"]), "P"); nuevos.Add(L(r["DocDest"])); nuevos.Add(L(r["DocOrig"])); }
+    }
+
+    frontera = nuevos.Where(x => !vistos.Contains(x)).Take(Math.Max(0, MaxNodos - vistos.Count)).ToList();
+    foreach (var x in frontera) vistos.Add(x);
+    if (nuevos.Any(x => !vistos.Contains(x))) avisos.Add("La cadena es muy grande: se muestran los primeros " + MaxNodos + " documentos.");
+}
+
+// ---------- 3) Datos de cada documento ----------
+foreach (var lote in Lotes(vistos, 400))
+{
+    var docs = ctx.Query(
+        "SELECT d.DocumentID, d.ModuleID, ISNULL(m.ModuleIDBase, d.ModuleID) AS ModuloBase, ISNULL(m.ModuleName,'Módulo '+CAST(d.ModuleID AS NVARCHAR(10))) AS ModuloNombre, " +
+        "ISNULL(d.FolioPrefix,'') AS Serie, ISNULL(CAST(d.Folio AS NVARCHAR(30)),'') AS Folio, ISNULL(d.Title,'') AS Titulo, d.DateDocument, ISNULL(d.Total,0) AS Total, " +
+        "ISNULL(d.TotalPaid,0) AS Pagado, ISNULL(d.Balance,0) AS Saldo, d.CancelledOn, d.DeletedOn, ISNULL(d.SourceDocumentID,0) AS Src, ISNULL(d.DestinationDocumentID,0) AS Dst, " +
+        "ISNULL(be.CommercialName, be.OfficialName) AS Entidad, ISNULL(c.CFDStatusID,0) AS CfdEstado, ISNULL(c.CFDCancelledStatusID,0) AS CfdCancelado " +
+        "FROM docDocument d LEFT JOIN engModule m ON m.ModuleID=d.ModuleID " +
+        "LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID=d.BusinessEntityID " +
+        "LEFT JOIN docDocumentCFD c ON c.DocumentID=d.DocumentID " +
+        "WHERE d.DocumentID IN (" + Lista(lote) + ") AND d.OwnedBusinessEntityID=" + empresa);
+    foreach (var r in docs)
+    {
+        long id = L(r["DocumentID"]);
+        nodos[id] = new Dictionary<string, object>
+        {
+            ["id"] = id, ["modulo"] = I(r["ModuleID"]), ["base"] = I(r["ModuloBase"]), ["tipoNombre"] = S(r["ModuloNombre"]),
+            ["folio"] = (S(r["Serie"]) + S(r["Folio"])).Trim(), ["titulo"] = S(r["Titulo"]), ["fecha"] = FechaTxt(r["DateDocument"]),
+            ["total"] = M(r["Total"]), ["pagado"] = M(r["Pagado"]), ["saldo"] = M(r["Saldo"]), ["entidad"] = S(r["Entidad"]),
+            ["cancelado"] = !Nulo(r["CancelledOn"]), ["src"] = L(r["Src"]), ["dst"] = L(r["Dst"]),
+            ["cfd"] = I(r["CfdEstado"]), ["cfdCancelado"] = I(r["CfdCancelado"]), ["raiz"] = id == raiz, ["pagos"] = new List<Dictionary<string, object>>()
+        };
+    }
+}
+if (!nodos.ContainsKey(raiz))
+{
+    ctx.Msg("El documento " + raiz + " no existe, está eliminado o es de otra empresa.", "Trazabilidad del documento");
+    return "NO EXISTE";
+}
+
+// Aristas con un extremo que no es un documento válido de la empresa (eliminado, de otra empresa): se quitan y se avisa
+foreach (var k in aristas.Keys.ToList())
+{
+    var a = aristas[k];
+    if (!nodos.ContainsKey((long)a["desde"]) || !nodos.ContainsKey((long)a["hasta"]))
+    {
+        avisos.Add("Un vínculo apunta a un documento eliminado o que no es de esta empresa (" + a["desde"] + " → " + a["hasta"] + "); se omitió.");
+        aristas.Remove(k);
+    }
+}
+
+// Pagos/cobros aplicados a cada documento
+foreach (var lote in Lotes(nodos.Keys, 400))
+{
+    var pagos = ctx.Query(
+        "SELECT p.DocumentID, p.FinancialOperationID, p.DateOperation, p.Amount, ISNULL(f.FolioPrefix,'') AS Serie, ISNULL(CAST(f.Folio AS NVARCHAR(30)),'') AS Folio, f.DocRecipientID " +
+        "FROM docDocumentPayment p LEFT JOIN docFinancialOperation f ON f.FinancialOperationID=p.FinancialOperationID " +
+        "WHERE p.DeletedOn IS NULL AND p.DocumentID IN (" + Lista(lote) + ")");
+    foreach (var r in pagos)
+    {
+        long id = L(r["DocumentID"]);
+        if (nodos.TryGetValue(id, out var n))
+            ((List<Dictionary<string, object>>)n["pagos"]).Add(new Dictionary<string, object>
+            {
+                ["operacion"] = L(r["FinancialOperationID"]), ["fecha"] = FechaTxt(r["DateOperation"]), ["monto"] = M(r["Amount"]),
+                ["folio"] = (S(r["Serie"]) + S(r["Folio"])).Trim(), ["clase"] = I(r["DocRecipientID"]) == 2 ? "Pago" : "Cobro"
+            });
+    }
+}
+
+// ---------- 4) Avisos sobre la calidad de los vínculos ----------
+foreach (var a in aristas.Values)
+{
+    var tipos = (List<string>)a["tipos"];
+    long d = (long)a["desde"], h = (long)a["hasta"];
+    string nd = S(nodos[d]["tipoNombre"]) + " " + S(nodos[d]["folio"]), nh = S(nodos[h]["tipoNombre"]) + " " + S(nodos[h]["folio"]);
+    a["manual"] = tipos.Count == 1 && tipos[0] == "D";
+    if ((bool)a["manual"])
+        avisos.Add("Vínculo manual: " + nd + " → " + nh + " existe solo por DestinationDocumentID (el documento destino no lo reconoce como su origen). Es normal cuando de varios orígenes sale un solo documento.");
+    else if (tipos.Contains("D") && (long)nodos[h]["src"] > 0 && (long)nodos[h]["src"] != d)
+        avisos.Add(nh + " tiene como origen principal (SourceDocumentID) a otro documento; " + nd + " lo ligó además por DestinationDocumentID: varios orígenes para un solo destino.");
+}
+foreach (var n in nodos.Values)
+{
+    if ((bool)n["cancelado"]) avisos.Add(S(n["tipoNombre"]) + " " + S(n["folio"]) + " está CANCELADO y sigue ligado en la cadena.");
+}
+
+// ---------- 5) Generaciones (columnas): longitud del camino más largo desde un origen, desplazada para que el documento elegido sea 0 ----------
+var entrantes = nodos.Keys.ToDictionary(k => k, k => new List<long>());
+foreach (var a in aristas.Values) entrantes[(long)a["hasta"]].Add((long)a["desde"]);
+var gen = new Dictionary<long, int>();
+int Gen(long id, HashSet<long> pila)
+{
+    if (gen.TryGetValue(id, out var g)) return g;
+    if (!pila.Add(id)) return 0;                       // ciclo: se corta
+    int mejor = 0;
+    foreach (var p in entrantes[id]) mejor = Math.Max(mejor, Gen(p, pila) + 1);
+    pila.Remove(id);
+    return gen[id] = mejor;
+}
+foreach (var id in nodos.Keys) Gen(id, new HashSet<long>());
+int desp = gen[raiz];
+foreach (var id in nodos.Keys) nodos[id]["gen"] = gen[id] - desp;
+
+// ---------- 6) Resultado ----------
+var modelo = new Dictionary<string, object>
+{
+    ["raiz"] = raiz, ["nodos"] = nodos.Values.OrderBy(n => (int)n["gen"]).ThenBy(n => S(n["fecha"])).ToList(),
+    ["aristas"] = aristas.Values.ToList(), ["avisos"] = avisos.Distinct().ToList()
+};
+if (!string.IsNullOrEmpty(modoPrueba))                                      // pruebas automáticas: escribe el modelo en un archivo, sin ventanas
+{
+    string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_TRAZA_OUT");
+    string jsonPrueba = ser.Serialize(modelo);
+    if (!string.IsNullOrEmpty(salidaPrueba)) File.WriteAllText(salidaPrueba, jsonPrueba, new UTF8Encoding(false));
+    return jsonPrueba;
+}
+
+string Esc(string s) => (s ?? "").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+string Html(string json) => @"<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Trazabilidad</title><style>
+:root{--fondo:#f4f6f9;--tarjeta:#fff;--texto:#16263a;--suave:#64748b;--linea:#cbd5e1;--azul:#2d6fe0;--raiz:#e8f0ff;--rojo:#c82828;--ambar:#b45309;--verde:#16803b}
+*{box-sizing:border-box}body{margin:0;font:13px 'Segoe UI',Arial,sans-serif;background:var(--fondo);color:var(--texto)}
+header{padding:16px 22px 8px}h1{margin:0;font-size:20px}.sub{color:var(--suave);margin-top:3px}
+.barra{padding:6px 22px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}button{border:1px solid var(--linea);background:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit}button:hover{border-color:var(--azul);color:var(--azul)}
+.lienzo{position:relative;padding:14px 22px 6px;overflow:auto}#cols{display:flex;gap:70px;align-items:flex-start;min-width:max-content;position:relative;z-index:2}
+.col{display:flex;flex-direction:column;gap:14px;min-width:210px}.colt{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--suave);margin-bottom:2px}
+.nodo{background:var(--tarjeta);border:1px solid var(--linea);border-radius:9px;padding:9px 11px;cursor:pointer;box-shadow:0 1px 2px #0001}.nodo:hover{border-color:var(--azul)}
+.nodo.raiz{background:var(--raiz);border:2px solid var(--azul)}.nodo.canc{opacity:.65;border-style:dashed}
+.t{font-weight:600}.m{color:var(--suave);font-size:12px}.tot{font-weight:600;margin-top:3px}
+.ins{display:inline-block;font-size:10.5px;border-radius:9px;padding:1px 7px;margin:3px 3px 0 0;color:#fff}.ins.c{background:var(--rojo)}.ins.p{background:var(--verde)}.ins.x{background:var(--ambar)}
+svg{position:absolute;left:0;top:0;pointer-events:none;z-index:1}
+.panel{margin:10px 22px;background:var(--tarjeta);border:1px solid var(--linea);border-radius:9px;padding:12px 16px}.panel h2{margin:0 0 8px;font-size:14px}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e5eaf1}th{color:var(--suave);font-weight:600;font-size:11.5px}
+.av{color:var(--ambar);margin:3px 0}.num{text-align:right}.leyenda{color:var(--suave);font-size:12px}
+</style></head><body>
+<header><h1 id='titulo'></h1><div class='sub' id='sub'></div></header>
+<div class='barra'><button onclick=""enviar({accion:'csv'})"">Exportar a CSV</button><button onclick=""enviar({accion:'abrir',id:modelo.raiz})"">Abrir el documento</button>
+<span class='leyenda'>Clic en un documento: centrar la trazabilidad en él · Doble clic: abrirlo en Comercial · línea continua = vínculo del sistema · discontinua = vínculo manual (DestinationDocumentID)</span></div>
+<div class='lienzo' id='lienzo'><svg id='svg'></svg><div id='cols'></div></div>
+<div class='panel' id='pAvisos' style='display:none'><h2>Avisos</h2><div id='avisos'></div></div>
+<div class='panel'><h2>Vínculos y partidas</h2><div id='tablaAristas'></div></div>
+<script>
+var modelo=" + json + @";
+function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}
+function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+function dinero(n){return (n||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});}
+var TIPOS={S:'SourceDocumentID',D:'DestinationDocumentID',P:'Partida (SourceDocumentItemID)',E:'Entrega (DeliverDocumentItemID)'};
+var por={};modelo.nodos.forEach(function(n){por[n.id]=n;});
+var raiz=por[modelo.raiz];
+document.getElementById('titulo').textContent='Trazabilidad · '+raiz.tipoNombre+' '+raiz.folio;
+document.getElementById('sub').textContent=modelo.nodos.length+' documento(s) · '+modelo.aristas.length+' vínculo(s)';
+var gens={};modelo.nodos.forEach(function(n){(gens[n.gen]=gens[n.gen]||[]).push(n);});
+var cols=document.getElementById('cols');
+Object.keys(gens).map(Number).sort(function(a,b){return a-b;}).forEach(function(g){
+  var c=document.createElement('div');c.className='col';
+  var t=document.createElement('div');t.className='colt';t.textContent=g<0?'Origen '+Math.abs(g):g>0?'Destino '+g:'Documento';c.appendChild(t);
+  gens[g].forEach(function(n){
+    var d=document.createElement('div');d.className='nodo'+(n.raiz?' raiz':'')+(n.cancelado?' canc':'');d.id='n'+n.id;
+    var h='<div class=t>'+esc(n.tipoNombre)+' '+esc(n.folio)+'</div><div class=m>'+esc(n.fecha)+' · '+esc(n.entidad)+'</div><div class=tot>'+dinero(n.total)+'</div>';
+    if(n.cancelado)h+='<span class=\'ins c\'>Cancelado</span>';
+    if(n.pagos&&n.pagos.length)h+='<span class=\'ins p\'>'+n.pagos.length+(n.pagos.length==1?' pago/cobro':' pagos/cobros')+'</span>';
+    if(n.saldo>0.005&&n.total>0)h+='<span class=\'ins x\'>Saldo '+dinero(n.saldo)+'</span>';
+    d.innerHTML=h;
+    d.onclick=function(){if(!n.raiz)enviar({accion:'centrar',id:n.id});};
+    d.ondblclick=function(){enviar({accion:'abrir',id:n.id,modulo:n.modulo});};
+    c.appendChild(d);
+  });
+  cols.appendChild(c);
+});
+function dibuja(){
+  var svg=document.getElementById('svg'),l=document.getElementById('lienzo'),box=cols.getBoundingClientRect(),s='';
+  svg.setAttribute('width',cols.scrollWidth+60);svg.setAttribute('height',cols.scrollHeight+40);
+  s+='<defs><marker id=\'f\' viewBox=\'0 0 8 8\' refX=\'7\' refY=\'4\' markerWidth=\'7\' markerHeight=\'7\' orient=\'auto\'><path d=\'M0,0 L8,4 L0,8 z\' fill=\'#64748b\'/></marker></defs>';
+  modelo.aristas.forEach(function(a){
+    var d=document.getElementById('n'+a.desde),h=document.getElementById('n'+a.hasta);if(!d||!h)return;
+    var r1=d.getBoundingClientRect(),r2=h.getBoundingClientRect(),x1=r1.right-box.left+22,y1=r1.top+r1.height/2-box.top+14,x2=r2.left-box.left+22,y2=r2.top+r2.height/2-box.top+14;
+    if(r2.left<r1.left){x1=r1.left-box.left+22;x2=r2.right-box.left+22;}
+    var cx=(x1+x2)/2;
+    s+='<path d=\'M'+x1+','+y1+' C'+cx+','+y1+' '+cx+','+y2+' '+x2+','+y2+'\' fill=\'none\' stroke=\''+(a.manual?'#b45309':'#64748b')+'\' stroke-width=\'1.6\''+(a.manual?' stroke-dasharray=\'6 4\'':'')+' marker-end=\'url(#f)\'/>';
+  });
+  svg.innerHTML=s;
+}
+window.addEventListener('load',dibuja);window.addEventListener('resize',dibuja);setTimeout(dibuja,60);
+if(modelo.avisos.length){document.getElementById('pAvisos').style.display='block';document.getElementById('avisos').innerHTML=modelo.avisos.map(function(a){return '<div class=av>⚠ '+esc(a)+'</div>';}).join('');}
+var th='<table><tr><th>Origen</th><th>Destino</th><th>Evidencia</th><th>Producto</th><th class=num>Cant. origen</th><th class=num>Cant. destino</th></tr>';
+modelo.aristas.forEach(function(a){
+  var d=por[a.desde],h=por[a.hasta],ev=a.tipos.map(function(t){return TIPOS[t]||t;}).join(' + ')+(a.manual?' (manual)':'');
+  if(!a.partidas.length)th+='<tr><td>'+esc(d.tipoNombre+' '+d.folio)+'</td><td>'+esc(h.tipoNombre+' '+h.folio)+'</td><td>'+esc(ev)+'</td><td></td><td></td><td></td></tr>';
+  a.partidas.forEach(function(p,i){th+='<tr><td>'+(i?'':esc(d.tipoNombre+' '+d.folio))+'</td><td>'+(i?'':esc(h.tipoNombre+' '+h.folio))+'</td><td>'+(i?'':esc(ev))+'</td><td>'+esc((p.clave?p.clave+' · ':'')+p.producto)+'</td><td class=num>'+p.origen+'</td><td class=num>'+p.destino+'</td></tr>';});
+});
+document.getElementById('tablaAristas').innerHTML=th+'</table>';
+</script></body></html>";
+
+// ---------- 7) Ventana: se queda abierta navegando hasta que la cierren ----------
+while (true)
+{
+    var r = ctx.ShowHtmlFormulario(Html(ser.Serialize(modelo)), "Trazabilidad del documento", 1280, 820, 0);
+    if (!r.ContainsKey("submitted") || !(bool)r["submitted"]) return "OK";
+    string accion = r.ContainsKey("accion") ? S(r["accion"]) : "";
+    if (accion == "abrir")
+    {
+        long id = r.ContainsKey("id") ? L(r["id"]) : raiz;
+        int modulo = r.ContainsKey("modulo") ? I(r["modulo"]) : (int)nodos[id]["modulo"];
+        try { ctx.erp.AbrirDocumento((int)id, modulo); } catch (Exception ex) { ctx.Msg("No se pudo abrir el documento: " + ex.Message, "Trazabilidad"); }
+        continue;
+    }
+    if (accion == "csv")
+    {
+        var sb = new StringBuilder("Origen,Destino,Evidencia,Producto,Cantidad origen,Cantidad destino\r\n");
+        foreach (var a in aristas.Values)
+        {
+            var d = nodos[(long)a["desde"]]; var h = nodos[(long)a["hasta"]];
+            string o = S(d["tipoNombre"]) + " " + S(d["folio"]), t = S(h["tipoNombre"]) + " " + S(h["folio"]), ev = string.Join("+", (List<string>)a["tipos"]);
+            var par = (List<Dictionary<string, object>>)a["partidas"];
+            if (par.Count == 0) sb.AppendLine("\"" + o + "\",\"" + t + "\"," + ev + ",,,");
+            foreach (var p in par) sb.AppendLine("\"" + o + "\",\"" + t + "\"," + ev + ",\"" + S(p["producto"]).Replace("\"", "\"\"") + "\"," + ((decimal)p["origen"]).ToString(ci) + "," + ((decimal)p["destino"]).ToString(ci));
+        }
+        using (var dlg = new SaveFileDialog { Filter = "CSV (*.csv)|*.csv", FileName = "trazabilidad_" + raiz + ".csv" })
+            if (dlg.ShowDialog() == DialogResult.OK) { File.WriteAllText(dlg.FileName, sb.ToString(), new UTF8Encoding(true)); ctx.Msg("Archivo guardado:\n" + dlg.FileName, "Trazabilidad"); }
+        continue;
+    }
+    if (accion == "centrar")
+    {
+        long nuevo = r.ContainsKey("id") ? L(r["id"]) : raiz;
+        if (nuevo != raiz && nodos.ContainsKey(nuevo))
+        {
+            // Se recentra sin volver a consultar: el mapa ya está completo; solo cambian la raíz y las columnas
+            foreach (var n in nodos.Values) n["raiz"] = (long)n["id"] == nuevo;
+            raiz = nuevo;
+            // generaciones desplazadas para que el nuevo documento sea la columna 0
+            int d0 = gen[nuevo];
+            foreach (var id in nodos.Keys) nodos[id]["gen"] = gen[id] - d0;
+            modelo["raiz"] = raiz;
+            modelo["nodos"] = nodos.Values.OrderBy(n => (int)n["gen"]).ThenBy(n => S(n["fecha"])).ToList();
+        }
+        continue;
+    }
+    return "OK";
+}
