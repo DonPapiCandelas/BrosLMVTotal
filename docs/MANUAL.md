@@ -1348,8 +1348,11 @@ operaciones de una empresa en producción. Identifica el tipo de operación por
 - **No crees un pago insertando solo `docFinancialOperation`.** Se vio en producción un script
   que lo hacía (el encabezado con `ModuleID`/`DocumentTypeID`/`Amount`/fechas, nada más): el
   pago queda sin aplicar a facturas, sin actualizar `Balance`/`StatusPaidID` de los documentos
-  y sin póliza. Mientras no haya un wrapper del SDK para pagos (ver `XENGINE_FUNCIONES.md`,
-  "`Payment.clsMain`"), usa el perfil de arriba solo para **leer y clasificar**.
+  y sin póliza. **Desde 2.99.0** el reparto de impuestos y los saldos insolutos ya no se calculan a mano:
+  después del `INSERT` de `docFinancialOperation` + `docDocumentPayment` llama a `ctx.erp.RecalcPagosDocumento(doc)`
+  (o `SaveAllTaxesPayment(operación)`) y luego a `UpdateDocumentPaidInfo(doc)`; ver el §3.5 y los avisos de
+  [`SDK_FUNCIONES_NATIVAS.md`](SDK_FUNCIONES_NATIVAS.md) (PPD vs PUE, pagos ya timbrados). Crear el cobro completo por la
+  vía nativa sigue sin resolverse: el `INSERT` sigue siendo SQL.
 - **Conciliación bancaria:** `docEdoCtaBanco` guarda los movimientos del estado de cuenta
   (`FinancialEntityID`, `DateAffectation`, `Debit`, `Credit`, `Balance`, `Reference`,
   `Description`) y se liga a la operación con `docEdoCtaBanco.FinancialOperationID` — ahí se

@@ -19,6 +19,7 @@
     <Compile Include="UiPump.cs" />
     <Compile Include="ClsMain.cs" />
     <Compile Include="Scripting.cs" />
+    <Compile Include="ErpSdkNativo.cs" />
     <Compile Include="Datos.cs" />
     <Compile Include="Consola.cs" />
     <Compile Include="HostClient.cs" />

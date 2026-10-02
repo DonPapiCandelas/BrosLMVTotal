@@ -678,11 +678,34 @@
   {
    "id": "cs:erp.AjustarSaldosInsolutos",
    "lang": "cs",
-   "cat": "ERP · Documento",
+   "cat": "ERP · Cobros y pagos",
    "nombre": "erp.AjustarSaldosInsolutos",
-   "firma": "ctx.erp.AjustarSaldosInsolutos(documentId) : void",
-   "resumen": "Ajusta saldos insolutos.",
-   "ejemplo": "ctx.erp.AjustarSaldosInsolutos(id);"
+   "firma": "ctx.erp.AjustarSaldosInsolutos(financialOperationId, paymentWithDocumentId = 0) : void",
+   "resumen": "Recalcula saldo anterior/insoluto (complemento de pago) de un cobro.",
+   "ejemplo": "ctx.erp.AjustarSaldosInsolutos(operacionId);",
+   "detalle": "Recalcula SaldoAnterior y SaldoInsoluto (complemento de pago) de los renglones de UN cobro con Payment.clsMain, sin tocar impuestos. El argumento es la OPERACIÓN FINANCIERA (cobro/pago), no el documento.",
+   "params": [
+    [
+     "financialOperationId",
+     "int",
+     "La operación financiera (FinancialOperationID)."
+    ],
+    [
+     "paymentWithDocumentId",
+     "int",
+     "0 para un cobro normal; el DocumentID de la nota de crédito si el 'pago' es una NC aplicada."
+    ]
+   ],
+   "retorna": "nada.",
+   "notas": [
+    "CORREGIDA en 2.99.0: antes recibía un documentId, llamaba al motor con un solo parámetro y fallaba siempre en silencio (DISP_E_PARAMNOTOPTIONAL).",
+    "Pruebas (12 cobros sin timbrar): restauró los saldos en 12 de 12. No cambia los renglones ya timbrados en un REP (AltID > 0)."
+   ],
+   "equiv": "py:ctx.erp.AjustarSaldosInsolutos",
+   "ver": [
+    "cs:erp.SaveAllTaxesPayment",
+    "cs:erp.RecalcPagosDocumento"
+   ]
   },
   {
    "id": "cs:erp.RefreshDocumento",
@@ -2468,6 +2491,671 @@
    "resumen": "Núcleo estático de ResolverTokens (para pruebas sin conexión). Usa ctx.ResolverTokens.",
    "ejemplo": "",
    "interno": true
+  },
+  {
+   "id": "cs:erp.TableExists",
+   "lang": "cs",
+   "cat": "ERP · Esquema y entorno",
+   "nombre": "erp.TableExists",
+   "firma": "ctx.erp.TableExists(tableName) : bool",
+   "resumen": "¿Existe la tabla en la base de la empresa activa?",
+   "ejemplo": "if (!ctx.erp.TableExists(\"zzMiTabla\")) { /* crearla */ }",
+   "detalle": "Pregunta al motor de Comercial si una tabla existe en la base de la empresa activa. Sirve para que un script funcione igual en empresas con distinta versión o con tablas propias sin provisionar.",
+   "params": [
+    [
+     "tableName",
+     "string",
+     "Nombre de la tabla, sin esquema."
+    ]
+   ],
+   "retorna": "true si existe; false si no.",
+   "notas": [
+    "Probada: true para tablas existentes y false para inexistentes.",
+    "No distingue vistas de tablas del motor (usa SQL contra sys.objects si necesitas ese detalle)."
+   ],
+   "equiv": "py:ctx.erp.TableExists",
+   "ver": [
+    "cs:erp.FieldExistsInTable"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.TableExists",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.TableExists",
+   "firma": "ctx.erp.TableExists(tableName)",
+   "resumen": "¿Existe la tabla en la base de la empresa activa?",
+   "ejemplo": "if not ctx.erp.TableExists(\"zzMiTabla\"): ...",
+   "equiv": "cs:erp.TableExists"
+  },
+  {
+   "id": "cs:erp.FieldExistsInTable",
+   "lang": "cs",
+   "cat": "ERP · Esquema y entorno",
+   "nombre": "erp.FieldExistsInTable",
+   "firma": "ctx.erp.FieldExistsInTable(fieldName, tableName) : bool",
+   "resumen": "¿Existe la columna en la tabla? (orden nativo: campo, tabla)",
+   "ejemplo": "bool hay = ctx.erp.FieldExistsInTable(\"Folio\", \"docDocument\");",
+   "detalle": "Comprueba si una columna existe en una tabla. Úsalo antes de leer o escribir columnas que cambian entre versiones de Comercial.",
+   "params": [
+    [
+     "fieldName",
+     "string",
+     "Nombre de la columna."
+    ],
+    [
+     "tableName",
+     "string",
+     "Nombre de la tabla."
+    ]
+   ],
+   "retorna": "true si existe; false si no.",
+   "notas": [
+    "OJO: el orden es el nativo del motor (primero el CAMPO, luego la TABLA), al revés de lo que se esperaría."
+   ],
+   "equiv": "py:ctx.erp.FieldExistsInTable",
+   "ver": [
+    "cs:erp.TableExists"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.FieldExistsInTable",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.FieldExistsInTable",
+   "firma": "ctx.erp.FieldExistsInTable(fieldName, tableName)",
+   "resumen": "¿Existe la columna en la tabla? (orden nativo: campo, tabla)",
+   "ejemplo": "ctx.erp.FieldExistsInTable(\"Folio\", \"docDocument\")",
+   "equiv": "cs:erp.FieldExistsInTable"
+  },
+  {
+   "id": "cs:erp.GetModuleIDDocumentType",
+   "lang": "cs",
+   "cat": "ERP · Esquema y entorno",
+   "nombre": "erp.GetModuleIDDocumentType",
+   "firma": "ctx.erp.GetModuleIDDocumentType(documentTypeId, docRecipientId) : int",
+   "resumen": "ModuleID de fábrica para un tipo de documento y recipiente.",
+   "ejemplo": "int modulo = ctx.erp.GetModuleIDDocumentType(5, 1); // factura de cliente = 21",
+   "notas": [
+    "Devuelve el módulo de fábrica: en empresas con módulos clonados (series, formas de pago) hay que clasificar por engModule.ModuleIDBase."
+   ],
+   "equiv": "py:ctx.erp.GetModuleIDDocumentType"
+  },
+  {
+   "id": "py:ctx.erp.GetModuleIDDocumentType",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetModuleIDDocumentType",
+   "firma": "ctx.erp.GetModuleIDDocumentType(documentTypeId, docRecipientId)",
+   "resumen": "ModuleID de fábrica para un tipo de documento y recipiente.",
+   "ejemplo": "ctx.erp.GetModuleIDDocumentType(5, 2)  # factura de compra = 152",
+   "equiv": "cs:erp.GetModuleIDDocumentType"
+  },
+  {
+   "id": "cs:erp.GetModuleDLLName",
+   "lang": "cs",
+   "cat": "ERP · Esquema y entorno",
+   "nombre": "erp.GetModuleDLLName",
+   "firma": "ctx.erp.GetModuleDLLName(moduleId) : string",
+   "resumen": "Nombre de la DLL que atiende un módulo.",
+   "ejemplo": "string dll = ctx.erp.GetModuleDLLName(248); // \"FinancialOperation\"",
+   "equiv": "py:ctx.erp.GetModuleDLLName"
+  },
+  {
+   "id": "py:ctx.erp.GetModuleDLLName",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetModuleDLLName",
+   "firma": "ctx.erp.GetModuleDLLName(moduleId)",
+   "resumen": "Nombre de la DLL que atiende un módulo.",
+   "ejemplo": "ctx.erp.GetModuleDLLName(21)  # 'Document'",
+   "equiv": "cs:erp.GetModuleDLLName"
+  },
+  {
+   "id": "cs:erp.GetSecurityFunctionality",
+   "lang": "cs",
+   "cat": "ERP · Esquema y entorno",
+   "nombre": "erp.GetSecurityFunctionality",
+   "firma": "ctx.erp.GetSecurityFunctionality(functionalityKey, moduleId) : bool",
+   "resumen": "¿El usuario activo tiene permiso sobre esa funcionalidad del módulo?",
+   "ejemplo": "bool puede = ctx.erp.GetSecurityFunctionality(\"Document.Delete\", 21);",
+   "notas": [
+    "Consulta los permisos nativos de Comercial (engSecurity*) del usuario con sesión: úsala para respetar los permisos del sistema en botones que borran o cancelan."
+   ],
+   "equiv": "py:ctx.erp.GetSecurityFunctionality"
+  },
+  {
+   "id": "py:ctx.erp.GetSecurityFunctionality",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetSecurityFunctionality",
+   "firma": "ctx.erp.GetSecurityFunctionality(functionalityKey, moduleId)",
+   "resumen": "¿El usuario activo tiene permiso sobre esa funcionalidad del módulo?",
+   "ejemplo": "ctx.erp.GetSecurityFunctionality(\"Document.Delete\", 21)",
+   "equiv": "cs:erp.GetSecurityFunctionality"
+  },
+  {
+   "id": "cs:erp.GetUserCanElevatePrivileges",
+   "lang": "cs",
+   "cat": "ERP · Esquema y entorno",
+   "nombre": "erp.GetUserCanElevatePrivileges",
+   "firma": "ctx.erp.GetUserCanElevatePrivileges() : bool",
+   "resumen": "¿El usuario activo es administrador de Comercial?",
+   "ejemplo": "if (!ctx.erp.GetUserCanElevatePrivileges()) { ctx.Msg(\"Solo un administrador.\"); return; }",
+   "equiv": "py:ctx.erp.GetUserCanElevatePrivileges"
+  },
+  {
+   "id": "py:ctx.erp.GetUserCanElevatePrivileges",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetUserCanElevatePrivileges",
+   "firma": "ctx.erp.GetUserCanElevatePrivileges()",
+   "resumen": "¿El usuario activo es administrador de Comercial?",
+   "ejemplo": "ctx.erp.GetUserCanElevatePrivileges()",
+   "equiv": "cs:erp.GetUserCanElevatePrivileges"
+  },
+  {
+   "id": "cs:erp.GetDefaultValue",
+   "lang": "cs",
+   "cat": "ERP · Parámetros",
+   "nombre": "erp.GetDefaultValue",
+   "firma": "ctx.erp.GetDefaultValue(key, countryId = 1) : string",
+   "resumen": "Lee un parámetro de engParameter (clave + país).",
+   "ejemplo": "string v = ctx.erp.GetDefaultValue(\"BROS_MI_CLAVE\");",
+   "notas": [
+    "Devuelve \"\" si la clave no existe. Lee de la tabla nativa engParameter (Key, Value, Description, CountryID) de la empresa activa."
+   ],
+   "equiv": "py:ctx.erp.GetDefaultValue",
+   "ver": [
+    "cs:erp.SaveDefaultValue"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.GetDefaultValue",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetDefaultValue",
+   "firma": "ctx.erp.GetDefaultValue(key, countryId=1)",
+   "resumen": "Lee un parámetro de engParameter (clave + país).",
+   "ejemplo": "ctx.erp.GetDefaultValue(\"BROS_MI_CLAVE\")",
+   "equiv": "cs:erp.GetDefaultValue"
+  },
+  {
+   "id": "cs:erp.SaveDefaultValue",
+   "lang": "cs",
+   "cat": "ERP · Parámetros",
+   "nombre": "erp.SaveDefaultValue",
+   "firma": "ctx.erp.SaveDefaultValue(key, value, description = \"\", countryId = 1) : void",
+   "resumen": "Guarda (inserta o sobrescribe) un parámetro en engParameter.",
+   "ejemplo": "ctx.erp.SaveDefaultValue(\"BROS_MI_CLAVE\", \"valor\", \"para qué sirve\");",
+   "detalle": "Almacén de configuración por empresa que ya trae Comercial (engParameter). Si la clave existe la sobrescribe; si no, la crea. Útil para guardar la configuración de un botón sin crear una tabla propia.",
+   "params": [
+    [
+     "key",
+     "string",
+     "Clave. Usa SIEMPRE un prefijo propio (BROS_...)."
+    ],
+    [
+     "value",
+     "string",
+     "Valor."
+    ],
+    [
+     "description",
+     "string",
+     "Descripción opcional."
+    ],
+    [
+     "countryId",
+     "int",
+     "País (1 = México)."
+    ]
+   ],
+   "retorna": "nada.",
+   "notas": [
+    "ESCRIBE en la configuración nativa del sistema: nunca uses una clave de Comercial; engParameter tiene cientos de claves del propio producto.",
+    "Probada: escribir, leer, sobrescribir y que otro país no la vea."
+   ],
+   "equiv": "py:ctx.erp.SaveDefaultValue",
+   "ver": [
+    "cs:erp.GetDefaultValue"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.SaveDefaultValue",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.SaveDefaultValue",
+   "firma": "ctx.erp.SaveDefaultValue(key, value, description='', countryId=1)",
+   "resumen": "Guarda (inserta o sobrescribe) un parámetro en engParameter.",
+   "ejemplo": "ctx.erp.SaveDefaultValue(\"BROS_MI_CLAVE\", \"valor\", \"para qué sirve\")",
+   "equiv": "cs:erp.SaveDefaultValue"
+  },
+  {
+   "id": "cs:erp.GetLastDayMonth",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.GetLastDayMonth",
+   "firma": "ctx.erp.GetLastDayMonth(date) : int",
+   "resumen": "Último día del mes (28 a 31).",
+   "ejemplo": "int d = ctx.erp.GetLastDayMonth(new DateTime(2026, 2, 10)); // 28",
+   "equiv": "py:ctx.erp.GetLastDayMonth"
+  },
+  {
+   "id": "py:ctx.erp.GetLastDayMonth",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetLastDayMonth",
+   "firma": "ctx.erp.GetLastDayMonth(date)",
+   "resumen": "Último día del mes (28 a 31).",
+   "ejemplo": "ctx.erp.GetLastDayMonth('2026-02-10')",
+   "equiv": "cs:erp.GetLastDayMonth"
+  },
+  {
+   "id": "cs:erp.DateFromString",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.DateFromString",
+   "firma": "ctx.erp.DateFromString(datePart, timePart) : DateTime",
+   "resumen": "Arma una fecha-hora desde 'yyyy-MM-dd' y 'HH:mm:ss'.",
+   "ejemplo": "DateTime f = ctx.erp.DateFromString(\"2026-10-01\", \"12:30:00\");",
+   "equiv": "py:ctx.erp.DateFromString"
+  },
+  {
+   "id": "py:ctx.erp.DateFromString",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.DateFromString",
+   "firma": "ctx.erp.DateFromString(datePart, timePart)",
+   "resumen": "Arma una fecha-hora desde 'yyyy-MM-dd' y 'HH:mm:ss'.",
+   "ejemplo": "ctx.erp.DateFromString(\"2026-10-01\", \"12:30:00\")",
+   "equiv": "cs:erp.DateFromString"
+  },
+  {
+   "id": "cs:erp.ConvertDateTimeToUTC",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.ConvertDateTimeToUTC",
+   "firma": "ctx.erp.ConvertDateTimeToUTC(dateTime) : string",
+   "resumen": "Fecha-hora con desfase horario, como la usa Comercial en CFDI.",
+   "ejemplo": "string s = ctx.erp.ConvertDateTimeToUTC(DateTime.Now); // 2026-10-01T12:30:00 -06:00",
+   "notas": [
+    "El resultado lleva un ESPACIO antes del desfase (\"…:00 -06:00\"): es el formato del motor; ajústalo si el destino lo exige distinto."
+   ],
+   "equiv": "py:ctx.erp.ConvertDateTimeToUTC"
+  },
+  {
+   "id": "py:ctx.erp.ConvertDateTimeToUTC",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.ConvertDateTimeToUTC",
+   "firma": "ctx.erp.ConvertDateTimeToUTC(dateTime)",
+   "resumen": "Fecha-hora con desfase horario, como la usa Comercial en CFDI.",
+   "ejemplo": "ctx.erp.ConvertDateTimeToUTC(fecha)",
+   "equiv": "cs:erp.ConvertDateTimeToUTC"
+  },
+  {
+   "id": "cs:erp.GetFormatedDateValue",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.GetFormatedDateValue",
+   "firma": "ctx.erp.GetFormatedDateValue(date) : string",
+   "resumen": "Fecha como texto 'yyyy-MM-dd HH:mm:ss'.",
+   "ejemplo": "string s = ctx.erp.GetFormatedDateValue(DateTime.Today);",
+   "equiv": "py:ctx.erp.GetFormatedDateValue"
+  },
+  {
+   "id": "py:ctx.erp.GetFormatedDateValue",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetFormatedDateValue",
+   "firma": "ctx.erp.GetFormatedDateValue(date)",
+   "resumen": "Fecha como texto 'yyyy-MM-dd HH:mm:ss'.",
+   "ejemplo": "ctx.erp.GetFormatedDateValue(fecha)",
+   "equiv": "cs:erp.GetFormatedDateValue"
+  },
+  {
+   "id": "cs:erp.Pad",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.Pad",
+   "firma": "ctx.erp.Pad(value, length, fillWith, alignment) : string",
+   "resumen": "Rellena un texto a una longitud ('L' izquierda, 'R' derecha).",
+   "ejemplo": "string s = ctx.erp.Pad(\"7\", 5, \"0\", \"R\"); // 00007",
+   "notas": [
+    "alignment \"L\": el texto queda a la izquierda y se rellena a la derecha (\"7\" -> \"70000\"); \"R\": el texto queda a la derecha (\"7\" -> \"00007\").",
+    "Probada con \"L\" y \"R\"."
+   ],
+   "equiv": "py:ctx.erp.Pad"
+  },
+  {
+   "id": "py:ctx.erp.Pad",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.Pad",
+   "firma": "ctx.erp.Pad(value, length, fillWith, alignment)",
+   "resumen": "Rellena un texto a una longitud ('L' izquierda, 'R' derecha).",
+   "ejemplo": "ctx.erp.Pad(\"7\", 5, \"0\", \"R\")",
+   "equiv": "cs:erp.Pad"
+  },
+  {
+   "id": "cs:erp.TruncateDouble",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.TruncateDouble",
+   "firma": "ctx.erp.TruncateDouble(value, decimals) : double",
+   "resumen": "Trunca (no redondea) a N decimales.",
+   "ejemplo": "double t = ctx.erp.TruncateDouble(12.98765, 2); // 12.98",
+   "notas": [
+    "Trunca hacia cero: (-3.999, 1) = -3.9."
+   ],
+   "equiv": "py:ctx.erp.TruncateDouble"
+  },
+  {
+   "id": "py:ctx.erp.TruncateDouble",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.TruncateDouble",
+   "firma": "ctx.erp.TruncateDouble(value, decimals)",
+   "resumen": "Trunca (no redondea) a N decimales.",
+   "ejemplo": "ctx.erp.TruncateDouble(12.98765, 2)",
+   "equiv": "cs:erp.TruncateDouble"
+  },
+  {
+   "id": "cs:erp.GetSerialNumberPrefix",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.GetSerialNumberPrefix",
+   "firma": "ctx.erp.GetSerialNumberPrefix(serialNumber) : string",
+   "resumen": "Parte alfabética de un número de serie.",
+   "ejemplo": "string p = ctx.erp.GetSerialNumberPrefix(\"ABC00123\"); // ABC",
+   "equiv": "py:ctx.erp.GetSerialNumberPrefix",
+   "ver": [
+    "cs:erp.GetSerialNumberNumValue"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.GetSerialNumberPrefix",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetSerialNumberPrefix",
+   "firma": "ctx.erp.GetSerialNumberPrefix(serialNumber)",
+   "resumen": "Parte alfabética de un número de serie.",
+   "ejemplo": "ctx.erp.GetSerialNumberPrefix(\"ABC00123\")",
+   "equiv": "cs:erp.GetSerialNumberPrefix"
+  },
+  {
+   "id": "cs:erp.GetSerialNumberNumValue",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.GetSerialNumberNumValue",
+   "firma": "ctx.erp.GetSerialNumberNumValue(serialNumber) : string",
+   "resumen": "Parte numérica de un número de serie (conserva ceros).",
+   "ejemplo": "string n = ctx.erp.GetSerialNumberNumValue(\"ABC00123\"); // 00123",
+   "equiv": "py:ctx.erp.GetSerialNumberNumValue",
+   "ver": [
+    "cs:erp.GetSerialNumberPrefix"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.GetSerialNumberNumValue",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetSerialNumberNumValue",
+   "firma": "ctx.erp.GetSerialNumberNumValue(serialNumber)",
+   "resumen": "Parte numérica de un número de serie (conserva ceros).",
+   "ejemplo": "ctx.erp.GetSerialNumberNumValue(\"ABC00123\")",
+   "equiv": "cs:erp.GetSerialNumberNumValue"
+  },
+  {
+   "id": "cs:erp.GetFormatedXML",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.GetFormatedXML",
+   "firma": "ctx.erp.GetFormatedXML(xml) : string",
+   "resumen": "XML con sangrías (legible).",
+   "ejemplo": "string bonito = ctx.erp.GetFormatedXML(xml);",
+   "equiv": "py:ctx.erp.GetFormatedXML"
+  },
+  {
+   "id": "py:ctx.erp.GetFormatedXML",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetFormatedXML",
+   "firma": "ctx.erp.GetFormatedXML(xml)",
+   "resumen": "XML con sangrías (legible).",
+   "ejemplo": "ctx.erp.GetFormatedXML(xml)",
+   "equiv": "cs:erp.GetFormatedXML"
+  },
+  {
+   "id": "cs:erp.GetMaxValueField",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.GetMaxValueField",
+   "firma": "ctx.erp.GetMaxValueField(fieldName, tableName, where = \"\") : long",
+   "resumen": "Máximo de una columna entera, con filtro opcional.",
+   "ejemplo": "long max = ctx.erp.GetMaxValueField(\"DocumentID\", \"docDocument\", \"ModuleID=21\");",
+   "notas": [
+    "El filtro es texto SQL: no le pases valores de usuario sin validar. Para folios que deben ser únicos con procesos en paralelo usa sp_getapplock (el máximo+1 no es atómico)."
+   ],
+   "equiv": "py:ctx.erp.GetMaxValueField"
+  },
+  {
+   "id": "py:ctx.erp.GetMaxValueField",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetMaxValueField",
+   "firma": "ctx.erp.GetMaxValueField(fieldName, tableName, where='')",
+   "resumen": "Máximo de una columna entera, con filtro opcional.",
+   "ejemplo": "ctx.erp.GetMaxValueField(\"DocumentID\", \"docDocument\", \"ModuleID=21\")",
+   "equiv": "cs:erp.GetMaxValueField"
+  },
+  {
+   "id": "cs:erp.GetQRCode",
+   "lang": "cs",
+   "cat": "ERP · Fecha y texto",
+   "nombre": "erp.GetQRCode",
+   "firma": "ctx.erp.GetQRCode(text) : string",
+   "resumen": "Código QR del texto como PNG en base64.",
+   "ejemplo": "string png = ctx.erp.GetQRCode(\"https://ejemplo.com/x\");",
+   "detalle": "Genera con el motor de Comercial el código QR de un texto y lo devuelve como imagen PNG codificada en base64. Sirve para PDFs y páginas HTML (<img src=\"data:image/png;base64,...\">), por ejemplo el QR del timbre de un CFDI.",
+   "params": [
+    [
+     "text",
+     "string",
+     "Texto a codificar (URL, cadena del SAT...)."
+    ]
+   ],
+   "retorna": "Base64 de un PNG (empieza con \"iVBORw0KGgo\"); \"\" si falla (revisa LastError).",
+   "ejemplo_extra": [
+    {
+     "titulo": "Insertarlo en HTML",
+     "lang": "cs",
+     "codigo": "string html = \"<img src=\\\"data:image/png;base64,\" + ctx.erp.GetQRCode(url) + \"\\\">\";"
+    }
+   ],
+   "equiv": "py:ctx.erp.GetQRCode"
+  },
+  {
+   "id": "py:ctx.erp.GetQRCode",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetQRCode",
+   "firma": "ctx.erp.GetQRCode(text)",
+   "resumen": "Código QR del texto como PNG en base64.",
+   "ejemplo": "png = ctx.erp.GetQRCode(\"https://ejemplo.com/x\")",
+   "equiv": "cs:erp.GetQRCode"
+  },
+  {
+   "id": "cs:erp.GetCostLast",
+   "lang": "cs",
+   "cat": "ERP · Costos",
+   "nombre": "erp.GetCostLast",
+   "firma": "ctx.erp.GetCostLast(productId) : double",
+   "resumen": "Costo de la última compra del producto.",
+   "ejemplo": "double c = ctx.erp.GetCostLast(productoId);",
+   "notas": [
+    "Devuelve 0 si el producto no tiene compras."
+   ],
+   "equiv": "py:ctx.erp.GetCostLast"
+  },
+  {
+   "id": "py:ctx.erp.GetCostLast",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.GetCostLast",
+   "firma": "ctx.erp.GetCostLast(productId)",
+   "resumen": "Costo de la última compra del producto.",
+   "ejemplo": "ctx.erp.GetCostLast(producto_id)",
+   "equiv": "cs:erp.GetCostLast"
+  },
+  {
+   "id": "cs:erp.RecalcCostComercial",
+   "lang": "cs",
+   "cat": "ERP · Costos",
+   "nombre": "erp.RecalcCostComercial",
+   "firma": "ctx.erp.RecalcCostComercial(productId) : void",
+   "resumen": "Recalcula el costo comercial vigente del producto.",
+   "ejemplo": "ctx.erp.RecalcCostComercial(productoId);",
+   "notas": [
+    "Recalcula orgProduct.CostPriceComercial desde el libro de costos (13 de 15 productos de prueba volvieron al valor original; 2 difirieron). Es idempotente sobre datos consistentes (15 de 15 sin cambios).",
+    "NO reconstruye las columnas de salida del libro por documento (para costear un documento usa CalcularCostos)."
+   ],
+   "equiv": "py:ctx.erp.RecalcCostComercial",
+   "ver": [
+    "cs:erp.RecalcCostFiscal",
+    "cs:erp.CalcularCostos"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.RecalcCostComercial",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.RecalcCostComercial",
+   "firma": "ctx.erp.RecalcCostComercial(productId)",
+   "resumen": "Recalcula el costo comercial vigente del producto.",
+   "ejemplo": "ctx.erp.RecalcCostComercial(producto_id)",
+   "equiv": "cs:erp.RecalcCostComercial"
+  },
+  {
+   "id": "cs:erp.RecalcCostFiscal",
+   "lang": "cs",
+   "cat": "ERP · Costos",
+   "nombre": "erp.RecalcCostFiscal",
+   "firma": "ctx.erp.RecalcCostFiscal(productId) : void",
+   "resumen": "Recalcula el costo fiscal vigente del producto.",
+   "ejemplo": "ctx.erp.RecalcCostFiscal(productoId);",
+   "equiv": "py:ctx.erp.RecalcCostFiscal",
+   "ver": [
+    "cs:erp.RecalcCostComercial"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.RecalcCostFiscal",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.RecalcCostFiscal",
+   "firma": "ctx.erp.RecalcCostFiscal(productId)",
+   "resumen": "Recalcula el costo fiscal vigente del producto.",
+   "ejemplo": "ctx.erp.RecalcCostFiscal(producto_id)",
+   "equiv": "cs:erp.RecalcCostFiscal"
+  },
+  {
+   "id": "cs:erp.SaveAllTaxesPayment",
+   "lang": "cs",
+   "cat": "ERP · Cobros y pagos",
+   "nombre": "erp.SaveAllTaxesPayment",
+   "firma": "ctx.erp.SaveAllTaxesPayment(financialOperationId) : void",
+   "resumen": "Reconstruye el reparto de impuestos de un cobro/pago (opción conservadora).",
+   "ejemplo": "ctx.erp.SaveAllTaxesPayment(operacionId);\r\nctx.erp.UpdateDocumentPaidInfo(documentoId);",
+   "detalle": "Rehace con la rutina de Comercial el reparto de impuestos de un cobro o pago (docFinancialOperationTaxDetail: base, importe, proporción, retenciones y columnas en MXN). Es la opción conservadora: si el cobro ya tenía reparto lo reconstruye, y si Comercial nunca se lo generó (facturas PUE, pagos antiguos) NO lo inventa.",
+   "params": [
+    [
+     "financialOperationId",
+     "int",
+     "La operación financiera (FinancialOperationID) del cobro o pago."
+    ]
+   ],
+   "retorna": "nada.",
+   "notas": [
+    "Pruebas en laboratorio (37 cobros reales): rehízo el reparto con el mismo número de filas en 13 de 15 cobros que lo tenían y no creó filas en los 22 que no lo tenían.",
+    "No toca saldos insolutos ni el documento: después llama a UpdateDocumentPaidInfo (y a AjustarSaldosInsolutos si aplica).",
+    "Revisa ctx.erp.LastError: Com.Call traga las excepciones COM."
+   ],
+   "equiv": "py:ctx.erp.SaveAllTaxesPayment",
+   "ver": [
+    "cs:erp.RecalcPagosDocumento",
+    "cs:erp.AjustarSaldosInsolutos",
+    "cs:erp.UpdateDocumentPaidInfo"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.SaveAllTaxesPayment",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.SaveAllTaxesPayment",
+   "firma": "ctx.erp.SaveAllTaxesPayment(financialOperationId)",
+   "resumen": "Reconstruye el reparto de impuestos de un cobro/pago (opción conservadora).",
+   "ejemplo": "ctx.erp.SaveAllTaxesPayment(operacion_id)",
+   "equiv": "cs:erp.SaveAllTaxesPayment"
+  },
+  {
+   "id": "cs:erp.RecalcPagosDocumento",
+   "lang": "cs",
+   "cat": "ERP · Cobros y pagos",
+   "nombre": "erp.RecalcPagosDocumento",
+   "firma": "ctx.erp.RecalcPagosDocumento(documentId) : void",
+   "resumen": "Reconstruye reparto de impuestos y saldos insolutos de los cobros de un documento.",
+   "ejemplo": "ctx.erp.RecalcPagosDocumento(facturaId);\r\nctx.erp.UpdateDocumentPaidInfo(facturaId);",
+   "detalle": "Llama a Payment.clsMain.RecalcDocumentPayments, la rutina que Comercial usa al guardar un cobro: reconstruye el reparto de impuestos y los saldos anterior/insoluto de TODOS los cobros y notas de crédito aplicados al documento. Resuelve el hueco de crear un cobro por SQL que queda sin reparto de impuestos.",
+   "params": [
+    [
+     "documentId",
+     "int",
+     "El documento (factura) al que están aplicados los cobros."
+    ]
+   ],
+   "retorna": "nada.",
+   "notas": [
+    "Pruebas (107 documentos reales, copia de laboratorio): 0 excepciones; no altera lo que Comercial ya guardó; reconstruyó el reparto en 68 de 71 documentos que lo tenían, incluidos 20 de 20 con retenciones.",
+    "A diferencia de SaveAllTaxesPayment, AGREGA reparto de impuestos a documentos que no lo tenían (en la muestra: 33 de 107, 21 de ellos PUE). Úsala con facturas PPD.",
+    "NO recalcula los saldos de renglones ya incluidos en un REP timbrado (docDocumentPayment.AltID > 0): es lo correcto fiscalmente.",
+    "Trabaja a nivel documento: si borraste a mano solo el reparto de UNA operación de un documento con varias, puede fallar con 'Division by zero' (revisa ctx.erp.LastError).",
+    "No actualiza TotalPaid/Balance/StatusPaidID del documento: llama a UpdateDocumentPaidInfo después."
+   ],
+   "ejemplo_extra": [
+    {
+     "titulo": "Cobro insertado por SQL: completarlo",
+     "lang": "cs",
+     "codigo": "// ... INSERT de docFinancialOperation + docDocumentPayment ...\r\nctx.erp.RecalcPagosDocumento(facturaId);       // reparto de impuestos y saldos insolutos\r\nctx.erp.UpdateDocumentPaidInfo(facturaId);     // TotalPaid / Balance / StatusPaidID\r\nif (!string.IsNullOrEmpty(ctx.erp.LastError)) ctx.Msg(ctx.erp.LastError);"
+    }
+   ],
+   "equiv": "py:ctx.erp.RecalcPagosDocumento",
+   "ver": [
+    "cs:erp.SaveAllTaxesPayment",
+    "cs:erp.AjustarSaldosInsolutos",
+    "cs:erp.UpdateDocumentPaidInfo"
+   ]
+  },
+  {
+   "id": "py:ctx.erp.RecalcPagosDocumento",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.RecalcPagosDocumento",
+   "firma": "ctx.erp.RecalcPagosDocumento(documentId)",
+   "resumen": "Reconstruye reparto de impuestos y saldos insolutos de los cobros de un documento.",
+   "ejemplo": "ctx.erp.RecalcPagosDocumento(factura_id)",
+   "equiv": "cs:erp.RecalcPagosDocumento"
+  },
+  {
+   "id": "py:ctx.erp.AjustarSaldosInsolutos",
+   "lang": "py",
+   "cat": "Python",
+   "nombre": "ctx.erp.AjustarSaldosInsolutos",
+   "firma": "ctx.erp.AjustarSaldosInsolutos(financialOperationId, paymentWithDocumentId=0)",
+   "resumen": "Recalcula saldo anterior/insoluto (complemento de pago) de un cobro.",
+   "ejemplo": "ctx.erp.AjustarSaldosInsolutos(operacion_id)",
+   "equiv": "cs:erp.AjustarSaldosInsolutos"
   }
  ]
 }

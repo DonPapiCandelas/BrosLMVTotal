@@ -8,6 +8,26 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [2.99.0] — 2026-10-01 — SDK: funciones nativas de Comercial
+
+### Agregado
+- **24 funciones nuevas de `ctx.erp`** (C# y Python) sobre rutinas nativas de Comercial que ya existían pero no estaban envueltas, cada una con ficha en el catálogo y verificada en laboratorio con datos reales (`docs/SDK_FUNCIONES_NATIVAS.md`):
+  - *Esquema y entorno:* `TableExists`, `FieldExistsInTable`, `GetModuleIDDocumentType`, `GetModuleDLLName`, `GetSecurityFunctionality`, `GetUserCanElevatePrivileges`.
+  - *Parámetros por empresa (`engParameter`):* `GetDefaultValue`, `SaveDefaultValue`.
+  - *Fecha y texto:* `GetLastDayMonth`, `DateFromString`, `ConvertDateTimeToUTC`, `GetFormatedDateValue`, `Pad`, `TruncateDouble`, `GetSerialNumberPrefix`, `GetSerialNumberNumValue`, `GetFormatedXML`, `GetMaxValueField`, `GetQRCode` (PNG en base64).
+  - *Costos:* `GetCostLast`, `RecalcCostComercial`, `RecalcCostFiscal`.
+  - *Cobros y pagos:* `RecalcPagosDocumento` (reparto de impuestos y saldos insolutos con la rutina de Comercial, `Payment.clsMain`) y `SaveAllTaxesPayment` (reparto de un cobro, sin inventar el que Comercial nunca generó). Cierra el hueco de los cobros insertados por SQL que quedaban sin reparto de impuestos.
+- Caso de humo #34 (`build/humo/casos/34_sdk_funciones_nativas.ps1`).
+
+### Corregido
+- **`ctx.erp.AjustarSaldosInsolutos` nunca funcionó**: recibía un `documentId`, llamaba al motor con un solo parámetro y fallaba en silencio (`DISP_E_PARAMNOTOPTIONAL`, que `Com.Call` deja solo en `LastError`). Ahora recibe la **operación financiera** (`AjustarSaldosInsolutos(operacionId[, pagoConDocumentoId])`) y usa `Payment.clsMain`, que restauró los saldos en 12 de 12 cobros de prueba. El cambio de significado del argumento es seguro porque la versión anterior no tenía ningún efecto.
+
+### Cambiado
+- `ErpContext` pasa a ser `partial`; las funciones nuevas viven en `src/ErpSdkNativo.cs` (también incluido en `runner/BrosLMV.Runner.csproj`).
+
+### Límites conocidos
+- Pruebas hechas con copias locales de bases reales, nunca contra producción. Moneda extranjera en cobros: no validado. Crear un cobro completo por la vía nativa (objetos de `Document.dll`) sigue sin resolverse.
+
 ## [2.98.0] — 2026-09-29 — Manual y catálogo del SDK
 
 ### Agregado

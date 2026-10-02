@@ -35,11 +35,11 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}th,td{bord
 details.interno summary{cursor:pointer;color:var(--mut);margin:8px 0}
 @media (max-width:860px){.wrap{grid-template-columns:1fr}nav{position:static;height:auto}main{padding:16px}}
 </style></head><body><div class="wrap">
-<nav><h1>SDK de BrosLMV</h1><div class="sub">Manual de referencia · 170 funciones</div>
+<nav><h1>SDK de BrosLMV</h1><div class="sub">Manual de referencia · 219 funciones</div>
 <input id="q" type="search" placeholder="Buscar función…"><div class="seg"><button class="on" data-l="todos">Todo</button><button data-l="cs">C#</button><button data-l="py">Python</button><button data-l="sql">SQL</button></div>
-<h2>Guías</h2><a href="#guias">Guías del SDK</a><h2>C#</h2><a href="#cat-cs-Selecci-n-y-datos">Selección y datos</a><a href="#cat-cs-Consultas-SQL">Consultas SQL</a><a href="#cat-cs-Tokens">Tokens</a><a href="#cat-cs-Contexto">Contexto</a><a href="#cat-cs-Interacci-n">Interacción</a><a href="#cat-cs-ERP---Contexto">ERP · Contexto</a><a href="#cat-cs-ERP---Documento">ERP · Documento</a><a href="#cat-cs-ERP---UI">ERP · UI</a><a href="#cat-cs-ERP---Folio">ERP · Folio</a><a href="#cat-cs-ERP---Precios-y-existencias">ERP · Precios y existencias</a><a href="#cat-cs-ERP---Cr-dito">ERP · Crédito</a><a href="#cat-cs-ERP---Par-metros">ERP · Parámetros</a><a href="#cat-cs-ERP---Utilidades">ERP · Utilidades</a><a href="#cat-cs-ERP---DLookup">ERP · DLookup</a><a href="#cat-cs-ERP---Bit-cora">ERP · Bitácora</a><a href="#cat-cs-ERP---Impresi-n-y-export">ERP · Impresión y export</a><a href="#cat-cs-ERP---Correo">ERP · Correo</a><a href="#cat-cs-ERP---Web---sistema">ERP · Web / sistema</a><a href="#cat-cs-ERP---CFDI">ERP · CFDI</a><a href="#cat-cs-ERP---Avanzado">ERP · Avanzado</a><a href="#cat-cs-Utilidades">Utilidades</a><h2>Python</h2><a href="#cat-py-Python">Python</a><a href="#cat-py-ctx-erp--Comercial-">ctx.erp (Comercial)</a><h2>SQL</h2><a href="#cat-sql-Sentencias">Sentencias</a><a href="#cat-sql-Tokens">Tokens</a><h2>Otros</h2><a href="#internas">Funciones internas</a></nav>
+<h2>Guías</h2><a href="#guias">Guías del SDK</a><h2>C#</h2><a href="#cat-cs-Selecci-n-y-datos">Selección y datos</a><a href="#cat-cs-Consultas-SQL">Consultas SQL</a><a href="#cat-cs-Tokens">Tokens</a><a href="#cat-cs-Contexto">Contexto</a><a href="#cat-cs-Interacci-n">Interacción</a><a href="#cat-cs-ERP---Contexto">ERP · Contexto</a><a href="#cat-cs-ERP---Documento">ERP · Documento</a><a href="#cat-cs-ERP---Cobros-y-pagos">ERP · Cobros y pagos</a><a href="#cat-cs-ERP---UI">ERP · UI</a><a href="#cat-cs-ERP---Folio">ERP · Folio</a><a href="#cat-cs-ERP---Precios-y-existencias">ERP · Precios y existencias</a><a href="#cat-cs-ERP---Cr-dito">ERP · Crédito</a><a href="#cat-cs-ERP---Par-metros">ERP · Parámetros</a><a href="#cat-cs-ERP---Utilidades">ERP · Utilidades</a><a href="#cat-cs-ERP---DLookup">ERP · DLookup</a><a href="#cat-cs-ERP---Bit-cora">ERP · Bitácora</a><a href="#cat-cs-ERP---Impresi-n-y-export">ERP · Impresión y export</a><a href="#cat-cs-ERP---Correo">ERP · Correo</a><a href="#cat-cs-ERP---Web---sistema">ERP · Web / sistema</a><a href="#cat-cs-ERP---CFDI">ERP · CFDI</a><a href="#cat-cs-ERP---Avanzado">ERP · Avanzado</a><a href="#cat-cs-Utilidades">Utilidades</a><a href="#cat-cs-ERP---Esquema-y-entorno">ERP · Esquema y entorno</a><a href="#cat-cs-ERP---Fecha-y-texto">ERP · Fecha y texto</a><a href="#cat-cs-ERP---Costos">ERP · Costos</a><h2>Python</h2><a href="#cat-py-Python">Python</a><a href="#cat-py-ctx-erp--Comercial-">ctx.erp (Comercial)</a><h2>SQL</h2><a href="#cat-sql-Sentencias">Sentencias</a><a href="#cat-sql-Tokens">Tokens</a><h2>Otros</h2><a href="#internas">Funciones internas</a></nav>
 <main><h1>Manual del SDK de BrosLMV</h1>
-<p class="aviso">Todo lo que un script puede hacer con <code>ctx</code>: consultar datos, crear documentos, mostrar ventanas y más. 41 funciones tienen ficha completa (parámetros, ejemplos y notas); el resto trae firma, descripción y ejemplo.
+<p class="aviso">Todo lo que un script puede hacer con <code>ctx</code>: consultar datos, crear documentos, mostrar ventanas y más. 48 funciones tienen ficha completa (parámetros, ejemplos y notas); el resto trae firma, descripción y ejemplo.
 Este manual se genera del catálogo del SDK, así que siempre coincide con lo que el panel de referencias de la Consola muestra.</p>
 <div class="guias" id="guias"><h1>Guías del SDK de BrosLMV</h1>
 <p>Estas guías explican <strong>cómo se usan</strong> las funciones del SDK con ejemplos que se pueden copiar. Cada función tiene además su ficha en el manual (firma, parámetros, ejemplos y notas). Los ejemplos están en C# y Python; SQL puro tiene su propia guía (tokens). Regla de oro para todos: <strong>filtra siempre por la empresa activa</strong> y <strong>no escribas a mano</strong> IDs de módulos, almacenes o catálogos: léelos de la empresa.</p>
@@ -124,7 +124,7 @@ acc.GetType().InvokeMember(&quot;CrearPolizasDocumento&quot;, System.Reflection.
 <p>Para elegir archivos en Python: <code>ctx.select_file(...)</code> y <code>ctx.select_folder(...)</code>; para Excel: <code>ctx.read_excel(...)</code> y <code>ctx.write_excel(...)</code>.</p>
 <h2>7. Reglas de BrosLMV para scripts que van a más de un cliente</h2>
 <ol><li><strong>Empresa activa:</strong> las tablas con <code>OwnedBusinessEntityID</code> (almacenes, proveedores, clientes, centros de costo, tipos de gasto, documentos, pólizas) guardan una copia por empresa: filtra siempre por <code>ctx.erp.OwnedBusinessEntityId</code>.</li><li><strong>Nada escrito a mano:</strong> los módulos se identifican por su naturaleza en <code>engModuleParameter</code> (tipo de documento, destinatario, si recibe XML, qué afecta), no por un <code>ModuleID</code> fijo; catálogos y valores fiscales se leen de la empresa.</li><li><strong>Lotes de altas por <code>ctx.OpenConn()</code></strong>, con <code>SET NOCOUNT ON</code> y SQL que no duplique si se repite.</li><li><strong>Refrescar el grid una vez al final</strong> con <code>ctx.erp.RefreshGrid()</code> y, si creaste un documento, abrirlo con <code>ctx.erp.AbrirDocumento(...)</code>.</li><li><strong>Confirma lo irreversible</strong> (timbrar, cancelar, borrar) con <code>ctx.Confirm(...)</code>.</li></ol></div>
-<h2 id="ref-cs">Referencia de C# <span class="aviso">(115)</span></h2><section data-cat="1" id="cat-cs-Selecci-n-y-datos"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Selección y datos</h3><article class="ficha" id="cs-GetSelectedIds" data-lang="cs" data-txt="getselectedids ids de los documentos seleccionados en la vista. selección y datos">
+<h2 id="ref-cs">Referencia de C# <span class="aviso">(139)</span></h2><section data-cat="1" id="cat-cs-Selecci-n-y-datos"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Selección y datos</h3><article class="ficha" id="cs-GetSelectedIds" data-lang="cs" data-txt="getselectedids ids de los documentos seleccionados en la vista. selección y datos">
 <h3><span class="lg lg-cs">C#</span> GetSelectedIds</h3>
 <pre class="firma"><code>ctx.GetSelectedIds() : List&lt;long&gt;</code></pre>
 <p class="resumen">IDs de los documentos seleccionados en la vista.</p>
@@ -568,13 +568,6 @@ ctx.erp.RecalcCompleto(id);</code></pre>
 <p class="ej">Ejemplo</p><pre><code>ctx.erp.Delete(id);</code></pre>
 <p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
 </article>
-<article class="ficha" id="cs-erp-AjustarSaldosInsolutos" data-lang="cs" data-txt="erp.ajustarsaldosinsolutos ajusta saldos insolutos. erp · documento">
-<h3><span class="lg lg-cs">C#</span> erp.AjustarSaldosInsolutos</h3>
-<pre class="firma"><code>ctx.erp.AjustarSaldosInsolutos(documentId) : void</code></pre>
-<p class="resumen">Ajusta saldos insolutos.</p>
-<p class="ej">Ejemplo</p><pre><code>ctx.erp.AjustarSaldosInsolutos(id);</code></pre>
-<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
-</article>
 <article class="ficha" id="cs-erp-RefreshDocumento" data-lang="cs" data-txt="erp.refreshdocumento refresca visualmente un documento abierto. erp · documento">
 <h3><span class="lg lg-cs">C#</span> erp.RefreshDocumento</h3>
 <pre class="firma"><code>ctx.erp.RefreshDocumento(documentId) : void</code></pre>
@@ -640,6 +633,44 @@ ctx.erp.RecalcCompleto(id);</code></pre>
 <p class="resumen">Registra un número de serie en una partida (quantity -1 = salida, 1 = entrada).</p>
 <p class="ej">Ejemplo</p><pre><code>ctx.erp.AgregarSerie(docId, itemId, prodId, "SN-001", 1, 1);</code></pre>
 <p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Cobros-y-pagos"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Cobros y pagos</h3><article class="ficha" id="cs-erp-AjustarSaldosInsolutos" data-lang="cs" data-txt="erp.ajustarsaldosinsolutos recalcula saldo anterior/insoluto (complemento de pago) de un cobro. erp · cobros y pagos">
+<h3><span class="lg lg-cs">C#</span> erp.AjustarSaldosInsolutos</h3>
+<pre class="firma"><code>ctx.erp.AjustarSaldosInsolutos(financialOperationId, paymentWithDocumentId = 0) : void</code></pre>
+<p class="resumen">Recalcula saldo anterior/insoluto (complemento de pago) de un cobro.</p>
+<p>Recalcula SaldoAnterior y SaldoInsoluto (complemento de pago) de los renglones de UN cobro con Payment.clsMain, sin tocar impuestos. El argumento es la OPERACIÓN FINANCIERA (cobro/pago), no el documento.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>financialOperationId</code></td><td>int</td><td>La operación financiera (FinancialOperationID).</td></tr><tr><td><code>paymentWithDocumentId</code></td><td>int</td><td>0 para un cobro normal; el DocumentID de la nota de crédito si el 'pago' es una NC aplicada.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>CORREGIDA en 2.99.0: antes recibía un documentId, llamaba al motor con un solo parámetro y fallaba siempre en silencio (DISP_E_PARAMNOTOPTIONAL).</li><li>Pruebas (12 cobros sin timbrar): restauró los saldos en 12 de 12. No cambia los renglones ya timbrados en un REP (AltID &gt; 0).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AjustarSaldosInsolutos(operacionId);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-AjustarSaldosInsolutos">ctx.erp.AjustarSaldosInsolutos</a> · Ver también: <a href="#cs-erp-SaveAllTaxesPayment">erp.SaveAllTaxesPayment</a>, <a href="#cs-erp-RecalcPagosDocumento">erp.RecalcPagosDocumento</a></p>
+</article>
+<article class="ficha" id="cs-erp-SaveAllTaxesPayment" data-lang="cs" data-txt="erp.savealltaxespayment reconstruye el reparto de impuestos de un cobro/pago (opción conservadora). erp · cobros y pagos">
+<h3><span class="lg lg-cs">C#</span> erp.SaveAllTaxesPayment</h3>
+<pre class="firma"><code>ctx.erp.SaveAllTaxesPayment(financialOperationId) : void</code></pre>
+<p class="resumen">Reconstruye el reparto de impuestos de un cobro/pago (opción conservadora).</p>
+<p>Rehace con la rutina de Comercial el reparto de impuestos de un cobro o pago (docFinancialOperationTaxDetail: base, importe, proporción, retenciones y columnas en MXN). Es la opción conservadora: si el cobro ya tenía reparto lo reconstruye, y si Comercial nunca se lo generó (facturas PUE, pagos antiguos) NO lo inventa.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>financialOperationId</code></td><td>int</td><td>La operación financiera (FinancialOperationID) del cobro o pago.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Pruebas en laboratorio (37 cobros reales): rehízo el reparto con el mismo número de filas en 13 de 15 cobros que lo tenían y no creó filas en los 22 que no lo tenían.</li><li>No toca saldos insolutos ni el documento: después llama a UpdateDocumentPaidInfo (y a AjustarSaldosInsolutos si aplica).</li><li>Revisa ctx.erp.LastError: Com.Call traga las excepciones COM.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.SaveAllTaxesPayment(operacionId);
+ctx.erp.UpdateDocumentPaidInfo(documentoId);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-SaveAllTaxesPayment">ctx.erp.SaveAllTaxesPayment</a> · Ver también: <a href="#cs-erp-RecalcPagosDocumento">erp.RecalcPagosDocumento</a>, <a href="#cs-erp-AjustarSaldosInsolutos">erp.AjustarSaldosInsolutos</a>, <a href="#cs-erp-UpdateDocumentPaidInfo">erp.UpdateDocumentPaidInfo</a></p>
+</article>
+<article class="ficha" id="cs-erp-RecalcPagosDocumento" data-lang="cs" data-txt="erp.recalcpagosdocumento reconstruye reparto de impuestos y saldos insolutos de los cobros de un documento. erp · cobros y pagos">
+<h3><span class="lg lg-cs">C#</span> erp.RecalcPagosDocumento</h3>
+<pre class="firma"><code>ctx.erp.RecalcPagosDocumento(documentId) : void</code></pre>
+<p class="resumen">Reconstruye reparto de impuestos y saldos insolutos de los cobros de un documento.</p>
+<p>Llama a Payment.clsMain.RecalcDocumentPayments, la rutina que Comercial usa al guardar un cobro: reconstruye el reparto de impuestos y los saldos anterior/insoluto de TODOS los cobros y notas de crédito aplicados al documento. Resuelve el hueco de crear un cobro por SQL que queda sin reparto de impuestos.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>documentId</code></td><td>int</td><td>El documento (factura) al que están aplicados los cobros.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Pruebas (107 documentos reales, copia de laboratorio): 0 excepciones; no altera lo que Comercial ya guardó; reconstruyó el reparto en 68 de 71 documentos que lo tenían, incluidos 20 de 20 con retenciones.</li><li>A diferencia de SaveAllTaxesPayment, AGREGA reparto de impuestos a documentos que no lo tenían (en la muestra: 33 de 107, 21 de ellos PUE). Úsala con facturas PPD.</li><li>NO recalcula los saldos de renglones ya incluidos en un REP timbrado (docDocumentPayment.AltID &gt; 0): es lo correcto fiscalmente.</li><li>Trabaja a nivel documento: si borraste a mano solo el reparto de UNA operación de un documento con varias, puede fallar con 'Division by zero' (revisa ctx.erp.LastError).</li><li>No actualiza TotalPaid/Balance/StatusPaidID del documento: llama a UpdateDocumentPaidInfo después.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RecalcPagosDocumento(facturaId);
+ctx.erp.UpdateDocumentPaidInfo(facturaId);</code></pre>
+<p class="ej">Cobro insertado por SQL: completarlo <span class="lg lg-cs">C#</span></p><pre><code>// ... INSERT de docFinancialOperation + docDocumentPayment ...
+ctx.erp.RecalcPagosDocumento(facturaId);       // reparto de impuestos y saldos insolutos
+ctx.erp.UpdateDocumentPaidInfo(facturaId);     // TotalPaid / Balance / StatusPaidID
+if (!string.IsNullOrEmpty(ctx.erp.LastError)) ctx.Msg(ctx.erp.LastError);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-RecalcPagosDocumento">ctx.erp.RecalcPagosDocumento</a> · Ver también: <a href="#cs-erp-SaveAllTaxesPayment">erp.SaveAllTaxesPayment</a>, <a href="#cs-erp-AjustarSaldosInsolutos">erp.AjustarSaldosInsolutos</a>, <a href="#cs-erp-UpdateDocumentPaidInfo">erp.UpdateDocumentPaidInfo</a></p>
 </article></section><section data-cat="1" id="cat-cs-ERP---UI"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · UI</h3><article class="ficha" id="cs-erp-RefreshGrid" data-lang="cs" data-txt="erp.refreshgrid refresca el grid del módulo. erp · ui">
 <h3><span class="lg lg-cs">C#</span> erp.RefreshGrid <span class="desde">desde 2.94.0</span></h3>
 <pre class="firma"><code>ctx.erp.RefreshGrid() : void</code></pre>
@@ -815,6 +846,26 @@ result = f"Se crearon {len(creados)} documento(s): {creados}"</code></pre>
 <p class="resumen">Lee un parámetro global.</p>
 <p class="ej">Ejemplo</p><pre><code>var v = ctx.erp.GetParameter("MiParam");</code></pre>
 <p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetDefaultValue" data-lang="cs" data-txt="erp.getdefaultvalue lee un parámetro de engparameter (clave + país). erp · parámetros">
+<h3><span class="lg lg-cs">C#</span> erp.GetDefaultValue</h3>
+<pre class="firma"><code>ctx.erp.GetDefaultValue(key, countryId = 1) : string</code></pre>
+<p class="resumen">Lee un parámetro de engParameter (clave + país).</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Devuelve "" si la clave no existe. Lee de la tabla nativa engParameter (Key, Value, Description, CountryID) de la empresa activa.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>string v = ctx.erp.GetDefaultValue("BROS_MI_CLAVE");</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetDefaultValue">ctx.erp.GetDefaultValue</a> · Ver también: <a href="#cs-erp-SaveDefaultValue">erp.SaveDefaultValue</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-SaveDefaultValue" data-lang="cs" data-txt="erp.savedefaultvalue guarda (inserta o sobrescribe) un parámetro en engparameter. erp · parámetros">
+<h3><span class="lg lg-cs">C#</span> erp.SaveDefaultValue</h3>
+<pre class="firma"><code>ctx.erp.SaveDefaultValue(key, value, description = "", countryId = 1) : void</code></pre>
+<p class="resumen">Guarda (inserta o sobrescribe) un parámetro en engParameter.</p>
+<p>Almacén de configuración por empresa que ya trae Comercial (engParameter). Si la clave existe la sobrescribe; si no, la crea. Útil para guardar la configuración de un botón sin crear una tabla propia.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>key</code></td><td>string</td><td>Clave. Usa SIEMPRE un prefijo propio (BROS_...).</td></tr><tr><td><code>value</code></td><td>string</td><td>Valor.</td></tr><tr><td><code>description</code></td><td>string</td><td>Descripción opcional.</td></tr><tr><td><code>countryId</code></td><td>int</td><td>País (1 = México).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> nada.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>ESCRIBE en la configuración nativa del sistema: nunca uses una clave de Comercial; engParameter tiene cientos de claves del propio producto.</li><li>Probada: escribir, leer, sobrescribir y que otro país no la vea.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.SaveDefaultValue("BROS_MI_CLAVE", "valor", "para qué sirve");</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-SaveDefaultValue">ctx.erp.SaveDefaultValue</a> · Ver también: <a href="#cs-erp-GetDefaultValue">erp.GetDefaultValue</a></p>
 </article></section><section data-cat="1" id="cat-cs-ERP---Utilidades"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Utilidades</h3><article class="ficha" id="cs-erp-GetTotalLetter" data-lang="cs" data-txt="erp.gettotalletter importe con letra ("mil ... pesos 50/100 m.n."). currencyid 0 = moneda activa. erp · utilidades">
 <h3><span class="lg lg-cs">C#</span> erp.GetTotalLetter</h3>
 <pre class="firma"><code>ctx.erp.GetTotalLetter(amount, currencyId?) : string</code></pre>
@@ -1071,7 +1122,181 @@ if (ctx.erp.LastError != null) ctx.Msg(ctx.erp.LastError);</code></pre>
 <p class="resumen">Verifica una contraseña contra su hash.</p>
 <p class="ej">Ejemplo</p><pre><code>bool ok = ctx.VerifyPassword("clave", sal, hash, it);</code></pre>
 <p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
-</article></section><h2 id="ref-py">Referencia de Python <span class="aviso">(44)</span></h2><section data-cat="1" id="cat-py-Python"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Python</h3><article class="ficha" id="py-ctx-user_id" data-lang="py" data-txt="ctx.user_id id del usuario activo de contpaqi. python">
+</article></section><section data-cat="1" id="cat-cs-ERP---Esquema-y-entorno"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Esquema y entorno</h3><article class="ficha" id="cs-erp-TableExists" data-lang="cs" data-txt="erp.tableexists ¿existe la tabla en la base de la empresa activa? erp · esquema y entorno">
+<h3><span class="lg lg-cs">C#</span> erp.TableExists</h3>
+<pre class="firma"><code>ctx.erp.TableExists(tableName) : bool</code></pre>
+<p class="resumen">¿Existe la tabla en la base de la empresa activa?</p>
+<p>Pregunta al motor de Comercial si una tabla existe en la base de la empresa activa. Sirve para que un script funcione igual en empresas con distinta versión o con tablas propias sin provisionar.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>tableName</code></td><td>string</td><td>Nombre de la tabla, sin esquema.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> true si existe; false si no.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Probada: true para tablas existentes y false para inexistentes.</li><li>No distingue vistas de tablas del motor (usa SQL contra sys.objects si necesitas ese detalle).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>if (!ctx.erp.TableExists("zzMiTabla")) { /* crearla */ }</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-TableExists">ctx.erp.TableExists</a> · Ver también: <a href="#cs-erp-FieldExistsInTable">erp.FieldExistsInTable</a></p>
+</article>
+<article class="ficha" id="cs-erp-FieldExistsInTable" data-lang="cs" data-txt="erp.fieldexistsintable ¿existe la columna en la tabla? (orden nativo: campo, tabla) erp · esquema y entorno">
+<h3><span class="lg lg-cs">C#</span> erp.FieldExistsInTable</h3>
+<pre class="firma"><code>ctx.erp.FieldExistsInTable(fieldName, tableName) : bool</code></pre>
+<p class="resumen">¿Existe la columna en la tabla? (orden nativo: campo, tabla)</p>
+<p>Comprueba si una columna existe en una tabla. Úsalo antes de leer o escribir columnas que cambian entre versiones de Comercial.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>fieldName</code></td><td>string</td><td>Nombre de la columna.</td></tr><tr><td><code>tableName</code></td><td>string</td><td>Nombre de la tabla.</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> true si existe; false si no.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>OJO: el orden es el nativo del motor (primero el CAMPO, luego la TABLA), al revés de lo que se esperaría.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>bool hay = ctx.erp.FieldExistsInTable("Folio", "docDocument");</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-FieldExistsInTable">ctx.erp.FieldExistsInTable</a> · Ver también: <a href="#cs-erp-TableExists">erp.TableExists</a></p>
+</article>
+<article class="ficha" id="cs-erp-GetModuleIDDocumentType" data-lang="cs" data-txt="erp.getmoduleiddocumenttype moduleid de fábrica para un tipo de documento y recipiente. erp · esquema y entorno">
+<h3><span class="lg lg-cs">C#</span> erp.GetModuleIDDocumentType</h3>
+<pre class="firma"><code>ctx.erp.GetModuleIDDocumentType(documentTypeId, docRecipientId) : int</code></pre>
+<p class="resumen">ModuleID de fábrica para un tipo de documento y recipiente.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Devuelve el módulo de fábrica: en empresas con módulos clonados (series, formas de pago) hay que clasificar por engModule.ModuleIDBase.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>int modulo = ctx.erp.GetModuleIDDocumentType(5, 1); // factura de cliente = 21</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetModuleIDDocumentType">ctx.erp.GetModuleIDDocumentType</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetModuleDLLName" data-lang="cs" data-txt="erp.getmoduledllname nombre de la dll que atiende un módulo. erp · esquema y entorno">
+<h3><span class="lg lg-cs">C#</span> erp.GetModuleDLLName</h3>
+<pre class="firma"><code>ctx.erp.GetModuleDLLName(moduleId) : string</code></pre>
+<p class="resumen">Nombre de la DLL que atiende un módulo.</p>
+<p class="ej">Ejemplo</p><pre><code>string dll = ctx.erp.GetModuleDLLName(248); // "FinancialOperation"</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetModuleDLLName">ctx.erp.GetModuleDLLName</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetSecurityFunctionality" data-lang="cs" data-txt="erp.getsecurityfunctionality ¿el usuario activo tiene permiso sobre esa funcionalidad del módulo? erp · esquema y entorno">
+<h3><span class="lg lg-cs">C#</span> erp.GetSecurityFunctionality</h3>
+<pre class="firma"><code>ctx.erp.GetSecurityFunctionality(functionalityKey, moduleId) : bool</code></pre>
+<p class="resumen">¿El usuario activo tiene permiso sobre esa funcionalidad del módulo?</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Consulta los permisos nativos de Comercial (engSecurity*) del usuario con sesión: úsala para respetar los permisos del sistema en botones que borran o cancelan.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>bool puede = ctx.erp.GetSecurityFunctionality("Document.Delete", 21);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetSecurityFunctionality">ctx.erp.GetSecurityFunctionality</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetUserCanElevatePrivileges" data-lang="cs" data-txt="erp.getusercanelevateprivileges ¿el usuario activo es administrador de comercial? erp · esquema y entorno">
+<h3><span class="lg lg-cs">C#</span> erp.GetUserCanElevatePrivileges</h3>
+<pre class="firma"><code>ctx.erp.GetUserCanElevatePrivileges() : bool</code></pre>
+<p class="resumen">¿El usuario activo es administrador de Comercial?</p>
+<p class="ej">Ejemplo</p><pre><code>if (!ctx.erp.GetUserCanElevatePrivileges()) { ctx.Msg("Solo un administrador."); return; }</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetUserCanElevatePrivileges">ctx.erp.GetUserCanElevatePrivileges</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Fecha-y-texto"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Fecha y texto</h3><article class="ficha" id="cs-erp-GetLastDayMonth" data-lang="cs" data-txt="erp.getlastdaymonth último día del mes (28 a 31). erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.GetLastDayMonth</h3>
+<pre class="firma"><code>ctx.erp.GetLastDayMonth(date) : int</code></pre>
+<p class="resumen">Último día del mes (28 a 31).</p>
+<p class="ej">Ejemplo</p><pre><code>int d = ctx.erp.GetLastDayMonth(new DateTime(2026, 2, 10)); // 28</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetLastDayMonth">ctx.erp.GetLastDayMonth</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-DateFromString" data-lang="cs" data-txt="erp.datefromstring arma una fecha-hora desde 'yyyy-mm-dd' y 'hh:mm:ss'. erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.DateFromString</h3>
+<pre class="firma"><code>ctx.erp.DateFromString(datePart, timePart) : DateTime</code></pre>
+<p class="resumen">Arma una fecha-hora desde 'yyyy-MM-dd' y 'HH:mm:ss'.</p>
+<p class="ej">Ejemplo</p><pre><code>DateTime f = ctx.erp.DateFromString("2026-10-01", "12:30:00");</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-DateFromString">ctx.erp.DateFromString</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-ConvertDateTimeToUTC" data-lang="cs" data-txt="erp.convertdatetimetoutc fecha-hora con desfase horario, como la usa comercial en cfdi. erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.ConvertDateTimeToUTC</h3>
+<pre class="firma"><code>ctx.erp.ConvertDateTimeToUTC(dateTime) : string</code></pre>
+<p class="resumen">Fecha-hora con desfase horario, como la usa Comercial en CFDI.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>El resultado lleva un ESPACIO antes del desfase ("…:00 -06:00"): es el formato del motor; ajústalo si el destino lo exige distinto.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>string s = ctx.erp.ConvertDateTimeToUTC(DateTime.Now); // 2026-10-01T12:30:00 -06:00</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-ConvertDateTimeToUTC">ctx.erp.ConvertDateTimeToUTC</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetFormatedDateValue" data-lang="cs" data-txt="erp.getformateddatevalue fecha como texto 'yyyy-mm-dd hh:mm:ss'. erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.GetFormatedDateValue</h3>
+<pre class="firma"><code>ctx.erp.GetFormatedDateValue(date) : string</code></pre>
+<p class="resumen">Fecha como texto 'yyyy-MM-dd HH:mm:ss'.</p>
+<p class="ej">Ejemplo</p><pre><code>string s = ctx.erp.GetFormatedDateValue(DateTime.Today);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetFormatedDateValue">ctx.erp.GetFormatedDateValue</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-Pad" data-lang="cs" data-txt="erp.pad rellena un texto a una longitud ('l' izquierda, 'r' derecha). erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.Pad</h3>
+<pre class="firma"><code>ctx.erp.Pad(value, length, fillWith, alignment) : string</code></pre>
+<p class="resumen">Rellena un texto a una longitud ('L' izquierda, 'R' derecha).</p>
+<div class="notas"><strong>Ojo</strong><ul><li>alignment "L": el texto queda a la izquierda y se rellena a la derecha ("7" -&gt; "70000"); "R": el texto queda a la derecha ("7" -&gt; "00007").</li><li>Probada con "L" y "R".</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>string s = ctx.erp.Pad("7", 5, "0", "R"); // 00007</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-Pad">ctx.erp.Pad</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-TruncateDouble" data-lang="cs" data-txt="erp.truncatedouble trunca (no redondea) a n decimales. erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.TruncateDouble</h3>
+<pre class="firma"><code>ctx.erp.TruncateDouble(value, decimals) : double</code></pre>
+<p class="resumen">Trunca (no redondea) a N decimales.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Trunca hacia cero: (-3.999, 1) = -3.9.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>double t = ctx.erp.TruncateDouble(12.98765, 2); // 12.98</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-TruncateDouble">ctx.erp.TruncateDouble</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetSerialNumberPrefix" data-lang="cs" data-txt="erp.getserialnumberprefix parte alfabética de un número de serie. erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.GetSerialNumberPrefix</h3>
+<pre class="firma"><code>ctx.erp.GetSerialNumberPrefix(serialNumber) : string</code></pre>
+<p class="resumen">Parte alfabética de un número de serie.</p>
+<p class="ej">Ejemplo</p><pre><code>string p = ctx.erp.GetSerialNumberPrefix("ABC00123"); // ABC</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetSerialNumberPrefix">ctx.erp.GetSerialNumberPrefix</a> · Ver también: <a href="#cs-erp-GetSerialNumberNumValue">erp.GetSerialNumberNumValue</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetSerialNumberNumValue" data-lang="cs" data-txt="erp.getserialnumbernumvalue parte numérica de un número de serie (conserva ceros). erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.GetSerialNumberNumValue</h3>
+<pre class="firma"><code>ctx.erp.GetSerialNumberNumValue(serialNumber) : string</code></pre>
+<p class="resumen">Parte numérica de un número de serie (conserva ceros).</p>
+<p class="ej">Ejemplo</p><pre><code>string n = ctx.erp.GetSerialNumberNumValue("ABC00123"); // 00123</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetSerialNumberNumValue">ctx.erp.GetSerialNumberNumValue</a> · Ver también: <a href="#cs-erp-GetSerialNumberPrefix">erp.GetSerialNumberPrefix</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetFormatedXML" data-lang="cs" data-txt="erp.getformatedxml xml con sangrías (legible). erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.GetFormatedXML</h3>
+<pre class="firma"><code>ctx.erp.GetFormatedXML(xml) : string</code></pre>
+<p class="resumen">XML con sangrías (legible).</p>
+<p class="ej">Ejemplo</p><pre><code>string bonito = ctx.erp.GetFormatedXML(xml);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetFormatedXML">ctx.erp.GetFormatedXML</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetMaxValueField" data-lang="cs" data-txt="erp.getmaxvaluefield máximo de una columna entera, con filtro opcional. erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.GetMaxValueField</h3>
+<pre class="firma"><code>ctx.erp.GetMaxValueField(fieldName, tableName, where = "") : long</code></pre>
+<p class="resumen">Máximo de una columna entera, con filtro opcional.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>El filtro es texto SQL: no le pases valores de usuario sin validar. Para folios que deben ser únicos con procesos en paralelo usa sp_getapplock (el máximo+1 no es atómico).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>long max = ctx.erp.GetMaxValueField("DocumentID", "docDocument", "ModuleID=21");</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetMaxValueField">ctx.erp.GetMaxValueField</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-GetQRCode" data-lang="cs" data-txt="erp.getqrcode código qr del texto como png en base64. erp · fecha y texto">
+<h3><span class="lg lg-cs">C#</span> erp.GetQRCode</h3>
+<pre class="firma"><code>ctx.erp.GetQRCode(text) : string</code></pre>
+<p class="resumen">Código QR del texto como PNG en base64.</p>
+<p>Genera con el motor de Comercial el código QR de un texto y lo devuelve como imagen PNG codificada en base64. Sirve para PDFs y páginas HTML (&lt;img src="data:image/png;base64,..."&gt;), por ejemplo el QR del timbre de un CFDI.</p>
+<table><thead><tr><th>Parámetro</th><th>Tipo</th><th>Qué es</th></tr></thead><tbody><tr><td><code>text</code></td><td>string</td><td>Texto a codificar (URL, cadena del SAT...).</td></tr></tbody></table>
+<p><strong>Devuelve:</strong> Base64 de un PNG (empieza con "iVBORw0KGgo"); "" si falla (revisa LastError).</p>
+<p class="ej">Ejemplo</p><pre><code>string png = ctx.erp.GetQRCode("https://ejemplo.com/x");</code></pre>
+<p class="ej">Insertarlo en HTML <span class="lg lg-cs">C#</span></p><pre><code>string html = "&lt;img src=\"data:image/png;base64," + ctx.erp.GetQRCode(url) + "\"&gt;";</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetQRCode">ctx.erp.GetQRCode</a></p>
+</article></section><section data-cat="1" id="cat-cs-ERP---Costos"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Costos</h3><article class="ficha" id="cs-erp-GetCostLast" data-lang="cs" data-txt="erp.getcostlast costo de la última compra del producto. erp · costos">
+<h3><span class="lg lg-cs">C#</span> erp.GetCostLast</h3>
+<pre class="firma"><code>ctx.erp.GetCostLast(productId) : double</code></pre>
+<p class="resumen">Costo de la última compra del producto.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Devuelve 0 si el producto no tiene compras.</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>double c = ctx.erp.GetCostLast(productoId);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-GetCostLast">ctx.erp.GetCostLast</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-RecalcCostComercial" data-lang="cs" data-txt="erp.recalccostcomercial recalcula el costo comercial vigente del producto. erp · costos">
+<h3><span class="lg lg-cs">C#</span> erp.RecalcCostComercial</h3>
+<pre class="firma"><code>ctx.erp.RecalcCostComercial(productId) : void</code></pre>
+<p class="resumen">Recalcula el costo comercial vigente del producto.</p>
+<div class="notas"><strong>Ojo</strong><ul><li>Recalcula orgProduct.CostPriceComercial desde el libro de costos (13 de 15 productos de prueba volvieron al valor original; 2 difirieron). Es idempotente sobre datos consistentes (15 de 15 sin cambios).</li><li>NO reconstruye las columnas de salida del libro por documento (para costear un documento usa CalcularCostos).</li></ul></div>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RecalcCostComercial(productoId);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-RecalcCostComercial">ctx.erp.RecalcCostComercial</a> · Ver también: <a href="#cs-erp-RecalcCostFiscal">erp.RecalcCostFiscal</a>, <a href="#cs-erp-CalcularCostos">erp.CalcularCostos</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="cs-erp-RecalcCostFiscal" data-lang="cs" data-txt="erp.recalccostfiscal recalcula el costo fiscal vigente del producto. erp · costos">
+<h3><span class="lg lg-cs">C#</span> erp.RecalcCostFiscal</h3>
+<pre class="firma"><code>ctx.erp.RecalcCostFiscal(productId) : void</code></pre>
+<p class="resumen">Recalcula el costo fiscal vigente del producto.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RecalcCostFiscal(productoId);</code></pre>
+<p class="rel">Equivalente en Python: <a href="#py-ctx-erp-RecalcCostFiscal">ctx.erp.RecalcCostFiscal</a> · Ver también: <a href="#cs-erp-RecalcCostComercial">erp.RecalcCostComercial</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article></section><h2 id="ref-py">Referencia de Python <span class="aviso">(69)</span></h2><section data-cat="1" id="cat-py-Python"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Python</h3><article class="ficha" id="py-ctx-user_id" data-lang="py" data-txt="ctx.user_id id del usuario activo de contpaqi. python">
 <h3><span class="lg lg-py">Python</span> ctx.user_id</h3>
 <pre class="firma"><code>ctx.user_id : int</code></pre>
 <p class="resumen">ID del usuario activo de CONTPAQi.</p>
@@ -1390,6 +1615,206 @@ it.guardar()</code></pre>
 <p class="ej">Ejemplo</p><pre><code>doc = ctx.registro("docDocument", 11556)
 doc["Comments"] = "Modificado"
 doc.actualizar()</code></pre>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-TableExists" data-lang="py" data-txt="ctx.erp.tableexists ¿existe la tabla en la base de la empresa activa? python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.TableExists</h3>
+<pre class="firma"><code>ctx.erp.TableExists(tableName)</code></pre>
+<p class="resumen">¿Existe la tabla en la base de la empresa activa?</p>
+<p class="ej">Ejemplo</p><pre><code>if not ctx.erp.TableExists("zzMiTabla"): ...</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-TableExists">erp.TableExists</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-FieldExistsInTable" data-lang="py" data-txt="ctx.erp.fieldexistsintable ¿existe la columna en la tabla? (orden nativo: campo, tabla) python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.FieldExistsInTable</h3>
+<pre class="firma"><code>ctx.erp.FieldExistsInTable(fieldName, tableName)</code></pre>
+<p class="resumen">¿Existe la columna en la tabla? (orden nativo: campo, tabla)</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.FieldExistsInTable("Folio", "docDocument")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-FieldExistsInTable">erp.FieldExistsInTable</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetModuleIDDocumentType" data-lang="py" data-txt="ctx.erp.getmoduleiddocumenttype moduleid de fábrica para un tipo de documento y recipiente. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetModuleIDDocumentType</h3>
+<pre class="firma"><code>ctx.erp.GetModuleIDDocumentType(documentTypeId, docRecipientId)</code></pre>
+<p class="resumen">ModuleID de fábrica para un tipo de documento y recipiente.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetModuleIDDocumentType(5, 2)  # factura de compra = 152</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetModuleIDDocumentType">erp.GetModuleIDDocumentType</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetModuleDLLName" data-lang="py" data-txt="ctx.erp.getmoduledllname nombre de la dll que atiende un módulo. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetModuleDLLName</h3>
+<pre class="firma"><code>ctx.erp.GetModuleDLLName(moduleId)</code></pre>
+<p class="resumen">Nombre de la DLL que atiende un módulo.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetModuleDLLName(21)  # 'Document'</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetModuleDLLName">erp.GetModuleDLLName</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetSecurityFunctionality" data-lang="py" data-txt="ctx.erp.getsecurityfunctionality ¿el usuario activo tiene permiso sobre esa funcionalidad del módulo? python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetSecurityFunctionality</h3>
+<pre class="firma"><code>ctx.erp.GetSecurityFunctionality(functionalityKey, moduleId)</code></pre>
+<p class="resumen">¿El usuario activo tiene permiso sobre esa funcionalidad del módulo?</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetSecurityFunctionality("Document.Delete", 21)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetSecurityFunctionality">erp.GetSecurityFunctionality</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetUserCanElevatePrivileges" data-lang="py" data-txt="ctx.erp.getusercanelevateprivileges ¿el usuario activo es administrador de comercial? python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetUserCanElevatePrivileges</h3>
+<pre class="firma"><code>ctx.erp.GetUserCanElevatePrivileges()</code></pre>
+<p class="resumen">¿El usuario activo es administrador de Comercial?</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetUserCanElevatePrivileges()</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetUserCanElevatePrivileges">erp.GetUserCanElevatePrivileges</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetDefaultValue" data-lang="py" data-txt="ctx.erp.getdefaultvalue lee un parámetro de engparameter (clave + país). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetDefaultValue</h3>
+<pre class="firma"><code>ctx.erp.GetDefaultValue(key, countryId=1)</code></pre>
+<p class="resumen">Lee un parámetro de engParameter (clave + país).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetDefaultValue("BROS_MI_CLAVE")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetDefaultValue">erp.GetDefaultValue</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-SaveDefaultValue" data-lang="py" data-txt="ctx.erp.savedefaultvalue guarda (inserta o sobrescribe) un parámetro en engparameter. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.SaveDefaultValue</h3>
+<pre class="firma"><code>ctx.erp.SaveDefaultValue(key, value, description='', countryId=1)</code></pre>
+<p class="resumen">Guarda (inserta o sobrescribe) un parámetro en engParameter.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.SaveDefaultValue("BROS_MI_CLAVE", "valor", "para qué sirve")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-SaveDefaultValue">erp.SaveDefaultValue</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetLastDayMonth" data-lang="py" data-txt="ctx.erp.getlastdaymonth último día del mes (28 a 31). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetLastDayMonth</h3>
+<pre class="firma"><code>ctx.erp.GetLastDayMonth(date)</code></pre>
+<p class="resumen">Último día del mes (28 a 31).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetLastDayMonth('2026-02-10')</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetLastDayMonth">erp.GetLastDayMonth</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-DateFromString" data-lang="py" data-txt="ctx.erp.datefromstring arma una fecha-hora desde 'yyyy-mm-dd' y 'hh:mm:ss'. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.DateFromString</h3>
+<pre class="firma"><code>ctx.erp.DateFromString(datePart, timePart)</code></pre>
+<p class="resumen">Arma una fecha-hora desde 'yyyy-MM-dd' y 'HH:mm:ss'.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.DateFromString("2026-10-01", "12:30:00")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-DateFromString">erp.DateFromString</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-ConvertDateTimeToUTC" data-lang="py" data-txt="ctx.erp.convertdatetimetoutc fecha-hora con desfase horario, como la usa comercial en cfdi. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.ConvertDateTimeToUTC</h3>
+<pre class="firma"><code>ctx.erp.ConvertDateTimeToUTC(dateTime)</code></pre>
+<p class="resumen">Fecha-hora con desfase horario, como la usa Comercial en CFDI.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.ConvertDateTimeToUTC(fecha)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-ConvertDateTimeToUTC">erp.ConvertDateTimeToUTC</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetFormatedDateValue" data-lang="py" data-txt="ctx.erp.getformateddatevalue fecha como texto 'yyyy-mm-dd hh:mm:ss'. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetFormatedDateValue</h3>
+<pre class="firma"><code>ctx.erp.GetFormatedDateValue(date)</code></pre>
+<p class="resumen">Fecha como texto 'yyyy-MM-dd HH:mm:ss'.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetFormatedDateValue(fecha)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetFormatedDateValue">erp.GetFormatedDateValue</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-Pad" data-lang="py" data-txt="ctx.erp.pad rellena un texto a una longitud ('l' izquierda, 'r' derecha). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.Pad</h3>
+<pre class="firma"><code>ctx.erp.Pad(value, length, fillWith, alignment)</code></pre>
+<p class="resumen">Rellena un texto a una longitud ('L' izquierda, 'R' derecha).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.Pad("7", 5, "0", "R")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-Pad">erp.Pad</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-TruncateDouble" data-lang="py" data-txt="ctx.erp.truncatedouble trunca (no redondea) a n decimales. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.TruncateDouble</h3>
+<pre class="firma"><code>ctx.erp.TruncateDouble(value, decimals)</code></pre>
+<p class="resumen">Trunca (no redondea) a N decimales.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.TruncateDouble(12.98765, 2)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-TruncateDouble">erp.TruncateDouble</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetSerialNumberPrefix" data-lang="py" data-txt="ctx.erp.getserialnumberprefix parte alfabética de un número de serie. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetSerialNumberPrefix</h3>
+<pre class="firma"><code>ctx.erp.GetSerialNumberPrefix(serialNumber)</code></pre>
+<p class="resumen">Parte alfabética de un número de serie.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetSerialNumberPrefix("ABC00123")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetSerialNumberPrefix">erp.GetSerialNumberPrefix</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetSerialNumberNumValue" data-lang="py" data-txt="ctx.erp.getserialnumbernumvalue parte numérica de un número de serie (conserva ceros). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetSerialNumberNumValue</h3>
+<pre class="firma"><code>ctx.erp.GetSerialNumberNumValue(serialNumber)</code></pre>
+<p class="resumen">Parte numérica de un número de serie (conserva ceros).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetSerialNumberNumValue("ABC00123")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetSerialNumberNumValue">erp.GetSerialNumberNumValue</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetFormatedXML" data-lang="py" data-txt="ctx.erp.getformatedxml xml con sangrías (legible). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetFormatedXML</h3>
+<pre class="firma"><code>ctx.erp.GetFormatedXML(xml)</code></pre>
+<p class="resumen">XML con sangrías (legible).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetFormatedXML(xml)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetFormatedXML">erp.GetFormatedXML</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetMaxValueField" data-lang="py" data-txt="ctx.erp.getmaxvaluefield máximo de una columna entera, con filtro opcional. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetMaxValueField</h3>
+<pre class="firma"><code>ctx.erp.GetMaxValueField(fieldName, tableName, where='')</code></pre>
+<p class="resumen">Máximo de una columna entera, con filtro opcional.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetMaxValueField("DocumentID", "docDocument", "ModuleID=21")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetMaxValueField">erp.GetMaxValueField</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetQRCode" data-lang="py" data-txt="ctx.erp.getqrcode código qr del texto como png en base64. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetQRCode</h3>
+<pre class="firma"><code>ctx.erp.GetQRCode(text)</code></pre>
+<p class="resumen">Código QR del texto como PNG en base64.</p>
+<p class="ej">Ejemplo</p><pre><code>png = ctx.erp.GetQRCode("https://ejemplo.com/x")</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetQRCode">erp.GetQRCode</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-GetCostLast" data-lang="py" data-txt="ctx.erp.getcostlast costo de la última compra del producto. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.GetCostLast</h3>
+<pre class="firma"><code>ctx.erp.GetCostLast(productId)</code></pre>
+<p class="resumen">Costo de la última compra del producto.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.GetCostLast(producto_id)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-GetCostLast">erp.GetCostLast</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-RecalcCostComercial" data-lang="py" data-txt="ctx.erp.recalccostcomercial recalcula el costo comercial vigente del producto. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.RecalcCostComercial</h3>
+<pre class="firma"><code>ctx.erp.RecalcCostComercial(productId)</code></pre>
+<p class="resumen">Recalcula el costo comercial vigente del producto.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RecalcCostComercial(producto_id)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-RecalcCostComercial">erp.RecalcCostComercial</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-RecalcCostFiscal" data-lang="py" data-txt="ctx.erp.recalccostfiscal recalcula el costo fiscal vigente del producto. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.RecalcCostFiscal</h3>
+<pre class="firma"><code>ctx.erp.RecalcCostFiscal(productId)</code></pre>
+<p class="resumen">Recalcula el costo fiscal vigente del producto.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RecalcCostFiscal(producto_id)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-RecalcCostFiscal">erp.RecalcCostFiscal</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-SaveAllTaxesPayment" data-lang="py" data-txt="ctx.erp.savealltaxespayment reconstruye el reparto de impuestos de un cobro/pago (opción conservadora). python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.SaveAllTaxesPayment</h3>
+<pre class="firma"><code>ctx.erp.SaveAllTaxesPayment(financialOperationId)</code></pre>
+<p class="resumen">Reconstruye el reparto de impuestos de un cobro/pago (opción conservadora).</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.SaveAllTaxesPayment(operacion_id)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-SaveAllTaxesPayment">erp.SaveAllTaxesPayment</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-RecalcPagosDocumento" data-lang="py" data-txt="ctx.erp.recalcpagosdocumento reconstruye reparto de impuestos y saldos insolutos de los cobros de un documento. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.RecalcPagosDocumento</h3>
+<pre class="firma"><code>ctx.erp.RecalcPagosDocumento(documentId)</code></pre>
+<p class="resumen">Reconstruye reparto de impuestos y saldos insolutos de los cobros de un documento.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.RecalcPagosDocumento(factura_id)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-RecalcPagosDocumento">erp.RecalcPagosDocumento</a></p>
+<p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
+</article>
+<article class="ficha" id="py-ctx-erp-AjustarSaldosInsolutos" data-lang="py" data-txt="ctx.erp.ajustarsaldosinsolutos recalcula saldo anterior/insoluto (complemento de pago) de un cobro. python">
+<h3><span class="lg lg-py">Python</span> ctx.erp.AjustarSaldosInsolutos</h3>
+<pre class="firma"><code>ctx.erp.AjustarSaldosInsolutos(financialOperationId, paymentWithDocumentId=0)</code></pre>
+<p class="resumen">Recalcula saldo anterior/insoluto (complemento de pago) de un cobro.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.erp.AjustarSaldosInsolutos(operacion_id)</code></pre>
+<p class="rel">Equivalente en C#: <a href="#cs-erp-AjustarSaldosInsolutos">erp.AjustarSaldosInsolutos</a></p>
 <p class="corta">Ficha resumida: firma, descripción y ejemplo.</p>
 </article></section><section data-cat="1" id="cat-py-ctx-erp--Comercial-"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ctx.erp (Comercial)</h3><article class="ficha" id="py-ctx-erp-RefreshGrid" data-lang="py" data-txt="ctx.erp.refreshgrid refresca la lista de comercial y conserva la fila seleccionada. una sola vez, al final. ctx.erp (comercial)">
 <h3><span class="lg lg-py">Python</span> ctx.erp.RefreshGrid <span class="desde">desde 2.94.0</span></h3>
