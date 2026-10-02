@@ -26,6 +26,7 @@
 | [`SDK_REFERENCIA.md`](SDK_REFERENCIA.md) · [`SDK_GUIAS.md`](SDK_GUIAS.md) | **Manual del SDK**: cada función de `ctx`/`ctx.erp` (C#, Python, SQL) con parámetros, ejemplos y avisos; guías paso a paso. Se genera del catálogo `src/assets/sdk_catalogo.json` |
 | [`CREAR_BOTON.md`](CREAR_BOTON.md) | Asistente «Crear botón…»: pestañas, módulos, usuarios, íconos, editar botones existentes |
 | [`TRAZABILIDAD_DOCUMENTO.md`](TRAZABILIDAD_DOCUMENTO.md) | Plantilla de fábrica «Trazabilidad del documento»: de dónde viene y a dónde fue (los cuatro tipos de vínculo, vínculos manuales) |
+| [`ASIGNAR_CENTRO_COSTO.md`](ASIGNAR_CENTRO_COSTO.md) | Plantilla de fábrica: asignar un centro de costo a muchos documentos, con vista previa y deshacer |
 | [`CAPACIDADES.md`](CAPACIDADES.md) | Qué se puede construir: reportes, análisis, integraciones |
 | [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) | Reportes HTML rápidos y portables (`ctx.dashboard()`, `ctx.show_html`) |
 

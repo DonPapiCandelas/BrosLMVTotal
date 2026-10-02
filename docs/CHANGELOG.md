@@ -18,6 +18,12 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   Muestra cantidades por partida, pagos/cobros aplicados, saldo y documentos cancelados; clic centra, doble clic abre el documento, exporta a CSV. Solo lee.
 - **Prueba de humo #35** (`build/humo/casos/35_trazabilidad_documento.ps1`): corre la plantilla real con `BrosLMV.Runner` contra el sandbox y comprueba la cadena, la raíz, la evidencia y el documento aislado.
 
+- **Plantilla «Asignar centro de costo de forma masiva»** (`instalador/scripts/ASIGNAR_CENTRO_COSTO.ctx`, `docs/ASIGNAR_CENTRO_COSTO.md`): pone un centro de costo ya existente a muchos documentos de una vez. Elige por selección de la lista o
+  por filtros (fechas, módulos de la empresa, cliente/proveedor, título, centro actual); dónde (encabezado, partidas o ambos) y a cuáles (solo vacíos o reemplazar); vista previa; todo el lote en una transacción;
+  bitácora `zzBrosCentroCostoLog` y **Deshacer** del último lote (solo restaura lo que sigue valiendo lo que puso el lote). Omite cancelados, eliminados y documentos abiertos por otro usuario; no toca pólizas ya generadas ni cobros/pagos.
+  Medido en bases reales: el centro de costo del **encabezado** es el que usan decenas de miles de documentos; el de partida casi nadie.
+- **Prueba de humo #36** (`build/humo/casos/36_asignar_centro_costo.ps1`): corre la plantilla real contra el sandbox y lo deja todo como estaba.
+
 ### Cambiado
 - **Las plantillas ya no se escriben a mano en `Consola.cs`**: una plantilla de fábrica es cualquier script de la carpeta `scripts` cuya cabecera diga `// Plantilla: <nombre>` (en Python `# Plantilla:`, en SQL `-- Plantilla:`),
   con `Categoria:` (carpeta del árbol) y `Documentacion:` opcionales. Agregar una plantilla ya no exige tocar el código del addon.
