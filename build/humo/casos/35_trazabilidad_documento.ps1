@@ -68,6 +68,26 @@ if ($docConDestino -match '^\d+$') {
     if ($conD.Count -lt 1) { Write-Host "  [ERROR] El documento $docConDestino tiene DestinationDocumentID y la trazabilidad no lo reconocio." -ForegroundColor Red; exit 1 }
 }
 
+# 3b) Varios origenes -> un destino (datos de demostracion del laboratorio: build\laboratorio\sembrar_demo_trazabilidad.ps1).
+#     Tres OC del mismo proveedor, una factura consolidada con UN solo SourceDocumentID (la primera OC) y DestinationDocumentID en cada OC.
+$factDemo = Sql "SELECT TOP 1 DocumentID FROM docDocument WHERE Title LIKE 'DEMO TRAZ%factura consolidada%' AND DeletedOn IS NULL ORDER BY DocumentID DESC"
+if ($factDemo -match '^\d+$') {
+    foreach ($desde in @($factDemo, (Sql "SELECT TOP 1 DocumentID FROM docDocument WHERE Title LIKE 'DEMO TRAZ%OC 2 de 3%' AND DeletedOn IS NULL ORDER BY DocumentID DESC"))) {
+        $rd = Correr ([long]$desde)
+        if ($rd.Code -ne 0 -or -not $rd.Modelo) { Write-Host "  [ERROR] El Runner fallo con el documento de demostracion $desde." -ForegroundColor Red; Write-Host $rd.Log; exit 1 }
+        $nd = @($rd.Modelo.nodos); $ad = @($rd.Modelo.aristas)
+        if ($nd.Count -ne 4) { Write-Host "  [ERROR] La demostracion (desde $desde) debia dar 4 documentos (3 OC + 1 factura) y dio $($nd.Count)." -ForegroundColor Red; exit 1 }
+        $haciaFactura = @($ad | Where-Object { [long]$_.hasta -eq [long]$factDemo })
+        if ($haciaFactura.Count -ne 3) { Write-Host "  [ERROR] Debian llegar 3 vinculos a la factura consolidada y llegaron $($haciaFactura.Count)." -ForegroundColor Red; exit 1 }
+        $conD = @($haciaFactura | Where-Object { $_.tipos -contains 'D' })
+        if ($conD.Count -ne 3) { Write-Host "  [ERROR] Los 3 vinculos debian traer la evidencia DestinationDocumentID y traen $($conD.Count)." -ForegroundColor Red; exit 1 }
+        $conP = @($haciaFactura | Where-Object { $_.tipos -contains 'P' })
+        if ($conP.Count -ne 3) { Write-Host "  [ERROR] Los 3 vinculos debian traer la evidencia de partida y traen $($conP.Count)." -ForegroundColor Red; exit 1 }
+        $soloS = @($haciaFactura | Where-Object { $_.tipos -contains 'S' })
+        if ($soloS.Count -ne 1) { Write-Host "  [ERROR] Solo UN vinculo debia traer SourceDocumentID (la factura guarda un solo origen) y traen $($soloS.Count)." -ForegroundColor Red; exit 1 }
+    }
+}
+
 # 4) Un documento aislado (sin vinculos de ningun tipo): 1 nodo, 0 aristas
 $aislado = Sql "SELECT TOP 1 d.DocumentID FROM docDocument d WHERE d.DeletedOn IS NULL AND ISNULL(d.SourceDocumentID,0)=0 AND ISNULL(d.DestinationDocumentID,0)=0 AND NOT EXISTS (SELECT 1 FROM docDocument x WHERE x.SourceDocumentID=d.DocumentID OR x.DestinationDocumentID=d.DocumentID) AND NOT EXISTS (SELECT 1 FROM docDocumentItem i WHERE i.DocumentID=d.DocumentID AND (i.SourceDocumentItemID>0 OR i.DeliverDocumentItemID>0 OR i.SourceDocumentID>0)) AND NOT EXISTS (SELECT 1 FROM docDocumentItem o JOIN docDocumentItem i2 ON (i2.SourceDocumentItemID=o.DocumentItemID OR i2.DeliverDocumentItemID=o.DocumentItemID) WHERE o.DocumentID=d.DocumentID) ORDER BY d.DocumentID DESC"
 if ($aislado -match '^\d+$') {

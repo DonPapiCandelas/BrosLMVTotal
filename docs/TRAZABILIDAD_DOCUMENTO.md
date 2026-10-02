@@ -57,6 +57,12 @@ el documento destino no reconoce a ese origen como suyo. Es información, no un 
 - **Eliminados:** un documento o partida con `DeletedOn` no se sigue; un documento **cancelado** (`CancelledOn`) sí aparece, marcado.
 - **Sin nada escrito a mano:** ni números de módulo ni nombres de tu empresa.
 
+## Ver un ejemplo en el laboratorio
+
+En la empresa de laboratorio **`BROSLMV_DESARROLLO`** hay datos de demostración (títulos que empiezan con **«DEMO TRAZ»**): **tres órdenes de compra** del mismo proveedor y **una sola factura de compra** que las factura juntas.
+La factura guarda un solo `SourceDocumentID` (la primera orden, que es lo único que el sistema puede guardar) y cada orden guarda `DestinationDocumentID` = la factura. Selecciona cualquiera de los cuatro y pulsa el botón:
+verás las tres órdenes a la izquierda y la factura a la derecha. Se crean con `build/laboratorio/sembrar_demo_trazabilidad.ps1` (idempotente; solo corre contra el laboratorio).
+
 ## Para desarrolladores
 
 - El motor arma un modelo (`nodos`, `aristas`, `avisos`) con consultas por lotes (400 documentos por consulta, hasta 25 niveles y 300 documentos) y luego lo dibuja.

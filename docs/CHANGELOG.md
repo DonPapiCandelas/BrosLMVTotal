@@ -16,6 +16,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
   Junta las **cuatro** formas en que se ligan los documentos: `SourceDocumentID` y `DestinationDocumentID` del encabezado, `SourceDocumentItemID`/`SourceDocumentID` de la partida y `DeliverDocumentItemID`.
   Si un vínculo existe **solo** por `DestinationDocumentID` (el caso de «varias órdenes → una factura», que el sistema no puede expresar con un único `SourceDocumentID`) lo dibuja discontinuo y lo marca como manual.
   Muestra cantidades por partida, pagos/cobros aplicados, saldo y documentos cancelados; clic centra, doble clic abre el documento, exporta a CSV. Solo lee.
+- **Datos de demostración en el laboratorio** (`build/laboratorio/sembrar_demo_trazabilidad.ps1`): 3 órdenes de compra → 1 factura consolidada («DEMO TRAZ…» en `BROSLMV_DESARROLLO`) para ver el caso de varios orígenes hacia un destino sin abrir otras bases.
 - **Prueba de humo #35** (`build/humo/casos/35_trazabilidad_documento.ps1`): corre la plantilla real con `BrosLMV.Runner` contra el laboratorio (`BROSLMV_DESARROLLO`) y comprueba la cadena, la raíz, la evidencia y el documento aislado.
 
 - **Plantilla «Asignar centro de costo de forma masiva»** (`instalador/scripts/ASIGNAR_CENTRO_COSTO.ctx`, `docs/ASIGNAR_CENTRO_COSTO.md`): pone un centro de costo ya existente a muchos documentos de una vez. Elige por selección de la lista o
