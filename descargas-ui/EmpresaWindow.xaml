@@ -176,6 +176,15 @@
             </StackPanel>
           </StackPanel>
         </Border>
+
+        <Border Style="{StaticResource Tarjeta}" Padding="16" Margin="0,4,0,4">
+          <StackPanel>
+            <TextBlock Text="FILTRADO DE COMPROBANTES FISCALES" Foreground="#64748B" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10"/>
+            <CheckBox x:Name="ChkOcultarNominas" Content="Ocultar comprobantes de Nómina (Tipo N) en el historial y reportes" IsChecked="True"/>
+            <TextBlock Foreground="#94A3B8" FontSize="11" Margin="26,4,0,0" TextWrapping="Wrap"
+                       Text="Recomendado si la empresa emite nómina a empleados para evitar saturar el historial comercial con recibos individuales de sueldo."/>
+          </StackPanel>
+        </Border>
       </StackPanel>
     </ScrollViewer>
 

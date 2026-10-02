@@ -1,73 +1,140 @@
 <Window x:Class="BrosLMV.DescargasUI.DescargasWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="CFDI descargados" Height="900" Width="1580" MinHeight="650" MinWidth="1120"
+        Title="CFDI Descargados — BrosLMV" Height="920" Width="1620" MinHeight="680" MinWidth="1140"
         WindowStartupLocation="CenterOwner" Background="#F4F6F9">
-  <Grid Margin="32,26,32,28">
+  <Grid Margin="32,24,32,24">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
+    <!-- ENCABEZADO -->
     <Grid Grid.Row="0">
       <StackPanel>
-        <TextBlock Text="CFDI descargados" FontSize="27" FontWeight="Bold" Foreground="#16263A"/>
-        <TextBlock x:Name="LblSubtitulo" Foreground="#64748B" Margin="0,6,0,0"/>
+        <TextBlock Text="CFDI Descargados" FontSize="26" FontWeight="Bold" Foreground="#16263A"/>
+        <TextBlock x:Name="LblSubtitulo" Foreground="#64748B" FontSize="13" Margin="0,5,0,0"/>
       </StackPanel>
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
-        <Button Content="Archivar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnArchivar_Click"/>
-        <Button Content="Descargar XML" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnDescargarXml_Click"/>
-        <Button Content="Actualizar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnActualizar_Click"/>
-        <Button Content="Exportar a Excel" Style="{StaticResource Primary}" Click="BtnExportarExcel_Click"/>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+        <Button Content="Archivar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnArchivar_Click" ToolTip="Oculta o muestra el CFDI seleccionado del historial diario"/>
+        <Button Content="Descargar XML" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnDescargarXml_Click" ToolTip="Copia los XML seleccionados a una carpeta a tu elección"/>
+        <Button Content="Actualizar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnActualizar_Click"/>
+        <Button Content="📊 Exportar a Excel" Style="{StaticResource BotonExito}" Padding="16,9" Click="BtnExportarExcel_Click" ToolTip="Genera un libro .xlsx con formato ejecutivo, autofiltro y totales automáticos"/>
       </StackPanel>
     </Grid>
 
-    <Border Grid.Row="1" Style="{StaticResource Tarjeta}" Margin="0,22,0,18" Padding="16">
+    <!-- BARRA DE FILTROS MODERNA CON FECHAS Y NOMINA -->
+    <Border Grid.Row="1" Style="{StaticResource Tarjeta}" Margin="0,18,0,16" Padding="18,14">
       <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <StackPanel Orientation="Horizontal">
-          <RadioButton x:Name="TabRecibidos" Content="Recibidos" GroupName="Tipo" Style="{StaticResource Pestana}" IsChecked="True" Checked="Filtro_Changed"/>
-          <RadioButton x:Name="TabEmitidos" Content="Emitidos" GroupName="Tipo" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
-          <TextBlock x:Name="LblConteo" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#64748B" Margin="18,0,0,0"/>
-        </StackPanel>
-        <WrapPanel Grid.Row="1" Margin="0,14,0,0">
-          <TextBox x:Name="TxtBuscar" Width="280" Margin="0,0,10,0" ToolTip="Busca por UUID, RFC, nombre, fecha, folio o importe" TextChanged="Filtro_Changed"/>
-          <ComboBox x:Name="CmbEstatus" Width="150" Margin="0,0,10,0" SelectedIndex="0" SelectionChanged="Filtro_Changed">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Fila 1: Pestañas de tipo (Recibidos / Emitidos) y conteo -->
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+
+          <StackPanel Grid.Column="0" Orientation="Horizontal">
+            <RadioButton x:Name="TabRecibidos" Content="Recibidos (Gastos y Compras)" GroupName="Tipo" Style="{StaticResource Pestana}" IsChecked="True" Checked="Filtro_Changed"/>
+            <RadioButton x:Name="TabEmitidos" Content="Emitidos (Ingresos y Facturación)" GroupName="Tipo" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
+          </StackPanel>
+
+          <TextBlock x:Name="LblConteo" Grid.Column="2" VerticalAlignment="Center" Foreground="#64748B" FontWeight="SemiBold" FontSize="12.5"/>
+        </Grid>
+
+        <!-- Fila 2: Controles de búsqueda, rango de fechas y filtros -->
+        <WrapPanel Grid.Row="1" VerticalAlignment="Center">
+          <!-- Filtro de fechas -->
+          <StackPanel Orientation="Horizontal" Margin="0,0,12,6" VerticalAlignment="Center">
+            <TextBlock Text="Periodo:" Foreground="#64748B" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <ComboBox x:Name="CmbRangoFecha" Width="140" Height="36" SelectionChanged="CmbRangoFecha_SelectionChanged">
+              <ComboBoxItem Content="Todo el historial" Tag="todos" IsSelected="True"/>
+              <ComboBoxItem Content="Este mes" Tag="este_mes"/>
+              <ComboBoxItem Content="Mes anterior" Tag="mes_anterior"/>
+              <ComboBoxItem Content="Año actual" Tag="anio_actual"/>
+              <ComboBoxItem Content="Últimos 30 días" Tag="ultimos_30"/>
+              <ComboBoxItem Content="Personalizado" Tag="personalizado"/>
+            </ComboBox>
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Margin="0,0,12,6" VerticalAlignment="Center">
+            <TextBlock Text="Del" Foreground="#64748B" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <DatePicker x:Name="DpDesde" Width="120" Height="36" SelectedDateChanged="Fecha_SelectedDateChanged"/>
+            <TextBlock Text="al" Foreground="#64748B" FontSize="12" VerticalAlignment="Center" Margin="6,0,6,0"/>
+            <DatePicker x:Name="DpHasta" Width="120" Height="36" SelectedDateChanged="Fecha_SelectedDateChanged"/>
+          </StackPanel>
+
+          <!-- Búsqueda rápida -->
+          <TextBox x:Name="TxtBuscar" Width="220" Margin="0,0,10,6" Height="36"
+                   ToolTip="Busca por UUID, RFC, nombre, serie, folio o importe" TextChanged="Filtro_Changed"/>
+
+          <!-- Estatus SAT -->
+          <ComboBox x:Name="CmbEstatus" Width="140" Margin="0,0,10,6" Height="36" SelectedIndex="0" SelectionChanged="Filtro_Changed">
             <ComboBoxItem Content="Todos los estatus" Tag=""/>
             <ComboBoxItem Content="Vigente" Tag="Vigente"/>
             <ComboBoxItem Content="Cancelado" Tag="Cancelado"/>
           </ComboBox>
-          <ComboBox x:Name="CmbTipo" Width="145" Margin="0,0,10,0" SelectedIndex="0" SelectionChanged="Filtro_Changed">
+
+          <!-- Tipo Comprobante -->
+          <ComboBox x:Name="CmbTipo" Width="130" Margin="0,0,10,6" Height="36" SelectedIndex="0" SelectionChanged="Filtro_Changed">
             <ComboBoxItem Content="Todos los tipos" Tag=""/>
-            <ComboBoxItem Content="Ingreso" Tag="I"/><ComboBoxItem Content="Egreso" Tag="E"/>
-            <ComboBoxItem Content="Nómina" Tag="N"/><ComboBoxItem Content="Traslado" Tag="T"/><ComboBoxItem Content="Pago" Tag="P"/>
+            <ComboBoxItem Content="Ingreso (I)" Tag="I"/>
+            <ComboBoxItem Content="Egreso (E)" Tag="E"/>
+            <ComboBoxItem Content="Nómina (N)" Tag="N"/>
+            <ComboBoxItem Content="Traslado (T)" Tag="T"/>
+            <ComboBoxItem Content="Pago (P)" Tag="P"/>
           </ComboBox>
-          <CheckBox x:Name="ChkArchivados" Content="Incluir archivados" VerticalAlignment="Center" Margin="4,0,14,0" Checked="Filtro_Changed" Unchecked="Filtro_Changed"/>
-          <Button Content="Ver detalle" Style="{StaticResource Ghost}" Click="BtnDetalle_Click"/>
+
+          <!-- Opciones de filtrado especial -->
+          <CheckBox x:Name="ChkOcultarNominas" Content="Ocultar nóminas (Tipo N)" VerticalAlignment="Center" Margin="6,0,12,6" Checked="Filtro_Changed" Unchecked="Filtro_Changed" ToolTip="Oculta recibos de nómina individual de sueldo para no saturar la vista comercial"/>
+          <CheckBox x:Name="ChkArchivados" Content="Incluir archivados" VerticalAlignment="Center" Margin="6,0,14,6" Checked="Filtro_Changed" Unchecked="Filtro_Changed"/>
+
+          <!-- Botón de detalle -->
+          <Button Content="Ver detalle del CFDI" Style="{StaticResource Ghost}" Height="36" Padding="14,0" Margin="0,0,0,6" Click="BtnDetalle_Click"/>
         </WrapPanel>
       </Grid>
     </Border>
 
+    <!-- GRID PRINCIPAL DE COMPROBANTES CON SERIE/FOLIO Y MONEDA CORREGIDA -->
     <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Padding="0">
       <DataGrid x:Name="GridCfdi" IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow" MouseDoubleClick="GridCfdi_MouseDoubleClick">
         <DataGrid.Columns>
-          <DataGridCheckBoxColumn Header="" Binding="{Binding Seleccionado, UpdateSourceTrigger=PropertyChanged}" Width="42" IsReadOnly="False"/>
-          <DataGridTextColumn Header="UUID" Binding="{Binding UUID}" Width="250" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+          <DataGridCheckBoxColumn Header="" Binding="{Binding Seleccionado, UpdateSourceTrigger=PropertyChanged}" Width="38" IsReadOnly="False"/>
+          <DataGridTextColumn Header="SERIE / FOLIO" Binding="{Binding SerieFolio}" Width="110" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
           <DataGridTextColumn Header="CONTRAPARTE" Binding="{Binding NombreContraparte}" Width="*" MinWidth="220"/>
-          <DataGridTextColumn Header="RFC" Binding="{Binding Contraparte}" Width="145" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
-          <DataGridTextColumn Header="TIPO" Binding="{Binding TipoComprobante}" Width="75"/>
-          <DataGridTextColumn Header="EMISIÓN" Binding="{Binding FechaEmision}" Width="145" ElementStyle="{StaticResource CeldaAtenuada}"/>
-          <DataGridTextColumn Header="SUBTOTAL" Binding="{Binding Subtotal}" Width="120"/>
+          <DataGridTextColumn Header="RFC" Binding="{Binding Contraparte}" Width="135" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+          <DataGridTextColumn Header="TIPO" Binding="{Binding TipoComprobante}" Width="60"/>
+          <DataGridTextColumn Header="EMISIÓN" Binding="{Binding FechaEmision}" Width="135" ElementStyle="{StaticResource CeldaAtenuada}"/>
+          <DataGridTextColumn Header="SUBTOTAL" Binding="{Binding Subtotal}" Width="115"/>
           <DataGridTextColumn Header="IVA" Binding="{Binding IVA}" Width="105"/>
-          <DataGridTextColumn Header="RETENCIONES" Binding="{Binding Retenciones}" Width="125"/>
-          <DataGridTextColumn Header="TOTAL" Binding="{Binding Total}" Width="125"/>
-          <DataGridTextColumn Header="MONEDA" Binding="{Binding Moneda}" Width="90"/>
-          <DataGridTextColumn Header="FORMA" Binding="{Binding FormaPago}" Width="90"/>
-          <DataGridTextColumn Header="MÉTODO" Binding="{Binding MetodoPago}" Width="95"/>
-          <DataGridTextColumn Header="ESTATUS SAT" Binding="{Binding EstatusSat}" Width="120"/>
+          <DataGridTextColumn Header="RETENCIONES" Binding="{Binding Retenciones}" Width="110"/>
+          <DataGridTextColumn Header="TOTAL" Binding="{Binding Total}" Width="120"/>
+          <DataGridTextColumn Header="MONEDA" Binding="{Binding Moneda}" Width="75"/>
+          <DataGridTextColumn Header="MÉTODO" Binding="{Binding MetodoPago}" Width="80"/>
+          <DataGridTextColumn Header="FORMA" Binding="{Binding FormaPago}" Width="75"/>
+          <DataGridTextColumn Header="ESTATUS SAT" Binding="{Binding EstatusSat}" Width="105"/>
+          <DataGridTextColumn Header="UUID" Binding="{Binding UUID}" Width="160" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
         </DataGrid.Columns>
       </DataGrid>
+    </Border>
+
+    <!-- BARRA DE TOTALES Y RESUMEN FINANCIERO EN TIEMPO REAL -->
+    <Border Grid.Row="3" Background="White" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Padding="16,12" Margin="0,12,0,0" Effect="{StaticResource SombraTarjeta}">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="📊 Resumen de selección:" FontWeight="SemiBold" Foreground="#16263A" FontSize="13" VerticalAlignment="Center" Margin="0,0,12,0"/>
+        <TextBlock x:Name="LblTotalesResumen" Grid.Column="1" Foreground="#24558A" FontWeight="Bold" FontSize="13" VerticalAlignment="Center" Text="Calculando totales..."/>
+      </Grid>
     </Border>
   </Grid>
 </Window>

@@ -69,9 +69,14 @@ namespace BrosLMV.DescargasUI
                 TxtCarpetaXml.Text = _existente.CarpetaXml ?? "";
                 TxtPlantilla.Text = _existente.PlantillaNombreArchivo;
                 SeleccionarEstructura(_existente.EstructuraCarpetas);
+                ChkOcultarNominas.IsChecked = _existente.OcultarNominas;
                 TxtComercialRecibidos.Text = _existente.ComercialCarpetaXmlRecibidos ?? "";
                 TxtComercialEmitidos.Text = _existente.ComercialCarpetaXmlEmitidos ?? "";
                 CargarConexionComercialExistente(_existente.ComercialConexionSql);
+            }
+            else
+            {
+                ChkOcultarNominas.IsChecked = true;
             }
 
             ActualizarPanelComercialAuth();
@@ -251,11 +256,13 @@ namespace BrosLMV.DescargasUI
 
             try
             {
+                bool ocultarNominas = ChkOcultarNominas.IsChecked == true;
                 if (esEdicion)
                 {
                     byte[] passwordCifrada = hayPasswordNueva ? DpapiHelper.Cifrar(PwdFiel.Password) : null;
                     BrosSatDb.ActualizarEmpresa(_conn, _existente.EmpresaID, TxtNombre.Text.Trim(), TxtCer.Text.Trim(), TxtKey.Text.Trim(),
-                        passwordCifrada, carpetaXml, estructura, TxtPlantilla.Text.Trim(), comercialRecibidos, comercialEmitidos, comercialConexion);
+                        passwordCifrada, carpetaXml, estructura, TxtPlantilla.Text.Trim(), comercialRecibidos, comercialEmitidos, comercialConexion,
+                        ocultarNominas);
                     SeGuardo = true;
                     DialogResult = true;
                     Close();
@@ -267,7 +274,7 @@ namespace BrosLMV.DescargasUI
                 byte[] passwordCifradaNueva = DpapiHelper.Cifrar(PwdFiel.Password);
                 int empresaId = BrosSatDb.GuardarEmpresaNueva(_conn, TxtNombre.Text.Trim(), rfc,
                     TxtCer.Text.Trim(), TxtKey.Text.Trim(), passwordCifradaNueva, carpetaXml, estructura, TxtPlantilla.Text.Trim(),
-                    comercialRecibidos, comercialEmitidos, comercialConexion, anioInicio);
+                    comercialRecibidos, comercialEmitidos, comercialConexion, anioInicio, ocultarNominas);
                 SeGuardo = true;
 
                 // Pedido explicito del usuario 2026-08-19: "al instalar lo primero que haga sea

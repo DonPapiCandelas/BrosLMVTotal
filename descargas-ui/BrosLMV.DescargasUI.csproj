@@ -55,6 +55,7 @@
     <Compile Include="..\descargas\Cola\ComercialSync.cs" Link="Cola\ComercialSync.cs" />
     <Compile Include="..\descargas\Cola\ComercialImportador.cs" Link="Cola\ComercialImportador.cs" />
     <Compile Include="..\descargas\Cola\AutoSolicitador.cs" Link="Cola\AutoSolicitador.cs" />
+    <Compile Include="..\descargas\Cola\TokenSat.cs" Link="Cola\TokenSat.cs" />
     <Compile Include="..\descargas\Datos\ConfigServicio.cs" Link="Datos\ConfigServicio.cs" />
   </ItemGroup>
 

@@ -118,6 +118,31 @@
         </Setter>
       </Style>
 
+      <Style TargetType="Button" x:Key="BotonExito">
+        <Setter Property="Background" Value="#16A34A"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Padding" Value="18,10"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Border x:Name="Fondo" CornerRadius="8" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Fondo" Property="Background" Value="#15803D"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter TargetName="Fondo" Property="Background" Value="#86EFAC"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
       <!-- Pestaña de filtro (RadioButton con look de tab): el GroupName hace que sean mutuamente
            excluyentes solas, sin logica manual de "apagar las demas". -->
       <Style TargetType="RadioButton" x:Key="Pestana">
@@ -300,6 +325,7 @@
       <Style TargetType="ComboBox">
         <Setter Property="Padding" Value="10,7"/>
         <Setter Property="Background" Value="White"/>
+        <Setter Property="Foreground" Value="{StaticResource ColorTexto}"/>
         <Setter Property="BorderBrush" Value="#CBD5E1"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Template">
@@ -307,7 +333,8 @@
             <ControlTemplate TargetType="ComboBox">
               <Grid>
                 <ToggleButton x:Name="ToggleBtn" Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
-                              ClickMode="Press" Background="Transparent" BorderThickness="0">
+                              ClickMode="Press" BorderThickness="0"
+                              Background="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}">
                   <ToggleButton.Template>
                     <ControlTemplate TargetType="ToggleButton">
                       <Border CornerRadius="7" Background="{TemplateBinding Background}" BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource TemplatedParent}}" BorderThickness="1">
@@ -323,6 +350,9 @@
                   </ToggleButton.Template>
                 </ToggleButton>
                 <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
+                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                  ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                  TextBlock.Foreground="{TemplateBinding Foreground}"
                                   Margin="{TemplateBinding Padding}" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                 <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
                   <Border Background="White" BorderBrush="{StaticResource ColorBorde}" BorderThickness="1" CornerRadius="8" Margin="0,4,0,0" Effect="{StaticResource SombraTarjeta}"
@@ -339,15 +369,17 @@
       </Style>
       <Style TargetType="ComboBoxItem">
         <Setter Property="Padding" Value="10,7"/>
+        <Setter Property="Foreground" Value="{StaticResource ColorTexto}"/>
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="ComboBoxItem">
               <Border x:Name="Fondo" CornerRadius="6" Background="Transparent" Padding="{TemplateBinding Padding}">
-                <ContentPresenter/>
+                <ContentPresenter TextBlock.Foreground="{TemplateBinding Foreground}"/>
               </Border>
               <ControlTemplate.Triggers>
                 <Trigger Property="IsHighlighted" Value="True">
                   <Setter TargetName="Fondo" Property="Background" Value="#E8F0FE"/>
+                  <Setter Property="Foreground" Value="{StaticResource ColorPrimario}"/>
                 </Trigger>
               </ControlTemplate.Triggers>
             </ControlTemplate>

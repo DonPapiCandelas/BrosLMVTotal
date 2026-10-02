@@ -4,10 +4,27 @@
         Title="BrosLMV — Descargas de CFDI" Height="900" Width="1680" MinHeight="680" MinWidth="1180"
         WindowStartupLocation="CenterScreen" Background="#F4F6F9"
         Icon="pack://application:,,,/assets/app_icon.png">
-  <!-- Los estilos compartidos (Primary/Ghost/Danger/Pestana/Tarjeta/Celda*, y el look moderno
-       implicito de DataGrid/TextBox/ComboBox/CheckBox) viven centralizados en App.xaml desde
-       2026-08-19 - antes cada ventana traia su propia copia pegada del mismo bloque de estilos,
-       lo que hacia tedioso y propenso a error mantenerlas consistentes. -->
+  <!-- Estilos compartidos en App.xaml. Estilos propios de navegación lateral y tarjetas ejecutivas -->
+  <Window.Resources>
+    <Style x:Key="BotonSidebar" TargetType="Border">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Margin" Value="14,2,14,2"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#1A3A5E"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="BotonSidebarActivo" TargetType="Border">
+      <Setter Property="Background" Value="#1E3D5C"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Margin" Value="14,2,14,2"/>
+      <Setter Property="BorderBrush" Value="#2D6FE0"/>
+      <Setter Property="BorderThickness" Value="1.5,0,0,0"/>
+    </Style>
+  </Window.Resources>
 
   <Grid>
     <Grid.ColumnDefinitions>
@@ -15,7 +32,7 @@
       <ColumnDefinition Width="*"/>
     </Grid.ColumnDefinitions>
 
-    <!-- SIDEBAR -->
+    <!-- SIDEBAR EJECUTIVA -->
     <Border Grid.Column="0">
       <Border.Background>
         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -24,39 +41,41 @@
         </LinearGradientBrush>
       </Border.Background>
       <DockPanel LastChildFill="False">
-        <Image DockPanel.Dock="Top" Height="92" Margin="24,30,24,22" Stretch="Uniform"
+        <Image DockPanel.Dock="Top" Height="88" Margin="24,28,24,20" Stretch="Uniform"
                Source="pack://application:,,,/assets/logo_blanco.png"/>
-        <Border DockPanel.Dock="Top" Background="#1E3D5C" Margin="14,4" CornerRadius="8">
-          <TextBlock Text="🏢   Empresas" Foreground="White" FontWeight="SemiBold" FontSize="14" Margin="18,13"/>
+
+        <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebarActivo}">
+          <TextBlock Text="🏢   Empresas" Foreground="White" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
         </Border>
-        <Border DockPanel.Dock="Top" Background="Transparent" Margin="14,0,14,4" CornerRadius="8" Cursor="Hand" MouseLeftButtonUp="NavDescargas_Click">
-          <TextBlock Text="📄   CFDI descargados" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="14" Margin="18,13"/>
+        <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebar}" MouseLeftButtonUp="NavDescargas_Click">
+          <TextBlock Text="📄   CFDI descargados" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
         </Border>
-        <Border DockPanel.Dock="Top" Background="Transparent" Margin="14,0,14,4" CornerRadius="8" Cursor="Hand" MouseLeftButtonUp="NavSalud_Click">
-          <TextBlock Text="🩺   Salud" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="14" Margin="18,13"/>
+        <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebar}" MouseLeftButtonUp="NavReportes_Click">
+          <TextBlock Text="📊   Reportes ejecutivos" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
         </Border>
-        <Border DockPanel.Dock="Top" Background="Transparent" Margin="14,0,14,4" CornerRadius="8" Cursor="Hand" MouseLeftButtonUp="NavBitacora_Click">
-          <TextBlock Text="📋   Bitácora" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="14" Margin="18,13"/>
+        <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebar}" MouseLeftButtonUp="NavSalud_Click">
+          <TextBlock Text="🩺   Salud del servicio" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
         </Border>
-        <Border DockPanel.Dock="Top" Background="Transparent" Margin="14,0,14,4" CornerRadius="8" Cursor="Hand" MouseLeftButtonUp="NavReportes_Click">
-          <TextBlock Text="📊   Reportes" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="14" Margin="18,13"/>
+        <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebar}" MouseLeftButtonUp="NavBitacora_Click">
+          <TextBlock Text="📋   Bitácora" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
         </Border>
-        <Border DockPanel.Dock="Top" Background="Transparent" Margin="14,0,14,4" CornerRadius="8" Cursor="Hand" MouseLeftButtonUp="NavActividad_Click">
-          <TextBlock Text="🗓   Actividad" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="14" Margin="18,13"/>
+        <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebar}" MouseLeftButtonUp="NavActividad_Click">
+          <TextBlock Text="🗓   Actividad" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
         </Border>
-        <Border DockPanel.Dock="Top" Background="Transparent" Margin="14,0,14,4" CornerRadius="8" Cursor="Hand" MouseLeftButtonUp="NavAutomatizacion_Click">
-          <TextBlock Text="⏱   Automatización" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="14" Margin="18,13"/>
+        <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebar}" MouseLeftButtonUp="NavAutomatizacion_Click">
+          <TextBlock Text="⏱   Automatización" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
         </Border>
+
         <StackPanel DockPanel.Dock="Bottom" Margin="24,18">
-          <Border Height="1" Background="#22456A" Margin="0,0,0,16"/>
+          <Border Height="1" Background="#22456A" Margin="0,0,0,14"/>
           <TextBlock x:Name="LblConexion" Text="Sin conexión" Foreground="#9FB3C8" FontSize="11.5" TextWrapping="Wrap"/>
-          <TextBlock Text="BrosLMV Descargas" Foreground="#6E8198" FontSize="11.5" Margin="0,10,0,0"/>
+          <TextBlock Text="BrosLMV Descargas · v2.4.0" Foreground="#6E8198" FontSize="11.5" Margin="0,8,0,0"/>
         </StackPanel>
       </DockPanel>
     </Border>
 
     <!-- ===== PANEL 1: Lista de empresas (pantalla inicial) ===== -->
-    <Grid x:Name="PanelEmpresas" Grid.Column="1" Margin="36,30,36,26">
+    <Grid x:Name="PanelEmpresas" Grid.Column="1" Margin="36,28,36,26">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
@@ -66,59 +85,60 @@
       <Grid Grid.Row="0">
         <StackPanel>
           <TextBlock Text="Empresas" FontSize="26" FontWeight="Bold" Foreground="#16263A"/>
-          <TextBlock Text="Selecciona una empresa para ver su cola de solicitudes y sus CFDI descargados." Foreground="#64748B" Margin="0,6,0,0"/>
+          <TextBlock Text="Selecciona una empresa para consultar su cola de solicitudes, historial de CFDI y reportes financieros." Foreground="#64748B" FontSize="13" Margin="0,5,0,0"/>
         </StackPanel>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
-          <Button Content="Respaldo…" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnRespaldo_Click" ToolTip="Exportar o importar un respaldo cifrado de las empresas (FIEL, contraseñas y carpetas)"/>
-          <Button x:Name="BtnEditarEmpresa" Content="Editar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnEditarEmpresa_Click" IsEnabled="False"/>
-          <Button x:Name="BtnEliminarEmpresa" Content="Eliminar" Style="{StaticResource Danger}" Margin="0,0,10,0" Click="BtnEliminarEmpresa_Click" IsEnabled="False"/>
-          <Button x:Name="BtnAgregarEmpresa" Content="+ Agregar empresa" Style="{StaticResource Primary}" Click="BtnAgregarEmpresa_Click"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Button Content="Respaldo…" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnRespaldo_Click" ToolTip="Exportar o importar un respaldo cifrado de las empresas (FIEL, contraseñas y carpetas)"/>
+          <Button x:Name="BtnEditarEmpresa" Content="Editar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnEditarEmpresa_Click" IsEnabled="False"/>
+          <Button x:Name="BtnEliminarEmpresa" Content="Eliminar" Style="{StaticResource Danger}" Margin="0,0,10,0" Padding="14,9" Click="BtnEliminarEmpresa_Click" IsEnabled="False"/>
+          <Button x:Name="BtnAgregarEmpresa" Content="+ Agregar empresa" Style="{StaticResource Primary}" Padding="16,9" Click="BtnAgregarEmpresa_Click"/>
         </StackPanel>
       </Grid>
 
-      <Grid Grid.Row="1" Margin="0,22,0,0">
+      <Grid Grid.Row="1" Margin="0,20,0,0">
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*"/><ColumnDefinition Width="18"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="18"/>
           <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <Border Grid.Column="0" Style="{StaticResource Tarjeta}">
+        <Border Grid.Column="0" Style="{StaticResource Tarjeta}" Background="#FAFBFD" BorderBrush="#E2E8F0" Padding="20">
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Width="52" Height="52" CornerRadius="14" Background="#E8F0FE" VerticalAlignment="Top">
+            <Border Grid.Column="0" Width="54" Height="54" CornerRadius="12" Background="#E8F0FE" VerticalAlignment="Center">
               <TextBlock Text="🏢" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
-            <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
-              <TextBlock Text="Empresas dadas de alta" Foreground="#64748B"/>
-              <TextBlock x:Name="CardEmpresas" Text="0" FontSize="32" FontWeight="Bold" Foreground="#16263A" Margin="0,2,0,0"/>
+            <StackPanel Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center">
+              <TextBlock Text="Empresas registradas" Foreground="#64748B" FontSize="12.5" FontWeight="SemiBold"/>
+              <TextBlock x:Name="CardEmpresas" Text="0" FontSize="30" FontWeight="Bold" Foreground="#16263A" Margin="0,2,0,0"/>
             </StackPanel>
           </Grid>
         </Border>
-        <Border Grid.Column="2" Style="{StaticResource Tarjeta}">
+        <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Background="#FAFBFD" BorderBrush="#E2E8F0" Padding="20">
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Width="52" Height="52" CornerRadius="14" Background="#E6F6EE" VerticalAlignment="Top">
+            <Border Grid.Column="0" Width="54" Height="54" CornerRadius="12" Background="#E6F6EE" VerticalAlignment="Center">
               <TextBlock Text="📄" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
-            <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
-              <TextBlock Text="CFDI descargados (todas)" Foreground="#64748B"/>
-              <TextBlock x:Name="CardCfdi" Text="0" FontSize="32" FontWeight="Bold" Foreground="#16263A" Margin="0,2,0,0"/>
+            <StackPanel Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center">
+              <TextBlock Text="Total CFDI descargados" Foreground="#64748B" FontSize="12.5" FontWeight="SemiBold"/>
+              <TextBlock x:Name="CardCfdi" Text="0" FontSize="30" FontWeight="Bold" Foreground="#16263A" Margin="0,2,0,0"/>
             </StackPanel>
           </Grid>
         </Border>
       </Grid>
 
-      <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Margin="0,20,0,0" MinHeight="220">
+      <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Margin="0,18,0,0" MinHeight="220" Padding="18">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
           </Grid.RowDefinitions>
-          <TextBlock Grid.Row="0" Text="Empresas" FontWeight="SemiBold" FontSize="15" Foreground="#16263A" Margin="0,0,0,14"/>
+          <TextBlock Grid.Row="0" Text="Catálogo de Empresas" FontWeight="SemiBold" FontSize="15" Foreground="#16263A" Margin="0,0,0,14"/>
           <DataGrid x:Name="GridEmpresas" Grid.Row="1"
                     SelectionMode="Single" SelectionUnit="FullRow"
                     SelectionChanged="GridEmpresas_SelectionChanged" MouseDoubleClick="GridEmpresas_MouseDoubleClick">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="NOMBRE" Binding="{Binding Nombre}" Width="*" MinWidth="200" IsReadOnly="True"/>
+              <DataGridTextColumn Header="NOMBRE DE LA EMPRESA" Binding="{Binding Nombre}" Width="*" MinWidth="220" IsReadOnly="True"/>
               <DataGridTextColumn Header="RFC" Binding="{Binding RFC}" Width="160" IsReadOnly="True" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
               <DataGridTextColumn Header="CFDI DESCARGADOS" Binding="{Binding TotalCfdi}" Width="180" IsReadOnly="True"/>
               <DataGridTextColumn Header="ÚLTIMA SOLICITUD" Binding="{Binding UltimoEstatus}" Width="200" IsReadOnly="True" ElementStyle="{StaticResource CeldaAtenuada}"/>
@@ -129,7 +149,7 @@
     </Grid>
 
     <!-- ===== PANEL 2: Detalle de una empresa ===== -->
-    <Grid x:Name="PanelDetalle" Grid.Column="1" Margin="36,30,36,26" Visibility="Collapsed">
+    <Grid x:Name="PanelDetalle" Grid.Column="1" Margin="36,28,36,26" Visibility="Collapsed">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
@@ -139,52 +159,54 @@
 
       <Grid Grid.Row="0">
         <StackPanel>
-          <Button Content="← Empresas" Style="{StaticResource Ghost}" HorizontalAlignment="Left" Padding="10,5" Click="BtnVolver_Click"/>
-          <TextBlock x:Name="LblEmpresaTitulo" Text="Empresa" FontSize="26" FontWeight="Bold" Foreground="#16263A" Margin="0,12,0,0"/>
+          <Button Content="← Volver a lista de empresas" Style="{StaticResource Ghost}" HorizontalAlignment="Left" Padding="12,6" Click="BtnVolver_Click"/>
+          <TextBlock x:Name="LblEmpresaTitulo" Text="Empresa" FontSize="25" FontWeight="Bold" Foreground="#16263A" Margin="0,10,0,0"/>
         </StackPanel>
       </Grid>
 
       <Grid Grid.Row="1" Margin="0,16,0,0">
         <StackPanel Orientation="Horizontal">
-          <Button x:Name="BtnNuevaSolicitud" Content="Nueva solicitud" Style="{StaticResource Primary}" Margin="0,0,10,0" Click="BtnNuevaSolicitud_Click"/>
-          <Button x:Name="BtnRevisarPendientes" Content="Revisar pendientes ahora" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnRevisarPendientes_Click"/>
-          <Button x:Name="BtnSincronizarComercial" Content="Sincronizar con Comercial" Style="{StaticResource Ghost}" Margin="0,0,10,0" Click="BtnSincronizarComercial_Click"/>
-          <Button x:Name="BtnActualizarDetalle" Content="Actualizar" Style="{StaticResource Ghost}" Click="BtnActualizarDetalle_Click"/>
+          <Button x:Name="BtnNuevaSolicitud" Content="+ Nueva solicitud" Style="{StaticResource Primary}" Margin="0,0,10,0" Padding="16,9" Click="BtnNuevaSolicitud_Click"/>
+          <Button x:Name="BtnRevisarPendientes" Content="Revisar pendientes ahora" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnRevisarPendientes_Click"/>
+          <Button x:Name="BtnSincronizarComercial" Content="Sincronizar con Comercial" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnSincronizarComercial_Click"/>
+          <Button x:Name="BtnActualizarDetalle" Content="Actualizar" Style="{StaticResource Ghost}" Padding="14,9" Click="BtnActualizarDetalle_Click"/>
         </StackPanel>
       </Grid>
 
-      <!-- Resumen operativo: la primera lectura deja claro qué necesita atención, sin obligar
-           a interpretar una tabla de estados técnicos. -->
+      <!-- Resumen operativo refinado -->
       <Grid Grid.Row="2" Margin="0,18,0,0">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/><ColumnDefinition Width="14"/>
           <ColumnDefinition Width="*"/><ColumnDefinition Width="14"/>
           <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <Border Grid.Column="0" Style="{StaticResource Tarjeta}" Padding="18" BorderBrush="#F6D365">
+
+        <Border Grid.Column="0" Style="{StaticResource Tarjeta}" Padding="18,16" Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1.2">
           <StackPanel>
-            <TextBlock Text="TRABAJÁNDOSE AHORA" Foreground="#A16207" FontWeight="Bold" FontSize="11"/>
-            <TextBlock x:Name="CardPendientes" Text="0" Foreground="#16263A" FontSize="30" FontWeight="Bold" Margin="0,5,0,1"/>
-            <TextBlock Text="solicitudes esperando respuesta del SAT" Foreground="#64748B" FontSize="12" TextWrapping="Wrap"/>
+            <TextBlock Text="EN PROCESO / PENDIENTES" Foreground="#92400E" FontWeight="Bold" FontSize="11"/>
+            <TextBlock x:Name="CardPendientes" Text="0" Foreground="#16263A" FontSize="28" FontWeight="Bold" Margin="0,4,0,2"/>
+            <TextBlock Text="Solicitudes en espera de respuesta del SAT" Foreground="#78350F" FontSize="11.5" TextWrapping="Wrap"/>
           </StackPanel>
         </Border>
-        <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Padding="18" BorderBrush="#A7E3BA">
+
+        <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Padding="18,16" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1.2">
           <StackPanel>
-            <TextBlock Text="TERMINADAS RECIENTES" Foreground="#16803B" FontWeight="Bold" FontSize="11"/>
-            <TextBlock x:Name="CardTerminadas" Text="0" Foreground="#16263A" FontSize="30" FontWeight="Bold" Margin="0,5,0,1"/>
-            <TextBlock Text="listas y descargadas correctamente" Foreground="#64748B" FontSize="12" TextWrapping="Wrap"/>
+            <TextBlock Text="TERMINADAS RECIENTES" Foreground="#166534" FontWeight="Bold" FontSize="11"/>
+            <TextBlock x:Name="CardTerminadas" Text="0" Foreground="#16263A" FontSize="28" FontWeight="Bold" Margin="0,4,0,2"/>
+            <TextBlock Text="Paquetes descargados correctamente" Foreground="#14532D" FontSize="11.5" TextWrapping="Wrap"/>
           </StackPanel>
         </Border>
-        <Border Grid.Column="4" Style="{StaticResource Tarjeta}" Padding="18" BorderBrush="#F6B1B1">
+
+        <Border Grid.Column="4" Style="{StaticResource Tarjeta}" Padding="18,16" Background="#FFF1F2" BorderBrush="#FECDD3" BorderThickness="1.2">
           <StackPanel>
-            <TextBlock Text="REQUIEREN REVISIÓN" Foreground="#C62828" FontWeight="Bold" FontSize="11"/>
-            <TextBlock x:Name="CardErrores" Text="0" Foreground="#16263A" FontSize="30" FontWeight="Bold" Margin="0,5,0,1"/>
-            <TextBlock x:Name="LblActividad" Text="Sin incidencias visibles" Foreground="#64748B" FontSize="12" TextWrapping="Wrap"/>
+            <TextBlock Text="REQUIEREN REVISIÓN" Foreground="#9F1239" FontWeight="Bold" FontSize="11"/>
+            <TextBlock x:Name="CardErrores" Text="0" Foreground="#16263A" FontSize="28" FontWeight="Bold" Margin="0,4,0,2"/>
+            <TextBlock x:Name="LblActividad" Text="Sin incidencias visibles" Foreground="#881337" FontSize="11.5" TextWrapping="Wrap"/>
           </StackPanel>
         </Border>
       </Grid>
 
-      <Border Grid.Row="3" Style="{StaticResource Tarjeta}" Margin="0,18,0,0" MinHeight="200">
+      <Border Grid.Row="3" Style="{StaticResource Tarjeta}" Margin="0,18,0,0" MinHeight="200" Padding="18">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -192,10 +214,9 @@
             <RowDefinition Height="*"/>
           </Grid.RowDefinitions>
           <Grid Grid.Row="0" Margin="0,0,0,12">
-            <TextBlock Text="Trabajo de descarga" FontWeight="SemiBold" FontSize="16" Foreground="#16263A"/>
+            <TextBlock Text="Cola de Solicitudes de Descarga" FontWeight="SemiBold" FontSize="15" Foreground="#16263A" VerticalAlignment="Center"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-              <TextBlock Text="Solo lo que requiere atención" Foreground="#64748B" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,0"/>
-              <Button Content="Limpiar historial" Style="{StaticResource Ghost}" Click="BtnLimpiarSolicitudes_Click"/>
+              <Button Content="Limpiar historial antiguo" Style="{StaticResource Ghost}" Padding="12,6" Click="BtnLimpiarSolicitudes_Click"/>
             </StackPanel>
           </Grid>
 
@@ -207,15 +228,63 @@
 
           <DataGrid x:Name="GridSolicitudes" Grid.Row="2" IsReadOnly="True">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="ID SOLICITUD" Binding="{Binding IdSolicitud}" Width="260" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
-              <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="100"/>
-              <DataGridTextColumn Header="DESCARGA" Binding="{Binding TipoSolicitud}" Width="100"/>
-              <DataGridTextColumn Header="RANGO" Binding="{Binding Rango}" Width="220"/>
-              <DataGridTextColumn Header="ESTATUS" Binding="{Binding Estatus}" Width="130"/>
-              <DataGridTextColumn Header="ESPERANDO" Binding="{Binding TiempoTranscurrido}" Width="100" ElementStyle="{StaticResource CeldaAtenuada}"/>
-              <DataGridTextColumn Header="CFDIS" Binding="{Binding NumeroCFDIs}" Width="80"/>
-              <DataGridTextColumn Header="FECHA" Binding="{Binding Fecha}" Width="160" ElementStyle="{StaticResource CeldaAtenuada}"/>
-              <DataGridTextColumn Header="ERROR DE DESCARGA" Binding="{Binding ErrorDescarga}" Width="*" MinWidth="200" ElementStyle="{StaticResource CeldaError}"/>
+              <DataGridTemplateColumn Header="ID SOLICITUD" Width="160">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding IdSolicitudCorto}" ToolTip="{Binding IdSolicitud}" 
+                               Style="{StaticResource CeldaAtenuadaMono}" VerticalAlignment="Center"/>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="95"/>
+              <DataGridTextColumn Header="DESCARGA" Binding="{Binding TipoSolicitud}" Width="95"/>
+              <DataGridTextColumn Header="RANGO" Binding="{Binding Rango}" Width="195"/>
+              <DataGridTemplateColumn Header="ESTATUS" Width="135">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Border CornerRadius="6" Padding="8,3" HorizontalAlignment="Left" VerticalAlignment="Center">
+                      <Border.Style>
+                        <Style TargetType="Border">
+                          <Setter Property="Background" Value="#F1F5F9"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding EstatusCategoria}" Value="Terminada">
+                              <Setter Property="Background" Value="#DCFCE7"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding EstatusCategoria}" Value="Pendiente">
+                              <Setter Property="Background" Value="#DBEAFE"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding EstatusCategoria}" Value="Rechazada">
+                              <Setter Property="Background" Value="#FEE2E2"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Border.Style>
+                      <TextBlock Text="{Binding Estatus}" FontSize="11.5" FontWeight="SemiBold">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="#475569"/>
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding EstatusCategoria}" Value="Terminada">
+                                <Setter Property="Foreground" Value="#15803D"/>
+                              </DataTrigger>
+                              <DataTrigger Binding="{Binding EstatusCategoria}" Value="Pendiente">
+                                <Setter Property="Foreground" Value="#1D4ED8"/>
+                              </DataTrigger>
+                              <DataTrigger Binding="{Binding EstatusCategoria}" Value="Rechazada">
+                                <Setter Property="Foreground" Value="#B91C1C"/>
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </TextBlock.Style>
+                      </TextBlock>
+                    </Border>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="ESPERANDO" Binding="{Binding TiempoTranscurrido}" Width="95" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="CFDIS" Binding="{Binding NumeroCFDIs}" Width="75"/>
+              <DataGridTextColumn Header="FECHA" Binding="{Binding Fecha}" Width="140" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="DETALLE / INCIDENCIA" Binding="{Binding ErrorDescarga}" Width="*" MinWidth="200" ElementStyle="{StaticResource CeldaError}"/>
             </DataGrid.Columns>
           </DataGrid>
         </Grid>

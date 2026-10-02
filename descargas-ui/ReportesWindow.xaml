@@ -1,28 +1,35 @@
 <Window x:Class="BrosLMV.DescargasUI.ReportesWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Reportes" Height="900" Width="1500" MinHeight="650" MinWidth="1040"
+        Title="Reportes Financieros y Fiscales — BrosLMV" Height="920" Width="1540" MinHeight="680" MinWidth="1080"
         WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip"
         Background="#F4F6F9">
-  <!-- Los estilos compartidos (Ghost/Tarjeta/Celda*/DataGrid moderno) viven en App.xaml.
-       TarjetaTitulo/TarjetaValor/TarjetaSub son unicos de esta ventana (tarjetas KPI del
-       resumen), no aplican a ninguna otra pantalla. -->
+  <!-- Estilos compartidos en App.xaml. Estilos propios para tarjetas KPI y navegación de reportes -->
   <Window.Resources>
+    <Style x:Key="TarjetaKpi" TargetType="Border">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="BorderBrush" Value="#E2E8F0"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="18,16"/>
+      <Setter Property="Effect" Value="{StaticResource SombraTarjeta}"/>
+      <Setter Property="Margin" Value="0,0,14,14"/>
+    </Style>
     <Style x:Key="TarjetaTitulo" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#64748B"/>
       <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style x:Key="TarjetaValor" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#16263A"/>
-      <Setter Property="FontSize" Value="22"/>
+      <Setter Property="FontSize" Value="24"/>
       <Setter Property="FontWeight" Value="Bold"/>
       <Setter Property="Margin" Value="0,4,0,0"/>
-      <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
     <Style x:Key="TarjetaSub" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#94A3B8"/>
-      <Setter Property="FontSize" Value="11"/>
-      <Setter Property="Margin" Value="0,2,0,0"/>
+      <Setter Property="FontSize" Value="11.5"/>
+      <Setter Property="Margin" Value="0,3,0,0"/>
     </Style>
     <Style TargetType="TabControl">
       <Setter Property="BorderThickness" Value="0"/>
@@ -31,7 +38,8 @@
     <Style TargetType="TabItem">
       <Setter Property="Foreground" Value="#64748B"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Padding" Value="18,11"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Padding" Value="18,10"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="TabItem">
@@ -39,8 +47,13 @@
               <ContentPresenter ContentSource="Header"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsSelected" Value="True"><Setter TargetName="Fondo" Property="Background" Value="#E8F0FE"/><Setter Property="Foreground" Value="#2D6FE0"/></Trigger>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Fondo" Property="Background" Value="#F1F5FB"/></Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="Fondo" Property="Background" Value="#E8F0FE"/>
+                <Setter Property="Foreground" Value="#2D6FE0"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Fondo" Property="Background" Value="#F1F5FB"/>
+              </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -48,103 +61,382 @@
     </Style>
   </Window.Resources>
 
-  <Grid Margin="34,28,34,30">
+  <Grid Margin="32,24,32,26">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
 
-    <Border Grid.Row="0" CornerRadius="14" Padding="26,20" Margin="0,0,0,20">
-      <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#15324F" Offset="0"/><GradientStop Color="#24558A" Offset="1"/></LinearGradientBrush></Border.Background>
+    <!-- ENCABEZADO CORPORATIVO -->
+    <Border Grid.Row="0" CornerRadius="14" Padding="26,18" Margin="0,0,0,18">
+      <Border.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+          <GradientStop Color="#15324F" Offset="0"/>
+          <GradientStop Color="#24558A" Offset="1"/>
+        </LinearGradientBrush>
+      </Border.Background>
       <Grid>
-        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <StackPanel Grid.Column="0">
-          <TextBlock Text="Reportes financieros" FontSize="26" FontWeight="Bold" Foreground="White"/>
-          <TextBlock x:Name="LblEmpresa" Foreground="#D9E7F9" FontSize="13" Margin="0,5,0,0"/>
-          <TextBlock Text="Resumen, cuentas pendientes y validaciones de los CFDI descargados" Foreground="#AFC7E3" FontSize="12" Margin="0,7,0,0"/>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+          <TextBlock Text="Reportes Financieros y Fiscales" FontSize="24" FontWeight="Bold" Foreground="White"/>
+          <TextBlock x:Name="LblEmpresa" Foreground="#D9E7F9" FontSize="13" Margin="0,4,0,0"/>
+          <TextBlock Text="Análisis integral de CFDI emitidos, recibidos, estados de cuenta y validación SAT" Foreground="#AFC7E3" FontSize="11.5" Margin="0,4,0,0"/>
         </StackPanel>
-        <ComboBox x:Name="CmbMes" Grid.Column="1" Width="190" Margin="0,5,10,0" SelectionChanged="CmbMes_SelectionChanged"/>
-        <Button Grid.Column="2" Content="Actualizar" Style="{StaticResource Ghost}" Margin="0,5,0,0" Click="BtnActualizar_Click"/>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+          <TextBlock Text="Período:" Foreground="#D9E7F9" FontSize="12.5" VerticalAlignment="Center" Margin="0,0,8,0"/>
+          <ComboBox x:Name="CmbMes" Width="180" Height="36" Background="White" Foreground="#16263A" SelectionChanged="CmbMes_SelectionChanged"/>
+        </StackPanel>
+
+        <Button Grid.Column="2" Content="Actualizar" Style="{StaticResource Ghost}" Margin="0,0,12,0" Height="36" Padding="14,0" Click="BtnActualizar_Click" VerticalAlignment="Center"/>
+
+        <Button x:Name="BtnExportarEjecutivo" Grid.Column="3" Content="📊 Exportar Informe Ejecutivo (.xlsx)" Style="{StaticResource BotonExito}" Height="36" Padding="18,0" Click="BtnExportarEjecutivo_Click" VerticalAlignment="Center"
+                ToolTip="Genera un libro de Excel profesional de varias hojas con KPIs, Cuentas por Cobrar, Cuentas por Pagar, Inconsistencias y Detalle de Comprobantes"/>
       </Grid>
     </Border>
 
+    <!-- PESTAÑAS DE REPORTES -->
     <TabControl Grid.Row="1">
-      <TabItem Header="Resumen financiero">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,18,0,0">
+      <!-- 1. RESUMEN FINANCIERO -->
+      <TabItem Header="Resumen Financiero">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,14,0,0">
           <StackPanel>
-            <WrapPanel>
-              <Border Style="{StaticResource Tarjeta}" Width="200" Margin="0,0,12,12" Padding="18">
+            <!-- Cuadrícula de 6 KPIs Ejecutivos -->
+            <Grid Margin="0,0,0,10">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+
+              <!-- Card 1: Facturación Emitida -->
+              <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource TarjetaKpi}" BorderBrush="#2D6FE0" BorderThickness="1.5">
                 <StackPanel>
-                  <TextBlock Text="FACTURADO ESTE MES" Style="{StaticResource TarjetaTitulo}"/>
+                  <TextBlock Text="FACTURACIÓN DEL MES (VENTAS)" Style="{StaticResource TarjetaTitulo}" Foreground="#2D6FE0"/>
                   <TextBlock x:Name="LblFacturado" Style="{StaticResource TarjetaValor}"/>
                   <TextBlock x:Name="LblFacturadoSub" Style="{StaticResource TarjetaSub}"/>
                 </StackPanel>
               </Border>
-              <Border Style="{StaticResource Tarjeta}" Width="200" Margin="0,0,12,12" Padding="18">
+
+              <!-- Card 2: Compras y Gastos -->
+              <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource TarjetaKpi}">
                 <StackPanel>
-                  <TextBlock Text="COMPRADO ESTE MES" Style="{StaticResource TarjetaTitulo}"/>
+                  <TextBlock Text="COMPRAS Y GASTOS (RECIBIDOS)" Style="{StaticResource TarjetaTitulo}"/>
                   <TextBlock x:Name="LblComprado" Style="{StaticResource TarjetaValor}"/>
                   <TextBlock x:Name="LblCompradoSub" Style="{StaticResource TarjetaSub}"/>
                 </StackPanel>
               </Border>
-              <Border Style="{StaticResource Tarjeta}" Width="200" Margin="0,0,12,12" Padding="18">
-                <StackPanel>
-                  <TextBlock Text="IVA FACTURADO" Style="{StaticResource TarjetaTitulo}"/>
-                  <TextBlock x:Name="LblIvaFacturado" Style="{StaticResource TarjetaValor}"/>
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource Tarjeta}" Width="200" Margin="0,0,12,12" Padding="18">
-                <StackPanel>
-                  <TextBlock Text="IVA COMPRADO" Style="{StaticResource TarjetaTitulo}"/>
-                  <TextBlock x:Name="LblIvaComprado" Style="{StaticResource TarjetaValor}"/>
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource Tarjeta}" Width="200" Margin="0,0,12,12" Padding="18">
-                <StackPanel>
-                  <TextBlock Text="COBRADO DE CONTADO (PUE)" Style="{StaticResource TarjetaTitulo}" TextWrapping="Wrap"/>
-                  <TextBlock x:Name="LblPue" Style="{StaticResource TarjetaValor}"/>
-                  <TextBlock x:Name="LblPueSub" Style="{StaticResource TarjetaSub}"/>
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource Tarjeta}" Width="200" Margin="0,0,12,12" Padding="18">
-                <StackPanel>
-                  <TextBlock Text="A CREDITO (PPD)" Style="{StaticResource TarjetaTitulo}"/>
-                  <TextBlock x:Name="LblPpd" Style="{StaticResource TarjetaValor}"/>
-                  <TextBlock x:Name="LblPpdSub" Style="{StaticResource TarjetaSub}"/>
-                </StackPanel>
-              </Border>
-            </WrapPanel>
 
-            <TextBlock Text="Top proveedores del mes" FontWeight="SemiBold" Foreground="#16263A" Margin="0,16,0,8"/>
-            <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0,0,0,10">
-              <DataGrid x:Name="GridProveedores" IsReadOnly="True" Height="260">
-                <DataGrid.Columns>
-                  <DataGridTextColumn Header="RFC" Binding="{Binding RFC}" Width="140"/>
-                  <DataGridTextColumn Header="Proveedor" Binding="{Binding Nombre}" Width="*"/>
-                  <DataGridTextColumn Header="Facturas" Binding="{Binding Count}" Width="80"/>
-                  <DataGridTextColumn Header="Total" Binding="{Binding TotalTexto}" Width="140"/>
-                </DataGrid.Columns>
-              </DataGrid>
+              <!-- Card 3: Balance Operativo Neto -->
+              <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource TarjetaKpi}" x:Name="CardBorderBalance">
+                <StackPanel>
+                  <TextBlock Text="BALANCE OPERATIVO NETO" Style="{StaticResource TarjetaTitulo}"/>
+                  <TextBlock x:Name="LblBalanceNeto" Style="{StaticResource TarjetaValor}"/>
+                  <TextBlock x:Name="LblBalanceNetoSub" Style="{StaticResource TarjetaSub}"/>
+                </StackPanel>
+              </Border>
+
+              <!-- Card 4: IVA Trasladado -->
+              <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource TarjetaKpi}">
+                <StackPanel>
+                  <TextBlock Text="IVA TRASLADADO (COBRADO)" Style="{StaticResource TarjetaTitulo}"/>
+                  <TextBlock x:Name="LblIvaFacturado" Style="{StaticResource TarjetaValor}"/>
+                  <TextBlock Text="Impuesto cobrado en ventas emitidas" Style="{StaticResource TarjetaSub}"/>
+                </StackPanel>
+              </Border>
+
+              <!-- Card 5: IVA Acreditable -->
+              <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource TarjetaKpi}">
+                <StackPanel>
+                  <TextBlock Text="IVA ACREDITABLE (PAGADO)" Style="{StaticResource TarjetaTitulo}"/>
+                  <TextBlock x:Name="LblIvaComprado" Style="{StaticResource TarjetaValor}"/>
+                  <TextBlock x:Name="LblIvaDiferencial" Text="Impuesto acreditable de compras" Style="{StaticResource TarjetaSub}"/>
+                </StackPanel>
+              </Border>
+
+              <!-- Card 6: Flujo PUE vs PPD -->
+              <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource TarjetaKpi}">
+                <StackPanel>
+                  <TextBlock Text="CONDICIÓN DE PAGO (COMPRAS)" Style="{StaticResource TarjetaTitulo}"/>
+                  <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="Contado (PUE)" FontSize="10.5" Foreground="#64748B"/>
+                      <TextBlock x:Name="LblPue" FontSize="16" FontWeight="Bold" Foreground="#16263A"/>
+                      <TextBlock x:Name="LblPueSub" FontSize="10.5" Foreground="#94A3B8"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="Crédito (PPD)" FontSize="10.5" Foreground="#64748B"/>
+                      <TextBlock x:Name="LblPpd" FontSize="16" FontWeight="Bold" Foreground="#16263A"/>
+                      <TextBlock x:Name="LblPpdSub" FontSize="10.5" Foreground="#94A3B8"/>
+                    </StackPanel>
+                  </Grid>
+                </StackPanel>
+              </Border>
+            </Grid>
+
+            <!-- Sección de Tablas: Top Proveedores y Top Clientes en 2 columnas -->
+            <Grid Margin="0,10,0,10">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="18"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+
+              <!-- Columna Izquierda: Top Proveedores -->
+              <Border Grid.Column="0" Style="{StaticResource Tarjeta}" Padding="16">
+                <StackPanel>
+                  <DockPanel Margin="0,0,0,12">
+                    <TextBlock Text="Top Proveedores del Mes (Compras)" FontWeight="SemiBold" FontSize="14" Foreground="#16263A" VerticalAlignment="Center"/>
+                  </DockPanel>
+                  <DataGrid x:Name="GridProveedores" IsReadOnly="True" Height="280">
+                    <DataGrid.Columns>
+                      <DataGridTextColumn Header="RFC" Binding="{Binding RFC}" Width="130" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+                      <DataGridTextColumn Header="PROVEEDOR" Binding="{Binding Nombre}" Width="*"/>
+                      <DataGridTextColumn Header="FACTURAS" Binding="{Binding Count}" Width="80"/>
+                      <DataGridTextColumn Header="TOTAL" Binding="{Binding TotalTexto}" Width="130"/>
+                    </DataGrid.Columns>
+                  </DataGrid>
+                </StackPanel>
+              </Border>
+
+              <!-- Columna Derecha: Top Clientes -->
+              <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Padding="16">
+                <StackPanel>
+                  <DockPanel Margin="0,0,0,12">
+                    <TextBlock Text="Top Clientes del Mes (Ventas)" FontWeight="SemiBold" FontSize="14" Foreground="#16263A" VerticalAlignment="Center"/>
+                  </DockPanel>
+                  <DataGrid x:Name="GridClientes" IsReadOnly="True" Height="280">
+                    <DataGrid.Columns>
+                      <DataGridTextColumn Header="RFC" Binding="{Binding RFC}" Width="130" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+                      <DataGridTextColumn Header="CLIENTE" Binding="{Binding Nombre}" Width="*"/>
+                      <DataGridTextColumn Header="FACTURAS" Binding="{Binding Count}" Width="80"/>
+                      <DataGridTextColumn Header="TOTAL" Binding="{Binding TotalTexto}" Width="130"/>
+                    </DataGrid.Columns>
+                  </DataGrid>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- 2. AUDITORÍA FISCAL E IVA -->
+      <TabItem Header="Auditoría Fiscal &amp; IVA">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,14,0,0">
+          <StackPanel>
+            <!-- 4 KPIs de Auditoría Impositiva -->
+            <Grid Margin="0,0,0,10">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+
+              <!-- KPI 1: IVA Trasladado Cobrado (Ventas PUE) -->
+              <Border Grid.Column="0" Style="{StaticResource TarjetaKpi}" BorderBrush="#2D6FE0" BorderThickness="1.5">
+                <StackPanel>
+                  <TextBlock Text="IVA COBRADO EFECTIVO (PUE)" Style="{StaticResource TarjetaTitulo}" Foreground="#2D6FE0"/>
+                  <TextBlock x:Name="LblAuditIvaCobrado" Style="{StaticResource TarjetaValor}"/>
+                  <TextBlock x:Name="LblAuditVentasPueSub" Style="{StaticResource TarjetaSub}" Text="Ventas efectivamente liquidadas"/>
+                </StackPanel>
+              </Border>
+
+              <!-- KPI 2: IVA Acreditable Pagado (Compras PUE) -->
+              <Border Grid.Column="1" Style="{StaticResource TarjetaKpi}">
+                <StackPanel>
+                  <TextBlock Text="IVA ACREDITABLE PAGADO (PUE)" Style="{StaticResource TarjetaTitulo}"/>
+                  <TextBlock x:Name="LblAuditIvaPagado" Style="{StaticResource TarjetaValor}"/>
+                  <TextBlock x:Name="LblAuditComprasPueSub" Style="{StaticResource TarjetaSub}" Text="Compras efectivamente liquidadas"/>
+                </StackPanel>
+              </Border>
+
+              <!-- KPI 3: Estimación Neta de IVA (A cargo / A favor) -->
+              <Border Grid.Column="2" Style="{StaticResource TarjetaKpi}" x:Name="CardBorderAuditIva">
+                <StackPanel>
+                  <TextBlock Text="IVA ESTIMADO DEL PERIODO" Style="{StaticResource TarjetaTitulo}"/>
+                  <TextBlock x:Name="LblAuditIvaNeto" Style="{StaticResource TarjetaValor}"/>
+                  <TextBlock x:Name="LblAuditIvaNetoSub" Style="{StaticResource TarjetaSub}"/>
+                </StackPanel>
+              </Border>
+
+              <!-- KPI 4: Facturas PPD > 60d sin REP -->
+              <Border Grid.Column="3" Style="{StaticResource TarjetaKpi}" BorderBrush="#FCA5A5">
+                <StackPanel>
+                  <TextBlock Text="PPD SIN REP (>60 DÍAS)" Style="{StaticResource TarjetaTitulo}" Foreground="#DC2626"/>
+                  <TextBlock x:Name="LblAuditPpdRiesgo" Style="{StaticResource TarjetaValor}" Foreground="#DC2626"/>
+                  <TextBlock x:Name="LblAuditPpdRiesgoSub" Style="{StaticResource TarjetaSub}" Text="Riesgo de pérdida de acreditamiento"/>
+                </StackPanel>
+              </Border>
+            </Grid>
+
+            <!-- Sección: Papel de Trabajo de Conciliación Impositiva -->
+            <Border Style="{StaticResource Tarjeta}" Padding="18,16" Margin="0,4,0,14">
+              <StackPanel>
+                <DockPanel Margin="0,0,0,12">
+                  <TextBlock Text="📋 Papel de Trabajo: Conciliación de Flujo Fiscal e Impuestos" FontWeight="Bold" FontSize="14.5" Foreground="#16263A" VerticalAlignment="Center"/>
+                  <TextBlock Text="Fundamento Art. 5 LIVA y Art. 27 Fracc. III LISR (Efectivamente erogado)" Foreground="#64748B" FontSize="11.5" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </DockPanel>
+
+                <!-- Cuadrícula comparativa Ventas vs Compras -->
+                <Grid Margin="0,4,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="20"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+
+                  <!-- Lado Izquierdo: Flujo de Ventas (Emitidos) -->
+                  <Border Grid.Column="0" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14">
+                    <StackPanel>
+                      <TextBlock Text="VENTAS Y FACTURACIÓN (INGRESOS)" FontWeight="Bold" FontSize="12.5" Foreground="#24558A" Margin="0,0,0,8"/>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="Subtotal Contado (PUE):" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditVentasSubtotalPue" FontWeight="SemiBold" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="IVA Trasladado Cobrado (16% PUE):" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditVentasIvaPue" FontWeight="Bold" Foreground="#2D6FE0" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                      <Separator Margin="0,6"/>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="Subtotal Crédito (PPD pendiente):" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditVentasSubtotalPpd" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="IVA Trasladado Diferido (PPD):" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditVentasIvaPpd" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                      <Separator Margin="0,6"/>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="Total Facturado Emitido:" FontWeight="Bold" FontSize="12.5"/>
+                        <TextBlock x:Name="LblAuditVentasTotal" FontWeight="Bold" HorizontalAlignment="Right" FontSize="12.5"/>
+                      </Grid>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="Retenciones de clientes (ISR/IVA):" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditRetencionesEmitidas" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+
+                  <!-- Lado Derecho: Flujo de Compras y Gastos (Recibidos) -->
+                  <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14">
+                    <StackPanel>
+                      <TextBlock Text="COMPRAS Y GASTOS (DEDUCCIONES)" FontWeight="Bold" FontSize="12.5" Foreground="#15803D" Margin="0,0,0,8"/>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="Subtotal Contado (PUE pagado):" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditComprasSubtotalPue" FontWeight="SemiBold" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="IVA Acreditable Pagado (16% PUE):" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditComprasIvaPue" FontWeight="Bold" Foreground="#16A34A" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                      <Separator Margin="0,6"/>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="Subtotal Crédito (PPD pendiente):" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditComprasSubtotalPpd" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="IVA Pendiente de Acreditar (PPD):" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditComprasIvaPpd" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                      <Separator Margin="0,6"/>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="Total Compras Recibidas:" FontWeight="Bold" FontSize="12.5"/>
+                        <TextBlock x:Name="LblAuditComprasTotal" FontWeight="Bold" HorizontalAlignment="Right" FontSize="12.5"/>
+                      </Grid>
+                      <Grid Margin="0,3">
+                        <TextBlock Text="Retenciones efectuadas a terceros:" Foreground="#64748B" FontSize="12"/>
+                        <TextBlock x:Name="LblAuditRetencionesRecibidas" HorizontalAlignment="Right" FontSize="12"/>
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- Sección: Facturas a Crédito en Riesgo de Acreditamiento (PPD sin REP > 60 días) -->
+            <Border Style="{StaticResource Tarjeta}" Padding="18,16" Margin="0,4,0,10">
+              <StackPanel>
+                <DockPanel Margin="0,0,0,12">
+                  <StackPanel>
+                    <TextBlock Text="⚠️ Facturas Recibidas a Crédito sin Complemento de Pago (REP Pendiente)" FontWeight="Bold" FontSize="14" Foreground="#16263A"/>
+                    <TextBlock Text="Facturas PPD con más de 60 días sin recibo electrónico de pago. Riesgo de no deducibilidad y rechazo de IVA por el SAT." Foreground="#64748B" FontSize="11.5" Margin="0,2,0,0"/>
+                  </StackPanel>
+                  <Button Content="Exportar riesgo REP (.xlsx)" Style="{StaticResource Ghost}" HorizontalAlignment="Right" VerticalAlignment="Center" Click="BtnExportarRiesgoRep_Click"/>
+                </DockPanel>
+
+                <DataGrid x:Name="GridRiesgoRep" IsReadOnly="True" MaxHeight="300">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="FECHA" Binding="{Binding FechaTexto}" Width="95"/>
+                    <DataGridTextColumn Header="RFC PROVEEDOR" Binding="{Binding RFCEmisor}" Width="135" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+                    <DataGridTextColumn Header="PROVEEDOR" Binding="{Binding NombreEmisor}" Width="*"/>
+                    <DataGridTextColumn Header="SERIE / FOLIO" Binding="{Binding SerieFolio}" Width="110"/>
+                    <DataGridTextColumn Header="TOTAL" Binding="{Binding TotalTexto}" Width="120"/>
+                    <DataGridTextColumn Header="IVA EN RIESGO" Binding="{Binding IvaTexto}" Width="120"/>
+                    <DataGridTextColumn Header="ANTIGÜEDAD" Binding="{Binding DiasTexto}" Width="100"/>
+                    <DataGridTemplateColumn Header="NIVEL DE RIESGO" Width="170">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                          <Border CornerRadius="6" Padding="8,2" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                  Background="#FEE2E2">
+                            <TextBlock Text="{Binding Riesgo}" FontWeight="SemiBold" FontSize="11" Foreground="#B91C1C"/>
+                          </Border>
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                  </DataGrid.Columns>
+                </DataGrid>
+              </StackPanel>
             </Border>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
 
-      <TabItem Header="Errores de coherencia">
+      <!-- 3. ERRORES DE COHERENCIA -->
+      <TabItem Header="Inconsistencias Fiscales">
         <DockPanel Margin="0,14,0,0">
-          <TextBlock DockPanel.Dock="Top" Foreground="#64748B" Margin="0,0,0,8" TextWrapping="Wrap"
-                     Text="Facturas donde MetodoPago y FormaPago no son coherentes segun la regla del SAT: PUE nunca debe traer FormaPago=99, PPD siempre debe traer FormaPago=99 (el pago real se declara despues via complemento de pago). Se muestran todas, sin filtrar por mes."/>
-          <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0">
+          <Border DockPanel.Dock="Top" Style="{StaticResource Tarjeta}" Padding="16,12" Margin="0,0,0,12">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="Auditoría Preventiva Anexo 20 (SAT)" FontWeight="SemiBold" Foreground="#16263A" FontSize="13.5"/>
+                <TextBlock Foreground="#64748B" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                           Text="Regla SAT: Comprobantes PUE nunca deben tener Forma 99 (Por definir). Comprobantes PPD deben tener Forma 99. La clave P01 de Uso CFDI está derogada en 4.0."/>
+              </StackPanel>
+              <Button Grid.Column="1" Content="Exportar inconsistencias (.xlsx)" Style="{StaticResource Ghost}" Click="BtnExportarErrores_Click" VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+
+          <Border Style="{StaticResource Tarjeta}" Padding="0">
             <DataGrid x:Name="GridErrores" IsReadOnly="True">
               <DataGrid.Columns>
-                <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="90"/>
-                <DataGridTextColumn Header="RFC emisor" Binding="{Binding RFCEmisor}" Width="130"/>
-                <DataGridTextColumn Header="Proveedor" Binding="{Binding NombreEmisor}" Width="200"/>
-                <DataGridTextColumn Header="Serie/Folio" Binding="{Binding SerieFolio}" Width="100"/>
-                <DataGridTextColumn Header="Metodo" Binding="{Binding MetodoPago}" Width="70"/>
-                <DataGridTextColumn Header="Forma" Binding="{Binding FormaPago}" Width="60"/>
-                <DataGridTextColumn Header="Total" Binding="{Binding TotalTexto}" Width="110"/>
-                <DataGridTemplateColumn Header="Motivo" Width="*">
+                <DataGridTextColumn Header="FECHA" Binding="{Binding FechaTexto}" Width="95"/>
+                <DataGridTextColumn Header="RFC EMISOR" Binding="{Binding RFCEmisor}" Width="135" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+                <DataGridTextColumn Header="PROVEEDOR" Binding="{Binding NombreEmisor}" Width="220"/>
+                <DataGridTextColumn Header="SERIE / FOLIO" Binding="{Binding SerieFolio}" Width="110"/>
+                <DataGridTextColumn Header="MÉTODO" Binding="{Binding MetodoPago}" Width="75"/>
+                <DataGridTextColumn Header="FORMA" Binding="{Binding FormaPago}" Width="70"/>
+                <DataGridTextColumn Header="USO CFDI" Binding="{Binding UsoCFDI}" Width="85"/>
+                <DataGridTextColumn Header="TOTAL" Binding="{Binding TotalTexto}" Width="120"/>
+                <DataGridTemplateColumn Header="MOTIVO DE INCONSISTENCIA" Width="*">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
                       <TextBlock Text="{Binding Motivo}" Style="{StaticResource CeldaError}" TextWrapping="Wrap"/>
@@ -157,76 +449,122 @@
         </DockPanel>
       </TabItem>
 
-      <TabItem Header="Cuentas por pagar">
+      <!-- 3. CUENTAS POR PAGAR -->
+      <TabItem Header="Cuentas por Pagar (CxP)">
         <DockPanel Margin="0,14,0,0">
-          <TextBlock DockPanel.Dock="Top" Foreground="#64748B" Margin="0,0,0,8" TextWrapping="Wrap"
-                     Text="Facturas a credito (PPD) con saldo pendiente segun los complementos de pago recibidos -- incluye las que no tienen ningun complemento y las que ya tienen uno o mas pero quedaron con pago parcial. Se muestran todas, sin filtrar por mes."/>
-          <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0">
+          <Border DockPanel.Dock="Top" Style="{StaticResource Tarjeta}" Padding="16,12" Margin="0,0,0,12">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="Facturas recibidas a crédito (PPD) con saldo pendiente" FontWeight="SemiBold" Foreground="#16263A" FontSize="13.5"/>
+                <TextBlock Foreground="#64748B" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                           Text="Calcula el saldo pendiente deduciendo complementos de pago recibidos y notas de crédito de egreso relacionadas."/>
+              </StackPanel>
+              <TextBlock x:Name="LblTotalCxP" Grid.Column="1" Text="Total Saldo: $0.00" FontWeight="Bold" FontSize="14" Foreground="#DC2626" VerticalAlignment="Center" Margin="0,0,16,0"/>
+              <Button Grid.Column="2" Content="Exportar CxP (.xlsx)" Style="{StaticResource Ghost}" Click="BtnExportarCxP_Click" VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+
+          <Border Style="{StaticResource Tarjeta}" Padding="0">
             <DataGrid x:Name="GridCuentasPorPagar" IsReadOnly="True">
               <DataGrid.Columns>
-                <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="90"/>
-                <DataGridTextColumn Header="RFC emisor" Binding="{Binding RFCEmisor}" Width="130"/>
-                <DataGridTextColumn Header="Proveedor" Binding="{Binding NombreEmisor}" Width="200"/>
-                <DataGridTextColumn Header="Serie/Folio" Binding="{Binding SerieFolio}" Width="100"/>
-                <DataGridTextColumn Header="Total" Binding="{Binding TotalTexto}" Width="110"/>
-                <DataGridTextColumn Header="Pagado" Binding="{Binding PagadoTexto}" Width="110"/>
-                <DataGridTextColumn Header="Nota credito" Binding="{Binding NotaCreditoTexto}" Width="110"/>
-                <DataGridTemplateColumn Header="Saldo" Width="110">
+                <DataGridTextColumn Header="FECHA" Binding="{Binding FechaTexto}" Width="95"/>
+                <DataGridTextColumn Header="RFC EMISOR" Binding="{Binding RFCEmisor}" Width="135" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+                <DataGridTextColumn Header="PROVEEDOR" Binding="{Binding NombreEmisor}" Width="210"/>
+                <DataGridTextColumn Header="SERIE / FOLIO" Binding="{Binding SerieFolio}" Width="110"/>
+                <DataGridTextColumn Header="TOTAL" Binding="{Binding TotalTexto}" Width="120"/>
+                <DataGridTextColumn Header="PAGADO" Binding="{Binding PagadoTexto}" Width="115"/>
+                <DataGridTextColumn Header="NOTA CRÉDITO" Binding="{Binding NotaCreditoTexto}" Width="115"/>
+                <DataGridTemplateColumn Header="SALDO PENDIENTE" Width="135">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
-                      <TextBlock Text="{Binding SaldoTexto}" Style="{StaticResource CeldaError}"/>
+                      <TextBlock Text="{Binding SaldoTexto}" Style="{StaticResource CeldaError}" FontWeight="Bold"/>
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Estado" Binding="{Binding Estado}" Width="110"/>
-                <DataGridTextColumn Header="Dias" Binding="{Binding DiasTexto}" Width="80"/>
+                <DataGridTextColumn Header="ESTADO" Binding="{Binding Estado}" Width="120"/>
+                <DataGridTextColumn Header="DÍAS" Binding="{Binding DiasTexto}" Width="85"/>
               </DataGrid.Columns>
             </DataGrid>
           </Border>
         </DockPanel>
       </TabItem>
 
-      <TabItem Header="Cuentas por cobrar">
+      <!-- 4. CUENTAS POR COBRAR -->
+      <TabItem Header="Cuentas por Cobrar (CxC)">
         <DockPanel Margin="0,14,0,0">
-          <TextBlock DockPanel.Dock="Top" Foreground="#64748B" Margin="0,0,0,8" TextWrapping="Wrap"
-                     Text="Facturas emitidas a credito (PPD) con saldo pendiente de cobro segun los complementos de pago recibidos -- incluye las que no tienen ningun complemento y las que ya tienen uno o mas pero quedaron con pago parcial. Se muestran todas, sin filtrar por mes."/>
-          <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0">
+          <Border DockPanel.Dock="Top" Style="{StaticResource Tarjeta}" Padding="16,12" Margin="0,0,0,12">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="Facturas emitidas a crédito (PPD) con saldo pendiente de cobro" FontWeight="SemiBold" Foreground="#16263A" FontSize="13.5"/>
+                <TextBlock Foreground="#64748B" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                           Text="Cartera pendiente calculada cruzando los complementos de pago emitidos y notas de crédito aplicadas a cada documento."/>
+              </StackPanel>
+              <TextBlock x:Name="LblTotalCxC" Grid.Column="1" Text="Total Cartera: $0.00" FontWeight="Bold" FontSize="14" Foreground="#16A34A" VerticalAlignment="Center" Margin="0,0,16,0"/>
+              <Button Grid.Column="2" Content="Exportar CxC (.xlsx)" Style="{StaticResource Ghost}" Click="BtnExportarCxC_Click" VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+
+          <Border Style="{StaticResource Tarjeta}" Padding="0">
             <DataGrid x:Name="GridCuentasPorCobrar" IsReadOnly="True">
               <DataGrid.Columns>
-                <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="90"/>
-                <DataGridTextColumn Header="RFC cliente" Binding="{Binding RFCReceptor}" Width="130"/>
-                <DataGridTextColumn Header="Serie/Folio" Binding="{Binding SerieFolio}" Width="100"/>
-                <DataGridTextColumn Header="Total" Binding="{Binding TotalTexto}" Width="110"/>
-                <DataGridTextColumn Header="Cobrado" Binding="{Binding PagadoTexto}" Width="110"/>
-                <DataGridTextColumn Header="Nota credito" Binding="{Binding NotaCreditoTexto}" Width="110"/>
-                <DataGridTemplateColumn Header="Saldo" Width="110">
+                <DataGridTextColumn Header="FECHA" Binding="{Binding FechaTexto}" Width="95"/>
+                <DataGridTextColumn Header="RFC CLIENTE" Binding="{Binding RFCReceptor}" Width="135" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+                <DataGridTextColumn Header="SERIE / FOLIO" Binding="{Binding SerieFolio}" Width="110"/>
+                <DataGridTextColumn Header="TOTAL" Binding="{Binding TotalTexto}" Width="120"/>
+                <DataGridTextColumn Header="COBRADO" Binding="{Binding PagadoTexto}" Width="115"/>
+                <DataGridTextColumn Header="NOTA CRÉDITO" Binding="{Binding NotaCreditoTexto}" Width="115"/>
+                <DataGridTemplateColumn Header="SALDO POR COBRAR" Width="145">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
-                      <TextBlock Text="{Binding SaldoTexto}" Style="{StaticResource CeldaError}"/>
+                      <TextBlock Text="{Binding SaldoTexto}" FontWeight="Bold" Foreground="#16A34A" VerticalAlignment="Center"/>
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Estado" Binding="{Binding Estado}" Width="110"/>
-                <DataGridTextColumn Header="Dias" Binding="{Binding DiasTexto}" Width="80"/>
+                <DataGridTextColumn Header="ESTADO" Binding="{Binding Estado}" Width="120"/>
+                <DataGridTextColumn Header="DÍAS" Binding="{Binding DiasTexto}" Width="85"/>
               </DataGrid.Columns>
             </DataGrid>
           </Border>
         </DockPanel>
       </TabItem>
 
-      <TabItem Header="Notas de credito">
+      <!-- 5. NOTAS DE CRÉDITO -->
+      <TabItem Header="Notas de Crédito">
         <DockPanel Margin="0,14,0,0">
-          <TextBlock DockPanel.Dock="Top" Foreground="#64748B" Margin="0,0,0,8" TextWrapping="Wrap"
-                     Text="Notas de credito (Egreso) y la factura original que ajustan. Se muestran todas, sin filtrar por mes."/>
-          <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0">
+          <Border DockPanel.Dock="Top" Style="{StaticResource Tarjeta}" Padding="16,12" Margin="0,0,0,12">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="Notas de Crédito (Tipo E) y comprobantes originales vinculados" FontWeight="SemiBold" Foreground="#16263A" FontSize="13.5"/>
+                <TextBlock Foreground="#64748B" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                           Text="Relación oficial TipoRelacion 01 según nodo CfdiRelacionados del CFDI."/>
+              </StackPanel>
+              <Button Grid.Column="1" Content="Exportar notas (.xlsx)" Style="{StaticResource Ghost}" Click="BtnExportarNC_Click" VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+
+          <Border Style="{StaticResource Tarjeta}" Padding="0">
             <DataGrid x:Name="GridNotasCredito" IsReadOnly="True">
               <DataGrid.Columns>
-                <DataGridTextColumn Header="Fecha NC" Binding="{Binding FechaNcTexto}" Width="90"/>
-                <DataGridTextColumn Header="Serie/Folio NC" Binding="{Binding SerieFolioNc}" Width="110"/>
-                <DataGridTextColumn Header="Total NC" Binding="{Binding TotalNcTexto}" Width="110"/>
-                <DataGridTextColumn Header="Serie/Folio original" Binding="{Binding SerieFolioOriginal}" Width="130"/>
-                <DataGridTextColumn Header="Total original" Binding="{Binding TotalOriginalTexto}" Width="110"/>
-                <DataGridTemplateColumn Header="Original en BD" Width="110">
+                <DataGridTextColumn Header="FECHA NC" Binding="{Binding FechaNcTexto}" Width="95"/>
+                <DataGridTextColumn Header="SERIE / FOLIO NC" Binding="{Binding SerieFolioNc}" Width="120"/>
+                <DataGridTextColumn Header="TOTAL NC" Binding="{Binding TotalNcTexto}" Width="125"/>
+                <DataGridTextColumn Header="FACTURA ORIGINAL" Binding="{Binding SerieFolioOriginal}" Width="140"/>
+                <DataGridTextColumn Header="TOTAL ORIGINAL" Binding="{Binding TotalOriginalTexto}" Width="125"/>
+                <DataGridTemplateColumn Header="ORIGINAL EN BD" Width="120">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
                       <TextBlock Text="{Binding OriginalEnBdTexto}" Style="{StaticResource CeldaAtenuada}"/>
@@ -239,17 +577,35 @@
         </DockPanel>
       </TabItem>
 
+      <!-- 6. USOS DE CFDI -->
       <TabItem Header="Usos de CFDI">
-        <Border Style="{StaticResource Tarjeta}" Width="Auto" Margin="0,14,0,0">
-          <DataGrid x:Name="GridUsos" IsReadOnly="True">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Uso CFDI" Binding="{Binding UsoCFDI}" Width="140"/>
-              <DataGridTextColumn Header="Descripcion" Binding="{Binding Descripcion}" Width="*"/>
-              <DataGridTextColumn Header="Facturas" Binding="{Binding Count}" Width="90"/>
-              <DataGridTextColumn Header="Total" Binding="{Binding TotalTexto}" Width="140"/>
-            </DataGrid.Columns>
-          </DataGrid>
-        </Border>
+        <DockPanel Margin="0,14,0,0">
+          <Border DockPanel.Dock="Top" Style="{StaticResource Tarjeta}" Padding="16,12" Margin="0,0,0,12">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="Distribución de compras por Uso de CFDI (SAT)" FontWeight="SemiBold" Foreground="#16263A" FontSize="13.5"/>
+                <TextBlock Foreground="#64748B" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                           Text="Agrupación de facturas recibidas de tipo Ingreso según la clave de uso declarada por el proveedor."/>
+              </StackPanel>
+              <Button Grid.Column="1" Content="Exportar usos (.xlsx)" Style="{StaticResource Ghost}" Click="BtnExportarUsos_Click" VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+
+          <Border Style="{StaticResource Tarjeta}" Padding="0">
+            <DataGrid x:Name="GridUsos" IsReadOnly="True">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="CLAVE" Binding="{Binding UsoCFDI}" Width="110"/>
+                <DataGridTextColumn Header="DESCRIPCIÓN DE USO (SAT)" Binding="{Binding Descripcion}" Width="*"/>
+                <DataGridTextColumn Header="FACTURAS" Binding="{Binding Count}" Width="100"/>
+                <DataGridTextColumn Header="TOTAL COMPRAS" Binding="{Binding TotalTexto}" Width="150"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </Border>
+        </DockPanel>
       </TabItem>
     </TabControl>
   </Grid>

@@ -59,10 +59,14 @@ namespace BrosLMV.DescargasUI
         public string ComercialCarpetaXmlRecibidos { get; set; }
         public string ComercialCarpetaXmlEmitidos { get; set; }
         public string ComercialConexionSql { get; set; }
+        public bool OcultarNominas { get; set; }
     }
     public sealed class SolicitudRow
     {
         public string IdSolicitud { get; set; }
+        public string IdSolicitudCorto => string.IsNullOrEmpty(IdSolicitud) ? "-" :
+            (IdSolicitud.StartsWith("RECHAZO-", StringComparison.OrdinalIgnoreCase) ? "Rechazo inmediato" :
+            (IdSolicitud.Length > 16 ? IdSolicitud.Substring(0, 8) + "…" + IdSolicitud.Substring(IdSolicitud.Length - 4) : IdSolicitud));
         public string Tipo { get; set; }
         public string TipoSolicitud { get; set; } // CFDI / Metadata
         public string Rango { get; set; }
@@ -115,6 +119,9 @@ namespace BrosLMV.DescargasUI
         public string Contraparte { get; set; }
         public string NombreContraparte { get; set; }
         public string TipoComprobante { get; set; }
+        public string Serie { get; set; }
+        public string Folio { get; set; }
+        public string SerieFolio => string.IsNullOrWhiteSpace(Serie) ? (Folio ?? "-") : (string.IsNullOrWhiteSpace(Folio) ? Serie : $"{Serie}-{Folio}");
         public string FechaEmision { get; set; }
         public string Subtotal { get; set; }
         public string Descuento { get; set; }
@@ -256,7 +263,8 @@ namespace BrosLMV.DescargasUI
                     PlantillaNombreArchivo = e.PlantillaNombreArchivo,
                     ComercialCarpetaXmlRecibidos = e.ComercialCarpetaXmlRecibidos,
                     ComercialCarpetaXmlEmitidos = e.ComercialCarpetaXmlEmitidos,
-                    ComercialConexionSql = e.ComercialConexionSql
+                    ComercialConexionSql = e.ComercialConexionSql,
+                    OcultarNominas = e.OcultarNominas
                 });
             }
             GridEmpresas.ItemsSource = filas;
@@ -287,7 +295,8 @@ namespace BrosLMV.DescargasUI
                 PlantillaNombreArchivo = sel.PlantillaNombreArchivo,
                 ComercialCarpetaXmlRecibidos = sel.ComercialCarpetaXmlRecibidos,
                 ComercialCarpetaXmlEmitidos = sel.ComercialCarpetaXmlEmitidos,
-                ComercialConexionSql = sel.ComercialConexionSql
+                ComercialConexionSql = sel.ComercialConexionSql,
+                OcultarNominas = sel.OcultarNominas
             };
             var dlg = new EmpresaWindow(_conn, existente) { Owner = this };
             if (dlg.ShowDialog() == true) CargarEmpresas();
@@ -356,7 +365,7 @@ namespace BrosLMV.DescargasUI
             if (empresa == null)
             {
                 var todas = BrosSatDb.ObtenerEmpresas(_conn);
-                if (todas.Count == 1) empresa = new EmpresaRow { RFC = todas[0].RFC, Nombre = todas[0].Nombre };
+                if (todas.Count == 1) empresa = new EmpresaRow { RFC = todas[0].RFC, Nombre = todas[0].Nombre, OcultarNominas = todas[0].OcultarNominas };
             }
             if (empresa == null)
             {
@@ -371,7 +380,7 @@ namespace BrosLMV.DescargasUI
             var empresa = _empresaActual ?? GridEmpresas.SelectedItem as EmpresaRow;
             if (empresa != null) return empresa;
             var todas = BrosSatDb.ObtenerEmpresas(_conn);
-            return todas.Count == 1 ? new EmpresaRow { RFC = todas[0].RFC, Nombre = todas[0].Nombre } : null;
+            return todas.Count == 1 ? new EmpresaRow { RFC = todas[0].RFC, Nombre = todas[0].Nombre, OcultarNominas = todas[0].OcultarNominas } : null;
         }
 
         private void NavDescargas_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
