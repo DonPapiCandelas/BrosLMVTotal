@@ -1515,7 +1515,7 @@ namespace BrosLMV
     //   Disponible en scripts como ctx.erp.*
     //   Diseñado para ser el mismo contrato que usará el proxy Python (Named Pipes).
     // =========================================================
-    public class ErpContext
+    public partial class ErpContext
     {
         private readonly object _xe;
         // Dueño (ScriptContext) para correr SQL en la conexión viva desde los helpers de
@@ -1565,7 +1565,9 @@ namespace BrosLMV
                 Com.LastError = "Save: no se pudo cargar el documento " + documentId;
         }
         public void Delete(int documentId)                 { Com.Call(_xe, "Delete",                 new object[] { (long)documentId }); }
-        public void AjustarSaldosInsolutos(int documentId) { Com.Call(_xe, "AjustarSaldosInsolutos", new object[] { (long)documentId }); }
+        // CORREGIDO (2.99.0): antes llamaba a XEngine con UN parametro (documentId) y fallaba siempre con DISP_E_PARAMNOTOPTIONAL.
+        // El argumento es la OPERACION FINANCIERA (cobro/pago), no el documento; usa Payment.clsMain. Ver ErpSdkNativo.cs.
+        public void AjustarSaldosInsolutos(int financialOperationId) { AjustarSaldosInsolutos(financialOperationId, 0); }
 
         // ---- Doc.clsMain: recalcular y refrescar ----
         // Recalcula totales (subtotal, IVA, total) del documento.

@@ -1,7 +1,7 @@
 # Manual del SDK de BrosLMV
 
 > Generado por `build/sdk/generar_referencia_sdk.py` desde `src/assets/sdk_catalogo.json` y `docs/SDK_GUIAS.md`. **No se edita a mano**: cambia el catálogo y regenera.
-> 170 funciones, 41 con ficha completa. La versión navegable con buscador está en la Consola (Más opciones → Manual del SDK…).
+> 219 funciones, 48 con ficha completa. La versión navegable con buscador está en la Consola (Más opciones → Manual del SDK…).
 
 ## Guías
 
@@ -1012,20 +1012,37 @@ ctx.erp.Delete(id);
 ```
 
 
+#### ERP · Cobros y pagos
+
 ### `erp.AjustarSaldosInsolutos` (C#)
 
 ```
-ctx.erp.AjustarSaldosInsolutos(documentId) : void
+ctx.erp.AjustarSaldosInsolutos(financialOperationId, paymentWithDocumentId = 0) : void
 ```
 
-Ajusta saldos insolutos.
+Recalcula saldo anterior/insoluto (complemento de pago) de un cobro.
+
+Recalcula SaldoAnterior y SaldoInsoluto (complemento de pago) de los renglones de UN cobro con Payment.clsMain, sin tocar impuestos. El argumento es la OPERACIÓN FINANCIERA (cobro/pago), no el documento.
+
+| Parámetro | Tipo | Qué es |
+|---|---|---|
+| `financialOperationId` | int | La operación financiera (FinancialOperationID). |
+| `paymentWithDocumentId` | int | 0 para un cobro normal; el DocumentID de la nota de crédito si el 'pago' es una NC aplicada. |
+
+**Devuelve:** nada.
+
+**Ojo**
+- CORREGIDA en 2.99.0: antes recibía un documentId, llamaba al motor con un solo parámetro y fallaba siempre en silencio (DISP_E_PARAMNOTOPTIONAL).
+- Pruebas (12 cobros sin timbrar): restauró los saldos en 12 de 12. No cambia los renglones ya timbrados en un REP (AltID > 0).
 
 Ejemplo:
 
 ```
-ctx.erp.AjustarSaldosInsolutos(id);
+ctx.erp.AjustarSaldosInsolutos(operacionId);
 ```
 
+
+#### ERP · Documento
 
 ### `erp.RefreshDocumento` (C#)
 
@@ -2423,6 +2440,497 @@ bool ok = ctx.VerifyPassword("clave", sal, hash, it);
 ```
 
 
+#### ERP · Esquema y entorno
+
+### `erp.TableExists` (C#)
+
+```
+ctx.erp.TableExists(tableName) : bool
+```
+
+¿Existe la tabla en la base de la empresa activa?
+
+Pregunta al motor de Comercial si una tabla existe en la base de la empresa activa. Sirve para que un script funcione igual en empresas con distinta versión o con tablas propias sin provisionar.
+
+| Parámetro | Tipo | Qué es |
+|---|---|---|
+| `tableName` | string | Nombre de la tabla, sin esquema. |
+
+**Devuelve:** true si existe; false si no.
+
+**Ojo**
+- Probada: true para tablas existentes y false para inexistentes.
+- No distingue vistas de tablas del motor (usa SQL contra sys.objects si necesitas ese detalle).
+
+Ejemplo:
+
+```
+if (!ctx.erp.TableExists("zzMiTabla")) { /* crearla */ }
+```
+
+
+### `erp.FieldExistsInTable` (C#)
+
+```
+ctx.erp.FieldExistsInTable(fieldName, tableName) : bool
+```
+
+¿Existe la columna en la tabla? (orden nativo: campo, tabla)
+
+Comprueba si una columna existe en una tabla. Úsalo antes de leer o escribir columnas que cambian entre versiones de Comercial.
+
+| Parámetro | Tipo | Qué es |
+|---|---|---|
+| `fieldName` | string | Nombre de la columna. |
+| `tableName` | string | Nombre de la tabla. |
+
+**Devuelve:** true si existe; false si no.
+
+**Ojo**
+- OJO: el orden es el nativo del motor (primero el CAMPO, luego la TABLA), al revés de lo que se esperaría.
+
+Ejemplo:
+
+```
+bool hay = ctx.erp.FieldExistsInTable("Folio", "docDocument");
+```
+
+
+### `erp.GetModuleIDDocumentType` (C#)
+
+```
+ctx.erp.GetModuleIDDocumentType(documentTypeId, docRecipientId) : int
+```
+
+ModuleID de fábrica para un tipo de documento y recipiente.
+
+**Ojo**
+- Devuelve el módulo de fábrica: en empresas con módulos clonados (series, formas de pago) hay que clasificar por engModule.ModuleIDBase.
+
+Ejemplo:
+
+```
+int modulo = ctx.erp.GetModuleIDDocumentType(5, 1); // factura de cliente = 21
+```
+
+
+### `erp.GetModuleDLLName` (C#)
+
+```
+ctx.erp.GetModuleDLLName(moduleId) : string
+```
+
+Nombre de la DLL que atiende un módulo.
+
+Ejemplo:
+
+```
+string dll = ctx.erp.GetModuleDLLName(248); // "FinancialOperation"
+```
+
+
+### `erp.GetSecurityFunctionality` (C#)
+
+```
+ctx.erp.GetSecurityFunctionality(functionalityKey, moduleId) : bool
+```
+
+¿El usuario activo tiene permiso sobre esa funcionalidad del módulo?
+
+**Ojo**
+- Consulta los permisos nativos de Comercial (engSecurity*) del usuario con sesión: úsala para respetar los permisos del sistema en botones que borran o cancelan.
+
+Ejemplo:
+
+```
+bool puede = ctx.erp.GetSecurityFunctionality("Document.Delete", 21);
+```
+
+
+### `erp.GetUserCanElevatePrivileges` (C#)
+
+```
+ctx.erp.GetUserCanElevatePrivileges() : bool
+```
+
+¿El usuario activo es administrador de Comercial?
+
+Ejemplo:
+
+```
+if (!ctx.erp.GetUserCanElevatePrivileges()) { ctx.Msg("Solo un administrador."); return; }
+```
+
+
+#### ERP · Parámetros
+
+### `erp.GetDefaultValue` (C#)
+
+```
+ctx.erp.GetDefaultValue(key, countryId = 1) : string
+```
+
+Lee un parámetro de engParameter (clave + país).
+
+**Ojo**
+- Devuelve "" si la clave no existe. Lee de la tabla nativa engParameter (Key, Value, Description, CountryID) de la empresa activa.
+
+Ejemplo:
+
+```
+string v = ctx.erp.GetDefaultValue("BROS_MI_CLAVE");
+```
+
+
+### `erp.SaveDefaultValue` (C#)
+
+```
+ctx.erp.SaveDefaultValue(key, value, description = "", countryId = 1) : void
+```
+
+Guarda (inserta o sobrescribe) un parámetro en engParameter.
+
+Almacén de configuración por empresa que ya trae Comercial (engParameter). Si la clave existe la sobrescribe; si no, la crea. Útil para guardar la configuración de un botón sin crear una tabla propia.
+
+| Parámetro | Tipo | Qué es |
+|---|---|---|
+| `key` | string | Clave. Usa SIEMPRE un prefijo propio (BROS_...). |
+| `value` | string | Valor. |
+| `description` | string | Descripción opcional. |
+| `countryId` | int | País (1 = México). |
+
+**Devuelve:** nada.
+
+**Ojo**
+- ESCRIBE en la configuración nativa del sistema: nunca uses una clave de Comercial; engParameter tiene cientos de claves del propio producto.
+- Probada: escribir, leer, sobrescribir y que otro país no la vea.
+
+Ejemplo:
+
+```
+ctx.erp.SaveDefaultValue("BROS_MI_CLAVE", "valor", "para qué sirve");
+```
+
+
+#### ERP · Fecha y texto
+
+### `erp.GetLastDayMonth` (C#)
+
+```
+ctx.erp.GetLastDayMonth(date) : int
+```
+
+Último día del mes (28 a 31).
+
+Ejemplo:
+
+```
+int d = ctx.erp.GetLastDayMonth(new DateTime(2026, 2, 10)); // 28
+```
+
+
+### `erp.DateFromString` (C#)
+
+```
+ctx.erp.DateFromString(datePart, timePart) : DateTime
+```
+
+Arma una fecha-hora desde 'yyyy-MM-dd' y 'HH:mm:ss'.
+
+Ejemplo:
+
+```
+DateTime f = ctx.erp.DateFromString("2026-10-01", "12:30:00");
+```
+
+
+### `erp.ConvertDateTimeToUTC` (C#)
+
+```
+ctx.erp.ConvertDateTimeToUTC(dateTime) : string
+```
+
+Fecha-hora con desfase horario, como la usa Comercial en CFDI.
+
+**Ojo**
+- El resultado lleva un ESPACIO antes del desfase ("…:00 -06:00"): es el formato del motor; ajústalo si el destino lo exige distinto.
+
+Ejemplo:
+
+```
+string s = ctx.erp.ConvertDateTimeToUTC(DateTime.Now); // 2026-10-01T12:30:00 -06:00
+```
+
+
+### `erp.GetFormatedDateValue` (C#)
+
+```
+ctx.erp.GetFormatedDateValue(date) : string
+```
+
+Fecha como texto 'yyyy-MM-dd HH:mm:ss'.
+
+Ejemplo:
+
+```
+string s = ctx.erp.GetFormatedDateValue(DateTime.Today);
+```
+
+
+### `erp.Pad` (C#)
+
+```
+ctx.erp.Pad(value, length, fillWith, alignment) : string
+```
+
+Rellena un texto a una longitud ('L' izquierda, 'R' derecha).
+
+**Ojo**
+- alignment "L": el texto queda a la izquierda y se rellena a la derecha ("7" -> "70000"); "R": el texto queda a la derecha ("7" -> "00007").
+- Probada con "L" y "R".
+
+Ejemplo:
+
+```
+string s = ctx.erp.Pad("7", 5, "0", "R"); // 00007
+```
+
+
+### `erp.TruncateDouble` (C#)
+
+```
+ctx.erp.TruncateDouble(value, decimals) : double
+```
+
+Trunca (no redondea) a N decimales.
+
+**Ojo**
+- Trunca hacia cero: (-3.999, 1) = -3.9.
+
+Ejemplo:
+
+```
+double t = ctx.erp.TruncateDouble(12.98765, 2); // 12.98
+```
+
+
+### `erp.GetSerialNumberPrefix` (C#)
+
+```
+ctx.erp.GetSerialNumberPrefix(serialNumber) : string
+```
+
+Parte alfabética de un número de serie.
+
+Ejemplo:
+
+```
+string p = ctx.erp.GetSerialNumberPrefix("ABC00123"); // ABC
+```
+
+
+### `erp.GetSerialNumberNumValue` (C#)
+
+```
+ctx.erp.GetSerialNumberNumValue(serialNumber) : string
+```
+
+Parte numérica de un número de serie (conserva ceros).
+
+Ejemplo:
+
+```
+string n = ctx.erp.GetSerialNumberNumValue("ABC00123"); // 00123
+```
+
+
+### `erp.GetFormatedXML` (C#)
+
+```
+ctx.erp.GetFormatedXML(xml) : string
+```
+
+XML con sangrías (legible).
+
+Ejemplo:
+
+```
+string bonito = ctx.erp.GetFormatedXML(xml);
+```
+
+
+### `erp.GetMaxValueField` (C#)
+
+```
+ctx.erp.GetMaxValueField(fieldName, tableName, where = "") : long
+```
+
+Máximo de una columna entera, con filtro opcional.
+
+**Ojo**
+- El filtro es texto SQL: no le pases valores de usuario sin validar. Para folios que deben ser únicos con procesos en paralelo usa sp_getapplock (el máximo+1 no es atómico).
+
+Ejemplo:
+
+```
+long max = ctx.erp.GetMaxValueField("DocumentID", "docDocument", "ModuleID=21");
+```
+
+
+### `erp.GetQRCode` (C#)
+
+```
+ctx.erp.GetQRCode(text) : string
+```
+
+Código QR del texto como PNG en base64.
+
+Genera con el motor de Comercial el código QR de un texto y lo devuelve como imagen PNG codificada en base64. Sirve para PDFs y páginas HTML (<img src="data:image/png;base64,...">), por ejemplo el QR del timbre de un CFDI.
+
+| Parámetro | Tipo | Qué es |
+|---|---|---|
+| `text` | string | Texto a codificar (URL, cadena del SAT...). |
+
+**Devuelve:** Base64 de un PNG (empieza con "iVBORw0KGgo"); "" si falla (revisa LastError).
+
+Ejemplo:
+
+```
+string png = ctx.erp.GetQRCode("https://ejemplo.com/x");
+```
+
+Insertarlo en HTML (C#):
+
+```
+string html = "<img src=\"data:image/png;base64," + ctx.erp.GetQRCode(url) + "\">";
+```
+
+
+#### ERP · Costos
+
+### `erp.GetCostLast` (C#)
+
+```
+ctx.erp.GetCostLast(productId) : double
+```
+
+Costo de la última compra del producto.
+
+**Ojo**
+- Devuelve 0 si el producto no tiene compras.
+
+Ejemplo:
+
+```
+double c = ctx.erp.GetCostLast(productoId);
+```
+
+
+### `erp.RecalcCostComercial` (C#)
+
+```
+ctx.erp.RecalcCostComercial(productId) : void
+```
+
+Recalcula el costo comercial vigente del producto.
+
+**Ojo**
+- Recalcula orgProduct.CostPriceComercial desde el libro de costos (13 de 15 productos de prueba volvieron al valor original; 2 difirieron). Es idempotente sobre datos consistentes (15 de 15 sin cambios).
+- NO reconstruye las columnas de salida del libro por documento (para costear un documento usa CalcularCostos).
+
+Ejemplo:
+
+```
+ctx.erp.RecalcCostComercial(productoId);
+```
+
+
+### `erp.RecalcCostFiscal` (C#)
+
+```
+ctx.erp.RecalcCostFiscal(productId) : void
+```
+
+Recalcula el costo fiscal vigente del producto.
+
+Ejemplo:
+
+```
+ctx.erp.RecalcCostFiscal(productoId);
+```
+
+
+#### ERP · Cobros y pagos
+
+### `erp.SaveAllTaxesPayment` (C#)
+
+```
+ctx.erp.SaveAllTaxesPayment(financialOperationId) : void
+```
+
+Reconstruye el reparto de impuestos de un cobro/pago (opción conservadora).
+
+Rehace con la rutina de Comercial el reparto de impuestos de un cobro o pago (docFinancialOperationTaxDetail: base, importe, proporción, retenciones y columnas en MXN). Es la opción conservadora: si el cobro ya tenía reparto lo reconstruye, y si Comercial nunca se lo generó (facturas PUE, pagos antiguos) NO lo inventa.
+
+| Parámetro | Tipo | Qué es |
+|---|---|---|
+| `financialOperationId` | int | La operación financiera (FinancialOperationID) del cobro o pago. |
+
+**Devuelve:** nada.
+
+**Ojo**
+- Pruebas en laboratorio (37 cobros reales): rehízo el reparto con el mismo número de filas en 13 de 15 cobros que lo tenían y no creó filas en los 22 que no lo tenían.
+- No toca saldos insolutos ni el documento: después llama a UpdateDocumentPaidInfo (y a AjustarSaldosInsolutos si aplica).
+- Revisa ctx.erp.LastError: Com.Call traga las excepciones COM.
+
+Ejemplo:
+
+```
+ctx.erp.SaveAllTaxesPayment(operacionId);
+ctx.erp.UpdateDocumentPaidInfo(documentoId);
+```
+
+
+### `erp.RecalcPagosDocumento` (C#)
+
+```
+ctx.erp.RecalcPagosDocumento(documentId) : void
+```
+
+Reconstruye reparto de impuestos y saldos insolutos de los cobros de un documento.
+
+Llama a Payment.clsMain.RecalcDocumentPayments, la rutina que Comercial usa al guardar un cobro: reconstruye el reparto de impuestos y los saldos anterior/insoluto de TODOS los cobros y notas de crédito aplicados al documento. Resuelve el hueco de crear un cobro por SQL que queda sin reparto de impuestos.
+
+| Parámetro | Tipo | Qué es |
+|---|---|---|
+| `documentId` | int | El documento (factura) al que están aplicados los cobros. |
+
+**Devuelve:** nada.
+
+**Ojo**
+- Pruebas (107 documentos reales, copia de laboratorio): 0 excepciones; no altera lo que Comercial ya guardó; reconstruyó el reparto en 68 de 71 documentos que lo tenían, incluidos 20 de 20 con retenciones.
+- A diferencia de SaveAllTaxesPayment, AGREGA reparto de impuestos a documentos que no lo tenían (en la muestra: 33 de 107, 21 de ellos PUE). Úsala con facturas PPD.
+- NO recalcula los saldos de renglones ya incluidos en un REP timbrado (docDocumentPayment.AltID > 0): es lo correcto fiscalmente.
+- Trabaja a nivel documento: si borraste a mano solo el reparto de UNA operación de un documento con varias, puede fallar con 'Division by zero' (revisa ctx.erp.LastError).
+- No actualiza TotalPaid/Balance/StatusPaidID del documento: llama a UpdateDocumentPaidInfo después.
+
+Ejemplo:
+
+```
+ctx.erp.RecalcPagosDocumento(facturaId);
+ctx.erp.UpdateDocumentPaidInfo(facturaId);
+```
+
+Cobro insertado por SQL: completarlo (C#):
+
+```
+// ... INSERT de docFinancialOperation + docDocumentPayment ...
+ctx.erp.RecalcPagosDocumento(facturaId);       // reparto de impuestos y saldos insolutos
+ctx.erp.UpdateDocumentPaidInfo(facturaId);     // TotalPaid / Balance / StatusPaidID
+if (!string.IsNullOrEmpty(ctx.erp.LastError)) ctx.Msg(ctx.erp.LastError);
+```
+
+
 ## Referencia de Python
 
 #### Python
@@ -3175,6 +3683,383 @@ Ejemplo:
 
 ```
 ctx.erp.AffectStockNEW(doc_id)
+```
+
+
+#### Python
+
+### `ctx.erp.TableExists` (Python)
+
+```
+ctx.erp.TableExists(tableName)
+```
+
+¿Existe la tabla en la base de la empresa activa?
+
+Ejemplo:
+
+```
+if not ctx.erp.TableExists("zzMiTabla"): ...
+```
+
+
+### `ctx.erp.FieldExistsInTable` (Python)
+
+```
+ctx.erp.FieldExistsInTable(fieldName, tableName)
+```
+
+¿Existe la columna en la tabla? (orden nativo: campo, tabla)
+
+Ejemplo:
+
+```
+ctx.erp.FieldExistsInTable("Folio", "docDocument")
+```
+
+
+### `ctx.erp.GetModuleIDDocumentType` (Python)
+
+```
+ctx.erp.GetModuleIDDocumentType(documentTypeId, docRecipientId)
+```
+
+ModuleID de fábrica para un tipo de documento y recipiente.
+
+Ejemplo:
+
+```
+ctx.erp.GetModuleIDDocumentType(5, 2)  # factura de compra = 152
+```
+
+
+### `ctx.erp.GetModuleDLLName` (Python)
+
+```
+ctx.erp.GetModuleDLLName(moduleId)
+```
+
+Nombre de la DLL que atiende un módulo.
+
+Ejemplo:
+
+```
+ctx.erp.GetModuleDLLName(21)  # 'Document'
+```
+
+
+### `ctx.erp.GetSecurityFunctionality` (Python)
+
+```
+ctx.erp.GetSecurityFunctionality(functionalityKey, moduleId)
+```
+
+¿El usuario activo tiene permiso sobre esa funcionalidad del módulo?
+
+Ejemplo:
+
+```
+ctx.erp.GetSecurityFunctionality("Document.Delete", 21)
+```
+
+
+### `ctx.erp.GetUserCanElevatePrivileges` (Python)
+
+```
+ctx.erp.GetUserCanElevatePrivileges()
+```
+
+¿El usuario activo es administrador de Comercial?
+
+Ejemplo:
+
+```
+ctx.erp.GetUserCanElevatePrivileges()
+```
+
+
+### `ctx.erp.GetDefaultValue` (Python)
+
+```
+ctx.erp.GetDefaultValue(key, countryId=1)
+```
+
+Lee un parámetro de engParameter (clave + país).
+
+Ejemplo:
+
+```
+ctx.erp.GetDefaultValue("BROS_MI_CLAVE")
+```
+
+
+### `ctx.erp.SaveDefaultValue` (Python)
+
+```
+ctx.erp.SaveDefaultValue(key, value, description='', countryId=1)
+```
+
+Guarda (inserta o sobrescribe) un parámetro en engParameter.
+
+Ejemplo:
+
+```
+ctx.erp.SaveDefaultValue("BROS_MI_CLAVE", "valor", "para qué sirve")
+```
+
+
+### `ctx.erp.GetLastDayMonth` (Python)
+
+```
+ctx.erp.GetLastDayMonth(date)
+```
+
+Último día del mes (28 a 31).
+
+Ejemplo:
+
+```
+ctx.erp.GetLastDayMonth('2026-02-10')
+```
+
+
+### `ctx.erp.DateFromString` (Python)
+
+```
+ctx.erp.DateFromString(datePart, timePart)
+```
+
+Arma una fecha-hora desde 'yyyy-MM-dd' y 'HH:mm:ss'.
+
+Ejemplo:
+
+```
+ctx.erp.DateFromString("2026-10-01", "12:30:00")
+```
+
+
+### `ctx.erp.ConvertDateTimeToUTC` (Python)
+
+```
+ctx.erp.ConvertDateTimeToUTC(dateTime)
+```
+
+Fecha-hora con desfase horario, como la usa Comercial en CFDI.
+
+Ejemplo:
+
+```
+ctx.erp.ConvertDateTimeToUTC(fecha)
+```
+
+
+### `ctx.erp.GetFormatedDateValue` (Python)
+
+```
+ctx.erp.GetFormatedDateValue(date)
+```
+
+Fecha como texto 'yyyy-MM-dd HH:mm:ss'.
+
+Ejemplo:
+
+```
+ctx.erp.GetFormatedDateValue(fecha)
+```
+
+
+### `ctx.erp.Pad` (Python)
+
+```
+ctx.erp.Pad(value, length, fillWith, alignment)
+```
+
+Rellena un texto a una longitud ('L' izquierda, 'R' derecha).
+
+Ejemplo:
+
+```
+ctx.erp.Pad("7", 5, "0", "R")
+```
+
+
+### `ctx.erp.TruncateDouble` (Python)
+
+```
+ctx.erp.TruncateDouble(value, decimals)
+```
+
+Trunca (no redondea) a N decimales.
+
+Ejemplo:
+
+```
+ctx.erp.TruncateDouble(12.98765, 2)
+```
+
+
+### `ctx.erp.GetSerialNumberPrefix` (Python)
+
+```
+ctx.erp.GetSerialNumberPrefix(serialNumber)
+```
+
+Parte alfabética de un número de serie.
+
+Ejemplo:
+
+```
+ctx.erp.GetSerialNumberPrefix("ABC00123")
+```
+
+
+### `ctx.erp.GetSerialNumberNumValue` (Python)
+
+```
+ctx.erp.GetSerialNumberNumValue(serialNumber)
+```
+
+Parte numérica de un número de serie (conserva ceros).
+
+Ejemplo:
+
+```
+ctx.erp.GetSerialNumberNumValue("ABC00123")
+```
+
+
+### `ctx.erp.GetFormatedXML` (Python)
+
+```
+ctx.erp.GetFormatedXML(xml)
+```
+
+XML con sangrías (legible).
+
+Ejemplo:
+
+```
+ctx.erp.GetFormatedXML(xml)
+```
+
+
+### `ctx.erp.GetMaxValueField` (Python)
+
+```
+ctx.erp.GetMaxValueField(fieldName, tableName, where='')
+```
+
+Máximo de una columna entera, con filtro opcional.
+
+Ejemplo:
+
+```
+ctx.erp.GetMaxValueField("DocumentID", "docDocument", "ModuleID=21")
+```
+
+
+### `ctx.erp.GetQRCode` (Python)
+
+```
+ctx.erp.GetQRCode(text)
+```
+
+Código QR del texto como PNG en base64.
+
+Ejemplo:
+
+```
+png = ctx.erp.GetQRCode("https://ejemplo.com/x")
+```
+
+
+### `ctx.erp.GetCostLast` (Python)
+
+```
+ctx.erp.GetCostLast(productId)
+```
+
+Costo de la última compra del producto.
+
+Ejemplo:
+
+```
+ctx.erp.GetCostLast(producto_id)
+```
+
+
+### `ctx.erp.RecalcCostComercial` (Python)
+
+```
+ctx.erp.RecalcCostComercial(productId)
+```
+
+Recalcula el costo comercial vigente del producto.
+
+Ejemplo:
+
+```
+ctx.erp.RecalcCostComercial(producto_id)
+```
+
+
+### `ctx.erp.RecalcCostFiscal` (Python)
+
+```
+ctx.erp.RecalcCostFiscal(productId)
+```
+
+Recalcula el costo fiscal vigente del producto.
+
+Ejemplo:
+
+```
+ctx.erp.RecalcCostFiscal(producto_id)
+```
+
+
+### `ctx.erp.SaveAllTaxesPayment` (Python)
+
+```
+ctx.erp.SaveAllTaxesPayment(financialOperationId)
+```
+
+Reconstruye el reparto de impuestos de un cobro/pago (opción conservadora).
+
+Ejemplo:
+
+```
+ctx.erp.SaveAllTaxesPayment(operacion_id)
+```
+
+
+### `ctx.erp.RecalcPagosDocumento` (Python)
+
+```
+ctx.erp.RecalcPagosDocumento(documentId)
+```
+
+Reconstruye reparto de impuestos y saldos insolutos de los cobros de un documento.
+
+Ejemplo:
+
+```
+ctx.erp.RecalcPagosDocumento(factura_id)
+```
+
+
+### `ctx.erp.AjustarSaldosInsolutos` (Python)
+
+```
+ctx.erp.AjustarSaldosInsolutos(financialOperationId, paymentWithDocumentId=0)
+```
+
+Recalcula saldo anterior/insoluto (complemento de pago) de un cobro.
+
+Ejemplo:
+
+```
+ctx.erp.AjustarSaldosInsolutos(operacion_id)
 ```
 
 

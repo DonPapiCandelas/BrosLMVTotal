@@ -47,6 +47,18 @@
   </header>
 
   <div class="ver">
+    <h2>2.99.0</h2>
+    <div class="date">2026-10-01 — Más funciones nativas en el SDK</div>
+    <div class="grp add"><div class="h">Agregado</div>
+      <ul><li>24 funciones nuevas en <code>ctx.erp</code> (C# y Python), todas con ficha en el Manual del SDK: esquema y entorno (<code>TableExists</code>, <code>FieldExistsInTable</code>…), parámetros por empresa (<code>GetDefaultValue</code>, <code>SaveDefaultValue</code>), fecha y texto, <code>GetQRCode</code>, costos y cobros.</li>
+        <li><code>RecalcPagosDocumento</code> y <code>SaveAllTaxesPayment</code>: completan el reparto de impuestos de un cobro insertado por SQL con la misma rutina que usa Comercial.</li></ul>
+    </div>
+    <div class="grp fix"><div class="h">Corregido</div>
+      <ul><li><code>AjustarSaldosInsolutos</code> nunca funcionaba (fallaba en silencio). Ahora recibe la operación financiera y sí recalcula los saldos.</li></ul>
+    </div>
+  </div>
+
+  <div class="ver">
     <h2>2.98.0</h2>
     <div class="date">2026-09-29 — Manual y catálogo del SDK</div>
     <div class="grp add"><div class="h">Agregado</div>
