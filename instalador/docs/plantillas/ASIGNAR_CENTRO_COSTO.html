@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Asignar centro de costo de forma masiva</title>
+<style>
+:root { --bg:#ffffff; --tx:#1e293b; --mut:#64748b; --lin:#e2e8f0; --cod:#f1f5f9; --ac:#1d4ed8; --q:#f8fafc; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0f172a; --tx:#e2e8f0; --mut:#94a3b8; --lin:#334155; --cod:#1e293b; --ac:#60a5fa; --q:#111c33; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--tx); font:14px/1.6 system-ui,'Segoe UI',Roboto,Arial,sans-serif; }
+main { max-width:960px; margin:0 auto; padding:24px 28px 60px; }
+h1 { font-size:24px; margin:0 0 8px; } h2 { font-size:18px; margin:32px 0 8px; padding-top:8px; border-top:1px solid var(--lin); }
+h3 { font-size:15px; margin:22px 0 6px; } h4 { font-size:14px; margin:16px 0 4px; }
+p, li { max-width:78ch; } a { color:var(--ac); }
+code { background:var(--cod); padding:1px 5px; border-radius:4px; font:12.5px Consolas,monospace; }
+pre { background:var(--cod); padding:12px 14px; border-radius:8px; overflow:auto; } pre code { background:none; padding:0; }
+blockquote { margin:12px 0; padding:8px 14px; border-left:3px solid var(--ac); background:var(--q); color:var(--mut); }
+.tabla { overflow-x:auto; margin:12px 0; } table { border-collapse:collapse; width:100%; font-size:13px; }
+th, td { border:1px solid var(--lin); padding:6px 10px; text-align:left; vertical-align:top; } th { background:var(--cod); }
+hr { border:0; border-top:1px solid var(--lin); margin:24px 0; }
+</style></head><body><main>
+<h1>Asignar centro de costo de forma masiva</h1>
+<p>Plantilla de fábrica <strong>Plantillas → Documentos → Asignar centro de costo de forma masiva</strong> (<code>ASIGNAR_CENTRO_COSTO.ctx</code>). Pone un centro de costo a <strong>muchos documentos de una vez</strong>, con vista previa y con <strong>deshacer</strong>. Los centros de costo deben estar ya dados de alta en el catálogo de Comercial: esta plantilla <strong>no</strong> los crea.</p>
+<h2>Cómo usarla</h2>
+<ol><li>En la <strong>Consola</strong> abre la plantilla, guárdala como botón (nombre sugerido <code>ASIGNAR_CENTRO_COSTO</code>) y ponla en el ribbon con *Crear botón…*.</li><li>En la lista de documentos de Comercial <strong>selecciona</strong> los documentos (opcional) y pulsa el botón.</li><li><strong>Paso 1 · Documentos.</strong> Elige entre «los seleccionados en la lista» o «buscarlos con filtros»: fechas, módulos (los de tu empresa, con cuántos documentos hay en cada uno), cliente o proveedor, título y el centro de costo que tienen ahora (cualquiera, ninguno o uno en concreto).</li><li><strong>Paso 2 · Qué centro de costo y dónde.</strong></li><ul><li><strong>Dónde:</strong> *Encabezado* (lo normal: es lo que usan casi todos los módulos), *Partidas* o *Ambos*.</li><li><strong>A cuáles:</strong> *Solo donde esté vacío* (no pisa nada, es lo más seguro) o *Reemplazar el que tengan*.</li></ul><li><strong>Vista previa:</strong> cuántos documentos se modifican por módulo, los primeros 25 con su centro actual y los avisos. Hasta que no pulses <strong>Aplicar</strong> no se cambia nada.</li><li><strong>Aplicar:</strong> todo el lote se hace en <strong>una sola transacción</strong> (o se aplica completo o no se aplica nada) y la lista se refresca.</li></ol>
+<h2>Deshacer</h2>
+<p><strong>«Deshacer mi último lote»</strong> (en el paso 1) devuelve el centro de costo anterior a los documentos y partidas de tu último lote. Se puede repetir para ir retrocediendo lote por lote. Solo restaura lo que <strong>sigue valiendo lo que puso ese lote</strong>: si alguien cambió después un documento, no se le pisa.</p>
+<p>La bitácora vive en la tabla <code>zzBrosCentroCostoLog</code> de tu empresa (lote, fecha, usuario, documento, partida, centro anterior y nuevo).</p>
+<h2>Qué escribe y qué no</h2>
+<div class="tabla"><table><thead><tr><th>Escribe</th><th>No toca</th></tr></thead><tbody><tr><td><code>docDocument.CostCenterID</code> (encabezado)</td><td>Documentos <strong>cancelados</strong> o <strong>eliminados</strong></td></tr><tr><td><code>docDocumentItem.CostCenterID</code> (partidas), si lo pides</td><td>Documentos que <strong>otro usuario tiene abiertos</strong> (se omiten y se avisa cuáles)</td></tr><tr><td><code>zzBrosCentroCostoLog</code> (bitácora)</td><td><strong>Pólizas ya generadas</strong>: cada póliza guarda su propio centro de costo (<code>accPolizaTransaccion.CostCenterID</code>) y no se modifica</td></tr><tr><td></td><td>Cobros y pagos (<code>docFinancialOperation</code>)</td></tr></tbody></table></div>
+<blockquote><strong>Sobre las pólizas.</strong> El centro de costo del documento se lee cuando se <strong>genera</strong> la póliza. Si cambias el centro de costo de un documento que ya tiene póliza, la póliza conserva el anterior.<br>La plantilla lo avisa en la vista previa y no la reescribe, porque una póliza ya enviada a Contabilidad no debe cambiar a escondidas.</blockquote>
+<h2>Por qué el encabezado por defecto</h2>
+<p>Medido en dos empresas reales: el centro de costo del <strong>encabezado</strong> lo traen decenas de miles de documentos de casi todos los módulos (órdenes de compra, recepciones, facturas, gastos, salidas…); el de <strong>partida</strong> solo aparece en muy pocos documentos de un solo módulo. Por eso «Encabezado» es la opción inicial y «Partidas» queda para quien la usa.</p>
+<h2>Límites del lote</h2>
+<ul><li>Hasta <strong>5,000 documentos</strong> por lote; si hay más, se aplica ese lote y se avisa cuántos quedaron fuera para repetir.</li><li>A partir de <strong>500</strong> documentos la vista previa pide revisar con cuidado los criterios.</li></ul>
+<h2>Reglas de BrosLMV que cumple</h2>
+<ul><li><strong>Empresa activa:</strong> el catálogo de centros, los módulos y los documentos salen de <code>OwnedBusinessEntityID</code>; nada va escrito a mano.</li><li><strong>Transacción y bitácora:</strong> nada queda a medias y todo se puede deshacer.</li><li><strong>Conexión propia</strong> (<code>ctx.OpenConn</code>) para escribir por lotes; <code>RefreshGrid</code> una sola vez al final.</li><li><strong>Probada:</strong> <code>build/humo/casos/36_asignar_centro_costo.ps1</code> corre la plantilla real contra el laboratorio (<code>BROSLMV_DESARROLLO</code>) (vista previa, solo-vacíos, repetir, reemplazar, documento en uso, deshacer en orden inverso, partidas) y lo deja todo como estaba.</li></ul>
+<h2>Para desarrolladores</h2>
+<p>Con la variable de entorno <code>BROSLMV_CC_TEST</code> (JSON con <code>accion</code> = <code>previsualizar</code> | <code>aplicar</code> | <code>deshacer</code> y los mismos parámetros del formulario) el script no abre ventanas y escribe el resultado en el archivo de <code>BROSLMV_CC_OUT</code>. Así corre en <code>BrosLMV.Runner</code> (lleva <code>// job: safe-offline</code>).</p>
+</main></body></html>
