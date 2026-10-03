@@ -27,13 +27,19 @@ def catalogos(claves):
     cat["almacenes"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query(
         "SELECT DepotID AS id, DepotName AS nombre FROM orgDepot WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = " + str(empresa) + " ORDER BY DepotName")]
 
+    # Persona con lo que ayuda a decidir al capturar: RFC, condición de pago y descuento habituales, límite de crédito, saldo abierto y fecha de su último documento.
+    # Saldo = facturas, notas de cargo, recibos y gastos con saldo menos notas de crédito con saldo (docDocument.Balance; es la foto de hoy).
     def ent(tabla):
-        return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc FROM " + tabla + " x "
+        return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.PaymentTermID,0) AS cond, ISNULL(x.Discount,0) AS descto, "
+                "ISNULL(x.CreditLimit,0) AS credito, ISNULL(sd.Saldo,0) AS saldo, sd.Ultimo AS ultimo FROM " + tabla + " x "
                 "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID "
-                "WHERE be.DeletedOn IS NULL ORDER BY nombre")
+                "LEFT JOIN (SELECT d.BusinessEntityID, SUM(CASE WHEN d.DocumentTypeID = 6 THEN -ISNULL(d.Balance,0) ELSE ISNULL(d.Balance,0) END) AS Saldo, CONVERT(VARCHAR(10), MAX(d.DateDocument), 23) AS Ultimo FROM docDocument d "
+                "  WHERE d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.DocumentTypeID IN (5,6,7,8,9,13) GROUP BY d.BusinessEntityID) sd ON sd.BusinessEntityID = be.BusinessEntityID "
+                "WHERE be.DeletedOn IS NULL AND x.DeletedOn IS NULL ORDER BY nombre")
 
     def lista(tabla):
-        return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"])} for r in ctx.query(ent(tabla))]
+        return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "cond": I(r["cond"]), "desc": D(r["descto"]), "credito": D(r["credito"]),
+                 "saldo": D(r["saldo"]), "ultimo": S(r["ultimo"])} for r in ctx.query(ent(tabla))]
 
     lados = set(t["lado"] for t in TIPOS if t["clave"] in claves)
     cat["clientes"] = lista("orgCustomer") if "C" in lados else []
@@ -44,9 +50,24 @@ def catalogos(claves):
         "SELECT t.TaxTypeID AS id, t.TaxTypeName AS nombre, ISNULL(tp.IVA_Perc,0) AS perc FROM vwLBSTaxType t LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = t.TaxTypeID ORDER BY t.TaxTypeName")]
     # Productos: lo mínimo para buscar y poner precio. Tope de seguridad de 30,000.
     cat["productos"] = [{"id": I(r["id"]), "clave": S(r["clave"]), "nombre": S(r["nombre"]), "unidad": S(r["unidad"]), "imp": I(r["imp"]),
-                         "venta": D(r["venta"]), "costo": D(r["costo"])} for r in ctx.query(
+                         "venta": D(r["venta"]), "costo": D(r["costo"]), "barras": S(r["barras"]), "lote": I(r["lote"]) == 1, "serie": I(r["serie"]) == 1, "servicio": I(r["servicio"]) == 1} for r in ctx.query(
         "SELECT TOP 30000 ProductID AS id, ISNULL(ProductKey,'') AS clave, ProductName AS nombre, ISNULL(Unit,'') AS unidad, ISNULL(TaxTypeID,0) AS imp, "
-        "ISNULL(PriceList,0) AS venta, ISNULL(CostPrice,0) AS costo FROM orgProduct WHERE DeletedOn IS NULL ORDER BY ProductName")]
+        "ISNULL(PriceList,0) AS venta, ISNULL(CostPrice,0) AS costo, ISNULL(BarCode,'') AS barras, ISNULL(UseLot,0) AS lote, ISNULL(UseSerialNumber,0) AS serie, ISNULL(ProductIsService,0) AS servicio "
+        "FROM orgProduct WHERE DeletedOn IS NULL ORDER BY ProductName")]
+    # Existencias por almacén (suma del kardex): {productoId: {almacenId: cantidad}}
+    exist = {}
+    try:
+        for r in ctx.query("SELECT ProductID, DepotID, SUM(Quantity) AS Q FROM orgProductKardex WHERE ISNULL(Cancelled,0) = 0 GROUP BY ProductID, DepotID HAVING ABS(SUM(Quantity)) > 0.00001"):
+            exist.setdefault(S(r["ProductID"]), {})[S(r["DepotID"])] = round(D(r["Q"]), 4)
+    except Exception:
+        pass
+    cat["existencias"] = exist
+    # Siguiente folio probable de cada tipo (lo asigna Comercial al guardar; aquí solo se muestra)
+    folios = {}
+    for t in TIPOS:
+        if t["clave"] in claves:
+            folios[t["clave"]] = I(ctx.scalar("SELECT ISNULL((SELECT TOP 1 ISNULL(TRY_CONVERT(int, Folio),0) + 1 FROM docDocument WHERE ModuleID = " + str(t["modulo"]) + " AND OwnedBusinessEntityID = " + str(empresa) + " AND DeletedOn IS NULL ORDER BY DocumentID DESC), 1)"))
+    cat["folios"] = folios
     return cat
 
 

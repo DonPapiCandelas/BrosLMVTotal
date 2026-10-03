@@ -1030,6 +1030,24 @@ else:
 ### 9.4 `ctx.show_html`, `ctx.show_html_formulario` y `ctx.dashboard` (solo Python)
 
 > **C#:** además de `ctx.ShowHtml` y `ctx.ShowHtmlFormulario` existe `ctx.ShowHtmlModeless(html, titulo, ancho, alto, alMensaje)`: ventana HTML que **no bloquea** (el script termina y la ventana sigue viva; los mensajes de la página llegan a `alMensaje` en el hilo de Comercial). Úsala si la ventana debe seguir abierta mientras se abren documentos o se llama a `ctx.erp`: con `ShowHtmlFormulario` (bloquea) abrir un documento da el aviso de XEngine «the other application is busy».
+>
+> **Consultas en vivo desde la página.** `alMensaje` regresa `null` (nada), `"__CERRAR__"` (cerrar), un HTML (repinta) o **`"__JS__"` + código JavaScript**, que se ejecuta en la página **sin repintarla**: así la página puede preguntar y el script contestar mientras la persona captura. Patrón mínimo:
+> ```javascript
+> // en la página: pedir datos y esperar la respuesta
+> var _req = 0, _pend = {};
+> function llamar(accion, datos) { return new Promise(function (ok) { var id = ++_req; _pend[id] = ok; window.chrome.webview.postMessage(JSON.stringify(Object.assign({ accion: accion, req: id }, datos))); }); }
+> function respuesta(id, datos) { _pend[id](datos); delete _pend[id]; }
+> ```
+> ```csharp
+> // en el script: consultar la base y contestar con __JS__
+> ctx.ShowHtmlModeless(html, "Mi ventana", 1100, 760, m =>
+> {
+>     if ((string)m["accion"] == "saldo")
+>         return "__JS__respuesta(" + m["req"] + "," + ser.Serialize(ctx.Query("SELECT ...")) + ")";
+>     return null;
+> });
+> ```
+> «Crear documento» (C# · ventana HTML) lo usa para traer los pendientes y los últimos documentos de la persona elegida. Las páginas de más de ~1.5 MB se cargan desde un archivo temporal automáticamente.
 
 - `ctx.show_html(html, title="BrosLMV", width=800, height=600, modal=True)` — ventana con
   HTML/CSS/JS real (WebView2), embebida en CONTPAQi. Desde v2.24.0. **De una sola vía**:

@@ -1,42 +1,60 @@
-
 // ===================================================================================================================================
-// VENTANA (WebView2). El formulario es una página HTML; al presionar «Crear documento» regresa lo capturado y aquí se crea el documento.
-// Si falla, la ventana se vuelve a abrir con lo que ya capturó la persona (no se pierde nada).
+// VENTANA (WebView2, NO modal). La página es un formulario completo; esta parte la abre y contesta lo que la página pide:
+//   crear      → crea el documento, abre el DOCUMENTO NATIVO de Comercial y (según el botón) cierra o deja la ventana lista para otro documento
+//   pendientes → documentos de origen pendientes de esa persona        entidad → sus últimos documentos       abrir → abre un documento en Comercial
+// Las respuestas viajan como «__JS__código»: la página recibe datos sin repintarse (conserva lo capturado). Si algo falla, la página muestra el mensaje y no se pierde nada.
 // ===================================================================================================================================
 string PAGINA = @"__HTML_CS__";
 
 var catalogo = Catalogos(CLAVES);
 var origenes = Origenes(seleccion);
-Dictionary<string, object> inicial = null;
+string quienSoy = "", nombreEmpresa = "";
+try { quienSoy = S(ctx.Scalar("SELECT TOP 1 ISNULL(UserName,'') FROM engUser WHERE UserID = " + ctx.erp.UserId)); } catch { }
+try { nombreEmpresa = S(ctx.Scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + empresa)); } catch { }
+Func<object, string> JsJson = o => ser.Serialize(o).Replace("</", "<\\/");
+Func<Dictionary<string, object>, string> DatosPagina = inicial =>
+    PAGINA.Replace("__DATOS__", JsJson(new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["origenes"] = origenes, ["inicial"] = inicial, ["vivo"] = true, ["usuario"] = quienSoy, ["empresa"] = nombreEmpresa }));
+
 string htmlPrueba = Environment.GetEnvironmentVariable("BROSLMV_DOC_HTML");           // pruebas: escribe la página (con sus datos) en un archivo y no abre ventana
 if (!string.IsNullOrEmpty(htmlPrueba))
 {
-    var d0 = new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["origenes"] = origenes, ["inicial"] = null };
-    System.IO.File.WriteAllText(htmlPrueba, PAGINA.Replace("__DATOS__", ser.Serialize(d0).Replace("</", "<\\/")), new System.Text.UTF8Encoding(false));
+    System.IO.File.WriteAllText(htmlPrueba, DatosPagina(null), new System.Text.UTF8Encoding(false));
     return "HTML";
 }
-// Ventana NO modal (ShowHtmlModeless): se puede minimizar y seguir usando Comercial. Si falla, la página se repinta con lo capturado.
+
 Func<Dictionary<string, object>, string> alMensaje = (r) =>
 {
-    if (S(r.ContainsKey("accion") ? r["accion"] : "") != "crear") return "__CERRAR__";
-    var spec = ser.Deserialize<Dictionary<string, object>>(S(r["spec"]));
+    string accion = S(r.ContainsKey("accion") ? r["accion"] : "");
+    string req = S(r.ContainsKey("req") ? r["req"] : "0");
     try
     {
-        long doc = CrearDocumento(spec);
+        if (accion == "cancelar") return "__CERRAR__";
+        if (accion == "pendientes") return "__JS__respuesta(" + req + "," + JsJson(PendientesDe(L(r["entidad"]), S(r["tipo"]))) + ")";
+        if (accion == "entidad") return "__JS__respuesta(" + req + "," + JsJson(UltimosDe(L(r["id"]))) + ")";
+        if (accion == "abrirDoc")
+        {
+            try { ctx.erp.AbrirDocumento((int)L(r["id"]), I(r["modulo"])); } catch (Exception ex) { return "__JS__aviso(" + JsJson("No se pudo abrir el documento: " + ex.Message) + ",'mal')"; }
+            return null;
+        }
+        if (accion != "crear") return null;
+        var spec = ser.Deserialize<Dictionary<string, object>>(S(r["spec"]));
+        bool otro = r.ContainsKey("nuevo") && Convert.ToBoolean(r["nuevo"]);
+        long doc; try { doc = CrearDocumento(spec); }
+        catch (Exception ex) { return "__JS__falloCrear(" + JsJson(ex.Message) + ")"; }                      // la ventana sigue con todo lo capturado
         int modulo = (int)tipoPor[S(spec["tipo"])]["modulo"];
         try { ctx.erp.RefreshGrid(); } catch { }
-        try { ctx.erp.AbrirDocumento((int)doc, modulo); } catch { }
-        return "__CERRAR__";
+        string folio = ""; try { folio = S(ctx.Scalar("SELECT ISNULL(FolioPrefix,'') + CAST(ISNULL(Folio,'') AS NVARCHAR(30)) FROM docDocument WHERE DocumentID = " + doc)); } catch { }
+        string abrirMal = null;
+        try { ctx.erp.AbrirDocumento((int)doc, modulo); } catch (Exception ex) { abrirMal = ex.Message; }          // SIEMPRE se abre el documento nativo del sistema
+        if (abrirMal != null) return "__JS__creado(" + JsJson(new Dictionary<string, object> { ["id"] = doc, ["folio"] = folio, ["modulo"] = modulo, ["nuevo"] = otro, ["avisoAbrir"] = "Se creó, pero no se pudo abrir en Comercial (" + abrirMal + "). Búscalo por su folio." }) + ")";
+        return otro ? "__JS__creado(" + JsJson(new Dictionary<string, object> { ["id"] = doc, ["folio"] = folio, ["modulo"] = modulo, ["nuevo"] = true }) + ")" : "__CERRAR__";
     }
-    catch (Exception ex)
-    {
-        ctx.Msg(ex.Message, "Crear documento");
-        var d1 = new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["origenes"] = origenes, ["inicial"] = spec };
-        return PAGINA.Replace("__DATOS__", ser.Serialize(d1).Replace("</", "<\\/"));
-    }
+    catch (Exception ex) { return "__JS__aviso(" + JsJson(ex.Message) + ",'mal')"; }
 };
+ctx.ShowHtmlModeless(DatosPagina(null), "Crear documento · BrosLMV", 1280, 900, alMensaje);
+if (Environment.GetEnvironmentVariable("BROSLMV_DOC_BOMBA") == "1")          // pruebas: mantiene vivo el proceso (el Runner no tiene bucle de ventanas) para manejar la página por depuración remota
 {
-    var datos = new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["origenes"] = origenes, ["inicial"] = inicial };
-    ctx.ShowHtmlModeless(PAGINA.Replace("__DATOS__", ser.Serialize(datos).Replace("</", "<\\/")), "Crear documento", 1180, 880, alMensaje);
+    var fin = new System.Windows.Forms.Timer { Interval = 150000 }; fin.Tick += (s, e) => System.Windows.Forms.Application.ExitThread(); fin.Start();
+    System.Windows.Forms.Application.Run();
 }
 return "OK";

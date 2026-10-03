@@ -48,6 +48,11 @@ $hoy = (Get-Date).ToString('yyyy-MM-dd')
 # 1) Catalogos
 $cat = $ser.DeserializeObject((Correr @{ catalogo = $true }))
 if (@($cat['almacenes']).Count -lt 1 -or @($cat['proveedores']).Count -lt 1 -or @($cat['productos']).Count -lt 3 -or @($cat['impuestos']).Count -lt 1) { Fallo "El catalogo del formulario viene incompleto." }
+# Lo que la ventana nueva usa para decidir: saldo, credito, condicion y descuento de cada persona; existencias por almacen; siguiente folio de cada tipo
+$c0 = @($cat['clientes'] + $cat['proveedores'])[0]
+foreach ($k in 'saldo', 'credito', 'cond', 'desc', 'rfc', 'ultimo') { if (-not $c0.ContainsKey($k)) { Fallo "El catalogo de personas debia traer '$k'." } }
+if (-not $cat.ContainsKey('existencias') -or -not $cat.ContainsKey('folios') -or @($cat['folios'].Keys).Count -ne 6) { Fallo "El catalogo debia traer existencias y el folio siguiente de los 6 tipos." }
+$pr0 = @($cat['productos'])[0]; foreach ($k in 'barras', 'lote', 'serie', 'servicio') { if (-not $pr0.ContainsKey($k)) { Fallo "El catalogo de productos debia traer '$k'." } }
 Write-Host ("  Catalogo: {0} almacenes, {1} proveedores, {2} productos, {3} impuestos." -f @($cat['almacenes']).Count, @($cat['proveedores']).Count, @($cat['productos']).Count, @($cat['impuestos']).Count)
 
 # 2) Orden de compra con descuento e IVA: 10 x 120 con 10% + 5 x 85.5  ->  subtotal 1507.50, IVA 241.20, total 1748.70
@@ -100,6 +105,12 @@ Write-Host "  Factura de cliente $fcl (696.00, sin inventario) y pedido $ped cre
 # 6) Remision desde el pedido (vinculo por encabezado): pendientes por producto
 $p = @(Pendientes @($ped)); $pend = @($p[0]['partidasPor']['remision'])
 if ($pend.Count -ne 2) { Fallo "El pedido debia tener 2 productos pendientes de remitir." }
+# La ventana pide en vivo los pendientes de la persona (sin haber seleccionado nada en la lista de Comercial)
+$pv = @($ser.DeserializeObject((Correr @{ pendientesDe = $true; entidad = $cli; tipo = 'remision' })))
+if (@($pv | Where-Object { [long]$_['id'] -eq $ped }).Count -ne 1) { Fallo "PendientesDe: el pedido $ped debia aparecer como pendiente de remitir para su cliente." }
+$ult = @($ser.DeserializeObject((Correr @{ ultimos = $true; entidad = $cli })))
+if ($ult.Count -lt 1 -or -not $ult[0].ContainsKey('folio')) { Fallo "UltimosDe: debia regresar los ultimos documentos del cliente." }
+Write-Host ("  Consultas en vivo: {0} pendiente(s) de remitir y {1} documento(s) recientes del cliente." -f $pv.Count, $ult.Count)
 $rem = Doc @{ tipo = 'remision'; almacen = $alm; entidad = $cli; fecha = $hoy; entrega = $hoy; titulo = 'DEMO CREAR DOC - remision'; origenes = @($ped)
               partidas = @($pend | ForEach-Object { @{ id = $_['id']; cant = $_['cant']; precio = $_['precio']; desc = $_['desc']; imp = $_['imp']; origenItem = $_['origenItem'] } }) }
 if ((Sql "SELECT SourceDocumentID FROM docDocument WHERE DocumentID=$rem") -ne "$ped") { Fallo "La remision debia guardar el pedido como SourceDocumentID." }

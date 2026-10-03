@@ -24,12 +24,18 @@ Dictionary<string, object> Catalogos(IEnumerable<string> claves)
     var cat = new Dictionary<string, object>();
     cat["almacenes"] = ctx.Query("SELECT DepotID AS id, DepotName AS nombre FROM orgDepot WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = " + empresa + " ORDER BY DepotName")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
+    // Cliente o proveedor con lo que ayuda a decidir al capturar: RFC, condición de pago y descuento habituales, límite de crédito, saldo abierto y fecha de su último documento.
+    // Saldo = facturas, notas de cargo, recibos y gastos con saldo menos notas de crédito con saldo (docDocument.Balance; es la foto de hoy).
     string ent(string tabla) =>
-        "SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc FROM " + tabla + " x " +
+        "SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.PaymentTermID,0) AS cond, ISNULL(x.Discount,0) AS descto, " +
+        "ISNULL(x.CreditLimit,0) AS credito, ISNULL(sd.Saldo,0) AS saldo, sd.Ultimo AS ultimo FROM " + tabla + " x " +
         "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID " +
-        "WHERE be.DeletedOn IS NULL ORDER BY nombre";
+        "LEFT JOIN (SELECT d.BusinessEntityID, SUM(CASE WHEN d.DocumentTypeID = 6 THEN -ISNULL(d.Balance,0) ELSE ISNULL(d.Balance,0) END) AS Saldo, MAX(d.DateDocument) AS Ultimo FROM docDocument d " +
+        "  WHERE d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND d.OwnedBusinessEntityID = " + empresa + " AND d.DocumentTypeID IN (5,6,7,8,9,13) GROUP BY d.BusinessEntityID) sd ON sd.BusinessEntityID = be.BusinessEntityID " +
+        "WHERE be.DeletedOn IS NULL AND x.DeletedOn IS NULL ORDER BY nombre";
     Func<string, List<Dictionary<string, object>>> lista = tabla => ctx.Query(ent(tabla))
-        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["rfc"] = S(r["rfc"]) }).ToList();
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["rfc"] = S(r["rfc"]), ["cond"] = I(r["cond"]), ["desc"] = D(r["descto"]),
+            ["credito"] = D(r["credito"]), ["saldo"] = D(r["saldo"]), ["ultimo"] = Nulo(r["ultimo"]) ? "" : Convert.ToDateTime(r["ultimo"], ci).ToString("yyyy-MM-dd") }).ToList();
     var lados = TIPOS.Where(t => claves.Contains((string)t["clave"])).Select(t => (string)t["lado"]).Distinct().ToList();
     cat["clientes"] = lados.Contains("C") ? lista("orgCustomer") : new List<Dictionary<string, object>>();
     cat["proveedores"] = lados.Contains("P") ? lista("orgSupplier") : new List<Dictionary<string, object>>();
@@ -39,9 +45,27 @@ Dictionary<string, object> Catalogos(IEnumerable<string> claves)
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["perc"] = D(r["perc"]) }).ToList();
     // Productos: lo mínimo para buscar y poner precio. Tope de seguridad: un catálogo enorme se carga por completo pero se avisa.
     cat["productos"] = ctx.Query("SELECT TOP 30000 ProductID AS id, ISNULL(ProductKey,'') AS clave, ProductName AS nombre, ISNULL(Unit,'') AS unidad, ISNULL(TaxTypeID,0) AS imp, " +
-        "ISNULL(PriceList,0) AS venta, ISNULL(CostPrice,0) AS costo FROM orgProduct WHERE DeletedOn IS NULL ORDER BY ProductName")
+        "ISNULL(PriceList,0) AS venta, ISNULL(CostPrice,0) AS costo, ISNULL(BarCode,'') AS barras, ISNULL(UseLot,0) AS lote, ISNULL(UseSerialNumber,0) AS serie, ISNULL(ProductIsService,0) AS servicio " +
+        "FROM orgProduct WHERE DeletedOn IS NULL ORDER BY ProductName")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["clave"] = S(r["clave"]), ["nombre"] = S(r["nombre"]), ["unidad"] = S(r["unidad"]), ["imp"] = I(r["imp"]),
-            ["venta"] = D(r["venta"]), ["costo"] = D(r["costo"]) }).ToList();
+            ["venta"] = D(r["venta"]), ["costo"] = D(r["costo"]), ["barras"] = S(r["barras"]), ["lote"] = I(r["lote"]) == 1, ["serie"] = I(r["serie"]) == 1, ["servicio"] = I(r["servicio"]) == 1 }).ToList();
+    // Existencias por almacén (suma del kardex): {productoId: {almacenId: cantidad}}; un producto sin movimientos no aparece (existencia 0)
+    var exist = new Dictionary<string, object>();
+    try
+    {
+        foreach (var r in ctx.Query("SELECT ProductID, DepotID, SUM(Quantity) AS Q FROM orgProductKardex WHERE ISNULL(Cancelled,0) = 0 GROUP BY ProductID, DepotID HAVING ABS(SUM(Quantity)) > 0.00001"))
+        {
+            string pid = S(r["ProductID"]); if (!exist.ContainsKey(pid)) exist[pid] = new Dictionary<string, object>();
+            ((Dictionary<string, object>)exist[pid])[S(r["DepotID"])] = Math.Round(D(r["Q"]), 4);
+        }
+    }
+    catch { }
+    cat["existencias"] = exist;
+    // Siguiente folio probable de cada tipo (lo asigna Comercial al guardar; aquí solo se muestra)
+    var folios = new Dictionary<string, object>();
+    foreach (var t in TIPOS.Where(t => claves.Contains((string)t["clave"])))
+        folios[(string)t["clave"]] = I(ctx.Scalar("SELECT ISNULL((SELECT TOP 1 ISNULL(TRY_CONVERT(int, Folio),0) + 1 FROM docDocument WHERE ModuleID = " + (int)t["modulo"] + " AND OwnedBusinessEntityID = " + empresa + " AND DeletedOn IS NULL ORDER BY DocumentID DESC), 1)"));          // el folio del último documento + 1
+    cat["folios"] = folios;
     return cat;
 }
 
@@ -53,7 +77,7 @@ List<Dictionary<string, object>> Origenes(IList<long> ids)
 {
     var res = new List<Dictionary<string, object>>();
     if (ids == null || ids.Count == 0) return res;
-    var docs = ctx.Query("SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.BusinessEntityID, d.DepotID, ISNULL(be.CommercialName, be.OfficialName) AS Entidad FROM docDocument d " +
+    var docs = ctx.Query("SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.BusinessEntityID, d.DepotID, d.DateDocument, ISNULL(d.Total,0) AS Total, ISNULL(be.CommercialName, be.OfficialName) AS Entidad FROM docDocument d " +
         "LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID WHERE d.DocumentID IN (" + string.Join(",", ids.Select(x => x.ToString(ci))) + ") " +
         "AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND d.OwnedBusinessEntityID = " + empresa);
     foreach (var d in docs)
@@ -90,9 +114,28 @@ List<Dictionary<string, object>> Origenes(IList<long> ids)
             porTipo[(string)t["clave"]] = items;
         }
         res.Add(new Dictionary<string, object> { ["id"] = id, ["modulo"] = mod, ["folio"] = (S(d["FolioPrefix"]) + S(d["Folio"])).Trim(), ["entidad"] = I(d["BusinessEntityID"]),
-            ["entidadNombre"] = S(d["Entidad"]), ["almacen"] = I(d["DepotID"]), ["partidasPor"] = porTipo });
+            ["entidadNombre"] = S(d["Entidad"]), ["almacen"] = I(d["DepotID"]), ["fecha"] = Nulo(d["DateDocument"]) ? "" : Convert.ToDateTime(d["DateDocument"], ci).ToString("yyyy-MM-dd"), ["total"] = D(d["Total"]), ["partidasPor"] = porTipo });
     }
     return res;
+}
+
+// ---------- Consultas en vivo (las pide la ventana mientras se captura) ----------
+// Documentos que sirven de origen para el tipo elegido y que pertenecen a esa persona: los 40 más recientes del módulo de origen con partidas que aún faltan por surtir.
+List<Dictionary<string, object>> PendientesDe(long entidad, string claveTipo)
+{
+    if (!tipoPor.ContainsKey(claveTipo) || entidad <= 0) return new List<Dictionary<string, object>>();
+    int mOrigen = (int)tipoPor[claveTipo]["origen"]; if (mOrigen == 0) return new List<Dictionary<string, object>>();
+    var ids = ctx.Query("SELECT TOP 40 DocumentID FROM docDocument WHERE ModuleID = " + mOrigen + " AND BusinessEntityID = " + entidad + " AND OwnedBusinessEntityID = " + empresa +
+        " AND DeletedOn IS NULL AND CancelledOn IS NULL ORDER BY DateDocument DESC, DocumentID DESC").Select(r => L(r["DocumentID"])).ToList();
+    return Origenes(ids).Where(o => ((List<Dictionary<string, object>>)((Dictionary<string, object>)o["partidasPor"])[claveTipo]).Count > 0).ToList();
+}
+// Los últimos documentos de esa persona (cualquier módulo), para tener contexto antes de capturar
+List<Dictionary<string, object>> UltimosDe(long entidad)
+{
+    return ctx.Query("SELECT TOP 6 d.DocumentID, d.ModuleID, ISNULL(m.ModuleName,'') AS Modulo, d.FolioPrefix, d.Folio, d.DateDocument, ISNULL(d.Total,0) AS Total, ISNULL(d.Balance,0) AS Saldo FROM docDocument d " +
+        "LEFT JOIN engModule m ON m.ModuleID = d.ModuleID WHERE d.BusinessEntityID = " + entidad + " AND d.OwnedBusinessEntityID = " + empresa + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL ORDER BY d.DateDocument DESC, d.DocumentID DESC")
+        .Select(r => new Dictionary<string, object> { ["id"] = L(r["DocumentID"]), ["modulo"] = I(r["ModuleID"]), ["tipo"] = S(r["Modulo"]), ["folio"] = (S(r["FolioPrefix"]) + S(r["Folio"])).Trim(),
+            ["fecha"] = Nulo(r["DateDocument"]) ? "" : Convert.ToDateTime(r["DateDocument"], ci).ToString("yyyy-MM-dd"), ["total"] = D(r["Total"]), ["saldo"] = D(r["Saldo"]) }).ToList();
 }
 
 // ---------- Agenda de pago ----------
@@ -210,6 +253,8 @@ if (!string.IsNullOrEmpty(modoPrueba))
     string resultado;
     if (spec.ContainsKey("pendientes") && (bool)spec["pendientes"]) resultado = ser.Serialize(Origenes(seleccion));
     else if (spec.ContainsKey("catalogo") && (bool)spec["catalogo"]) resultado = ser.Serialize(Catalogos(CLAVES));
+    else if (spec.ContainsKey("pendientesDe")) resultado = ser.Serialize(PendientesDe(L(spec["entidad"]), S(spec["tipo"])));
+    else if (spec.ContainsKey("ultimos")) resultado = ser.Serialize(UltimosDe(L(spec["entidad"])));
     else
     {
         try { resultado = "DOC " + CrearDocumento(spec); }

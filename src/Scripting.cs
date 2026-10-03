@@ -1318,6 +1318,7 @@ namespace BrosLMV
         // Comercial (el mismo donde corren los botones de una ventana Windows Forms modeless), asi que ahi SI se puede llamar a ctx.erp.* y a ctx.Query.
         // Esto evita el aviso de XEngine «the other application is busy» al abrir un documento desde la ventana: el hilo de Comercial queda libre.
         // «alMensaje» recibe los campos del mensaje y regresa: null = no hacer nada; "__CERRAR__" = cerrar la ventana; otro texto = HTML nuevo para repintar.
+        // «__JS__código» = ejecuta ese JavaScript en la página sin repintarla (así la página puede hacer consultas: manda un mensaje y el script contesta con __JS__respuesta(...)).
         public void ShowHtmlModeless(string html, string titulo = "BrosLMV", int ancho = 1100, int alto = 760, Func<Dictionary<string, object>, string> alMensaje = null)
         {
             string perfil = Path.Combine(Path.GetTempPath(), "BrosLMV_WebView2_" + Guid.NewGuid().ToString("N"));
@@ -1329,7 +1330,9 @@ namespace BrosLMV
             {
                 try
                 {
-                    var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(userDataFolder: perfil);
+                    var opciones = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions(); string puertoDepuracion = Environment.GetEnvironmentVariable("BROSLMV_WEBVIEW_DEBUG_PORT");   // solo para pruebas: depuración remota de la página
+                    if (!string.IsNullOrEmpty(puertoDepuracion)) opciones.AdditionalBrowserArguments = "--remote-debugging-port=" + puertoDepuracion;
+                    var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, perfil, opciones);
                     await webView.EnsureCoreWebView2Async(env);
                     webView.CoreWebView2.WebMessageReceived += (s2, e2) =>
                     {
@@ -1339,6 +1342,7 @@ namespace BrosLMV
                             var campos = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Deserialize<Dictionary<string, object>>(json) ?? new Dictionary<string, object>();
                             string respuesta = alMensaje == null ? null : alMensaje(campos);
                             if (respuesta == "__CERRAR__") frm.Close();
+                            else if (respuesta != null && respuesta.StartsWith("__JS__", StringComparison.Ordinal)) { var _js = webView.CoreWebView2.ExecuteScriptAsync(respuesta.Substring(6)); }     // contestar a la página sin repintarla (consultas en vivo)
                             else if (!string.IsNullOrEmpty(respuesta)) { string anterior = paginaTemporal; paginaTemporal = NavegacionHtml.Cargar(webView.CoreWebView2, respuesta); NavegacionHtml.Borrar(anterior); }
                         }
                         catch (Exception ex) { MessageBox.Show(ex.Message, frm.Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); }

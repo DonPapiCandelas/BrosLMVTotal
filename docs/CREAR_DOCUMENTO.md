@@ -12,13 +12,28 @@ Cuatro plantillas de fábrica, **la misma ventana y la misma lógica** en cuatro
 Crean los seis documentos más comunes: **factura de cliente, pedido, remisión, factura de compra, orden de compra y recepción de compra**.
 Son ejemplos **funcionales**: sirven tal cual, y sirven para copiar. Nada va escrito a mano por empresa (almacenes, clientes, proveedores, condiciones, impuestos y productos salen de tu base).
 
+## La ventana: una estación de captura
+
+Las dos versiones de C# (HTML y Windows Forms) y la de Python en HTML comparten el mismo diseño, pensado para sentirse como parte de Comercial:
+
+- **Cinta de acciones** (arriba): **Guardar y abrir** (F5), **Guardar y nuevo** (F6, para capturar varios seguidos sin cerrar la ventana), **Limpiar** y **Cancelar** (Esc). Junto a ellas, la **información del documento**: fecha, folio probable y almacén.
+- **Tipo de documento** en dos grupos, **Ventas** y **Compras** (cada grupo con su color).
+- **1 · Cliente o proveedor** con búsqueda por nombre, RFC o clave (F2). Al elegirlo ves su **RFC, saldo abierto, límite de crédito, descuento habitual y último documento**; se propone su **condición de pago**; y se aplica su descuento habitual a las partidas nuevas de una venta.
+- **2 · Partir de un documento ya existente**: los pendientes de surtir **de esa persona** salen solos al elegirla (no hace falta seleccionar nada antes en la lista; lo seleccionado se sigue marcando automáticamente).
+- **3 · Partidas** con búsqueda por nombre, clave o **código de barras** (escanea y Enter, F3), **existencia del almacén** en cada producto y marcas de lote o serie. Cantidad, precio, descuento e impuesto editables; el total se recalcula al instante.
+- **Resumen** (partidas, piezas, subtotal, descuento, impuestos y total) con **avisos**: excede el límite de crédito, piden más de la existencia, precio en cero. También **barra de crédito** y los **últimos documentos** de la persona (clic para abrirlos en Comercial).
+- **Siempre se abre el documento nativo de Comercial** al guardar. Si no se pudiera abrir, la ventana lo dice y te da el folio para buscarlo.
+- **No bloquea Comercial**: la ventana se puede minimizar y se sigue trabajando.
+
+La versión **HTML** consulta a Comercial **en vivo** mientras capturas (pendientes y últimos documentos de la persona) mediante `ctx.ShowHtmlModeless` y respuestas `__JS__…` (ver [`UI_VENTANAS.md`](UI_VENTANAS.md)); la versión de **Python en HTML** abre la misma página pero con lo precargado (no tiene consultas en vivo ni «Guardar y nuevo»). La versión **Windows Forms** de C# trae el mismo diseño con controles nativos. La de **Python en Windows Forms** sigue con la ventana sencilla de antes.
+
 ## Cómo usarlas
 
 1. En la **Consola** abre la plantilla que prefieras, guárdala como botón (nombre sugerido `CREAR_DOCUMENTO`) y ponla en el ribbon con *Crear botón…*.
 2. Pulsa el botón. Elige el **tipo de documento** arriba.
-3. Escribe el **cliente o proveedor** (nombre, RFC o clave), elige almacén, condición de pago, fechas y, si quieres, título y comentarios.
+3. Escribe el **cliente o proveedor** (nombre, RFC o clave; F2), elige almacén, condición de pago, fechas y, si quieres, título y comentarios.
 4. Agrega **partidas**: busca el producto por nombre o clave y presiona Enter. Edita cantidad, precio, descuento (%) e impuesto de cada partida; el total estimado se actualiza solo.
-5. **Crear documento.** Se crea, se refresca la lista y el documento se abre en Comercial.
+5. **Guardar y abrir** (F5). Se crea, se refresca la lista y el documento se abre en Comercial. Con **Guardar y nuevo** (F6) se crea, se abre y la ventana queda lista para el siguiente.
 6. Si algo falla, la ventana **no se pierde lo capturado** (HTML) o se queda abierta (Windows Forms) y el mensaje dice qué corregir.
 
 ### Documentos derivados (partir de otro documento)
