@@ -148,6 +148,13 @@ def principal():
     frm.Font = F_BASE
     frm.KeyPreview = True
 
+    def al_frente(s, e):             # Python corre en otro proceso: sin esto la ventana puede quedar detrás de Comercial
+        frm.TopMost = True
+        frm.Activate()
+        frm.BringToFront()
+        frm.TopMost = False
+    frm.Shown += al_frente
+
     def tipo_actual():
         return TIPOS[E["tipo"]]
 

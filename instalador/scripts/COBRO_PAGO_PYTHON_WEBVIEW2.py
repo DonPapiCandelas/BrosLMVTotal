@@ -361,7 +361,7 @@ if _modo_prueba:
 # en esta computadora (127.0.0.1, puerto al azar y un token secreto), y la página le manda sus peticiones con fetch. Cada respuesta es un fragmento de
 # JavaScript que la página ejecuta (por ejemplo «respuesta(3, [...])»). Así Python tiene lo mismo que C# con ShowHtmlModeless: consultas en vivo a Comercial,
 # crear documentos sin cerrar la ventana y lo que se te ocurra, con toda la librería de Python a la mano.
-# La página manda un latido cada pocos segundos: si deja de latir (la ventana se cerró) el script termina solo.
+# La página manda un latido cada 3 segundos: si deja de latir (la ventana se cerró) el script termina solo.
 # ===================================================================================================================================
 import http.server
 import secrets
@@ -433,7 +433,7 @@ def ventana_en_vivo(armar_pagina, despachar, titulo, ancho, alto):
             ahora = time.time()
             if not estado["visto"] and ahora - inicio > 90:
                 break                              # la ventana nunca llegó a cargar
-            if estado["visto"] and ahora - estado["ultimo"] > 25:
+            if estado["visto"] and ahora - estado["ultimo"] > 10:
                 break                              # dejó de latir: se cerró
     finally:
         servidor.server_close()
@@ -580,7 +580,7 @@ tr.on td .mini{display:block;height:4px;border-radius:3px;background:var(--linea
 var DATOS=__DATOS__;
 // Dos transportes: con C# la página habla por el puente de WebView2 (postMessage); con Python habla por HTTP con un servidor que solo escucha en esta computadora (DATOS.http) y la respuesta es un fragmento de JavaScript.
 function enviar(o){if(DATOS.http){fetch(DATOS.http.url+'?t='+DATOS.http.token,{method:'POST',body:JSON.stringify(o)}).then(function(r){return r.text();}).then(function(t){if(t)(0,eval)(t);}).catch(function(){});}else window.chrome.webview.postMessage(JSON.stringify(o));}
-if(DATOS.http){enviar({accion:'latido'});setInterval(function(){enviar({accion:'latido'});},5000);}
+if(DATOS.http){enviar({accion:'latido'});setInterval(function(){enviar({accion:'latido'});},3000);}
 function esc(s){return String(s==null?'':s).replace(/[&<>']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c];});}
 function f2(n){return (n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function $(i){return document.getElementById(i);}

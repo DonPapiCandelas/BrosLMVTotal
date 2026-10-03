@@ -6,7 +6,7 @@
 # en esta computadora (127.0.0.1, puerto al azar y un token secreto), y la página le manda sus peticiones con fetch. Cada respuesta es un fragmento de
 # JavaScript que la página ejecuta (por ejemplo «respuesta(3, [...])»). Así Python tiene lo mismo que C# con ShowHtmlModeless: consultas en vivo a Comercial,
 # crear documentos sin cerrar la ventana y lo que se te ocurra, con toda la librería de Python a la mano.
-# La página manda un latido cada pocos segundos: si deja de latir (la ventana se cerró) el script termina solo.
+# La página manda un latido cada 3 segundos: si deja de latir (la ventana se cerró) el script termina solo.
 # ===================================================================================================================================
 import http.server
 import secrets
@@ -78,7 +78,7 @@ def ventana_en_vivo(armar_pagina, despachar, titulo, ancho, alto):
             ahora = time.time()
             if not estado["visto"] and ahora - inicio > 90:
                 break                              # la ventana nunca llegó a cargar
-            if estado["visto"] and ahora - estado["ultimo"] > 25:
+            if estado["visto"] and ahora - estado["ultimo"] > 10:
                 break                              # dejó de latir: se cerró
     finally:
         servidor.server_close()

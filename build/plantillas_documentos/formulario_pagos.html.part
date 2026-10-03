@@ -94,7 +94,7 @@ td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;vertical-ali
 var DATOS=__DATOS__;
 // Dos transportes: con C# la página habla por el puente de WebView2 (postMessage); con Python habla por HTTP con un servidor que solo escucha en esta computadora (DATOS.http) y la respuesta es un fragmento de JavaScript.
 function enviar(o){if(DATOS.http){fetch(DATOS.http.url+'?t='+DATOS.http.token,{method:'POST',body:JSON.stringify(o)}).then(function(r){return r.text();}).then(function(t){if(t)(0,eval)(t);}).catch(function(){});}else window.chrome.webview.postMessage(JSON.stringify(o));}
-if(DATOS.http){enviar({accion:'latido'});setInterval(function(){enviar({accion:'latido'});},5000);}
+if(DATOS.http){enviar({accion:'latido'});setInterval(function(){enviar({accion:'latido'});},3000);}
 function esc(s){return String(s==null?'':s).replace(/[&<>']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c];});}
 function f2(n){return (n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function $(i){return document.getElementById(i);}
