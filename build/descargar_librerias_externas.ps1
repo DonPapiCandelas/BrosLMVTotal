@@ -42,6 +42,11 @@ $csproj = @"
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="ClosedXML" Version="0.102.3" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2739.15" />
+    <PackageReference Include="MailKit" Version="4.18.1" />
+    <PackageReference Include="PDFsharp" Version="6.2.4" />
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
   </ItemGroup>
 </Project>
 "@

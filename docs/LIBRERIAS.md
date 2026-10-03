@@ -19,6 +19,11 @@ Si vas a construir un botón nuevo, empieza aquí: casi siempre ya tenemos la pi
 | **DocumentFormat.OpenXml** (SDK de Open XML) | 2.16 | MIT | Archivos de **Office a bajo nivel**: **Word (.docx)**, **PowerPoint (.pptx)** y Excel. Sirve para generar contratos, cartas de cobranza, propuestas o presentaciones ejecutivas. También es el validador oficial que usan las pruebas | Base de ClosedXML; el humo #42 lo usa para validar los libros |
 | **QRCoder** | 1.6 | MIT | **Códigos QR** como imagen (SAT, pagos, enlaces) | PDF de documentos (QR de verificación del SAT) |
 | **Newtonsoft.Json** | 13.0.3 | MIT | **JSON**: leer/escribir objetos, consumir APIs | Disponible para scripts |
+| **MailKit / MimeKit** (+ BouncyCastle.Cryptography) | 4.18.1 | MIT | **Correo**: enviar y leer (SMTP, IMAP, POP3), HTML, adjuntos, OAuth, TLS moderno. Más robusto que `System.Net.Mail` | Disponible para scripts (estados de cuenta por correo, avisos de cobranza) |
+| **PDFsharp** (+ PdfSharp.\* de apoyo) | 6.2.4 | MIT | **PDF por código**: dibujar texto/líneas/imágenes, **unir, partir, reordenar, marcar de agua**, proteger con contraseña | Disponible para scripts |
+| **MigraDoc** (DocumentObjectModel, Rendering, RtfRendering) | 6.2.4 | MIT | **Reportes en PDF/RTF con párrafos, tablas, encabezados y pies** sin escribir HTML; trabaja sobre PDFsharp | Disponible para scripts |
+| **ZXing.Net** (`zxing`, `zxing.presentation`) | 0.16.11 | Apache-2.0 | **Códigos de barras** (Code128, EAN, ITF…) y lectura de QR/barras en imágenes | Disponible para scripts |
+| **CsvHelper** | 33.1.0 | MS-PL / Apache-2.0 | **CSV** grandes: leer y escribir con comillas, separadores y tipos | Disponible para scripts |
 | **WebView2** (Core, WinForms, Wpf + `WebView2Loader`) | 1.0.2739 (lib) / 1.0.2792 (bin) | Redistribuible de Microsoft | **Ventanas HTML modernas** (CSS, JavaScript, gráficas en canvas) y **HTML → PDF** | Todas las ventanas de plantillas, Diseñador, «PDF masivo», Cotizador |
 | **System.Data.SQLite** | 1.0.118 | Dominio público | Base de datos **local** en un archivo (bitácoras, cachés, datos propios sin tocar SQL Server) | Núcleo de BrosLMV |
 | **Roslyn** (Microsoft.CodeAnalysis) | 4.8 | MIT | Compila y ejecuta los scripts C# | Núcleo |
@@ -94,6 +99,65 @@ using (var doc = WordprocessingDocument.Create(@"C:\BrosLMV\temp\carta.docx", Wo
 }
 ```
 
+**Enviar un correo con adjunto (MailKit).** La cuenta y la clave no van escritas en el script: se leen de la configuración (en «Configuración de formato → Correo» ya existe una cuenta SMTP propia con la clave cifrada).
+```csharp
+#r "C:\BrosLMV\lib\MimeKit.dll"
+#r "C:\BrosLMV\lib\MailKit.dll"
+#r "C:\BrosLMV\lib\BouncyCastle.Cryptography.dll"
+using MimeKit; using MailKit.Net.Smtp; using MailKit.Security;
+
+var msg = new MimeMessage();
+msg.From.Add(new MailboxAddress("Mi empresa", "cobranza@miempresa.com"));
+msg.To.Add(new MailboxAddress("Cliente", "cliente@ejemplo.com"));
+msg.Subject = "Estado de cuenta";
+var cuerpo = new BodyBuilder { HtmlBody = "<p>Adjunto su estado de cuenta.</p>" };
+cuerpo.Attachments.Add(@"C:\BrosLMV\temp\estado.xlsx");
+msg.Body = cuerpo.ToMessageBody();
+using (var smtp = new SmtpClient())
+{
+    smtp.Connect("smtp.office365.com", 587, SecureSocketOptions.StartTls);
+    smtp.Authenticate(usuario, clave);           // de la configuración, nunca escritos a mano
+    smtp.Send(msg); smtp.Disconnect(true);
+}
+```
+
+**PDF por código (PDFsharp y MigraDoc).**
+```csharp
+#r "C:\BrosLMV\lib\PdfSharp.dll"
+#r "C:\BrosLMV\lib\MigraDoc.DocumentObjectModel.dll"
+#r "C:\BrosLMV\lib\MigraDoc.Rendering.dll"
+PdfSharp.Fonts.GlobalFontSettings.UseWindowsFontsUnderWindows = true;      // usar las fuentes de Windows (obligatorio en esta versión)
+
+// Reporte con párrafos y tabla (MigraDoc)
+var doc = new MigraDoc.DocumentObjectModel.Document(); var sec = doc.AddSection();
+sec.AddParagraph("Reporte de cobranza");
+var t = sec.AddTable(); t.AddColumn("6cm"); t.AddColumn("3cm");
+var f = t.AddRow(); f.Cells[0].AddParagraph("Cliente"); f.Cells[1].AddParagraph("1,234.50");
+var r = new MigraDoc.Rendering.PdfDocumentRenderer { Document = doc }; r.RenderDocument(); r.PdfDocument.Save(@"C:\BrosLMV\temp\reporte.pdf");
+
+// Unir dos PDF (PDFsharp)
+var salida = new PdfSharp.Pdf.PdfDocument();
+foreach (var ruta in new[] { @"C:\a.pdf", @"C:\b.pdf" })
+    foreach (PdfSharp.Pdf.PdfPage pag in PdfSharp.Pdf.IO.PdfReader.Open(ruta, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import).Pages) salida.AddPage(pag);
+salida.Save(@"C:\unido.pdf");
+```
+
+**Código de barras (ZXing.Net).**
+```csharp
+#r "C:\BrosLMV\lib\zxing.dll"
+#r "C:\BrosLMV\lib\zxing.presentation.dll"
+var w = new ZXing.BarcodeWriter { Format = ZXing.BarcodeFormat.CODE_128, Options = new ZXing.Common.EncodingOptions { Width = 300, Height = 80 } };
+using (var bmp = w.Write("ABC-12345")) bmp.Save(@"C:\BrosLMV\temp\barras.png");
+```
+
+**CSV (CsvHelper).**
+```csharp
+#r "C:\BrosLMV\lib\CsvHelper.dll"
+using (var lector = new System.IO.StreamReader(@"C:\datos.csv"))
+using (var csv = new CsvHelper.CsvReader(lector, System.Globalization.CultureInfo.InvariantCulture))
+    foreach (var fila in csv.GetRecords<dynamic>()) { /* fila.Cliente, fila.Total … */ }
+```
+
 **Ventana HTML que no bloquea Comercial.** `ctx.ShowHtmlModeless(html, titulo, ancho, alto, alMensaje)`; el patrón completo está en cualquier plantilla de fábrica (por ejemplo `ESTADO_CUENTA_CLIENTES.ctx`). Las páginas de más de ~1.5 MB se cargan desde un archivo temporal automáticamente.
 
 **Pruebas sin ventanas.** Cualquier script marcado `// job: safe-offline` corre con `BrosLMV.Runner.exe --appkey X --bd BASE`; las plantillas de fábrica traen un «modo de pruebas» por variables de entorno (ver su documentación y `build/humo/casos`).
@@ -107,14 +171,12 @@ Ninguna está instalada todavía. Antes de agregar una: licencia compatible con 
 
 | Necesidad | Candidata | Licencia | Comentario |
 |---|---|---|---|
-| **Enviar y leer correo** (adjuntos, IMAP, OAuth) | **MailKit / MimeKit** | MIT | Más robusta que el SMTP básico; serviría para mandar estados de cuenta con el Excel adjunto de forma automática |
-| **PDF por código** (unir, partir, sellar, firmar, marcar de agua) | **PDFsharp / MigraDoc** | MIT | Complementa HTML→PDF cuando no se necesita diseño HTML |
-| **Códigos de barras** (Code128, EAN, etiquetas) | **ZXing.Net** | Apache-2.0 | Punto de venta, etiquetas, inventario |
 | **Gráficas interactivas en ventanas HTML** | **Chart.js** o **Apache ECharts** (JavaScript) | MIT / Apache-2.0 | Se cargarían desde `C:\BrosLMV\lib\dashboard\` como `xlsx.bundle.js`; sin DLL |
-| **CSV grandes** (importar/exportar sin errores de comillas) | **CsvHelper** | MS-PL / Apache-2.0 | Conciliaciones, cargas masivas |
 | **Leer facturas escaneadas** | **Tesseract (OCR)** | Apache-2.0 | Pesado; solo con un caso concreto |
 | **Excel de solo lectura muy grandes** | **ExcelDataReader** | MIT | Importar archivos de miles de filas |
 | **Plantillas de Word con marcadores** | **OpenXmlPowerTools** o **DocX** | MIT | Cartas y contratos sin tocar XML |
+
+> **Aviso de convivencia.** Los scripts corren dentro de Comercial (un proceso de 32 bits que ya tiene cargadas otras bibliotecas). Las DLL de apoyo (`System.Memory`, `System.Buffers`, `System.Runtime.CompilerServices.Unsafe`…) vienen en una sola versión coherente en `lib\`. El humo #43 prueba las librerías juntas con el Runner; **la primera vez que uses una nueva dentro de Comercial, pruébala allí** (un conflicto de versiones se vería como «no se puede cargar el ensamblado»).
 
 ### Power BI
 Power BI no necesita una DLL en BrosLMV; hay tres caminos, de más a menos práctico:
