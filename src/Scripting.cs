@@ -1321,6 +1321,7 @@ namespace BrosLMV
         public void ShowHtmlModeless(string html, string titulo = "BrosLMV", int ancho = 1100, int alto = 760, Func<Dictionary<string, object>, string> alMensaje = null)
         {
             string perfil = Path.Combine(Path.GetTempPath(), "BrosLMV_WebView2_" + Guid.NewGuid().ToString("N"));
+            string paginaTemporal = null;
             var frm = new Form { Text = string.IsNullOrWhiteSpace(titulo) ? "BrosLMV" : titulo, StartPosition = FormStartPosition.CenterScreen, Width = ancho > 0 ? ancho : 1100, Height = alto > 0 ? alto : 760 };
             var webView = new Microsoft.Web.WebView2.WinForms.WebView2 { Dock = DockStyle.Fill };
             frm.Controls.Add(webView);
@@ -1338,13 +1339,13 @@ namespace BrosLMV
                             var campos = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Deserialize<Dictionary<string, object>>(json) ?? new Dictionary<string, object>();
                             string respuesta = alMensaje == null ? null : alMensaje(campos);
                             if (respuesta == "__CERRAR__") frm.Close();
-                            else if (!string.IsNullOrEmpty(respuesta)) webView.CoreWebView2.NavigateToString(respuesta);
+                            else if (!string.IsNullOrEmpty(respuesta)) { string anterior = paginaTemporal; paginaTemporal = NavegacionHtml.Cargar(webView.CoreWebView2, respuesta); NavegacionHtml.Borrar(anterior); }
                         }
                         catch (Exception ex) { MessageBox.Show(ex.Message, frm.Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
                     };
                     if (Directory.Exists(Rutas.Lib))
                         webView.CoreWebView2.SetVirtualHostNameToFolderMapping("broslmv.local", Rutas.Lib, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
-                    webView.CoreWebView2.NavigateToString(html ?? "");
+                    paginaTemporal = NavegacionHtml.Cargar(webView.CoreWebView2, html ?? "");     // paginas de mas de ~1.5 MB: archivo temporal (NavigateToString se corta en 2 MB)
                 }
                 catch (Exception ex) { MessageBox.Show("No se pudo abrir la ventana: " + ex.Message, frm.Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); frm.Close(); }
             };
@@ -1352,6 +1353,7 @@ namespace BrosLMV
             {
                 try { webView.Dispose(); } catch { }
                 try { Directory.Delete(perfil, true); } catch { /* limpieza best-effort */ }
+                NavegacionHtml.Borrar(paginaTemporal);
             };
             frm.Show();
         }

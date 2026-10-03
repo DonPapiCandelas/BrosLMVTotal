@@ -1,3 +1,4 @@
+#r "C:\BrosLMV\lib\ClosedXML.dll"
 // lang: csharp
 // AppKey recomendado: ESTADO_CUENTA_CLIENTES
 // Plantilla: Estado de cuenta de clientes (cuentas por cobrar)
@@ -23,6 +24,7 @@ using System.Linq;
 using System.Text;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using ClosedXML.Excel;
 
 var ci = CultureInfo.InvariantCulture;
 var ser = new JavaScriptSerializer { MaxJsonLength = 128 * 1024 * 1024 };
@@ -41,6 +43,296 @@ if (!string.IsNullOrEmpty(modoPrueba))
 {
     try { var cfg = ser.Deserialize<Dictionary<string, object>>(modoPrueba); if (cfg.ContainsKey("meses")) meses = Math.Max(1, I(cfg["meses"])); } catch { }
 }
+
+// ---------- Excel ejecutivo (ClosedXML) ----------
+// Se arma aquí, en C#, con lo que la ventana ya calculó (corte, saldos, antigüedad) y las gráficas que dibujó como imagen: así el libro sale igual de preciso
+// que la pantalla, con formato de moneda y fecha reales, filtros, paneles fijos, totales que se ajustan al filtro y configuración de impresión.
+// Con más de 5,000 documentos no hay problema: las filas se escriben en bloque y las gráficas se resumen (no dependen de cuántos documentos haya).
+const string FMT_MON = "\"$\"#,##0.00;[Red]-\"$\"#,##0.00;\"-\"";
+const string FMT_MON0 = "\"$\"#,##0.00;[Red]-\"$\"#,##0.00";
+const string FMT_PCT = "0.0%;-0.0%;\"-\"";
+XLColor Col(string h) { return XLColor.FromHtml(h); }
+System.Collections.IList Lst(object o) { return o as System.Collections.IList ?? new List<object>(); }
+double Nu(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToDouble(v, ci); } catch { return 0; } }
+DateTime? Fe(object v) { DateTime d; return DateTime.TryParseExact(S(v), "yyyy-MM-dd", ci, DateTimeStyles.None, out d) ? (DateTime?)d : null; }
+string FechaCorta(object v) { var d = Fe(v); return d.HasValue ? d.Value.ToString("dd/MM/yyyy", ci) : ""; }
+void Pon(IXLCell c, DateTime? d) { if (d.HasValue) c.Value = d.Value; }
+byte[] Png(object b64) { string t = S(b64); return t.Length == 0 ? null : Convert.FromBase64String(t); }
+void Imagen(IXLWorksheet ws, object b64, string celda, int ancho, int alto)
+{
+    var b = Png(b64); if (b == null) return;
+    var pic = ws.AddPicture(new MemoryStream(b)); pic.MoveTo(ws.Cell(celda)); pic.WithSize(ancho, alto);
+}
+void Banda(IXLWorksheet ws, int ultimaCol, string empresa, string titulo, string sub)
+{
+    ws.Range(1, 1, 3, ultimaCol).Style.Fill.BackgroundColor = Col("#15324F");
+    ws.Cell(1, 2).Value = (empresa ?? "").ToUpperInvariant(); ws.Cell(1, 2).Style.Font.SetFontSize(10); ws.Cell(1, 2).Style.Font.SetBold(); ws.Cell(1, 2).Style.Font.SetFontColor(Col("#93C5FD"));
+    ws.Cell(2, 2).Value = titulo; ws.Cell(2, 2).Style.Font.SetFontSize(20); ws.Cell(2, 2).Style.Font.SetBold(); ws.Cell(2, 2).Style.Font.SetFontColor(XLColor.White);
+    ws.Cell(3, 2).Value = sub; ws.Cell(3, 2).Style.Font.SetFontSize(10); ws.Cell(3, 2).Style.Font.SetFontColor(Col("#CBD5E1"));
+    ws.Row(1).Height = 22; ws.Row(2).Height = 32; ws.Row(3).Height = 20;
+    ws.Range(1, 1, 3, ultimaCol).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+}
+void Seccion(IXLWorksheet ws, int fila, int c1, int c2, string texto)
+{
+    var r = ws.Range(fila, c1, fila, c2); r.Merge(); r.FirstCell().Value = texto;
+    r.Style.Font.SetBold(); r.Style.Font.SetFontSize(11); r.Style.Font.SetFontColor(Col("#15324F")); r.Style.Border.BottomBorder = XLBorderStyleValues.Medium; r.Style.Border.BottomBorderColor = Col("#2D6FE0");
+    ws.Row(fila).Height = 22; r.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+}
+void Encabezado(IXLRange r)
+{
+    r.Style.Font.SetBold(); r.Style.Font.SetFontColor(XLColor.White); r.Style.Font.SetFontSize(10); r.Style.Fill.BackgroundColor = Col("#15324F");
+    r.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center; r.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center; r.Style.Alignment.WrapText = true;
+    r.Style.Border.OutsideBorder = XLBorderStyleValues.Thin; r.Style.Border.OutsideBorderColor = Col("#15324F"); r.Style.Border.InsideBorder = XLBorderStyleValues.Thin; r.Style.Border.InsideBorderColor = Col("#3B5B7E");
+}
+void Cuerpo(IXLRange r)
+{
+    r.Style.Font.SetFontSize(10); r.Style.Border.InsideBorder = XLBorderStyleValues.Hair; r.Style.Border.InsideBorderColor = Col("#CBD5E1");
+    r.Style.Border.OutsideBorder = XLBorderStyleValues.Thin; r.Style.Border.OutsideBorderColor = Col("#CBD5E1");
+}
+void Impresion(IXLWorksheet ws, string empresa, string titulo, int filaEnc)
+{
+    ws.PageSetup.PageOrientation = XLPageOrientation.Landscape; ws.PageSetup.PaperSize = XLPaperSize.LetterPaper;
+    ws.PageSetup.PagesWide = 1; ws.PageSetup.PagesTall = 0;
+    ws.PageSetup.Margins.Left = 0.4; ws.PageSetup.Margins.Right = 0.4; ws.PageSetup.Margins.Top = 0.6; ws.PageSetup.Margins.Bottom = 0.6;
+    ws.PageSetup.Header.Left.AddText(empresa ?? ""); ws.PageSetup.Header.Right.AddText(titulo);
+    ws.PageSetup.Footer.Left.AddText("Generado con BrosLMV"); ws.PageSetup.Footer.Right.AddText(XLHFPredefinedText.PageNumber, XLHFOccurrence.AllPages); ws.PageSetup.Footer.Right.AddText(" de "); ws.PageSetup.Footer.Right.AddText(XLHFPredefinedText.NumberOfPages, XLHFOccurrence.AllPages);
+    if (filaEnc > 0) ws.PageSetup.SetRowsToRepeatAtTop(filaEnc, filaEnc);
+}
+// Una tarjeta de indicador: etiqueta, valor grande y una línea de apoyo (3 filas; de la columna c1 a la c2)
+void Tarjeta(IXLWorksheet ws, int fila, int c1, int c2, string etiqueta, double valor, string apoyo, string color)
+{
+    IXLRange F(int f) { var r = ws.Range(f, c1, f, c2); if (c2 > c1) r.Merge(); return r; }
+    var l = F(fila); l.FirstCell().Value = etiqueta;
+    l.Style.Font.SetFontSize(9); l.Style.Font.SetBold(); l.Style.Font.SetFontColor(Col("#64748B"));
+    var v = F(fila + 1); v.FirstCell().Value = valor; v.Style.NumberFormat.Format = FMT_MON0;
+    v.Style.Font.SetFontSize(17); v.Style.Font.SetBold(); v.Style.Font.SetFontColor(Col(color)); v.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left; v.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+    var a = F(fila + 2); a.FirstCell().Value = apoyo; a.Style.Font.SetFontSize(9); a.Style.Font.SetFontColor(Col("#64748B"));
+    var t = ws.Range(fila, c1, fila + 2, c2); t.Style.Fill.BackgroundColor = Col("#F8FAFC"); t.Style.Alignment.Indent = 1;
+    t.Style.Border.LeftBorder = XLBorderStyleValues.Thin; t.Style.Border.RightBorder = XLBorderStyleValues.Thin; t.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+    t.Style.Border.LeftBorderColor = Col("#E2E8F0"); t.Style.Border.RightBorderColor = Col("#E2E8F0"); t.Style.Border.BottomBorderColor = Col("#E2E8F0");
+    t.Style.Border.TopBorder = XLBorderStyleValues.Thick; t.Style.Border.TopBorderColor = Col(color);
+}
+
+string ConstruirExcel(Dictionary<string, object> p, string ruta)
+{
+    string tipoLibro = S(p["tipo"]), empresa = S(p["empresa"]), titulo = S(p["titulo"]), ent = S(p["ent"]);
+    string Ent1 = ent.Substring(0, 1).ToUpperInvariant() + ent.Substring(1);
+    using (var wb = new XLWorkbook())
+    {
+        wb.Properties.Title = titulo; wb.Properties.Author = "BrosLMV"; wb.Properties.Company = empresa; wb.Properties.Subject = titulo + " — " + empresa;
+        wb.Style.Font.FontName = "Calibri"; wb.Style.Font.FontSize = 10;
+        if (tipoLibro == "edo") { ConstruirEdo(wb, p, empresa, titulo, Ent1); wb.SaveAs(ruta); return ruta; }
+
+        var kpi = (Dictionary<string, object>)p["kpi"];
+        double kV = Nu(Lst(kpi["vencido"])[1]), kA = Nu(Lst(kpi["siete"])[1]), kS = Nu(Lst(kpi["semana"])[1]), kG = Nu(Lst(kpi["vigente"])[1]), kM = Nu(Lst(kpi["favor"])[1]), kT = Nu(kpi["total"]);
+        int nV = (int)Nu(Lst(kpi["vencido"])[0]), nA = (int)Nu(Lst(kpi["siete"])[0]), nS = (int)Nu(Lst(kpi["semana"])[0]), nG = (int)Nu(Lst(kpi["vigente"])[0]), nM = (int)Nu(Lst(kpi["favor"])[0]);
+        string corteTxt = FechaCorta(p["corte"]), sub = "Al " + corteTxt + "  ·  Generado " + S(p["generado"]);
+        var gr = (Dictionary<string, object>)p["graficas"];
+        var ents = Lst(p["ents"]); var docs = Lst(p["docs"]);
+        Func<double, double> Pc = x => kT > 0 ? x / kT : 0;
+
+        // ===== Hoja 1: Resumen =====
+        var wr = wb.Worksheets.Add("Resumen"); wr.TabColor = Col("#2D6FE0"); wr.ShowGridLines = false;
+        wr.Column(1).Width = 2; for (int c = 2; c <= 13; c++) wr.Column(c).Width = 13; wr.Column(14).Width = 2;
+        Banda(wr, 14, empresa, titulo, sub);
+        wr.Row(4).Height = 10;
+        wr.Row(5).Height = 18; wr.Row(6).Height = 34; wr.Row(7).Height = 18;
+        Tarjeta(wr, 5, 2, 3, "VENCIDO", kV, nV + " documento(s) · " + Pc(kV).ToString("0.0%", ci) + " del saldo", "#DC2626");
+        Tarjeta(wr, 5, 4, 5, "VENCE EN 7 DÍAS", kA, nA + " documento(s)", "#D97706");
+        Tarjeta(wr, 5, 6, 7, "VENCE LA SEMANA QUE SIGUE", kS, nS + " documento(s)", "#7E22CE");
+        Tarjeta(wr, 5, 8, 9, "VIGENTE (MÁS ADELANTE)", kG, nG + " documento(s)", "#16A34A");
+        Tarjeta(wr, 5, 10, 11, "NOTAS DE CRÉDITO A FAVOR", kM, nM + " documento(s)", "#0E7490");
+        Tarjeta(wr, 5, 12, 13, "SALDO NETO", kT + kM, "facturas menos notas de crédito", "#15324F");
+        wr.Row(8).Height = 10;
+
+        // lectura rápida: tres frases generadas con los mismos números
+        double topSaldo = ents.Count > 0 ? Nu(((System.Collections.IList)ents[0])[7]) : 0; string topNom = ents.Count > 0 ? S(((System.Collections.IList)ents[0])[0]) : "";
+        var frases = new List<string>();
+        frases.Add("• " + nV + " documento(s) vencido(s) por " + kV.ToString("$#,##0.00", ci) + ", el " + Pc(kV).ToString("0.0%", ci) + " del saldo de " + (kT).ToString("$#,##0.00", ci) + ".");
+        if (ents.Count > 0) frases.Add("• El mayor saldo es de " + topNom + ": " + topSaldo.ToString("$#,##0.00", ci) + " (" + Pc(topSaldo).ToString("0.0%", ci) + " del total; " + ents.Count + " " + S(p["entPl"]) + " con saldo).");
+        frases.Add("• En los próximos 7 días vencen " + kA.ToString("$#,##0.00", ci) + " y la semana siguiente " + kS.ToString("$#,##0.00", ci) + ".");
+        Seccion(wr, 9, 2, 13, "LECTURA RÁPIDA");
+        for (int i = 0; i < frases.Count; i++) { var rg = wr.Range(10 + i, 2, 10 + i, 13); rg.Merge(); rg.FirstCell().Value = frases[i]; rg.Style.Font.SetFontSize(11); rg.Style.Font.SetFontColor(Col("#16263A")); wr.Row(10 + i).Height = 20; rg.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center; }
+        int f0 = 10 + frases.Count + 1;
+        Seccion(wr, f0, 2, 13, "GRÁFICAS");
+        int g1 = f0 + 1;                                                        // 15 filas de 20 px = 300 px por gráfica
+        Imagen(wr, gr["aging"], "B" + g1, 576, 300); Imagen(wr, gr["top"], "H" + g1, 576, 300);
+        int g2 = g1 + 16;
+        Imagen(wr, gr["sem"], "B" + g2, 576, 300); Imagen(wr, gr["estado"], "H" + g2, 576, 300);
+        int t0 = g2 + 16;
+        Seccion(wr, t0, 2, 13, "PRINCIPALES " + S(p["entPl"]).ToUpperInvariant() + " POR SALDO");
+        var hdr = wr.Range(t0 + 1, 2, t0 + 1, 13);
+        wr.Cell(t0 + 1, 2).Value = "#"; wr.Range(t0 + 1, 3, t0 + 1, 6).Merge().FirstCell().Value = Ent1;
+        wr.Range(t0 + 1, 7, t0 + 1, 8).Merge().FirstCell().Value = "Saldo total"; wr.Range(t0 + 1, 9, t0 + 1, 10).Merge().FirstCell().Value = "Vencido";
+        wr.Cell(t0 + 1, 11).Value = "% del saldo"; wr.Cell(t0 + 1, 12).Value = "% vencido"; wr.Cell(t0 + 1, 13).Value = "Docs.";
+        Encabezado(hdr); wr.Row(t0 + 1).Height = 22;
+        int nTop = Math.Min(10, ents.Count); double sumTop = 0, sumTopV = 0;
+        for (int i = 0; i < nTop; i++)
+        {
+            var e = (System.Collections.IList)ents[i]; int r = t0 + 2 + i; double tot = Nu(e[7]), ven = Nu(e[2]) + Nu(e[3]) + Nu(e[4]) + Nu(e[5]); sumTop += tot; sumTopV += ven;
+            wr.Cell(r, 2).Value = i + 1; wr.Range(r, 3, r, 6).Merge().FirstCell().Value = S(e[0]);
+            wr.Range(r, 7, r, 8).Merge().FirstCell().Value = tot; wr.Range(r, 9, r, 10).Merge().FirstCell().Value = ven;
+            wr.Cell(r, 11).Value = Pc(tot); wr.Cell(r, 12).Value = tot > 0 ? ven / tot : 0; wr.Cell(r, 13).Value = (int)Nu(e[8]);
+        }
+        if (nTop > 0)
+        {
+            var cuerpo = wr.Range(t0 + 2, 2, t0 + 1 + nTop, 13); Cuerpo(cuerpo);
+            wr.Range(t0 + 2, 7, t0 + 1 + nTop, 10).Style.NumberFormat.Format = FMT_MON; wr.Range(t0 + 2, 11, t0 + 1 + nTop, 12).Style.NumberFormat.Format = FMT_PCT;
+            wr.Range(t0 + 2, 2, t0 + 1 + nTop, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center; wr.Range(t0 + 2, 13, t0 + 1 + nTop, 13).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            wr.Range(t0 + 2, 9, t0 + 1 + nTop, 10).Style.Font.SetFontColor(Col("#B91C1C"));
+            for (int i = 0; i < nTop; i += 2) wr.Range(t0 + 2 + i, 2, t0 + 2 + i, 13).Style.Fill.BackgroundColor = Col("#F8FAFC");
+            int rt = t0 + 2 + nTop; var tr = wr.Range(rt, 2, rt, 13); tr.Style.Font.SetBold(); tr.Style.Fill.BackgroundColor = Col("#E8EEF6");
+            wr.Range(rt, 2, rt, 6).Merge().FirstCell().Value = "Suma de los " + nTop + " principales"; wr.Range(rt, 7, rt, 8).Merge().FirstCell().Value = sumTop; wr.Range(rt, 9, rt, 10).Merge().FirstCell().Value = sumTopV;
+            wr.Cell(rt, 11).Value = Pc(sumTop); wr.Cell(rt, 12).Value = sumTop > 0 ? sumTopV / sumTop : 0;
+            wr.Range(rt, 7, rt, 10).Style.NumberFormat.Format = FMT_MON; wr.Range(rt, 11, rt, 12).Style.NumberFormat.Format = FMT_PCT;
+            tr.Style.Border.TopBorder = XLBorderStyleValues.Thin; tr.Style.Border.TopBorderColor = Col("#15324F");
+            t0 = rt + 1;
+        }
+        else t0 += 2;
+        var nota = wr.Range(t0 + 1, 2, t0 + 3, 13); nota.Merge();
+        nota.FirstCell().Value = "Cómo se calcula: saldo = total del documento − pagos con fecha hasta el corte − notas de crédito aplicadas. Vencimiento = última fecha de la agenda de pago (si no hay agenda, la fecha del documento); las notas de crédito no vencen. Moneda: la de cada documento, sin convertir.";
+        nota.Style.Font.SetFontSize(9); nota.Style.Font.SetFontColor(Col("#64748B")); nota.Style.Font.Italic = true; nota.Style.Alignment.WrapText = true; nota.Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+        Impresion(wr, empresa, titulo, 0); wr.PageSetup.PagesTall = 0; wr.SheetView.ZoomScale = 100;
+
+        // ===== Hoja 2: Antigüedad por cliente/proveedor =====
+        var wa = wb.Worksheets.Add("Antigüedad"); wa.TabColor = Col("#D97706"); wa.ShowGridLines = false;
+        wa.Column(1).Width = 2; wa.Column(2).Width = 46; for (int c = 3; c <= 8; c++) wa.Column(c).Width = 15; wa.Column(9).Width = 17; wa.Column(10).Width = 12; wa.Column(11).Width = 9;
+        Banda(wa, 11, empresa, "Antigüedad de saldos por " + ent, sub);
+        string[] ench = { Ent1, "Vigente", "1-30 días", "31-60 días", "61-90 días", "Más de 90", "A favor (NC)", "Saldo total", "% vencido", "Docs." };
+        for (int c = 0; c < ench.Length; c++) wa.Cell(5, 2 + c).Value = ench[c];
+        Encabezado(wa.Range(5, 2, 5, 11)); wa.Row(5).Height = 24;
+        double[] sumB = new double[7]; int sumN = 0; int ra = 6;
+        foreach (System.Collections.IList e in ents)
+        {
+            wa.Cell(ra, 2).Value = S(e[0]);
+            for (int b = 0; b < 6; b++) { double v = Nu(e[1 + b]); wa.Cell(ra, 3 + b).Value = v; sumB[b] += v; }
+            double tot = Nu(e[7]), ven = Nu(e[2]) + Nu(e[3]) + Nu(e[4]) + Nu(e[5]);
+            wa.Cell(ra, 9).Value = tot; wa.Cell(ra, 10).Value = tot > 0 ? ven / tot : 0; wa.Cell(ra, 11).Value = (int)Nu(e[8]); sumB[6] += tot; sumN += (int)Nu(e[8]); ra++;
+        }
+        int ultA = ra - 1;
+        if (ultA >= 6)
+        {
+            Cuerpo(wa.Range(6, 2, ultA, 11)); wa.Range(6, 3, ultA, 9).Style.NumberFormat.Format = FMT_MON; wa.Range(6, 10, ultA, 10).Style.NumberFormat.Format = FMT_PCT;
+            wa.Range(6, 4, ultA, 7).Style.Font.SetFontColor(Col("#B91C1C")); wa.Range(6, 8, ultA, 8).Style.Font.SetFontColor(Col("#0E7490")); wa.Range(6, 9, ultA, 9).Style.Font.SetBold();
+            wa.Range(6, 11, ultA, 11).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            wa.Range(6, 9, ultA, 9).AddConditionalFormat().DataBar(Col("#93C5FD"));
+            wa.Range(6, 10, ultA, 10).AddConditionalFormat().ColorScale().LowestValue(Col("#DCFCE7")).HighestValue(Col("#FCA5A5"));
+            int rt = ultA + 1; var tr = wa.Range(rt, 2, rt, 11); tr.Style.Font.SetBold(); tr.Style.Fill.BackgroundColor = Col("#E8EEF6"); tr.Style.Border.TopBorder = XLBorderStyleValues.Medium; tr.Style.Border.TopBorderColor = Col("#15324F");
+            wa.Cell(rt, 2).Value = "TOTAL";
+            for (int b = 0; b < 6; b++) wa.Cell(rt, 3 + b).Value = sumB[b];
+            wa.Cell(rt, 9).Value = sumB[6]; double venT = sumB[1] + sumB[2] + sumB[3] + sumB[4]; wa.Cell(rt, 10).Value = sumB[6] > 0 ? venT / sumB[6] : 0; wa.Cell(rt, 11).Value = sumN;
+            wa.Range(rt, 3, rt, 9).Style.NumberFormat.Format = FMT_MON; wa.Cell(rt, 10).Style.NumberFormat.Format = FMT_PCT; wa.Cell(rt, 11).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            wa.Range(5, 2, ultA, 11).SetAutoFilter();
+        }
+        wa.SheetView.Freeze(5, 2); Impresion(wa, empresa, titulo, 5);
+
+        // ===== Hoja 3: Documentos con saldo =====
+        var wd = wb.Worksheets.Add("Documentos"); wd.TabColor = Col("#15324F"); wd.ShowGridLines = false;
+        double[] ancho = { 2, 40, 22, 14, 12, 12, 11, 16, 16, 16, 16, 40 };
+        for (int c = 0; c < ancho.Length; c++) wd.Column(c + 1).Width = ancho[c];
+        Banda(wd, 12, empresa, "Documentos con saldo", sub);
+        string[] encd = { Ent1, "Tipo", "Folio", "Fecha", "Vencimiento", "Días vencido", "Total", "Pagado / aplicado", "Saldo", "Estatus", "Título" };
+        for (int c = 0; c < encd.Length; c++) wd.Cell(5, 2 + c).Value = encd[c];
+        Encabezado(wd.Range(5, 2, 5, 12)); wd.Row(5).Height = 26;
+        int nD = docs.Count;
+        if (nD > 0)
+        {
+            var filasD = new List<object[]>(nD);
+            foreach (System.Collections.IList d in docs)
+            {
+                var fe = Fe(d[3]); var fv = Fe(d[4]); object dv = d[5] == null ? (object)"" : (object)(int)Math.Max(0, Nu(d[5]));
+                filasD.Add(new object[] { S(d[0]), S(d[1]), S(d[2]), fe.HasValue ? (object)fe.Value : "", fv.HasValue ? (object)fv.Value : "", dv, Nu(d[6]), Nu(d[7]), Nu(d[8]), S(d[9]), S(d[10]) });
+            }
+            wd.Cell(6, 2).InsertData(filasD);
+            int ultD = 5 + nD;
+            Cuerpo(wd.Range(6, 2, ultD, 12));
+            wd.Range(6, 5, ultD, 6).Style.DateFormat.Format = "dd/mm/yyyy"; wd.Range(6, 5, ultD, 7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            wd.Range(6, 8, ultD, 10).Style.NumberFormat.Format = FMT_MON; wd.Range(6, 10, ultD, 10).Style.Font.SetBold(); wd.Range(6, 11, ultD, 11).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            wd.Range(6, 7, ultD, 7).Style.NumberFormat.Format = "#,##0";
+            var rngFila = wd.Range(6, 2, ultD, 12);
+            rngFila.AddConditionalFormat().WhenIsTrue("=$K6=\"Vencido\"").Fill.SetBackgroundColor(Col("#FEF2F2"));
+            rngFila.AddConditionalFormat().WhenIsTrue("=$K6=\"Vence en 7 días\"").Fill.SetBackgroundColor(Col("#FFFBEB"));
+            rngFila.AddConditionalFormat().WhenIsTrue("=$K6=\"A favor\"").Fill.SetBackgroundColor(Col("#F3E8FF"));
+            wd.Range(6, 11, ultD, 11).AddConditionalFormat().WhenIsTrue("=$K6=\"Vencido\"").Font.SetFontColor(Col("#B91C1C"));
+            // totales que se recalculan con el filtro (SUBTOTAL ignora las filas ocultas)
+            wd.Cell(4, 2).Value = "Total de lo que ves (se ajusta al filtro)"; wd.Cell(4, 2).Style.Font.SetBold(); wd.Cell(4, 2).Style.Font.SetFontColor(Col("#15324F"));
+            wd.Cell(4, 4).FormulaA1 = "=SUBTOTAL(103,D6:D" + ultD + ")"; wd.Cell(4, 4).Style.NumberFormat.Format = "#,##0\" docs.\"";
+            foreach (int cc in new[] { 8, 9, 10 }) { string L = XLHelper.GetColumnLetterFromNumber(cc); wd.Cell(4, cc).FormulaA1 = "=SUBTOTAL(109," + L + "6:" + L + ultD + ")"; wd.Cell(4, cc).Style.NumberFormat.Format = FMT_MON; }
+            wd.Range(4, 2, 4, 12).Style.Fill.BackgroundColor = Col("#E8EEF6"); wd.Range(4, 2, 4, 12).Style.Font.SetBold(); wd.Row(4).Height = 20; wd.Range(4, 2, 4, 12).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            wd.Range(5, 2, ultD, 12).SetAutoFilter();
+        }
+        wd.SheetView.Freeze(5, 3); Impresion(wd, empresa, titulo, 5);
+
+        // ===== Hoja 4: Vencimientos por semana =====
+        var wv = wb.Worksheets.Add("Vencimientos"); wv.TabColor = Col("#7E22CE"); wv.ShowGridLines = false;
+        wv.Column(1).Width = 2; wv.Column(2).Width = 22; wv.Column(3).Width = 13; wv.Column(4).Width = 13; wv.Column(5).Width = 11; wv.Column(6).Width = 18; wv.Column(7).Width = 3;
+        Banda(wv, 14, empresa, "Vencimientos por semana", sub);
+        string[] encv = { "Semana", "Del", "Al", "Docs.", "Saldo que vence" };
+        for (int c = 0; c < encv.Length; c++) wv.Cell(5, 2 + c).Value = encv[c];
+        Encabezado(wv.Range(5, 2, 5, 6)); wv.Row(5).Height = 24;
+        int rv = 6; double sumV = 0; int sumVn = 0;
+        foreach (Dictionary<string, object> s in Lst(p["semanas"]))
+        {
+            bool venc = S(s.ContainsKey("nom") ? s["nom"] : "") == "Vencido";
+            wv.Cell(rv, 2).Value = venc ? "Ya vencido" : "Semana " + (rv - 6);
+            if (!venc) { var a = Fe(s["ini"]); var b = Fe(s["fin"]); if (a.HasValue) wv.Cell(rv, 3).Value = a.Value; if (b.HasValue) wv.Cell(rv, 4).Value = b.Value; }
+            wv.Cell(rv, 5).Value = (int)Nu(s["n"]); wv.Cell(rv, 6).Value = Nu(s["monto"]); sumV += Nu(s["monto"]); sumVn += (int)Nu(s["n"]);
+            if (venc) wv.Range(rv, 2, rv, 6).Style.Font.SetFontColor(Col("#B91C1C")); if (venc) wv.Range(rv, 2, rv, 6).Style.Font.SetBold();
+            rv++;
+        }
+        Cuerpo(wv.Range(6, 2, rv - 1, 6)); wv.Range(6, 3, rv - 1, 4).Style.DateFormat.Format = "dd/mm/yyyy"; wv.Range(6, 3, rv - 1, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center; wv.Range(6, 6, rv - 1, 6).Style.NumberFormat.Format = FMT_MON;
+        wv.Range(6, 6, rv - 1, 6).AddConditionalFormat().DataBar(Col("#C4B5FD"));
+        var tv = wv.Range(rv, 2, rv, 6); tv.Style.Font.SetBold(); tv.Style.Fill.BackgroundColor = Col("#E8EEF6"); wv.Cell(rv, 2).Value = "Total 8 semanas + vencido"; wv.Cell(rv, 5).Value = sumVn; wv.Cell(rv, 6).Value = sumV; wv.Cell(rv, 6).Style.NumberFormat.Format = FMT_MON; wv.Cell(rv, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        Imagen(wv, gr["sem"], "H5", 576, 300); Imagen(wv, gr["aging"], "H21", 576, 300);
+        Impresion(wv, empresa, titulo, 0);
+
+        wb.Worksheet(1).SetTabActive(); wb.SaveAs(ruta);
+    }
+    return ruta;
+}
+
+// Estado de cuenta de un solo cliente/proveedor: pensado para mandarlo (encabezado, saldo inicial, movimientos con saldo corriente, totales)
+void ConstruirEdo(XLWorkbook wb, Dictionary<string, object> p, string empresa, string titulo, string Ent1)
+{
+    var ws = wb.Worksheets.Add("Estado de cuenta"); ws.TabColor = Col("#2D6FE0"); ws.ShowGridLines = false;
+    double[] ancho = { 2, 13, 20, 46, 17, 17, 24, 2 };
+    for (int c = 0; c < ancho.Length; c++) ws.Column(c + 1).Width = ancho[c];
+    string nombre = S(p["nombreEnt"]), periodo = FechaCorta(p["desde"]) + " al " + FechaCorta(p["hasta"]);
+    Banda(ws, 8, empresa, "Estado de cuenta", Ent1 + ": " + nombre + "  ·  Periodo " + periodo + "  ·  Generado " + S(p["generado"]));
+    ws.Row(4).Height = 10;
+    double ini = Nu(p["ini"]), carg = Nu(p["cargos"]), abon = Nu(p["abonos"]), fin = Nu(p["final"]);
+    Tarjeta(ws, 5, 2, 3, "SALDO INICIAL", ini, "al " + FechaCorta(p["desde"]), "#64748B");
+    Tarjeta(ws, 5, 4, 4, "CARGOS DEL PERIODO", carg, "facturas y documentos", "#15324F");
+    Tarjeta(ws, 5, 5, 6, "ABONOS DEL PERIODO", abon, "pagos y notas de crédito", "#16A34A");
+    Tarjeta(ws, 5, 7, 7, "SALDO AL " + FechaCorta(p["hasta"]), fin, fin > 0.004 ? "por " + (S(p["lado"]) == "C" ? "cobrar" : "pagar") : "sin adeudo", fin > 0.004 ? "#DC2626" : "#16A34A");
+    ws.Row(5).Height = 18; ws.Row(6).Height = 34; ws.Row(7).Height = 18; ws.Row(8).Height = 10;
+    string[] enc = { "Fecha", "Movimiento", "Referencia", "Cargos", "Abonos", "Saldo" };
+    for (int c = 0; c < enc.Length; c++) ws.Cell(10, 2 + c).Value = enc[c];
+    Encabezado(ws.Range(10, 2, 10, 7)); ws.Row(10).Height = 24;
+    Pon(ws.Cell(11, 2), Fe(p["desde"])); ws.Cell(11, 3).Value = "Saldo inicial"; ws.Cell(11, 7).Value = ini;
+    ws.Range(11, 2, 11, 7).Style.Font.SetBold(); ws.Range(11, 2, 11, 7).Style.Fill.BackgroundColor = Col("#E8EEF6");
+    int r = 12;
+    foreach (System.Collections.IList m in Lst(p["movs"]))
+    {
+        var fe = Fe(m[0]); Pon(ws.Cell(r, 2), fe); ws.Cell(r, 3).Value = S(m[1]); ws.Cell(r, 4).Value = S(m[2]);
+        double c1 = Nu(m[3]), a1 = Nu(m[4]); if (c1 != 0) ws.Cell(r, 5).Value = c1; if (a1 != 0) ws.Cell(r, 6).Value = a1; ws.Cell(r, 7).Value = Nu(m[5]);
+        r++;
+    }
+    int ult = r - 1;
+    Cuerpo(ws.Range(11, 2, ult, 7)); ws.Range(11, 2, ult, 2).Style.DateFormat.Format = "dd/mm/yyyy"; ws.Range(11, 2, ult, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+    ws.Range(11, 5, ult, 7).Style.NumberFormat.Format = FMT_MON; ws.Range(11, 7, ult, 7).Style.Font.SetBold(); ws.Range(11, 4, ult, 4).Style.Alignment.WrapText = true;
+    for (int i = 12; i <= ult; i += 2) ws.Range(i, 2, i, 7).Style.Fill.BackgroundColor = Col("#F8FAFC");
+    var tt = ws.Range(r, 2, r, 7); tt.Style.Font.SetBold(); tt.Style.Fill.BackgroundColor = Col("#E8EEF6"); tt.Style.Border.TopBorder = XLBorderStyleValues.Medium; tt.Style.Border.TopBorderColor = Col("#15324F");
+    ws.Cell(r, 3).Value = "Totales del periodo"; ws.Cell(r, 5).Value = carg; ws.Cell(r, 6).Value = abon; ws.Cell(r, 7).Value = fin; ws.Range(r, 5, r, 7).Style.NumberFormat.Format = FMT_MON;
+    var nota = ws.Range(r + 2, 2, r + 3, 7); nota.Merge(); nota.FirstCell().Value = "Las notas de crédito aplicadas a una factura se muestran como abono en el momento de su aplicación. Importes en la moneda de cada documento.";
+    nota.Style.Font.SetFontSize(9); nota.Style.Font.SetFontColor(Col("#64748B")); nota.Style.Font.Italic = true; nota.Style.Alignment.WrapText = true;
+    ws.SheetView.Freeze(10, 0); Impresion(ws, empresa, titulo + " — " + nombre, 10); ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
+}
+
+// Pruebas automáticas del libro de Excel: BROSLMV_SALDOS_XLSX_TEST = archivo JSON con lo que mandaría la ventana; BROSLMV_SALDOS_XLSX_OUT = dónde escribir el .xlsx
+string xlsxPrueba = Environment.GetEnvironmentVariable("BROSLMV_SALDOS_XLSX_TEST");
+if (!string.IsNullOrEmpty(xlsxPrueba))
+    return ConstruirExcel(ser.Deserialize<Dictionary<string, object>>(File.ReadAllText(xlsxPrueba, Encoding.UTF8)), Environment.GetEnvironmentVariable("BROSLMV_SALDOS_XLSX_OUT"));
 
 // ---------- 1) Qué módulos son de clientes ----------
 // Se pivotean los parámetros por ModuleIDBase y se unen con todos los módulos (clones incluidos). Solo DocRecipient = 1: el otro lado no se carga nunca.
@@ -183,7 +475,6 @@ tbody tr:nth-child(even){background:var(--zebra)}tbody tr.clic{cursor:pointer}tb
 <div class='tabs' id='tabs'><button data-a='tab' data-v='aging' class='on'>Antigüedad por cliente</button><button data-a='tab' data-v='docs'>Documentos con saldo</button><button data-a='tab' data-v='cal'>Calendario</button><button data-a='tab' data-v='edo'>Estado de cuenta</button></div>
 <div class='cuerpo' id='cuerpo'></div>
 <div class='mf' id='mf'><div class='mc'><div class='mh'><div><div class='mt' id='mt'></div><div class='ms' id='ms'></div></div><div style='display:flex;gap:6px'><button id='mv' data-a='volver' style='display:none'>← Volver</button><button data-a='cerrar'>Cerrar ✕</button></div></div><div class='mb' id='mb'></div></div></div>
-<script src='https://broslmv.local/dashboard/xlsx.bundle.js'></script>
 <script>
 var D=" + json + @";
 var PC='cliente',TITULO='Cuentas por cobrar',LADO='C';
@@ -273,12 +564,13 @@ function vistaDocs(filas){
   filas.sort(function(a,b){return a.d.entNom<b.d.entNom?-1:a.d.entNom>b.d.entNom?1:(a.venc<b.venc?-1:1);});
   if(!filas.length)return '<div class=vacio>No hay documentos con saldo a esta fecha con esos filtros.</div>';
   var h='<div class=tw><table><thead><tr><th></th><th>'+exp.filas[0][0]+'</th><th class=l>Tipo</th><th>Folio</th><th>Fecha</th><th>Vence</th><th>Días vencido</th><th>Total</th><th>Saldo</th><th class=l>Título</th></tr></thead><tbody>',t=0;
-  filas.forEach(function(f){
+  var TOPE=1000,total=filas.length;
+  filas.forEach(function(f,idx){
     var d=f.d,pil=f.dv===null?'<span class=\'pill m\'>A favor</span>':f.dv<=0?'<span class=\'pill '+(f.dv>=-7?'a':'')+'\'>'+(f.dv>=-7?'Por vencer':'Vigente')+'</span>':'<span class=\'pill '+(f.dv>60?'r':'a')+'\'>'+f.dv+' d</span>';t+=f.saldo;
-    h+='<tr class=clic data-a=ver data-v='+d.id+' title=\'Clic: ver el documento · Doble clic: abrirlo en Comercial\'><td><button class=btnv data-a=ver data-v='+d.id+'>🔍 Ver</button></td><td class=l>'+esc(d.entNom)+'</td><td class=l>'+esc(d.tipo)+'</td><td>'+esc(d.folio)+'</td><td>'+d.fecha+'</td><td>'+(f.dv===null?'':f.venc)+'</td><td>'+pil+'</td><td>'+f2(d.s*d.total)+'</td><td><b>'+f2(f.saldo)+'</b></td><td class=l>'+esc(d.titulo)+'</td></tr>';
+    if(idx<TOPE)h+='<tr class=clic data-a=ver data-v='+d.id+' title=\'Clic: ver el documento\'><td><button class=btnv data-a=ver data-v='+d.id+'>🔍 Ver</button></td><td class=l>'+esc(d.entNom)+'</td><td class=l>'+esc(d.tipo)+'</td><td>'+esc(d.folio)+'</td><td>'+d.fecha+'</td><td>'+(f.dv===null?'':f.venc)+'</td><td>'+pil+'</td><td>'+f2(d.s*d.total)+'</td><td><b>'+f2(f.saldo)+'</b></td><td class=l>'+esc(d.titulo)+'</td></tr>';
     exp.filas.push([d.entNom,d.tipo,d.folio,d.fecha,f.dv===null?'':f.venc,f.dv===null?'':Math.max(0,f.dv),(d.s*d.total).toFixed(2),f.saldo.toFixed(2),d.titulo]);
   });
-  return h+'</tbody><tfoot><tr><td colspan=8>Total</td><td>'+f2(t)+'</td><td></td></tr></tfoot></table></div><div class=nota>Clic en «Ver» o en una fila: partidas, agenda de pago y pagos aplicados; ahí mismo el botón «Abrir en Comercial» abre el documento y esta ventana sigue abierta.</div>';
+  return h+'</tbody><tfoot><tr><td colspan=8>Total</td><td>'+f2(t)+'</td><td></td></tr></tfoot></table></div>'+(total>TOPE?'<div class=nota style=\'color:var(--ambar)\'>Se muestran los primeros '+TOPE.toLocaleString('es-MX')+' de '+total.toLocaleString('es-MX')+' documentos; filtra o exporta a Excel para verlos todos.</div>':'')+'<div class=nota>Clic en «Ver» o en una fila: partidas, agenda de pago y pagos aplicados; ahí mismo el botón «Abrir en Comercial» abre el documento y esta ventana sigue abierta.</div>';
 }
 // Calendario de vencimientos: solo documentos que suman (las notas de crédito no vencen)
 function vistaCal(todas){
@@ -304,7 +596,7 @@ function vistaEdo(){
   if(!phasta||phasta>corte)phasta=corte;if(!pdesde)pdesde=sumaDias(phasta,-90);
   var h='<div class=ctl style=\'padding:0 0 10px\'><label>'+Pc+' <select id=selEnt onchange=\'entSel=+this.value;cambio()\'><option value=0>— elige —</option>';
   ids.forEach(function(i){h+='<option value='+i+'>'+esc(lista[i])+'</option>';});
-  h+='</select></label><label>Del <input type=date id=pd value='+pdesde+' onchange=\'pdesde=this.value;cambio()\'></label><label>al <input type=date id=ph value='+phasta+' onchange=\'phasta=this.value;cambio()\'></label></div>';
+  h+='</select></label><label>Del <input type=date id=pd value='+pdesde+' onchange=\'pdesde=this.value;cambio()\'></label><label>al <input type=date id=ph value='+phasta+' onchange=\'phasta=this.value;cambio()\'></label> <button class=p data-a=xlsxedo>Excel de este estado de cuenta</button></div>';
   if(!entSel){exp={nombre:'estado_de_cuenta',titulo:'',filas:[]};return h+'<div class=vacio>Elige un '+PC+' (o haz clic en una fila de la antigüedad) para ver su estado de cuenta.</div>';}
   var ev=[];
   D.docs.forEach(function(d){
@@ -315,13 +607,15 @@ function vistaEdo(){
   ev.sort(function(a,b){return a.f<b.f?-1:a.f>b.f?1:a.o-b.o;});
   var ini=0;ev.forEach(function(e){if(e.f<pdesde)ini+=e.c-e.a;});
   exp={nombre:'estado_de_cuenta_'+(lista[entSel]||'').replace(/[^A-Za-z0-9]+/g,'_')+'_'+phasta,titulo:'Estado de cuenta — '+lista[entSel]+' ('+fmtF(pdesde)+' al '+fmtF(phasta)+')',filas:[['Fecha','Movimiento','Referencia','Cargos','Abonos','Saldo']]};
-  var sal=ini,tc=0,ta=0,rows='';
+  var sal=ini,tc=0,ta=0,rows='',movs=[];
   exp.filas.push([pdesde,'Saldo inicial','','','',ini.toFixed(2)]);
   ev.forEach(function(e){
     if(e.f<pdesde||e.f>phasta)return;sal+=e.c-e.a;tc+=e.c;ta+=e.a;
     rows+='<tr class=clic data-a=ver data-v='+e.id+'><td>'+e.f+'</td><td class=l>'+esc(e.t)+'</td><td class=l>'+esc(e.r)+(e.x?' <span class=nota>'+esc(e.x)+'</span>':'')+'</td><td>'+(e.c?f2(e.c):'')+'</td><td>'+(e.a?f2(e.a):'')+'</td><td>'+f2(sal)+'</td></tr>';
     exp.filas.push([e.f,e.t,e.r,e.c?e.c.toFixed(2):'',e.a?e.a.toFixed(2):'',sal.toFixed(2)]);
+    movs.push([e.f,e.t,e.r+(e.x?' · '+e.x:''),e.c,e.a,sal]);
   });
+  exp.edo={nombre:lista[entSel],ini:ini,movs:movs,cargos:tc,abonos:ta,fin:sal};
   exp.filas.push(['','Totales del periodo','',tc.toFixed(2),ta.toFixed(2),sal.toFixed(2)]);
   return h+'<div class=tw><table><thead><tr><th>Fecha</th><th class=l>Movimiento</th><th class=l>Referencia</th><th>Cargos</th><th>Abonos</th><th>Saldo</th></tr></thead><tbody><tr><td>'+pdesde+'</td><td class=l><b>Saldo inicial</b></td><td></td><td></td><td></td><td><b>'+f2(ini)+'</b></td></tr>'+rows+'</tbody><tfoot><tr><td colspan=3>Totales del periodo</td><td>'+f2(tc)+'</td><td>'+f2(ta)+'</td><td>'+f2(sal)+'</td></tr></tfoot></table></div><div class=nota>Las notas de crédito aplicadas a una factura no se repiten como abono: la nota ya restó como documento. Clic en un movimiento para ver su documento.</div>';
 }
@@ -346,6 +640,86 @@ function verDia(iso){
   var h='<div class=dc style=\'grid-template-columns:1fr\'><div><b>Total que vence este día</b><span>'+f2(tot)+'</span></div></div>'+its.map(function(f){var c=f.dv>0?'r':f.dv>=-7?'a':'v';return '<div class=\'comp '+c+'\'><div><b>'+esc(f.d.folio||'(sin folio)')+'</b> — '+esc(f.d.entNom)+'<br><span class=nota>Saldo '+f2(f.saldo)+'</span></div><button class=btnv data-a=verdia data-v='+f.d.id+' data-i='+iso+'>Ver documento →</button></div>';}).join('');
   modal('Vencimientos del '+fmtF(iso),its.length+' documento(s)',h,null);
 }
+// ---- gráficas para el Excel ejecutivo: se dibujan en un canvas (2x para que se vean nítidas) y viajan como PNG; los números van además en tablas del libro ----
+var PAL={azul:'#2D6FE0',marino:'#15324F',rojo:'#DC2626',ambar:'#D97706',verde:'#16A34A',morado:'#7E22CE',gris:'#64748B',linea:'#E2E8F0',texto:'#16263A'};
+var FUENTE='Segoe UI, Calibri, Arial';
+function abrev(n){var a=Math.abs(n),s=n<0?'-':'';return a>=1e6?s+'$'+(a/1e6).toFixed(2)+' M':a>=1e3?s+'$'+(a/1e3).toFixed(1)+' k':s+'$'+a.toFixed(0);}
+function lienzo(w,h){var c=document.createElement('canvas');c.width=w*2;c.height=h*2;var g=c.getContext('2d');g.scale(2,2);g.fillStyle='#FFFFFF';g.fillRect(0,0,w,h);return {c:c,g:g,w:w,h:h};}
+function recorta(g,t,max){t=String(t||'');if(g.measureText(t).width<=max)return t;while(t.length>1&&g.measureText(t+'…').width>max)t=t.slice(0,-1);return t+'…';}
+function titulo(L,t,sub){L.g.fillStyle=PAL.marino;L.g.font='bold 15px '+FUENTE;L.g.textAlign='left';L.g.textBaseline='alphabetic';L.g.fillText(t,16,26);if(sub){L.g.fillStyle=PAL.gris;L.g.font='11px '+FUENTE;L.g.fillText(sub,16,43);}}
+function vacioGraf(L,t){titulo(L,t);L.g.fillStyle=PAL.gris;L.g.font='13px '+FUENTE;L.g.textAlign='center';L.g.fillText('Sin datos para graficar',L.w/2,L.h/2);return L.c.toDataURL('image/png').split(',')[1];}
+function barrasV(t,sub,etiq,vals,cols,nota){
+  var L=lienzo(570,300),g=L.g,mx=Math.max.apply(null,vals.concat([1])),x0=26,x1=L.w-20,y0=64,y1=L.h-46,n=vals.length;
+  if(!vals.some(function(v){return v>0;}))return vacioGraf(L,t);
+  titulo(L,t,sub);if(nota){g.fillStyle=PAL.rojo;g.font='bold 11px '+FUENTE;g.textAlign='right';g.fillText(nota,L.w-16,26);}g.strokeStyle=PAL.linea;g.lineWidth=1;
+  for(var i=0;i<=3;i++){var y=y1-(y1-y0)*i/3;g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke();}
+  var ancho=(x1-x0)/n,bw=Math.min(62,ancho*0.62);
+  vals.forEach(function(v,i){
+    var h=(y1-y0)*v/mx,x=x0+ancho*i+(ancho-bw)/2,y=y1-h;
+    g.fillStyle=cols[i%cols.length];if(v>0){g.beginPath();g.moveTo(x,y1);g.lineTo(x,y+4);g.quadraticCurveTo(x,y,x+4,y);g.lineTo(x+bw-4,y);g.quadraticCurveTo(x+bw,y,x+bw,y+4);g.lineTo(x+bw,y1);g.closePath();g.fill();}
+    g.fillStyle=PAL.texto;g.font='bold 11px '+FUENTE;g.textAlign='center';g.fillText(v?abrev(v):'',x+bw/2,y-6);
+    g.fillStyle=PAL.gris;g.font='11px '+FUENTE;g.fillText(recorta(g,etiq[i],ancho-4),x+bw/2,y1+17);
+  });
+  return L.c.toDataURL('image/png').split(',')[1];
+}
+function barrasH(t,sub,filas,nomA,nomB){      // filas: [{nom, a (parte roja), b (parte azul)}] ya ordenadas de mayor a menor
+  var L=lienzo(570,300),g=L.g;
+  if(!filas.length)return vacioGraf(L,t);
+  titulo(L,t,sub);var mx=Math.max.apply(null,filas.map(function(f){return f.a+f.b;}).concat([1])),izq=170,der=70,y0=56,alto=Math.min(22,(L.h-y0-34)/filas.length),sep=alto*0.28;
+  filas.forEach(function(f,i){
+    var y=y0+i*alto*1.0,w1=(L.w-izq-der)*f.a/mx,w2=(L.w-izq-der)*f.b/mx;
+    g.fillStyle=PAL.texto;g.font='11px '+FUENTE;g.textAlign='right';g.textBaseline='middle';g.fillText(recorta(g,f.nom,izq-14),izq-8,y+(alto-sep)/2);
+    g.fillStyle=PAL.rojo;g.fillRect(izq,y,w1,alto-sep);g.fillStyle=PAL.azul;g.fillRect(izq+w1,y,w2,alto-sep);
+    g.fillStyle=PAL.texto;g.font='bold 10.5px '+FUENTE;g.textAlign='left';g.fillText(abrev(f.a+f.b),izq+w1+w2+6,y+(alto-sep)/2);
+  });
+  g.textBaseline='alphabetic';var yl=L.h-14;g.fillStyle=PAL.rojo;g.fillRect(16,yl-8,10,10);g.fillStyle=PAL.gris;g.font='11px '+FUENTE;g.textAlign='left';g.fillText(nomA,31,yl+1);
+  g.fillStyle=PAL.azul;g.fillRect(120,yl-8,10,10);g.fillStyle=PAL.gris;g.fillText(nomB,135,yl+1);
+  return L.c.toDataURL('image/png').split(',')[1];
+}
+function dona(t,sub,partes,centro){          // partes: [{nom,v,col}]
+  var L=lienzo(570,300),g=L.g,tot=partes.reduce(function(s,p){return s+Math.max(0,p.v);},0);
+  if(tot<=0)return vacioGraf(L,t);
+  titulo(L,t,sub);var cx=150,cy=172,R=100,r=62,ang=-Math.PI/2;
+  partes.forEach(function(p){if(p.v<=0)return;var a=2*Math.PI*p.v/tot;g.beginPath();g.arc(cx,cy,R,ang,ang+a);g.arc(cx,cy,r,ang+a,ang,true);g.closePath();g.fillStyle=p.col;g.fill();ang+=a;});
+  g.fillStyle=PAL.marino;g.font='bold 15px '+FUENTE;g.textAlign='center';g.textBaseline='alphabetic';g.fillText(abrev(centro),cx,cy+2);g.fillStyle=PAL.gris;g.font='10.5px '+FUENTE;g.fillText('saldo total',cx,cy+18);
+  partes.forEach(function(p,i){var y=100+i*48;g.fillStyle=p.col;g.fillRect(300,y-10,12,12);g.fillStyle=PAL.texto;g.font='bold 12px '+FUENTE;g.textAlign='left';g.fillText(p.nom,320,y);g.fillStyle=PAL.gris;g.font='11px '+FUENTE;g.fillText(f2(p.v)+'  ·  '+(tot?Math.round(100*Math.max(0,p.v)/tot):0)+'%',320,y+16);});
+  return L.c.toDataURL('image/png').split(',')[1];
+}
+// Arma todo lo que lleva el libro ejecutivo a partir de las filas del corte (sin filtros de pantalla)
+function cargaExcel(){
+  var corte=corteEl.value||D.hoy,todas=calc(true),ents=porEntidad(todas),pcMay=PC.charAt(0).toUpperCase()+PC.slice(1);
+  var k={r:[0,0],a:[0,0],s:[0,0],v:[0,0],m:[0,0],t:0},sem=[],i;
+  for(i=0;i<8;i++)sem.push({ini:sumaDias(corte,i*7),fin:sumaDias(corte,i*7+6),n:0,monto:0});
+  var docs=[];
+  todas.sort(function(a,b){return a.d.entNom<b.d.entNom?-1:a.d.entNom>b.d.entNom?1:(a.venc<b.venc?-1:1);});
+  todas.forEach(function(f){
+    var d=f.d,est;
+    if(f.dv===null){k.m[0]++;k.m[1]+=f.saldo;est='A favor';}
+    else{k.t+=f.saldo;
+      if(f.dv>0){k.r[0]++;k.r[1]+=f.saldo;est='Vencido';}else if(f.dv>=-7){k.a[0]++;k.a[1]+=f.saldo;est='Vence en 7 días';}else{k.v[0]++;k.v[1]+=f.saldo;est='Vigente';}
+      for(var j=0;j<8;j++){if(f.venc>=sem[j].ini&&f.venc<=sem[j].fin){sem[j].n++;sem[j].monto+=f.saldo;break;}}
+      if(f.venc>=sumaDias(corte,7)&&f.venc<=sumaDias(corte,13)){k.s[0]++;k.s[1]+=f.saldo;}
+    }
+    docs.push([d.entNom||('Entidad '+d.ent),d.tipo,d.folio,d.fecha,f.dv===null?'':f.venc,f.dv===null?null:f.dv,d.s*d.total,d.s*f.pagado,f.saldo,est,d.titulo]);
+  });
+  var agg=[0,0,0,0,0,0];ents.forEach(function(e){e.b.forEach(function(v,j){agg[j]+=v;});});
+  var top=ents.slice(0,10).map(function(e){var ven=e.b[1]+e.b[2]+e.b[3]+e.b[4];return {nom:e.nom,a:Math.max(0,ven),b:Math.max(0,e.tot-ven)};});
+  var gr={
+    aging:barrasV('Antigüedad de saldos','Saldo por días de vencido al '+fmtF(corte),BUCKETS.slice(0,5),agg.slice(0,5),[PAL.verde,'#EAB308','#F97316','#EA580C',PAL.rojo]),
+    top:barrasH('Principales '+PC+'s por saldo','Los 10 con mayor saldo; en rojo lo ya vencido',top,'Vencido','Por vencer / vigente'),
+    sem:barrasV('Vencimientos próximas 8 semanas','Saldo que vence cada semana a partir del '+fmtF(corte),sem.map(function(s){return s.ini.slice(8)+'/'+s.ini.slice(5,7);}),sem.map(function(s){return s.monto;}),[PAL.azul],'Ya vencido (aparte): '+abrev(k.r[1])),
+    estado:dona('Situación del saldo','Facturas pendientes de '+(LADO==='C'?'cobro':'pago'),[{nom:'Vencido',v:k.r[1],col:PAL.rojo},{nom:'Vence en 7 días',v:k.a[1],col:PAL.ambar},{nom:'Vigente',v:k.v[1],col:PAL.verde}],k.t)
+  };
+  return {tipo:'general',empresa:D.empresa||'',titulo:TITULO,ent:PC,entPl:PC+'s',lado:LADO,corte:corte,generado:new Date().toLocaleString('es-MX'),
+    kpi:{vencido:k.r,siete:k.a,semana:k.s,vigente:k.v,favor:k.m,total:k.t},buckets:BUCKETS,agg:agg,
+    ents:ents.map(function(e){return [e.nom,e.b[0],e.b[1],e.b[2],e.b[3],e.b[4],e.b[5],e.tot,e.n];}),docs:docs,
+    semanas:[{ini:corte,fin:corte,n:k.r[0],monto:k.r[1],nom:'Vencido'}].concat(sem),graficas:gr,meses:D.meses};
+}
+// Estado de cuenta de un solo cliente/proveedor (para mandarlo): tabla de movimientos con saldo corriente
+function cargaEdo(){
+  if(!entSel||!exp.edo)return null;var e=exp.edo;
+  return {tipo:'edo',empresa:D.empresa||'',titulo:TITULO,ent:PC,lado:LADO,nombreEnt:e.nombre,desde:pdesde,hasta:phasta,generado:new Date().toLocaleString('es-MX'),ini:e.ini,movs:e.movs,cargos:e.cargos,abonos:e.abonos,final:e.fin};
+}
 // ---- acciones (un solo manejador de clics) ----
 var acc={
   tab:function(v){tab=v;[].forEach.call(document.querySelectorAll('#tabs button'),function(b){b.className=b.getAttribute('data-v')===v?'on':'';});cambio();},
@@ -365,23 +739,11 @@ var acc={
     enviar({accion:'csv',nombre:exp.nombre,contenido:csv});
   },
   xlsx:function(){
-    if(!exp.filas.length)return;
-    if(typeof XLSX==='undefined'){acc.csv();return;}
-    var ws=XLSX.utils.aoa_to_sheet([[exp.titulo||TITULO],[(D.empresa||'')+' — generado '+new Date().toLocaleString('es-MX')],[]].concat(exp.filas.map(function(f){return f.map(function(c){return /^-?\d+\.\d\d$/.test(String(c))?+c:c;});})));
-    var ncol=exp.filas[0].length,borde={style:'thin',color:{rgb:'FFE2E8F0'}},bo={top:borde,bottom:borde,left:borde,right:borde};
-    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:ncol-1}},{s:{r:1,c:0},e:{r:1,c:ncol-1}}];
-    ws['A1'].s={font:{bold:true,sz:16,color:{rgb:'FF0A3D6E'}}};ws['A2'].s={font:{italic:true,sz:10,color:{rgb:'FF64748B'}}};
-    var ult=exp.filas.length+2;
-    for(var r=3;r<=ult;r++)for(var c=0;c<ncol;c++){
-      var a=XLSX.utils.encode_cell({r:r,c:c});if(!ws[a])ws[a]={t:'s',v:''};
-      if(r===3)ws[a].s={font:{bold:true,color:{rgb:'FFFFFFFF'}},fill:{fgColor:{rgb:'FF0A3D6E'}},alignment:{horizontal:'center'},border:bo};
-      else{ws[a].s={border:bo,alignment:typeof ws[a].v==='number'?{horizontal:'right'}:{}};if(typeof ws[a].v==='number'&&String(exp.filas[r-3][c]).indexOf('.')>=0)ws[a].z='#,##0.00';}
-    }
-    var an=[];for(var c2=0;c2<ncol;c2++){var mx=String(exp.filas[0][c2]).length;exp.filas.forEach(function(f){mx=Math.max(mx,String(f[c2]==null?'':f[c2]).length);});an.push({wch:Math.min(46,Math.max(10,mx+2))});}
-    ws['!cols']=an;ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:ult,c:ncol-1}});
-    var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Hoja1');
-    enviar({accion:'xlsx',nombre:exp.nombre,b64:XLSX.write(wb,{bookType:'xlsx',type:'base64'})});
-  }
+    if(!D.docs.length)return;
+    var btn=document.querySelector('[data-a=xlsx]');btn.textContent='Preparando Excel…';btn.disabled=true;
+    setTimeout(function(){try{enviar(Object.assign({accion:'xlsx',nombre:(TITULO+' '+(corteEl.value||D.hoy)).replace(/ /g,'_')},{carga:cargaExcel()}));}finally{btn.textContent='Exportar a Excel';btn.disabled=false;}},30);
+  },
+  xlsxedo:function(){var c=cargaEdo();if(!c)return;enviar({accion:'xlsx',nombre:'estado_de_cuenta_'+String(c.nombreEnt).replace(/[^A-Za-z0-9]+/g,'_')+'_'+c.hasta,carga:c});}
 };
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-a]');
@@ -414,15 +776,26 @@ Func<Dictionary<string, object>, string> alMensaje = r =>
         try { ctx.erp.AbrirDocumento((int)L(r["id"]), I(r["modulo"])); } catch (Exception ex) { ctx.Msg("No se pudo abrir el documento: " + ex.Message, "Estado de cuenta de clientes (cuentas por cobrar)"); }
         return null;
     }
-    if (accion == "csv" || accion == "xlsx")
+    if (accion == "csv")
     {
         string nombre = new string(S(r["nombre"]).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
-        bool xl = accion == "xlsx";
-        using (var dlg = new SaveFileDialog { Filter = xl ? "Libro de Excel (*.xlsx)|*.xlsx" : "CSV para Excel (*.csv)|*.csv", FileName = nombre + (xl ? ".xlsx" : ".csv") })
+        using (var dlg = new SaveFileDialog { Filter = "CSV para Excel (*.csv)|*.csv", FileName = nombre + ".csv" })
+            if (dlg.ShowDialog() == DialogResult.OK) { File.WriteAllText(dlg.FileName, S(r["contenido"]), new UTF8Encoding(true)); ctx.Msg("Archivo guardado:\n" + dlg.FileName, "Estado de cuenta de clientes (cuentas por cobrar)"); }
+        return null;
+    }
+    if (accion == "xlsx")
+    {
+        string nombre = new string(S(r["nombre"]).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        using (var dlg = new SaveFileDialog { Filter = "Libro de Excel (*.xlsx)|*.xlsx", FileName = nombre + ".xlsx" })
             if (dlg.ShowDialog() == DialogResult.OK)
             {
-                if (xl) File.WriteAllBytes(dlg.FileName, Convert.FromBase64String(S(r["b64"]))); else File.WriteAllText(dlg.FileName, S(r["contenido"]), new UTF8Encoding(true));
-                ctx.Msg("Archivo guardado:\n" + dlg.FileName, "Estado de cuenta de clientes (cuentas por cobrar)");
+                try
+                {
+                    ConstruirExcel((Dictionary<string, object>)r["carga"], dlg.FileName);
+                    if (MessageBox.Show("Se guardó el libro de Excel:\n" + dlg.FileName + "\n\n¿Abrirlo ahora?", "Estado de cuenta de clientes (cuentas por cobrar)", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = dlg.FileName, UseShellExecute = true });
+                }
+                catch (Exception ex) { ctx.Msg("No se pudo generar el Excel:\n" + ex.Message, "Estado de cuenta de clientes (cuentas por cobrar)"); }
             }
         return null;
     }

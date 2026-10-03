@@ -1,3 +1,4 @@
+#r "C:\BrosLMV\lib\ClosedXML.dll"
 // lang: csharp
 // AppKey recomendado: {{APPKEY}}
 // Plantilla: {{NOMBRE}}
@@ -23,6 +24,7 @@ using System.Linq;
 using System.Text;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using ClosedXML.Excel;
 
 var ci = CultureInfo.InvariantCulture;
 var ser = new JavaScriptSerializer { MaxJsonLength = 128 * 1024 * 1024 };
@@ -41,6 +43,12 @@ if (!string.IsNullOrEmpty(modoPrueba))
 {
     try { var cfg = ser.Deserialize<Dictionary<string, object>>(modoPrueba); if (cfg.ContainsKey("meses")) meses = Math.Max(1, I(cfg["meses"])); } catch { }
 }
+
+{{EXCEL}}
+// Pruebas automáticas del libro de Excel: BROSLMV_SALDOS_XLSX_TEST = archivo JSON con lo que mandaría la ventana; BROSLMV_SALDOS_XLSX_OUT = dónde escribir el .xlsx
+string xlsxPrueba = Environment.GetEnvironmentVariable("BROSLMV_SALDOS_XLSX_TEST");
+if (!string.IsNullOrEmpty(xlsxPrueba))
+    return ConstruirExcel(ser.Deserialize<Dictionary<string, object>>(File.ReadAllText(xlsxPrueba, Encoding.UTF8)), Environment.GetEnvironmentVariable("BROSLMV_SALDOS_XLSX_OUT"));
 
 // ---------- 1) Qué módulos son de {{ENT_PL}} ----------
 // Se pivotean los parámetros por ModuleIDBase y se unen con todos los módulos (clones incluidos). Solo DocRecipient = {{REC}}: el otro lado no se carga nunca.
@@ -183,7 +191,6 @@ tbody tr:nth-child(even){background:var(--zebra)}tbody tr.clic{cursor:pointer}tb
 <div class='tabs' id='tabs'><button data-a='tab' data-v='aging' class='on'>Antigüedad por {{ENT}}</button><button data-a='tab' data-v='docs'>Documentos con saldo</button><button data-a='tab' data-v='cal'>Calendario</button><button data-a='tab' data-v='edo'>Estado de cuenta</button></div>
 <div class='cuerpo' id='cuerpo'></div>
 <div class='mf' id='mf'><div class='mc'><div class='mh'><div><div class='mt' id='mt'></div><div class='ms' id='ms'></div></div><div style='display:flex;gap:6px'><button id='mv' data-a='volver' style='display:none'>← Volver</button><button data-a='cerrar'>Cerrar ✕</button></div></div><div class='mb' id='mb'></div></div></div>
-<script src='https://broslmv.local/dashboard/xlsx.bundle.js'></script>
 <script>
 var D=" + json + @";
 var PC='{{ENT}}',TITULO='{{TITULO}}',LADO='{{LADO}}';
@@ -273,12 +280,13 @@ function vistaDocs(filas){
   filas.sort(function(a,b){return a.d.entNom<b.d.entNom?-1:a.d.entNom>b.d.entNom?1:(a.venc<b.venc?-1:1);});
   if(!filas.length)return '<div class=vacio>No hay documentos con saldo a esta fecha con esos filtros.</div>';
   var h='<div class=tw><table><thead><tr><th></th><th>'+exp.filas[0][0]+'</th><th class=l>Tipo</th><th>Folio</th><th>Fecha</th><th>Vence</th><th>Días vencido</th><th>Total</th><th>Saldo</th><th class=l>Título</th></tr></thead><tbody>',t=0;
-  filas.forEach(function(f){
+  var TOPE=1000,total=filas.length;
+  filas.forEach(function(f,idx){
     var d=f.d,pil=f.dv===null?'<span class=\'pill m\'>A favor</span>':f.dv<=0?'<span class=\'pill '+(f.dv>=-7?'a':'')+'\'>'+(f.dv>=-7?'Por vencer':'Vigente')+'</span>':'<span class=\'pill '+(f.dv>60?'r':'a')+'\'>'+f.dv+' d</span>';t+=f.saldo;
-    h+='<tr class=clic data-a=ver data-v='+d.id+' title=\'Clic: ver el documento · Doble clic: abrirlo en Comercial\'><td><button class=btnv data-a=ver data-v='+d.id+'>🔍 Ver</button></td><td class=l>'+esc(d.entNom)+'</td><td class=l>'+esc(d.tipo)+'</td><td>'+esc(d.folio)+'</td><td>'+d.fecha+'</td><td>'+(f.dv===null?'':f.venc)+'</td><td>'+pil+'</td><td>'+f2(d.s*d.total)+'</td><td><b>'+f2(f.saldo)+'</b></td><td class=l>'+esc(d.titulo)+'</td></tr>';
+    if(idx<TOPE)h+='<tr class=clic data-a=ver data-v='+d.id+' title=\'Clic: ver el documento\'><td><button class=btnv data-a=ver data-v='+d.id+'>🔍 Ver</button></td><td class=l>'+esc(d.entNom)+'</td><td class=l>'+esc(d.tipo)+'</td><td>'+esc(d.folio)+'</td><td>'+d.fecha+'</td><td>'+(f.dv===null?'':f.venc)+'</td><td>'+pil+'</td><td>'+f2(d.s*d.total)+'</td><td><b>'+f2(f.saldo)+'</b></td><td class=l>'+esc(d.titulo)+'</td></tr>';
     exp.filas.push([d.entNom,d.tipo,d.folio,d.fecha,f.dv===null?'':f.venc,f.dv===null?'':Math.max(0,f.dv),(d.s*d.total).toFixed(2),f.saldo.toFixed(2),d.titulo]);
   });
-  return h+'</tbody><tfoot><tr><td colspan=8>Total</td><td>'+f2(t)+'</td><td></td></tr></tfoot></table></div><div class=nota>Clic en «Ver» o en una fila: partidas, agenda de pago y pagos aplicados; ahí mismo el botón «Abrir en Comercial» abre el documento y esta ventana sigue abierta.</div>';
+  return h+'</tbody><tfoot><tr><td colspan=8>Total</td><td>'+f2(t)+'</td><td></td></tr></tfoot></table></div>'+(total>TOPE?'<div class=nota style=\'color:var(--ambar)\'>Se muestran los primeros '+TOPE.toLocaleString('es-MX')+' de '+total.toLocaleString('es-MX')+' documentos; filtra o exporta a Excel para verlos todos.</div>':'')+'<div class=nota>Clic en «Ver» o en una fila: partidas, agenda de pago y pagos aplicados; ahí mismo el botón «Abrir en Comercial» abre el documento y esta ventana sigue abierta.</div>';
 }
 // Calendario de vencimientos: solo documentos que suman (las notas de crédito no vencen)
 function vistaCal(todas){
@@ -304,7 +312,7 @@ function vistaEdo(){
   if(!phasta||phasta>corte)phasta=corte;if(!pdesde)pdesde=sumaDias(phasta,-90);
   var h='<div class=ctl style=\'padding:0 0 10px\'><label>'+Pc+' <select id=selEnt onchange=\'entSel=+this.value;cambio()\'><option value=0>— elige —</option>';
   ids.forEach(function(i){h+='<option value='+i+'>'+esc(lista[i])+'</option>';});
-  h+='</select></label><label>Del <input type=date id=pd value='+pdesde+' onchange=\'pdesde=this.value;cambio()\'></label><label>al <input type=date id=ph value='+phasta+' onchange=\'phasta=this.value;cambio()\'></label></div>';
+  h+='</select></label><label>Del <input type=date id=pd value='+pdesde+' onchange=\'pdesde=this.value;cambio()\'></label><label>al <input type=date id=ph value='+phasta+' onchange=\'phasta=this.value;cambio()\'></label> <button class=p data-a=xlsxedo>Excel de este estado de cuenta</button></div>';
   if(!entSel){exp={nombre:'estado_de_cuenta',titulo:'',filas:[]};return h+'<div class=vacio>Elige un '+PC+' (o haz clic en una fila de la antigüedad) para ver su estado de cuenta.</div>';}
   var ev=[];
   D.docs.forEach(function(d){
@@ -315,13 +323,15 @@ function vistaEdo(){
   ev.sort(function(a,b){return a.f<b.f?-1:a.f>b.f?1:a.o-b.o;});
   var ini=0;ev.forEach(function(e){if(e.f<pdesde)ini+=e.c-e.a;});
   exp={nombre:'estado_de_cuenta_'+(lista[entSel]||'').replace(/[^A-Za-z0-9]+/g,'_')+'_'+phasta,titulo:'Estado de cuenta — '+lista[entSel]+' ('+fmtF(pdesde)+' al '+fmtF(phasta)+')',filas:[['Fecha','Movimiento','Referencia','Cargos','Abonos','Saldo']]};
-  var sal=ini,tc=0,ta=0,rows='';
+  var sal=ini,tc=0,ta=0,rows='',movs=[];
   exp.filas.push([pdesde,'Saldo inicial','','','',ini.toFixed(2)]);
   ev.forEach(function(e){
     if(e.f<pdesde||e.f>phasta)return;sal+=e.c-e.a;tc+=e.c;ta+=e.a;
     rows+='<tr class=clic data-a=ver data-v='+e.id+'><td>'+e.f+'</td><td class=l>'+esc(e.t)+'</td><td class=l>'+esc(e.r)+(e.x?' <span class=nota>'+esc(e.x)+'</span>':'')+'</td><td>'+(e.c?f2(e.c):'')+'</td><td>'+(e.a?f2(e.a):'')+'</td><td>'+f2(sal)+'</td></tr>';
     exp.filas.push([e.f,e.t,e.r,e.c?e.c.toFixed(2):'',e.a?e.a.toFixed(2):'',sal.toFixed(2)]);
+    movs.push([e.f,e.t,e.r+(e.x?' · '+e.x:''),e.c,e.a,sal]);
   });
+  exp.edo={nombre:lista[entSel],ini:ini,movs:movs,cargos:tc,abonos:ta,fin:sal};
   exp.filas.push(['','Totales del periodo','',tc.toFixed(2),ta.toFixed(2),sal.toFixed(2)]);
   return h+'<div class=tw><table><thead><tr><th>Fecha</th><th class=l>Movimiento</th><th class=l>Referencia</th><th>Cargos</th><th>Abonos</th><th>Saldo</th></tr></thead><tbody><tr><td>'+pdesde+'</td><td class=l><b>Saldo inicial</b></td><td></td><td></td><td></td><td><b>'+f2(ini)+'</b></td></tr>'+rows+'</tbody><tfoot><tr><td colspan=3>Totales del periodo</td><td>'+f2(tc)+'</td><td>'+f2(ta)+'</td><td>'+f2(sal)+'</td></tr></tfoot></table></div><div class=nota>Las notas de crédito aplicadas a una factura no se repiten como abono: la nota ya restó como documento. Clic en un movimiento para ver su documento.</div>';
 }
@@ -346,6 +356,86 @@ function verDia(iso){
   var h='<div class=dc style=\'grid-template-columns:1fr\'><div><b>Total que vence este día</b><span>'+f2(tot)+'</span></div></div>'+its.map(function(f){var c=f.dv>0?'r':f.dv>=-7?'a':'v';return '<div class=\'comp '+c+'\'><div><b>'+esc(f.d.folio||'(sin folio)')+'</b> — '+esc(f.d.entNom)+'<br><span class=nota>Saldo '+f2(f.saldo)+'</span></div><button class=btnv data-a=verdia data-v='+f.d.id+' data-i='+iso+'>Ver documento →</button></div>';}).join('');
   modal('Vencimientos del '+fmtF(iso),its.length+' documento(s)',h,null);
 }
+// ---- gráficas para el Excel ejecutivo: se dibujan en un canvas (2x para que se vean nítidas) y viajan como PNG; los números van además en tablas del libro ----
+var PAL={azul:'#2D6FE0',marino:'#15324F',rojo:'#DC2626',ambar:'#D97706',verde:'#16A34A',morado:'#7E22CE',gris:'#64748B',linea:'#E2E8F0',texto:'#16263A'};
+var FUENTE='Segoe UI, Calibri, Arial';
+function abrev(n){var a=Math.abs(n),s=n<0?'-':'';return a>=1e6?s+'$'+(a/1e6).toFixed(2)+' M':a>=1e3?s+'$'+(a/1e3).toFixed(1)+' k':s+'$'+a.toFixed(0);}
+function lienzo(w,h){var c=document.createElement('canvas');c.width=w*2;c.height=h*2;var g=c.getContext('2d');g.scale(2,2);g.fillStyle='#FFFFFF';g.fillRect(0,0,w,h);return {c:c,g:g,w:w,h:h};}
+function recorta(g,t,max){t=String(t||'');if(g.measureText(t).width<=max)return t;while(t.length>1&&g.measureText(t+'…').width>max)t=t.slice(0,-1);return t+'…';}
+function titulo(L,t,sub){L.g.fillStyle=PAL.marino;L.g.font='bold 15px '+FUENTE;L.g.textAlign='left';L.g.textBaseline='alphabetic';L.g.fillText(t,16,26);if(sub){L.g.fillStyle=PAL.gris;L.g.font='11px '+FUENTE;L.g.fillText(sub,16,43);}}
+function vacioGraf(L,t){titulo(L,t);L.g.fillStyle=PAL.gris;L.g.font='13px '+FUENTE;L.g.textAlign='center';L.g.fillText('Sin datos para graficar',L.w/2,L.h/2);return L.c.toDataURL('image/png').split(',')[1];}
+function barrasV(t,sub,etiq,vals,cols,nota){
+  var L=lienzo(570,300),g=L.g,mx=Math.max.apply(null,vals.concat([1])),x0=26,x1=L.w-20,y0=64,y1=L.h-46,n=vals.length;
+  if(!vals.some(function(v){return v>0;}))return vacioGraf(L,t);
+  titulo(L,t,sub);if(nota){g.fillStyle=PAL.rojo;g.font='bold 11px '+FUENTE;g.textAlign='right';g.fillText(nota,L.w-16,26);}g.strokeStyle=PAL.linea;g.lineWidth=1;
+  for(var i=0;i<=3;i++){var y=y1-(y1-y0)*i/3;g.beginPath();g.moveTo(x0,y);g.lineTo(x1,y);g.stroke();}
+  var ancho=(x1-x0)/n,bw=Math.min(62,ancho*0.62);
+  vals.forEach(function(v,i){
+    var h=(y1-y0)*v/mx,x=x0+ancho*i+(ancho-bw)/2,y=y1-h;
+    g.fillStyle=cols[i%cols.length];if(v>0){g.beginPath();g.moveTo(x,y1);g.lineTo(x,y+4);g.quadraticCurveTo(x,y,x+4,y);g.lineTo(x+bw-4,y);g.quadraticCurveTo(x+bw,y,x+bw,y+4);g.lineTo(x+bw,y1);g.closePath();g.fill();}
+    g.fillStyle=PAL.texto;g.font='bold 11px '+FUENTE;g.textAlign='center';g.fillText(v?abrev(v):'',x+bw/2,y-6);
+    g.fillStyle=PAL.gris;g.font='11px '+FUENTE;g.fillText(recorta(g,etiq[i],ancho-4),x+bw/2,y1+17);
+  });
+  return L.c.toDataURL('image/png').split(',')[1];
+}
+function barrasH(t,sub,filas,nomA,nomB){      // filas: [{nom, a (parte roja), b (parte azul)}] ya ordenadas de mayor a menor
+  var L=lienzo(570,300),g=L.g;
+  if(!filas.length)return vacioGraf(L,t);
+  titulo(L,t,sub);var mx=Math.max.apply(null,filas.map(function(f){return f.a+f.b;}).concat([1])),izq=170,der=70,y0=56,alto=Math.min(22,(L.h-y0-34)/filas.length),sep=alto*0.28;
+  filas.forEach(function(f,i){
+    var y=y0+i*alto*1.0,w1=(L.w-izq-der)*f.a/mx,w2=(L.w-izq-der)*f.b/mx;
+    g.fillStyle=PAL.texto;g.font='11px '+FUENTE;g.textAlign='right';g.textBaseline='middle';g.fillText(recorta(g,f.nom,izq-14),izq-8,y+(alto-sep)/2);
+    g.fillStyle=PAL.rojo;g.fillRect(izq,y,w1,alto-sep);g.fillStyle=PAL.azul;g.fillRect(izq+w1,y,w2,alto-sep);
+    g.fillStyle=PAL.texto;g.font='bold 10.5px '+FUENTE;g.textAlign='left';g.fillText(abrev(f.a+f.b),izq+w1+w2+6,y+(alto-sep)/2);
+  });
+  g.textBaseline='alphabetic';var yl=L.h-14;g.fillStyle=PAL.rojo;g.fillRect(16,yl-8,10,10);g.fillStyle=PAL.gris;g.font='11px '+FUENTE;g.textAlign='left';g.fillText(nomA,31,yl+1);
+  g.fillStyle=PAL.azul;g.fillRect(120,yl-8,10,10);g.fillStyle=PAL.gris;g.fillText(nomB,135,yl+1);
+  return L.c.toDataURL('image/png').split(',')[1];
+}
+function dona(t,sub,partes,centro){          // partes: [{nom,v,col}]
+  var L=lienzo(570,300),g=L.g,tot=partes.reduce(function(s,p){return s+Math.max(0,p.v);},0);
+  if(tot<=0)return vacioGraf(L,t);
+  titulo(L,t,sub);var cx=150,cy=172,R=100,r=62,ang=-Math.PI/2;
+  partes.forEach(function(p){if(p.v<=0)return;var a=2*Math.PI*p.v/tot;g.beginPath();g.arc(cx,cy,R,ang,ang+a);g.arc(cx,cy,r,ang+a,ang,true);g.closePath();g.fillStyle=p.col;g.fill();ang+=a;});
+  g.fillStyle=PAL.marino;g.font='bold 15px '+FUENTE;g.textAlign='center';g.textBaseline='alphabetic';g.fillText(abrev(centro),cx,cy+2);g.fillStyle=PAL.gris;g.font='10.5px '+FUENTE;g.fillText('saldo total',cx,cy+18);
+  partes.forEach(function(p,i){var y=100+i*48;g.fillStyle=p.col;g.fillRect(300,y-10,12,12);g.fillStyle=PAL.texto;g.font='bold 12px '+FUENTE;g.textAlign='left';g.fillText(p.nom,320,y);g.fillStyle=PAL.gris;g.font='11px '+FUENTE;g.fillText(f2(p.v)+'  ·  '+(tot?Math.round(100*Math.max(0,p.v)/tot):0)+'%',320,y+16);});
+  return L.c.toDataURL('image/png').split(',')[1];
+}
+// Arma todo lo que lleva el libro ejecutivo a partir de las filas del corte (sin filtros de pantalla)
+function cargaExcel(){
+  var corte=corteEl.value||D.hoy,todas=calc(true),ents=porEntidad(todas),pcMay=PC.charAt(0).toUpperCase()+PC.slice(1);
+  var k={r:[0,0],a:[0,0],s:[0,0],v:[0,0],m:[0,0],t:0},sem=[],i;
+  for(i=0;i<8;i++)sem.push({ini:sumaDias(corte,i*7),fin:sumaDias(corte,i*7+6),n:0,monto:0});
+  var docs=[];
+  todas.sort(function(a,b){return a.d.entNom<b.d.entNom?-1:a.d.entNom>b.d.entNom?1:(a.venc<b.venc?-1:1);});
+  todas.forEach(function(f){
+    var d=f.d,est;
+    if(f.dv===null){k.m[0]++;k.m[1]+=f.saldo;est='A favor';}
+    else{k.t+=f.saldo;
+      if(f.dv>0){k.r[0]++;k.r[1]+=f.saldo;est='Vencido';}else if(f.dv>=-7){k.a[0]++;k.a[1]+=f.saldo;est='Vence en 7 días';}else{k.v[0]++;k.v[1]+=f.saldo;est='Vigente';}
+      for(var j=0;j<8;j++){if(f.venc>=sem[j].ini&&f.venc<=sem[j].fin){sem[j].n++;sem[j].monto+=f.saldo;break;}}
+      if(f.venc>=sumaDias(corte,7)&&f.venc<=sumaDias(corte,13)){k.s[0]++;k.s[1]+=f.saldo;}
+    }
+    docs.push([d.entNom||('Entidad '+d.ent),d.tipo,d.folio,d.fecha,f.dv===null?'':f.venc,f.dv===null?null:f.dv,d.s*d.total,d.s*f.pagado,f.saldo,est,d.titulo]);
+  });
+  var agg=[0,0,0,0,0,0];ents.forEach(function(e){e.b.forEach(function(v,j){agg[j]+=v;});});
+  var top=ents.slice(0,10).map(function(e){var ven=e.b[1]+e.b[2]+e.b[3]+e.b[4];return {nom:e.nom,a:Math.max(0,ven),b:Math.max(0,e.tot-ven)};});
+  var gr={
+    aging:barrasV('Antigüedad de saldos','Saldo por días de vencido al '+fmtF(corte),BUCKETS.slice(0,5),agg.slice(0,5),[PAL.verde,'#EAB308','#F97316','#EA580C',PAL.rojo]),
+    top:barrasH('Principales '+PC+'s por saldo','Los 10 con mayor saldo; en rojo lo ya vencido',top,'Vencido','Por vencer / vigente'),
+    sem:barrasV('Vencimientos próximas 8 semanas','Saldo que vence cada semana a partir del '+fmtF(corte),sem.map(function(s){return s.ini.slice(8)+'/'+s.ini.slice(5,7);}),sem.map(function(s){return s.monto;}),[PAL.azul],'Ya vencido (aparte): '+abrev(k.r[1])),
+    estado:dona('Situación del saldo','Facturas pendientes de '+(LADO==='C'?'cobro':'pago'),[{nom:'Vencido',v:k.r[1],col:PAL.rojo},{nom:'Vence en 7 días',v:k.a[1],col:PAL.ambar},{nom:'Vigente',v:k.v[1],col:PAL.verde}],k.t)
+  };
+  return {tipo:'general',empresa:D.empresa||'',titulo:TITULO,ent:PC,entPl:PC+'s',lado:LADO,corte:corte,generado:new Date().toLocaleString('es-MX'),
+    kpi:{vencido:k.r,siete:k.a,semana:k.s,vigente:k.v,favor:k.m,total:k.t},buckets:BUCKETS,agg:agg,
+    ents:ents.map(function(e){return [e.nom,e.b[0],e.b[1],e.b[2],e.b[3],e.b[4],e.b[5],e.tot,e.n];}),docs:docs,
+    semanas:[{ini:corte,fin:corte,n:k.r[0],monto:k.r[1],nom:'Vencido'}].concat(sem),graficas:gr,meses:D.meses};
+}
+// Estado de cuenta de un solo cliente/proveedor (para mandarlo): tabla de movimientos con saldo corriente
+function cargaEdo(){
+  if(!entSel||!exp.edo)return null;var e=exp.edo;
+  return {tipo:'edo',empresa:D.empresa||'',titulo:TITULO,ent:PC,lado:LADO,nombreEnt:e.nombre,desde:pdesde,hasta:phasta,generado:new Date().toLocaleString('es-MX'),ini:e.ini,movs:e.movs,cargos:e.cargos,abonos:e.abonos,final:e.fin};
+}
 // ---- acciones (un solo manejador de clics) ----
 var acc={
   tab:function(v){tab=v;[].forEach.call(document.querySelectorAll('#tabs button'),function(b){b.className=b.getAttribute('data-v')===v?'on':'';});cambio();},
@@ -365,23 +455,11 @@ var acc={
     enviar({accion:'csv',nombre:exp.nombre,contenido:csv});
   },
   xlsx:function(){
-    if(!exp.filas.length)return;
-    if(typeof XLSX==='undefined'){acc.csv();return;}
-    var ws=XLSX.utils.aoa_to_sheet([[exp.titulo||TITULO],[(D.empresa||'')+' — generado '+new Date().toLocaleString('es-MX')],[]].concat(exp.filas.map(function(f){return f.map(function(c){return /^-?\d+\.\d\d$/.test(String(c))?+c:c;});})));
-    var ncol=exp.filas[0].length,borde={style:'thin',color:{rgb:'FFE2E8F0'}},bo={top:borde,bottom:borde,left:borde,right:borde};
-    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:ncol-1}},{s:{r:1,c:0},e:{r:1,c:ncol-1}}];
-    ws['A1'].s={font:{bold:true,sz:16,color:{rgb:'FF0A3D6E'}}};ws['A2'].s={font:{italic:true,sz:10,color:{rgb:'FF64748B'}}};
-    var ult=exp.filas.length+2;
-    for(var r=3;r<=ult;r++)for(var c=0;c<ncol;c++){
-      var a=XLSX.utils.encode_cell({r:r,c:c});if(!ws[a])ws[a]={t:'s',v:''};
-      if(r===3)ws[a].s={font:{bold:true,color:{rgb:'FFFFFFFF'}},fill:{fgColor:{rgb:'FF0A3D6E'}},alignment:{horizontal:'center'},border:bo};
-      else{ws[a].s={border:bo,alignment:typeof ws[a].v==='number'?{horizontal:'right'}:{}};if(typeof ws[a].v==='number'&&String(exp.filas[r-3][c]).indexOf('.')>=0)ws[a].z='#,##0.00';}
-    }
-    var an=[];for(var c2=0;c2<ncol;c2++){var mx=String(exp.filas[0][c2]).length;exp.filas.forEach(function(f){mx=Math.max(mx,String(f[c2]==null?'':f[c2]).length);});an.push({wch:Math.min(46,Math.max(10,mx+2))});}
-    ws['!cols']=an;ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:ult,c:ncol-1}});
-    var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Hoja1');
-    enviar({accion:'xlsx',nombre:exp.nombre,b64:XLSX.write(wb,{bookType:'xlsx',type:'base64'})});
-  }
+    if(!D.docs.length)return;
+    var btn=document.querySelector('[data-a=xlsx]');btn.textContent='Preparando Excel…';btn.disabled=true;
+    setTimeout(function(){try{enviar(Object.assign({accion:'xlsx',nombre:(TITULO+' '+(corteEl.value||D.hoy)).replace(/ /g,'_')},{carga:cargaExcel()}));}finally{btn.textContent='Exportar a Excel';btn.disabled=false;}},30);
+  },
+  xlsxedo:function(){var c=cargaEdo();if(!c)return;enviar({accion:'xlsx',nombre:'estado_de_cuenta_'+String(c.nombreEnt).replace(/[^A-Za-z0-9]+/g,'_')+'_'+c.hasta,carga:c});}
 };
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-a]');
@@ -414,15 +492,26 @@ Func<Dictionary<string, object>, string> alMensaje = r =>
         try { ctx.erp.AbrirDocumento((int)L(r["id"]), I(r["modulo"])); } catch (Exception ex) { ctx.Msg("No se pudo abrir el documento: " + ex.Message, "{{NOMBRE}}"); }
         return null;
     }
-    if (accion == "csv" || accion == "xlsx")
+    if (accion == "csv")
     {
         string nombre = new string(S(r["nombre"]).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
-        bool xl = accion == "xlsx";
-        using (var dlg = new SaveFileDialog { Filter = xl ? "Libro de Excel (*.xlsx)|*.xlsx" : "CSV para Excel (*.csv)|*.csv", FileName = nombre + (xl ? ".xlsx" : ".csv") })
+        using (var dlg = new SaveFileDialog { Filter = "CSV para Excel (*.csv)|*.csv", FileName = nombre + ".csv" })
+            if (dlg.ShowDialog() == DialogResult.OK) { File.WriteAllText(dlg.FileName, S(r["contenido"]), new UTF8Encoding(true)); ctx.Msg("Archivo guardado:\n" + dlg.FileName, "{{NOMBRE}}"); }
+        return null;
+    }
+    if (accion == "xlsx")
+    {
+        string nombre = new string(S(r["nombre"]).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        using (var dlg = new SaveFileDialog { Filter = "Libro de Excel (*.xlsx)|*.xlsx", FileName = nombre + ".xlsx" })
             if (dlg.ShowDialog() == DialogResult.OK)
             {
-                if (xl) File.WriteAllBytes(dlg.FileName, Convert.FromBase64String(S(r["b64"]))); else File.WriteAllText(dlg.FileName, S(r["contenido"]), new UTF8Encoding(true));
-                ctx.Msg("Archivo guardado:\n" + dlg.FileName, "{{NOMBRE}}");
+                try
+                {
+                    ConstruirExcel((Dictionary<string, object>)r["carga"], dlg.FileName);
+                    if (MessageBox.Show("Se guardó el libro de Excel:\n" + dlg.FileName + "\n\n¿Abrirlo ahora?", "{{NOMBRE}}", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = dlg.FileName, UseShellExecute = true });
+                }
+                catch (Exception ex) { ctx.Msg("No se pudo generar el Excel:\n" + ex.Message, "{{NOMBRE}}"); }
             }
         return null;
     }

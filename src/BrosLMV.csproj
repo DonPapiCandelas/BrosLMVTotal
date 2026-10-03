@@ -17,6 +17,7 @@
   <ItemGroup>
     <Compile Include="Rutas.cs" />
     <Compile Include="UiPump.cs" />
+    <Compile Include="NavegacionHtml.cs" />
     <Compile Include="ClsMain.cs" />
     <Compile Include="Scripting.cs" />
     <Compile Include="ErpSdkNativo.cs" />

@@ -16,8 +16,9 @@ LADOS = [
     dict(APPKEY='ESTADO_CUENTA_PROVEEDORES', DOC='ESTADO_CUENTA_PROVEEDORES', NOMBRE='Estado de cuenta de proveedores (cuentas por pagar)', TITULO='Cuentas por pagar',
          ENT='proveedor', ENT_PL='proveedores', OTRO='«Estado de cuenta de clientes»', REC='2', LADO='P', ABONOS='pagos y notas de crédito'),
 ]
+EXCEL = open(os.path.join(AQUI, 'excel.cs.part'), encoding='utf-8').read().replace('\r\n', '\n')
 for L in LADOS:
-    t = tpl
+    t = tpl.replace('{{EXCEL}}', EXCEL)
     for k, v in L.items():
         t = t.replace('{{' + k + '}}', v)
     assert '{{' not in t, 'quedó un marcador sin reemplazar'

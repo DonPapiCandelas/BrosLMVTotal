@@ -47,7 +47,7 @@ ELSE
     $h = Get-Content $htmlP -Raw -Encoding UTF8; Remove-Item $htmlP -Force
     if ($h -notmatch 'LADO=.' + $lado) { Fallo "El HTML del lado $lado no declara su lado." }
     if ($h -match 'segLado|setLado') { Fallo "El HTML ya no debe traer el selector cobrar/pagar." }
-    foreach ($necesario in 'vistaCal', 'verDoc', 'xlsx.bundle.js', 'Exportar a Excel') { if ($h -notmatch [regex]::Escape($necesario)) { Fallo "Al HTML del lado $lado le falta: $necesario." } }
+    foreach ($necesario in 'vistaCal', 'verDoc', 'cargaExcel', 'Exportar a Excel') { if ($h -notmatch [regex]::Escape($necesario)) { Fallo "Al HTML del lado $lado le falta: $necesario." } }
     Write-Host ("  Lado {0}: {1} documentos, {2} pagos; ningun documento del otro lado." -f $lado, $dl.Count, $pl.Count)
     $docs += $dl; $pagos += $pl
 }

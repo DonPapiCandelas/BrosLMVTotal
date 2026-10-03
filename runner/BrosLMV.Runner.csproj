@@ -35,6 +35,7 @@
     <Compile Include="..\src\Rutas.cs" Link="Rutas.cs" />
     <Compile Include="..\src\UiPump.cs" Link="UiPump.cs" />
     <Compile Include="..\src\Scripting.cs" Link="Scripting.cs" />
+    <Compile Include="..\src\NavegacionHtml.cs" Link="NavegacionHtml.cs" />
     <Compile Include="..\src\ErpSdkNativo.cs" Link="ErpSdkNativo.cs" />
     <Compile Include="..\src\Datos.cs" Link="Datos.cs" />
     <Compile Include="..\src\HostClient.cs" Link="HostClient.cs" />

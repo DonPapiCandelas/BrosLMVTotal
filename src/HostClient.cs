@@ -810,7 +810,9 @@ namespace BrosLMV
                                     Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
                             }
 
-                            webView.CoreWebView2.NavigateToString(spec.Html ?? "");
+                            // Paginas de mas de ~1.5 MB (NavigateToString se corta en 2 MB): archivo temporal, que se borra al cerrar
+                            string paginaTemporal = NavegacionHtml.Cargar(webView.CoreWebView2, spec.Html ?? "");
+                            if (paginaTemporal != null) frm.FormClosed += (s3, e3) => NavegacionHtml.Borrar(paginaTemporal);
                         }
                         catch (Exception ex)
                         {
