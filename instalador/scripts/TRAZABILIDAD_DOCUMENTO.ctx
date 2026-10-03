@@ -33,6 +33,7 @@ string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v, ci);
 long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v, ci); } catch { return 0; } }
 int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
 decimal M(object v) { try { return v == null || v is DBNull ? 0m : Convert.ToDecimal(v, ci); } catch { return 0m; } }
+double D(object v) { try { return v == null || v is DBNull ? 0.0 : Convert.ToDouble(v, ci); } catch { return 0.0; } }
 bool Nulo(object v) => v == null || v is DBNull;
 string FechaTxt(object v) => Nulo(v) ? "" : Convert.ToDateTime(v, ci).ToString("yyyy-MM-dd");
 
@@ -142,27 +143,47 @@ for (int nivel = 0; nivel < MaxNiveles && frontera.Count > 0 && vistos.Count < M
 }
 
 // ---------- 3) Datos de cada documento ----------
+// Etapa del flujo (columna) y carril (fila) a partir del TIPO de documento y de a quién va dirigido, que se leen del propio módulo (engModuleParameter, por ModuleIDBase):
+// así los módulos clonados se ordenan igual que el original y no hay una lista de módulos escrita a mano. La etapa NO sale de qué documento nació de cuál:
+// una factura hecha directo desde el pedido sigue yendo DESPUÉS de la recepción de mercancía.
+string[] ETAPAS = { "", "Solicitud / Cotización", "Pedido / Orden", "Entrega / Recepción", "Factura", "Nota de crédito / Devolución" };
+int Etapa(int tipo)
+{
+    switch (tipo)
+    {
+        case 49: case 1: return 1;                                                  // solicitud de compra, cotización
+        case 40: case 21: return 2;                                                 // pedido / orden de compra, pedidos a consignación
+        case 3: case 22: case 16: case 17: case 18: case 20: case 24: case 25: return 3;   // remisión / recepción, entradas, salidas, traspasos, toma de inventario
+        case 6: case 4: case 23: return 5;                                          // nota de crédito, devoluciones
+        default: return 4;                                                          // factura, nota de cargo, venta de mostrador, gastos…
+    }
+}
+string Carril(int rec) => rec == 1 ? "Venta" : rec == 2 ? "Compra" : "Inventario y otros";
+
 foreach (var lote in Lotes(vistos, 400))
 {
     var docs = ctx.Query(
         "SELECT d.DocumentID, d.ModuleID, ISNULL(m.ModuleIDBase, d.ModuleID) AS ModuloBase, ISNULL(m.ModuleName,'Módulo '+CAST(d.ModuleID AS NVARCHAR(10))) AS ModuloNombre, " +
         "ISNULL(d.FolioPrefix,'') AS Serie, ISNULL(CAST(d.Folio AS NVARCHAR(30)),'') AS Folio, ISNULL(d.Title,'') AS Titulo, d.DateDocument, ISNULL(d.Total,0) AS Total, " +
         "ISNULL(d.TotalPaid,0) AS Pagado, ISNULL(d.Balance,0) AS Saldo, d.CancelledOn, d.DeletedOn, ISNULL(d.SourceDocumentID,0) AS Src, ISNULL(d.DestinationDocumentID,0) AS Dst, " +
-        "ISNULL(be.CommercialName, be.OfficialName) AS Entidad, ISNULL(c.CFDStatusID,0) AS CfdEstado, ISNULL(c.CFDCancelledStatusID,0) AS CfdCancelado " +
+        "ISNULL(be.CommercialName, be.OfficialName) AS Entidad, ISNULL(pv.Tipo,0) AS Tipo, ISNULL(pv.Rec,0) AS Rec, ISNULL(pv.Stock,0) AS Stock " +
         "FROM docDocument d LEFT JOIN engModule m ON m.ModuleID=d.ModuleID " +
+        "LEFT JOIN (SELECT ModuleID, MAX(CASE WHEN ParameterKey='DocumentTypeID' THEN TRY_CONVERT(int,Value) END) AS Tipo, MAX(CASE WHEN ParameterKey='DocRecipient' THEN TRY_CONVERT(int,Value) END) AS Rec, " +
+        "          MAX(CASE WHEN ParameterKey='StockAffectation' THEN TRY_CONVERT(int,Value) END) AS Stock FROM engModuleParameter " +
+        "          WHERE ParameterKey IN ('DocumentTypeID','DocRecipient','StockAffectation') GROUP BY ModuleID) pv ON pv.ModuleID = ISNULL(NULLIF(m.ModuleIDBase,0), d.ModuleID) " +
         "LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID=d.BusinessEntityID " +
-        "LEFT JOIN docDocumentCFD c ON c.DocumentID=d.DocumentID " +
         "WHERE d.DocumentID IN (" + Lista(lote) + ") AND d.OwnedBusinessEntityID=" + empresa);
     foreach (var r in docs)
     {
-        long id = L(r["DocumentID"]);
+        long id = L(r["DocumentID"]); int tipo = I(r["Tipo"]), rec = I(r["Rec"]);
         nodos[id] = new Dictionary<string, object>
         {
             ["id"] = id, ["modulo"] = I(r["ModuleID"]), ["base"] = I(r["ModuloBase"]), ["tipoNombre"] = S(r["ModuloNombre"]),
             ["folio"] = (S(r["Serie"]) + S(r["Folio"])).Trim(), ["titulo"] = S(r["Titulo"]), ["fecha"] = FechaTxt(r["DateDocument"]),
             ["total"] = M(r["Total"]), ["pagado"] = M(r["Pagado"]), ["saldo"] = M(r["Saldo"]), ["entidad"] = S(r["Entidad"]),
-            ["cancelado"] = !Nulo(r["CancelledOn"]), ["src"] = L(r["Src"]), ["dst"] = L(r["Dst"]),
-            ["cfd"] = I(r["CfdEstado"]), ["cfdCancelado"] = I(r["CfdCancelado"]), ["raiz"] = id == raiz, ["pagos"] = new List<Dictionary<string, object>>()
+            ["cancelado"] = !Nulo(r["CancelledOn"]), ["src"] = L(r["Src"]), ["dst"] = L(r["Dst"]), ["raiz"] = id == raiz,
+            ["etapa"] = Etapa(tipo), ["carril"] = Carril(rec), ["inventario"] = I(r["Stock"]),
+            ["pagos"] = new List<Dictionary<string, object>>(), ["partidas"] = new List<Dictionary<string, object>>(), ["detalle"] = false
         };
     }
 }
@@ -183,24 +204,123 @@ foreach (var k in aristas.Keys.ToList())
     }
 }
 
-// Pagos/cobros aplicados a cada documento
+// Pagos/cobros aplicados a cada documento, con forma de pago, cuenta y la nota de crédito si el «pago» fue una aplicación de NC
 foreach (var lote in Lotes(nodos.Keys, 400))
 {
     var pagos = ctx.Query(
-        "SELECT p.DocumentID, p.FinancialOperationID, p.DateOperation, p.Amount, ISNULL(f.FolioPrefix,'') AS Serie, ISNULL(CAST(f.Folio AS NVARCHAR(30)),'') AS Folio, f.DocRecipientID " +
+        "SELECT p.DocumentID, p.FinancialOperationID, p.DateOperation, p.Amount, ISNULL(p.PaymentWithDocumentID,0) AS NC, ISNULL(f.FolioPrefix,'') AS Serie, ISNULL(CAST(f.Folio AS NVARCHAR(30)),'') AS Folio, " +
+        "f.DocRecipientID, ISNULL(pm.Value,'') AS Forma, ISNULL(fe.FinancialEntityName,'') AS Cuenta " +
         "FROM docDocumentPayment p LEFT JOIN docFinancialOperation f ON f.FinancialOperationID=p.FinancialOperationID " +
-        "WHERE p.DeletedOn IS NULL AND p.DocumentID IN (" + Lista(lote) + ")");
+        "LEFT JOIN vwcboCFDPaymentmethod pm ON pm.ID = f.PaymentMethodID LEFT JOIN orgFinancialEntity fe ON fe.FinancialEntityID = f.FinancialEntityID " +
+        "WHERE p.DeletedOn IS NULL AND p.DocumentID IN (" + Lista(lote) + ") ORDER BY p.DateOperation, p.DocumentPaymentID");
     foreach (var r in pagos)
     {
         long id = L(r["DocumentID"]);
         if (nodos.TryGetValue(id, out var n))
             ((List<Dictionary<string, object>>)n["pagos"]).Add(new Dictionary<string, object>
             {
-                ["operacion"] = L(r["FinancialOperationID"]), ["fecha"] = FechaTxt(r["DateOperation"]), ["monto"] = M(r["Amount"]),
-                ["folio"] = (S(r["Serie"]) + S(r["Folio"])).Trim(), ["clase"] = I(r["DocRecipientID"]) == 2 ? "Pago" : "Cobro"
+                ["operacion"] = L(r["FinancialOperationID"]), ["fecha"] = FechaTxt(r["DateOperation"]), ["monto"] = M(r["Amount"]), ["nc"] = L(r["NC"]),
+                ["folio"] = (S(r["Serie"]) + S(r["Folio"])).Trim(), ["clase"] = L(r["NC"]) > 0 ? "Nota de crédito" : I(r["DocRecipientID"]) == 2 ? "Pago" : "Cobro",
+                ["forma"] = S(r["Forma"]), ["cuenta"] = S(r["Cuenta"])
             });
     }
 }
+
+// Partidas de los documentos (con tope: si la cadena es enorme, solo las de los documentos más cercanos al elegido; el resto muestra solo su ficha)
+const int MaxPartidas = 3000;
+var conDetalle = new List<long>(); int acumuladas = 0;
+foreach (var lote in Lotes(nodos.Keys.OrderBy(k => k == raiz ? 0 : 1), 400))
+{
+    var cuenta = ctx.Query("SELECT DocumentID, COUNT(*) AS N FROM docDocumentItem WHERE DeletedOn IS NULL AND DocumentID IN (" + Lista(lote) + ") GROUP BY DocumentID");
+    var porDoc = cuenta.ToDictionary(r => L(r["DocumentID"]), r => I(r["N"]));
+    foreach (var id in lote)
+    {
+        int n = porDoc.ContainsKey(id) ? porDoc[id] : 0;
+        if (acumuladas + n <= MaxPartidas || id == raiz) { conDetalle.Add(id); acumuladas += n; } else avisos.Add("El detalle de partidas del documento " + id + " no se cargó (la cadena es muy grande); selecciónalo como punto de partida para verlo.");
+    }
+}
+var partidaPor = new Dictionary<long, Dictionary<string, object>>();         // DocumentItemID → partida
+foreach (var lote in Lotes(conDetalle, 300))
+{
+    string ids = Lista(lote);
+    var its = ctx.Query(
+        "SELECT i.DocumentItemID, i.DocumentID, i.ProductID, ISNULL(p.ProductKey,'') AS Clave, ISNULL(NULLIF(i.Description,''), p.ProductName) AS Descr, ISNULL(i.Unit,'') AS Unidad, ISNULL(p.Unit,'') AS UnidadBase, " +
+        "i.Quantity, ISNULL(i.CoefUnit,1) AS Coef, ISNULL(i.QuantityInventory,0) AS QInv, ISNULL(i.UnitPrice,0) AS Precio, ISNULL(i.DiscountPerc,0) AS Dsc, ISNULL(i.Total,0) AS Total, " +
+        "ISNULL(i.SourceDocumentItemID,0) AS SrcItem, ISNULL(i.DeliverDocumentItemID,0) AS DelItem, ISNULL(i.Lot,'') AS LoteSimple, ISNULL(i.SerialNumber,'') AS Serie, ISNULL(i.SerialNumberTo,'') AS SerieA " +
+        "FROM docDocumentItem i LEFT JOIN orgProduct p ON p.ProductID = i.ProductID WHERE i.DeletedOn IS NULL AND i.DocumentID IN (" + ids + ") ORDER BY i.DocumentID, i.DocumentItemID");
+    foreach (var r in its)
+    {
+        long did = L(r["DocumentID"]); if (!nodos.ContainsKey(did)) continue;
+        double coef = D(r["Coef"]); string uni = S(r["Unidad"]), uniBase = S(r["UnidadBase"]);
+        decimal cant = M(r["Quantity"]), qInv = M(r["QInv"]);
+        bool conversion = uni != "" && uniBase != "" && !string.Equals(uni, uniBase, StringComparison.OrdinalIgnoreCase) && coef > 0 && Math.Abs(coef - 1) > 0.000001;
+        var p = new Dictionary<string, object>
+        {
+            ["item"] = L(r["DocumentItemID"]), ["doc"] = did, ["producto"] = I(r["ProductID"]), ["clave"] = S(r["Clave"]), ["desc"] = S(r["Descr"]), ["uni"] = uni, ["uniBase"] = uniBase,
+            ["cant"] = cant, ["coef"] = coef, ["cantBase"] = conversion ? (qInv != 0 ? qInv : cant * (decimal)coef) : cant, ["conversion"] = conversion,
+            ["precio"] = M(r["Precio"]), ["dsc"] = M(r["Dsc"]), ["total"] = M(r["Total"]),
+            ["lotes"] = new List<Dictionary<string, object>>(), ["series"] = new List<string>(), ["nSeries"] = 0, ["peds"] = new List<Dictionary<string, object>>(),
+            ["orig"] = new List<Dictionary<string, object>>(), ["dest"] = new List<Dictionary<string, object>>(),
+            ["_src"] = L(r["SrcItem"]), ["_del"] = L(r["DelItem"])
+        };
+        if (S(r["LoteSimple"]) != "") ((List<Dictionary<string, object>>)p["lotes"]).Add(new Dictionary<string, object> { ["lote"] = S(r["LoteSimple"]), ["cant"] = cant, ["cad"] = "", ["uni"] = uni });
+        if (S(r["Serie"]) != "") { ((List<string>)p["series"]).Add(S(r["Serie"]) + (S(r["SerieA"]) != "" && S(r["SerieA"]) != S(r["Serie"]) ? " … " + S(r["SerieA"]) : "")); p["nSeries"] = 1; }
+        partidaPor[(long)p["item"]] = p;
+        ((List<Dictionary<string, object>>)nodos[did]["partidas"]).Add(p);
+    }
+    foreach (var id in lote) if (nodos.ContainsKey(id)) nodos[id]["detalle"] = true;
+
+    // Lotes (con caducidad)
+    foreach (var r in ctx.Query("SELECT DocumentItemID, Lot, Quantity, ExpirationDate, ISNULL(Unit,'') AS Unidad FROM docDocumentLot WHERE DeletedOn IS NULL AND CancelledOn IS NULL AND DocumentID IN (" + ids + ") " +
+                                "UNION ALL SELECT DocumentItemID, Lot, Quantity, ExpirationDate, '' FROM docDocumentItemLot WHERE DocumentID IN (" + ids + ")"))
+    {
+        if (!partidaPor.TryGetValue(L(r["DocumentItemID"]), out var p)) continue;
+        var lst = (List<Dictionary<string, object>>)p["lotes"]; string lote1 = S(r["Lot"]);
+        if (lote1 == "" || lst.Any(x => S(x["lote"]) == lote1 && M(x["cant"]) == M(r["Quantity"]))) continue;
+        lst.Add(new Dictionary<string, object> { ["lote"] = lote1, ["cant"] = M(r["Quantity"]), ["cad"] = FechaTxt(r["ExpirationDate"]), ["uni"] = S(r["Unidad"]) });
+    }
+    // Números de serie: individuales y rangos
+    foreach (var r in ctx.Query("SELECT DocumentItemID, SerialNumber FROM docDocumentSerialNumber WHERE DeletedOn IS NULL AND CancelledOn IS NULL AND DocumentID IN (" + ids + ") " +
+                                "UNION ALL SELECT DocumentItemID, SerialNumberFrom + CASE WHEN ISNULL(SerialNumberTo,'') IN ('', SerialNumberFrom) THEN '' ELSE ' … ' + SerialNumberTo END FROM docDocumentItemSerialNumber WHERE DocumentID IN (" + ids + ")"))
+    {
+        if (!partidaPor.TryGetValue(L(r["DocumentItemID"]), out var p)) continue;
+        var lst = (List<string>)p["series"]; p["nSeries"] = I(p["nSeries"]) + 1;
+        if (lst.Count < 40 && !lst.Contains(S(r["SerialNumber"]))) lst.Add(S(r["SerialNumber"]));
+    }
+    // Pedimentos / importaciones
+    foreach (var r in ctx.Query("SELECT x.DocumentItemID, x.Quantity, ISNULL(x.Unit,'') AS Unidad, pi.ProductImportNumber AS Numero, ISNULL(pi.Customs,'') AS Aduana, pi.DateImport AS Fecha, ISNULL(pi.ClavePedimento,'') AS Clave " +
+                                "FROM docDocumentProductImport x LEFT JOIN docProductImport pi ON pi.ProductImportID = x.ProductImportID WHERE x.DeletedOn IS NULL AND x.DocumentID IN (" + ids + ")"))
+    {
+        if (!partidaPor.TryGetValue(L(r["DocumentItemID"]), out var p)) continue;
+        ((List<Dictionary<string, object>>)p["peds"]).Add(new Dictionary<string, object> { ["num"] = S(r["Numero"]), ["aduana"] = S(r["Aduana"]), ["fecha"] = FechaTxt(r["Fecha"]), ["cant"] = M(r["Quantity"]), ["uni"] = S(r["Unidad"]) });
+    }
+}
+
+// Vínculo línea por línea: de dónde viene cada partida y a dónde fue (por SourceDocumentItemID y DeliverDocumentItemID)
+foreach (var n in nodos.Values)
+    foreach (var p in (List<Dictionary<string, object>>)n["partidas"])
+        foreach (var par in new[] { new object[] { p["_src"], "factura" }, new object[] { p["_del"], "entrega" } })
+        {
+            long oi = (long)par[0]; if (oi <= 0 || !partidaPor.TryGetValue(oi, out var po)) continue;
+            long od = (long)po["doc"];
+            ((List<Dictionary<string, object>>)p["orig"]).Add(new Dictionary<string, object> { ["item"] = oi, ["doc"] = od, ["cant"] = po["cant"] });
+            ((List<Dictionary<string, object>>)po["dest"]).Add(new Dictionary<string, object> { ["item"] = p["item"], ["doc"] = n["id"], ["cant"] = p["cant"] });
+        }
+// Documentos ligados solo por el encabezado (p. ej. una remisión hecha desde un pedido): se enlazan las partidas por producto, y se marca como aproximado
+foreach (var n in nodos.Values)
+{
+    long src = (long)n["src"]; if (src <= 0 || !nodos.ContainsKey(src)) continue;
+    var mias = (List<Dictionary<string, object>>)n["partidas"];
+    if (mias.Count == 0 || mias.Any(p => ((List<Dictionary<string, object>>)p["orig"]).Count > 0)) continue;
+    var deOrigen = (List<Dictionary<string, object>>)nodos[src]["partidas"];
+    foreach (var p in mias)
+    {
+        var po = deOrigen.FirstOrDefault(x => I(x["producto"]) == I(p["producto"])); if (po == null) continue;
+        ((List<Dictionary<string, object>>)p["orig"]).Add(new Dictionary<string, object> { ["item"] = po["item"], ["doc"] = src, ["cant"] = po["cant"], ["aprox"] = true });
+        ((List<Dictionary<string, object>>)po["dest"]).Add(new Dictionary<string, object> { ["item"] = p["item"], ["doc"] = n["id"], ["cant"] = p["cant"], ["aprox"] = true });
+    }
+}
+foreach (var n in nodos.Values) foreach (var p in (List<Dictionary<string, object>>)n["partidas"]) { p.Remove("_src"); p.Remove("_del"); }
 
 // ---------- 4) Avisos sobre la calidad de los vínculos ----------
 foreach (var a in aristas.Values)
@@ -215,118 +335,178 @@ foreach (var a in aristas.Values)
         avisos.Add(nh + " tiene como origen principal (SourceDocumentID) a otro documento; " + nd + " lo ligó además por DestinationDocumentID: varios orígenes para un solo destino.");
 }
 foreach (var n in nodos.Values)
-{
     if ((bool)n["cancelado"]) avisos.Add(S(n["tipoNombre"]) + " " + S(n["folio"]) + " está CANCELADO y sigue ligado en la cadena.");
-}
 
-// ---------- 5) Generaciones (columnas): longitud del camino más largo desde un origen, desplazada para que el documento elegido sea 0 ----------
-var entrantes = nodos.Keys.ToDictionary(k => k, k => new List<long>());
-foreach (var a in aristas.Values) entrantes[(long)a["hasta"]].Add((long)a["desde"]);
-var gen = new Dictionary<long, int>();
-int Gen(long id, HashSet<long> pila)
-{
-    if (gen.TryGetValue(id, out var g)) return g;
-    if (!pila.Add(id)) return 0;                       // ciclo: se corta
-    int mejor = 0;
-    foreach (var p in entrantes[id]) mejor = Math.Max(mejor, Gen(p, pila) + 1);
-    pila.Remove(id);
-    return gen[id] = mejor;
-}
-foreach (var id in nodos.Keys) Gen(id, new HashSet<long>());
-int desp = gen[raiz];
-foreach (var id in nodos.Keys) nodos[id]["gen"] = gen[id] - desp;
-
-// ---------- 6) Resultado ----------
+// ---------- 5) Resultado ----------
+// La pantalla usa d/h (quién es origen de quién) y manual; desde/hasta/tipos (la evidencia técnica) viajan solo para las pruebas automáticas.
 var modelo = new Dictionary<string, object>
 {
-    ["raiz"] = raiz, ["nodos"] = nodos.Values.OrderBy(n => (int)n["gen"]).ThenBy(n => S(n["fecha"])).ToList(),
-    ["aristas"] = aristas.Values.ToList(), ["avisos"] = avisos.Distinct().ToList()
+    ["raiz"] = raiz, ["etapas"] = ETAPAS, ["avisos"] = avisos.Distinct().ToList(),
+    ["nodos"] = nodos.Values.OrderBy(n => (int)n["etapa"]).ThenBy(n => S(n["fecha"])).ThenBy(n => (long)n["id"]).ToList(),
+    ["aristas"] = aristas.Values.Select(a => new Dictionary<string, object> { ["d"] = a["desde"], ["h"] = a["hasta"], ["manual"] = a["manual"], ["desde"] = a["desde"], ["hasta"] = a["hasta"], ["tipos"] = a["tipos"] }).ToList()
 };
-if (!string.IsNullOrEmpty(modoPrueba))                                      // pruebas automáticas: escribe el modelo en un archivo, sin ventanas
+string pruebaHtml = Environment.GetEnvironmentVariable("BROSLMV_TRAZA_HTML");        // pruebas: escribe la página en un archivo y no abre ventana
+if (!string.IsNullOrEmpty(modoPrueba) || !string.IsNullOrEmpty(pruebaHtml))                                      // pruebas automáticas: escribe el modelo en un archivo, sin ventanas
 {
     string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_TRAZA_OUT");
     string jsonPrueba = ser.Serialize(modelo);
     if (!string.IsNullOrEmpty(salidaPrueba)) File.WriteAllText(salidaPrueba, jsonPrueba, new UTF8Encoding(false));
+    if (!string.IsNullOrEmpty(pruebaHtml)) File.WriteAllText(pruebaHtml, Html(jsonPrueba), new UTF8Encoding(false));
     return jsonPrueba;
 }
 
-string Esc(string s) => (s ?? "").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 string Html(string json) => @"<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Trazabilidad</title><style>
-:root{--fondo:#f4f6f9;--tarjeta:#fff;--texto:#16263a;--suave:#64748b;--linea:#cbd5e1;--azul:#2d6fe0;--raiz:#e8f0ff;--rojo:#c82828;--ambar:#b45309;--verde:#16803b}
-*{box-sizing:border-box}body{margin:0;font:13px 'Segoe UI',Arial,sans-serif;background:var(--fondo);color:var(--texto)}
-header{padding:16px 22px 8px}h1{margin:0;font-size:20px}.sub{color:var(--suave);margin-top:3px}
-.barra{padding:6px 22px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}button{border:1px solid var(--linea);background:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit}button:hover{border-color:var(--azul);color:var(--azul)}
-.lienzo{position:relative;padding:14px 22px 6px;overflow:auto}#cols{display:flex;gap:70px;align-items:flex-start;min-width:max-content;position:relative;z-index:2}
-.col{display:flex;flex-direction:column;gap:14px;min-width:210px}.colt{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--suave);margin-bottom:2px}
-.nodo{background:var(--tarjeta);border:1px solid var(--linea);border-radius:9px;padding:9px 11px;cursor:pointer;box-shadow:0 1px 2px #0001}.nodo:hover{border-color:var(--azul)}
-.nodo.raiz{background:var(--raiz);border:2px solid var(--azul)}.nodo.canc{opacity:.65;border-style:dashed}
-.t{font-weight:600}.m{color:var(--suave);font-size:12px}.tot{font-weight:600;margin-top:3px}
-.ins{display:inline-block;font-size:10.5px;border-radius:9px;padding:1px 7px;margin:3px 3px 0 0;color:#fff}.ins.c{background:var(--rojo)}.ins.p{background:var(--verde)}.ins.x{background:var(--ambar)}
-svg{position:absolute;left:0;top:0;pointer-events:none;z-index:1}
-.panel{margin:10px 22px;background:var(--tarjeta);border:1px solid var(--linea);border-radius:9px;padding:12px 16px}.panel h2{margin:0 0 8px;font-size:14px}
-table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e5eaf1}th{color:var(--suave);font-weight:600;font-size:11.5px}
-.av{color:var(--ambar);margin:3px 0}.num{text-align:right}.leyenda{color:var(--suave);font-size:12px}
+:root{--fondo:#eef1f5;--panel:#ffffff;--texto:#14202e;--suave:#5f6f82;--linea:#d6dde6;--linea2:#e8edf3;--azul:#1f5fd1;--azul-s:#e6efff;--rojo:#c0392b;--ambar:#a8650b;--verde:#17803d;
+ --venta:#0e8f87;--compra:#4a58c9;--inv:#6b7280;--sombra:0 1px 2px rgba(15,30,50,.08),0 4px 14px rgba(15,30,50,.06)}
+@media (prefers-color-scheme:dark){:root{--fondo:#10161e;--panel:#18212c;--texto:#e6ebf2;--suave:#93a1b3;--linea:#2b3847;--linea2:#223040;--azul:#6fa0ff;--azul-s:#1d2f4d;--rojo:#ff7b6b;--ambar:#e6a04a;--verde:#4cc77e;--venta:#34c4ba;--compra:#8e9bff;--inv:#9aa5b4;--sombra:0 1px 2px rgba(0,0,0,.4)}}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;font:13px 'Segoe UI Variable','Segoe UI',Arial,sans-serif;background:var(--fondo);color:var(--texto);display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;border:1px solid var(--linea);background:var(--panel);color:var(--texto);border-radius:6px;padding:5px 12px;cursor:pointer}button:hover{border-color:var(--azul)}button.p{background:var(--azul);color:#fff;border-color:var(--azul)}
+header{display:flex;align-items:center;gap:14px;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--linea);flex-wrap:wrap}
+header h1{margin:0;font-size:16px;font-weight:650;letter-spacing:.01em}header .sub{color:var(--suave)}header .esp{flex:1}
+#avisos{display:none;margin:0;padding:6px 18px;background:#fff7e6;color:#7a4b06;border-bottom:1px solid #f0d9ad;font-size:12px}#avisos.on{display:block}#avisos summary{cursor:pointer}#avisos ul{margin:4px 0 2px 18px;padding:0}
+@media (prefers-color-scheme:dark){#avisos{background:#2b2312;color:#e6c48a;border-color:#4a3a1a}}
+#flujo{position:relative;overflow:auto;flex:0 0 var(--alto,320px);min-height:150px;padding:12px 18px 14px;background:var(--fondo)}
+#malla{position:relative;display:grid;column-gap:46px;row-gap:12px;min-width:max-content;align-items:start}
+.encab{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--suave);padding:0 2px 2px;border-bottom:1px solid var(--linea);position:sticky;top:-12px;background:var(--fondo);z-index:3}
+.carril{display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:650;border-radius:6px;padding:8px 3px;min-height:80px;align-self:stretch}
+.carril.Venta{background:color-mix(in srgb,var(--venta) 14%,transparent);color:var(--venta)}.carril.Compra{background:color-mix(in srgb,var(--compra) 14%,transparent);color:var(--compra)}.carril.Inv{background:color-mix(in srgb,var(--inv) 14%,transparent);color:var(--inv)}
+.celda{display:flex;flex-direction:column;gap:9px;min-width:236px;position:relative;z-index:2}
+.card{background:var(--panel);border:1px solid var(--linea);border-left:4px solid var(--c,var(--inv));border-radius:8px;padding:7px 10px 8px;cursor:pointer;box-shadow:var(--sombra);transition:border-color .12s,box-shadow .12s}
+.card:hover{border-color:var(--azul);border-left-color:var(--c)}.card.sel{outline:2px solid var(--azul);outline-offset:1px;background:var(--azul-s)}.card.raiz .tipo::after{content:' ★';color:var(--ambar)}.card.canc{opacity:.6}.card.canc .folio{text-decoration:line-through}
+.card.Venta{--c:var(--venta)}.card.Compra{--c:var(--compra)}.card.Inv{--c:var(--inv)}
+.card .fila{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.card .tipo{font-size:11px;color:var(--suave);text-transform:uppercase;letter-spacing:.04em}
+.card .folio{font-weight:650;font-size:14px}.card .id{color:var(--suave);font-variant-numeric:tabular-nums;font-size:11px}.card .ent{color:var(--suave);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:215px}
+.card .monto{font-variant-numeric:tabular-nums;font-weight:600}.pill{display:inline-block;border-radius:9px;padding:0 7px;font-size:11px;line-height:17px;background:var(--linea2);color:var(--suave);margin-left:4px}
+.pill.ok{background:color-mix(in srgb,var(--verde) 16%,transparent);color:var(--verde)}.pill.par{background:color-mix(in srgb,var(--ambar) 18%,transparent);color:var(--ambar)}.pill.mal{background:color-mix(in srgb,var(--rojo) 16%,transparent);color:var(--rojo)}
+svg#lineas{position:absolute;left:0;top:0;pointer-events:none;z-index:1;overflow:visible}svg#lineas path{fill:none;stroke:var(--suave);stroke-width:1.6;opacity:.55}svg#lineas path.man{stroke-dasharray:6 4}
+svg#lineas path.act{stroke:var(--azul);stroke-width:2.4;opacity:1}
+#divisor{flex:0 0 7px;cursor:row-resize;background:var(--linea2);border-top:1px solid var(--linea);border-bottom:1px solid var(--linea)}#divisor:hover{background:var(--azul-s)}
+#detalle{flex:1;overflow:auto;background:var(--panel);padding:12px 18px 18px;min-height:140px}
+.cab{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}.cab .tit{font-size:17px;font-weight:650}.cab .tit small{font-weight:400;color:var(--suave);margin-left:8px}
+.datos{display:flex;gap:26px;flex-wrap:wrap;margin:8px 0 10px}.datos div{min-width:90px}.datos b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--suave);font-weight:600}.datos span{font-variant-numeric:tabular-nums}
+.rel{font-size:12px;color:var(--suave);margin:2px 0 8px}.rel a{color:var(--azul);cursor:pointer;text-decoration:none;margin-right:10px}.rel a:hover{text-decoration:underline}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--linea);margin-top:6px}.tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:7px 14px}.tabs button.on{border-bottom-color:var(--azul);font-weight:650}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;margin-top:8px}th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--suave);text-align:right;padding:5px 8px;border-bottom:1px solid var(--linea);white-space:nowrap}
+td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--linea2);vertical-align:top}th.l,td.l{text-align:left}tr.extra td{border-bottom:1px solid var(--linea);padding-top:0;text-align:left;color:var(--suave);font-size:12px}
+td a{color:var(--azul);cursor:pointer}td a:hover{text-decoration:underline}.chip{display:inline-block;border:1px solid var(--linea);border-radius:5px;padding:0 6px;margin:2px 4px 0 0;font-size:11.5px;color:var(--texto);background:var(--fondo)}.chip em{font-style:normal;color:var(--suave)}
+.conv{display:block;color:var(--suave);font-size:11.5px}.pend{color:var(--ambar);font-weight:600}.hecho{color:var(--verde)}.vacio{padding:28px;text-align:center;color:var(--suave)}.aprox{color:var(--ambar)}
 </style></head><body>
-<header><h1 id='titulo'></h1><div class='sub' id='sub'></div></header>
-<div class='barra'><button onclick=""enviar({accion:'csv'})"">Exportar a CSV</button><button onclick=""enviar({accion:'abrir',id:modelo.raiz})"">Abrir el documento</button>
-<span class='leyenda'>Clic en un documento: centrar la trazabilidad en él · Doble clic: abrirlo en Comercial · línea continua = vínculo del sistema · discontinua = vínculo manual (DestinationDocumentID)</span></div>
-<div class='lienzo' id='lienzo'><svg id='svg'></svg><div id='cols'></div></div>
-<div class='panel' id='pAvisos' style='display:none'><h2>Avisos</h2><div id='avisos'></div></div>
-<div class='panel'><h2>Vínculos y partidas</h2><div id='tablaAristas'></div></div>
+<header><h1 id='tit'></h1><span class='sub' id='sub'></span><span class='esp'></span><button onclick='exportar(false)'>Exportar partidas del documento</button><button onclick='exportar(true)'>Exportar toda la cadena</button><button class='p' onclick='abrirSel()'>Abrir en Comercial</button></header>
+<details id='avisos'><summary id='avSum'></summary><ul id='avLista'></ul></details>
+<div id='flujo'><div id='malla'></div><svg id='lineas'><defs><marker id='flecha' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='7' markerHeight='7' orient='auto-start-reverse'><path d='M0,0 L10,5 L0,10 z' fill='context-stroke' style='fill:var(--suave);stroke:none'/></marker><marker id='flechaA' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='7' markerHeight='7' orient='auto-start-reverse'><path d='M0,0 L10,5 L0,10 z' style='fill:var(--azul);stroke:none'/></marker></defs></svg></div>
+<div id='divisor' title='Arrastra para cambiar el tamaño'></div>
+<div id='detalle'></div>
 <script>
-var modelo=" + json + @";
+var M=__MODELO__;
 function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}
-function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
-function dinero(n){return (n||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});}
-var TIPOS={S:'SourceDocumentID',D:'DestinationDocumentID',P:'Partida (SourceDocumentItemID)',E:'Entrega (DeliverDocumentItemID)'};
-var por={};modelo.nodos.forEach(function(n){por[n.id]=n;});
-var raiz=por[modelo.raiz];
-document.getElementById('titulo').textContent='Trazabilidad · '+raiz.tipoNombre+' '+raiz.folio;
-document.getElementById('sub').textContent=modelo.nodos.length+' documento(s) · '+modelo.aristas.length+' vínculo(s)';
-var gens={};modelo.nodos.forEach(function(n){(gens[n.gen]=gens[n.gen]||[]).push(n);});
-var cols=document.getElementById('cols');
-Object.keys(gens).map(Number).sort(function(a,b){return a-b;}).forEach(function(g){
-  var c=document.createElement('div');c.className='col';
-  var t=document.createElement('div');t.className='colt';t.textContent=g<0?'Origen '+Math.abs(g):g>0?'Destino '+g:'Documento';c.appendChild(t);
-  gens[g].forEach(function(n){
-    var d=document.createElement('div');d.className='nodo'+(n.raiz?' raiz':'')+(n.cancelado?' canc':'');d.id='n'+n.id;
-    var h='<div class=t>'+esc(n.tipoNombre)+' '+esc(n.folio)+'</div><div class=m>'+esc(n.fecha)+' · '+esc(n.entidad)+'</div><div class=tot>'+dinero(n.total)+'</div>';
-    if(n.cancelado)h+='<span class=\'ins c\'>Cancelado</span>';
-    if(n.pagos&&n.pagos.length)h+='<span class=\'ins p\'>'+n.pagos.length+(n.pagos.length==1?' pago/cobro':' pagos/cobros')+'</span>';
-    if(n.saldo>0.005&&n.total>0)h+='<span class=\'ins x\'>Saldo '+dinero(n.saldo)+'</span>';
-    d.innerHTML=h;
-    d.onclick=function(){if(!n.raiz)enviar({accion:'centrar',id:n.id});};
-    d.ondblclick=function(){enviar({accion:'abrir',id:n.id,modulo:n.modulo});};
-    c.appendChild(d);
+function esc(s){return String(s==null?'':s).replace(/[&<>']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',""'"":'&#39;'}[c];});}
+function din(n){return (n||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});}
+function num(n){return (+n||0).toLocaleString('es-MX',{maximumFractionDigits:4});}
+var N={};M.nodos.forEach(function(n){N[n.id]=n;});
+var sel=M.raiz,tab='partidas';
+function claseCarril(n){return n.carril==='Venta'?'Venta':n.carril==='Compra'?'Compra':'Inv';}
+function estadoPago(n){if(n.cancelado)return ['Cancelado','mal'];if(!(n.total>0.004))return null;if(n.saldo<=0.004)return ['Pagado','ok'];if(n.pagado>0.004)return ['Parcial','par'];return ['Sin pago','mal'];}
+// ---- el mapa: columnas por etapa del flujo, filas por carril ----
+function pintarMapa(){
+  var etapas=[],carriles=[];M.nodos.forEach(function(n){if(etapas.indexOf(n.etapa)<0)etapas.push(n.etapa);if(carriles.indexOf(n.carril)<0)carriles.push(n.carril);});
+  etapas.sort();var orden=['Venta','Compra','Inventario y otros'];carriles.sort(function(a,b){return orden.indexOf(a)-orden.indexOf(b);});
+  var m=document.getElementById('malla');m.style.gridTemplateColumns='34px '+etapas.map(function(){return 'minmax(236px,auto)';}).join(' ');
+  var h='<div></div>'+etapas.map(function(e){return '<div class=encab>'+esc(M.etapas[e])+'</div>';}).join('');
+  carriles.forEach(function(c){
+    h+='<div class=\'carril '+(c==='Venta'?'Venta':c==='Compra'?'Compra':'Inv')+'\'>'+esc(c)+'</div>';
+    etapas.forEach(function(e){
+      h+='<div class=celda>'+M.nodos.filter(function(n){return n.etapa===e&&n.carril===c;}).map(tarjeta).join('')+'</div>';
+    });
   });
-  cols.appendChild(c);
-});
-function dibuja(){
-  var svg=document.getElementById('svg'),l=document.getElementById('lienzo'),box=cols.getBoundingClientRect(),s='';
-  svg.setAttribute('width',cols.scrollWidth+60);svg.setAttribute('height',cols.scrollHeight+40);
-  s+='<defs><marker id=\'f\' viewBox=\'0 0 8 8\' refX=\'7\' refY=\'4\' markerWidth=\'7\' markerHeight=\'7\' orient=\'auto\'><path d=\'M0,0 L8,4 L0,8 z\' fill=\'#64748b\'/></marker></defs>';
-  modelo.aristas.forEach(function(a){
-    var d=document.getElementById('n'+a.desde),h=document.getElementById('n'+a.hasta);if(!d||!h)return;
-    var r1=d.getBoundingClientRect(),r2=h.getBoundingClientRect(),x1=r1.right-box.left+22,y1=r1.top+r1.height/2-box.top+14,x2=r2.left-box.left+22,y2=r2.top+r2.height/2-box.top+14;
-    if(r2.left<r1.left){x1=r1.left-box.left+22;x2=r2.right-box.left+22;}
-    var cx=(x1+x2)/2;
-    s+='<path d=\'M'+x1+','+y1+' C'+cx+','+y1+' '+cx+','+y2+' '+x2+','+y2+'\' fill=\'none\' stroke=\''+(a.manual?'#b45309':'#64748b')+'\' stroke-width=\'1.6\''+(a.manual?' stroke-dasharray=\'6 4\'':'')+' marker-end=\'url(#f)\'/>';
-  });
-  svg.innerHTML=s;
+  m.innerHTML=h;
 }
-window.addEventListener('load',dibuja);window.addEventListener('resize',dibuja);setTimeout(dibuja,60);
-if(modelo.avisos.length){document.getElementById('pAvisos').style.display='block';document.getElementById('avisos').innerHTML=modelo.avisos.map(function(a){return '<div class=av>⚠ '+esc(a)+'</div>';}).join('');}
-var th='<table><tr><th>Origen</th><th>Destino</th><th>Evidencia</th><th>Producto</th><th class=num>Cant. origen</th><th class=num>Cant. destino</th></tr>';
-modelo.aristas.forEach(function(a){
-  var d=por[a.desde],h=por[a.hasta],ev=a.tipos.map(function(t){return TIPOS[t]||t;}).join(' + ')+(a.manual?' (manual)':'');
-  if(!a.partidas.length)th+='<tr><td>'+esc(d.tipoNombre+' '+d.folio)+'</td><td>'+esc(h.tipoNombre+' '+h.folio)+'</td><td>'+esc(ev)+'</td><td></td><td></td><td></td></tr>';
-  a.partidas.forEach(function(p,i){th+='<tr><td>'+(i?'':esc(d.tipoNombre+' '+d.folio))+'</td><td>'+(i?'':esc(h.tipoNombre+' '+h.folio))+'</td><td>'+(i?'':esc(ev))+'</td><td>'+esc((p.clave?p.clave+' · ':'')+p.producto)+'</td><td class=num>'+p.origen+'</td><td class=num>'+p.destino+'</td></tr>';});
-});
-document.getElementById('tablaAristas').innerHTML=th+'</table>';
-</script></body></html>";
+function tarjeta(n){var ep=estadoPago(n);
+  return '<div class=\'card '+claseCarril(n)+(n.raiz?' raiz':'')+(n.cancelado?' canc':'')+(n.id===sel?' sel':'')+'\' data-id='+n.id+' title=\'Clic: ver el detalle · Doble clic: abrir en Comercial\'>'
+   +'<div class=fila><span class=tipo>'+esc(n.tipoNombre)+'</span><span class=id>#'+n.id+'</span></div>'
+   +'<div class=folio>'+esc(n.folio||('Documento '+n.id))+'</div>'
+   +'<div class=ent>'+esc(n.fecha)+' · '+esc(n.entidad)+'</div>'
+   +'<div class=fila><span class=monto>'+din(n.total)+'</span><span>'+(ep?'<span class=\'pill '+ep[1]+'\'>'+ep[0]+'</span>':'')+'</span></div></div>';}
+function lineas(){
+  var svg=document.getElementById('lineas'),malla=document.getElementById('malla'),base=malla.getBoundingClientRect();
+  svg.setAttribute('width',malla.scrollWidth);svg.setAttribute('height',malla.scrollHeight);
+  var defs=svg.querySelector('defs').outerHTML,p='';
+  M.aristas.forEach(function(a){
+    var d=document.querySelector('.card[data-id=\''+a.d+'\']'),h=document.querySelector('.card[data-id=\''+a.h+'\']');if(!d||!h)return;
+    var r1=d.getBoundingClientRect(),r2=h.getBoundingClientRect();
+    var x1=r1.right-base.left,y1=r1.top-base.top+r1.height/2,x2=r2.left-base.left,y2=r2.top-base.top+r2.height/2,dx=Math.max(40,Math.abs(x2-x1)/2);
+    var act=(a.d===sel||a.h===sel);
+    p+='<path class=\''+(a.manual?'man ':'')+(act?'act':'')+'\' marker-end=\'url(#'+(act?'flechaA':'flecha')+')\' d=\'M'+x1+','+y1+' C'+(x1+dx)+','+y1+' '+(x2-dx)+','+y2+' '+x2+','+y2+'\'><title>'+(a.manual?'Vínculo manual (DestinationDocumentID)':'Vínculo del sistema')+'</title></path>';
+  });
+  svg.innerHTML=defs+p;
+}
+// ---- el detalle del documento elegido ----
+function lnk(id,txt){return N[id]?'<a onclick=\'elegir('+id+')\'>'+esc(txt||((N[id].tipoNombre)+' '+(N[id].folio||'')))+' <small>#'+id+'</small></a>':'#'+id;}
+function pintarDetalle(){
+  var n=N[sel];if(!n)return;var ep=estadoPago(n);
+  var orig=M.aristas.filter(function(a){return a.h===n.id;}),dest=M.aristas.filter(function(a){return a.d===n.id;});
+  var h='<div class=cab><div class=tit>'+esc(n.tipoNombre)+' · '+esc(n.folio||'sin folio')+'<small>ID '+n.id+(n.titulo?' · '+esc(n.titulo):'')+'</small></div>'+(ep?'<span class=\'pill '+ep[1]+'\'>'+ep[0]+'</span>':'')+(n.cancelado?'':'')+'</div>';
+  h+='<div class=datos><div><b>Fecha</b><span>'+esc(n.fecha)+'</span></div><div><b>'+(n.carril==='Compra'?'Proveedor':n.carril==='Venta'?'Cliente':'Entidad')+'</b><span>'+esc(n.entidad||'—')+'</span></div><div><b>Total</b><span>'+din(n.total)+'</span></div>'
+    +(n.total>0?'<div><b>Pagado</b><span>'+din(n.pagado)+'</span></div><div><b>Saldo</b><span>'+din(n.saldo)+'</span></div>':'')+'<div><b>Partidas</b><span>'+n.partidas.length+'</span></div></div>';
+  h+='<div class=rel>Viene de: '+(orig.length?orig.map(function(a){return lnk(a.d)+(a.manual?' <span class=aprox>(vínculo manual)</span>':'');}).join(' '):'<i>nada (es un documento de origen)</i>')
+    +' &nbsp;·&nbsp; Va hacia: '+(dest.length?dest.map(function(a){return lnk(a.h)+(a.manual?' <span class=aprox>(vínculo manual)</span>':'');}).join(' '):'<i>nada todavía</i>')+'</div>';
+  h+='<div class=tabs><button class=\''+(tab==='partidas'?'on':'')+'\' onclick=\'setTab(&quot;partidas&quot;)\'>Partidas ('+n.partidas.length+')</button><button class=\''+(tab==='pagos'?'on':'')+'\' onclick=\'setTab(&quot;pagos&quot;)\'>Pagos y cobros ('+n.pagos.length+')</button></div>';
+  h+=tab==='partidas'?tablaPartidas(n):tablaPagos(n);
+  document.getElementById('detalle').innerHTML=h;
+}
+function setTab(t){tab=t;pintarDetalle();}
+function tablaPartidas(n){
+  if(!n.detalle)return '<div class=vacio>El detalle de partidas de este documento no se cargó porque la cadena es muy grande. Ejecuta la trazabilidad desde este documento para verlo.</div>';
+  if(!n.partidas.length)return '<div class=vacio>Este documento no tiene partidas.</div>';
+  var h='<table><thead><tr><th class=l>#</th><th class=l>Clave</th><th class=l>Descripción</th><th>Cantidad</th><th>Precio</th><th>Desc. %</th><th>Importe</th><th class=l>Viene de</th><th class=l>Va hacia</th></tr></thead><tbody>';
+  n.partidas.forEach(function(p,i){
+    var ori=p.orig.map(function(o){return lnk(o.doc)+' ('+num(o.cant)+')'+(o.aprox?' <span class=aprox title=\'Ligado por el encabezado y el producto, no por partida\'>≈</span>':'');}).join('<br>');
+    var des=p.dest.map(function(o){return lnk(o.doc)+': '+num(o.cant)+(o.aprox?' <span class=aprox>≈</span>':'');}).join('<br>');
+    var grupos={};p.dest.forEach(function(d){var e=N[d.doc]?N[d.doc].etapa:0;if(e>=3&&e<=4)grupos[e]=(grupos[e]||0)+d.cant;});
+    Object.keys(grupos).sort().forEach(function(e){var f=p.cant-grupos[e],rot=e==3?'Entrega':'Factura';des+='<br>'+(f>0.00001?'<span class=pend>'+rot+': falta '+num(f)+'</span>':'<span class=hecho>'+rot+' completa</span>');});
+    h+='<tr><td class=l>'+(i+1)+'</td><td class=l>'+esc(p.clave)+'</td><td class=l>'+esc(p.desc)+'</td><td>'+num(p.cant)+' '+esc(p.uni)+(p.conversion?'<span class=conv>= '+num(p.cantBase)+' '+esc(p.uniBase)+' (×'+num(p.coef)+')</span>':'')+'</td><td>'+din(p.precio)+'</td><td>'+(p.dsc?num(p.dsc*(p.dsc<=1?100:1)):'')+'</td><td>'+din(p.total)+'</td><td class=l>'+(ori||'—')+'</td><td class=l>'+(des||'—')+'</td></tr>';
+    var ex='';
+    p.lotes.forEach(function(l){ex+='<span class=chip><em>Lote</em> '+esc(l.lote)+' · '+num(l.cant)+(l.cad?' · <em>cad.</em> '+esc(l.cad):'')+'</span>';});
+    if(p.series.length){ex+='<span class=chip><em>Series ('+p.nSeries+')</em> '+esc(p.series.slice(0,6).join(', '))+(p.nSeries>6?' …':'')+'</span>';}
+    p.peds.forEach(function(d){ex+='<span class=chip><em>Pedimento</em> '+esc(d.num)+(d.aduana?' · aduana '+esc(d.aduana):'')+(d.fecha?' · '+esc(d.fecha):'')+' · '+num(d.cant)+'</span>';});
+    if(ex)h+='<tr class=extra><td></td><td colspan=8>'+ex+'</td></tr>';
+  });
+  return h+'</tbody></table>';
+}
+function tablaPagos(n){
+  if(!n.pagos.length)return '<div class=vacio>'+(n.total>0?'Este documento no tiene pagos ni cobros aplicados.':'Este documento no maneja pagos.')+'</div>';
+  var h='<table><thead><tr><th class=l>Fecha</th><th class=l>Tipo</th><th class=l>Operación</th><th class=l>Forma de pago</th><th class=l>Cuenta</th><th>Monto aplicado</th></tr></thead><tbody>',t=0;
+  n.pagos.forEach(function(p){t+=p.monto;h+='<tr><td class=l>'+esc(p.fecha)+'</td><td class=l>'+esc(p.clase)+'</td><td class=l>'+esc(p.nc?('Nota de crédito '+(N[p.nc]?N[p.nc].folio:'#'+p.nc)):(p.folio||('#'+p.operacion)))+'</td><td class=l>'+esc(p.forma)+'</td><td class=l>'+esc(p.cuenta)+'</td><td>'+din(p.monto)+'</td></tr>';});
+  return h+'</tbody><tfoot><tr><td class=l colspan=5><b>Total aplicado</b></td><td><b>'+din(t)+'</b></td></tr></tfoot></table>';
+}
+function elegir(id){if(!N[id])return;sel=id;document.querySelectorAll('.card').forEach(function(c){c.classList.toggle('sel',+c.getAttribute('data-id')===id);});lineas();pintarDetalle();}
+function abrirSel(){enviar({accion:'abrir',id:sel});}
+// ---- exportar ----
+function csvCelda(c){c=String(c==null?'':c);return /[,\""\n]/.test(c)?'\""'+c.replace(/\""/g,'\""\""')+'\""':c;}
+function exportar(todo){
+  var ns=todo?M.nodos:[N[sel]],f=[['ID documento','Tipo','Folio','Fecha','Entidad','Partida','Clave','Descripción','Cantidad','Unidad','Cantidad en unidad base','Unidad base','Precio','Importe','Viene de (ID)','Va hacia (ID: cantidad)','Lotes','Series','Pedimentos']];
+  ns.forEach(function(n){n.partidas.forEach(function(p,i){f.push([n.id,n.tipoNombre,n.folio,n.fecha,n.entidad,i+1,p.clave,p.desc,p.cant,p.uni,p.cantBase,p.uniBase,p.precio,p.total,
+    p.orig.map(function(o){return o.doc;}).join(' '),p.dest.map(function(o){return o.doc+': '+o.cant;}).join(' | '),
+    p.lotes.map(function(l){return l.lote+' ('+l.cant+(l.cad?', cad. '+l.cad:'')+')';}).join(' | '),(p.series||[]).join(' '),p.peds.map(function(d){return d.num+' ('+d.cant+')';}).join(' | ')]);});});
+  enviar({accion:'csv',nombre:todo?('trazabilidad_cadena_'+M.raiz):('partidas_'+sel),contenido:f.map(function(r){return r.map(csvCelda).join(',');}).join('\r\n')});
+}
+// ---- arranque ----
+(function(){
+  var r=N[M.raiz];document.getElementById('tit').textContent='Trazabilidad · '+r.tipoNombre+' '+(r.folio||'')+' (ID '+r.id+')';
+  document.getElementById('sub').textContent=M.nodos.length+' documento(s) · '+M.aristas.length+' vínculo(s)';
+  if(M.avisos.length){var a=document.getElementById('avisos');a.className='on';document.getElementById('avSum').textContent=M.avisos.length+' aviso(s) sobre los vínculos';document.getElementById('avLista').innerHTML=M.avisos.map(function(x){return '<li>'+esc(x)+'</li>';}).join('');}
+  pintarMapa();pintarDetalle();setTimeout(lineas,30);window.addEventListener('resize',lineas);
+  document.getElementById('flujo').addEventListener('scroll',function(){});
+  var mapa=document.getElementById('malla');
+  mapa.addEventListener('click',function(e){var c=e.target.closest('.card');if(c)elegir(+c.getAttribute('data-id'));});
+  mapa.addEventListener('dblclick',function(e){var c=e.target.closest('.card');if(c)enviar({accion:'abrir',id:+c.getAttribute('data-id')});});
+  var div=document.getElementById('divisor'),fl=document.getElementById('flujo');
+  div.addEventListener('mousedown',function(e){var y0=e.clientY,h0=fl.getBoundingClientRect().height;function mv(ev){fl.style.flexBasis=Math.max(140,Math.min(window.innerHeight-220,h0+ev.clientY-y0))+'px';lineas();}function up(){document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);e.preventDefault();});
+})();
+</script></body></html>".Replace("__MODELO__", json);
 
-// ---------- 7) Ventana: modeless, se queda abierta navegando hasta que la cierren ----------
-// El script termina enseguida y la ventana sigue viva; cada clic llega a este manejador en el hilo de Comercial. Así abrir un documento no choca con XEngine
+
+// ---------- 6) Ventana: modeless, se queda abierta mientras la necesites ----------
+// El script termina enseguida y la ventana sigue viva; cada acción llega a este manejador en el hilo de Comercial. Así abrir un documento no choca con XEngine
 // («the other application is busy» pasaba cuando la ventana bloqueaba el hilo mientras Comercial cargaba el documento).
 Func<Dictionary<string, object>, string> alMensaje = r =>
 {
@@ -334,42 +514,16 @@ Func<Dictionary<string, object>, string> alMensaje = r =>
     if (accion == "abrir")
     {
         long id = r.ContainsKey("id") ? L(r["id"]) : raiz;
-        int modulo = r.ContainsKey("modulo") ? I(r["modulo"]) : (int)nodos[id]["modulo"];
+        int modulo = nodos.ContainsKey(id) ? (int)nodos[id]["modulo"] : 0;
         try { ctx.erp.AbrirDocumento((int)id, modulo); } catch (Exception ex) { ctx.Msg("No se pudo abrir el documento: " + ex.Message, "Trazabilidad"); }
-        return null;
     }
-    if (accion == "csv")
+    else if (accion == "csv")
     {
-        var sb = new StringBuilder("Origen,Destino,Evidencia,Producto,Cantidad origen,Cantidad destino\r\n");
-        foreach (var a in aristas.Values)
-        {
-            var d = nodos[(long)a["desde"]]; var h = nodos[(long)a["hasta"]];
-            string o = S(d["tipoNombre"]) + " " + S(d["folio"]), t = S(h["tipoNombre"]) + " " + S(h["folio"]), ev = string.Join("+", (List<string>)a["tipos"]);
-            var par = (List<Dictionary<string, object>>)a["partidas"];
-            if (par.Count == 0) sb.AppendLine("\"" + o + "\",\"" + t + "\"," + ev + ",,,");
-            foreach (var p in par) sb.AppendLine("\"" + o + "\",\"" + t + "\"," + ev + ",\"" + S(p["producto"]).Replace("\"", "\"\"") + "\"," + ((decimal)p["origen"]).ToString(ci) + "," + ((decimal)p["destino"]).ToString(ci));
-        }
-        using (var dlg = new SaveFileDialog { Filter = "CSV (*.csv)|*.csv", FileName = "trazabilidad_" + raiz + ".csv" })
-            if (dlg.ShowDialog() == DialogResult.OK) { File.WriteAllText(dlg.FileName, sb.ToString(), new UTF8Encoding(true)); ctx.Msg("Archivo guardado:\n" + dlg.FileName, "Trazabilidad"); }
-        return null;
-    }
-    if (accion == "centrar")
-    {
-        long nuevo = r.ContainsKey("id") ? L(r["id"]) : raiz;
-        if (nuevo != raiz && nodos.ContainsKey(nuevo))
-        {
-            // Se recentra sin volver a consultar: el mapa ya está completo; solo cambian la raíz y las columnas
-            foreach (var n in nodos.Values) n["raiz"] = (long)n["id"] == nuevo;
-            raiz = nuevo;
-            // generaciones desplazadas para que el nuevo documento sea la columna 0
-            int d0 = gen[nuevo];
-            foreach (var id in nodos.Keys) nodos[id]["gen"] = gen[id] - d0;
-            modelo["raiz"] = raiz;
-            modelo["nodos"] = nodos.Values.OrderBy(n => (int)n["gen"]).ThenBy(n => S(n["fecha"])).ToList();
-            return Html(ser.Serialize(modelo));
-        }
+        string nombre = new string(S(r["nombre"]).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        using (var dlg = new SaveFileDialog { Filter = "CSV para Excel (*.csv)|*.csv", FileName = nombre + ".csv" })
+            if (dlg.ShowDialog() == DialogResult.OK) { File.WriteAllText(dlg.FileName, S(r["contenido"]), new UTF8Encoding(true)); ctx.Msg("Archivo guardado:\n" + dlg.FileName, "Trazabilidad"); }
     }
     return null;
 };
-ctx.ShowHtmlModeless(Html(ser.Serialize(modelo)), "Trazabilidad del documento", 1280, 820, alMensaje);
+ctx.ShowHtmlModeless(Html(ser.Serialize(modelo)), "Trazabilidad del documento", 1360, 880, alMensaje);
 return "OK";

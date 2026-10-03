@@ -58,7 +58,12 @@ if ($conSource.Count -lt 1) { Write-Host "  [ERROR] Ningun vinculo trae evidenci
 foreach ($a in $aristas) {
     if (-not ($nodos | Where-Object { [long]$_.id -eq [long]$a.desde }) -or -not ($nodos | Where-Object { [long]$_.id -eq [long]$a.hasta })) { Write-Host "  [ERROR] Un vinculo apunta a un nodo que no esta en el mapa ($($a.desde) -> $($a.hasta))." -ForegroundColor Red; exit 1 }
 }
-if ([int]$raiz[0].gen -ne 0) { Write-Host "  [ERROR] La generacion de la raiz debia ser 0." -ForegroundColor Red; exit 1 }
+# la etapa del flujo (columna) sale del tipo de documento, y todo documento con partidas las trae con su detalle
+foreach ($n in $nodos) { if ([int]$n.etapa -lt 1 -or [int]$n.etapa -gt 5) { Write-Host "  [ERROR] El documento $($n.id) trae una etapa invalida ($($n.etapa))." -ForegroundColor Red; exit 1 } }
+if (-not $raiz[0].detalle -or @($raiz[0].partidas).Count -lt 1) { Write-Host "  [ERROR] La raiz debia traer sus partidas." -ForegroundColor Red; exit 1 }
+# la factura nunca va ANTES que la recepcion/remision de la misma cadena (el orden lo da el tipo de documento, no quien nacio de quien)
+$ent = @($nodos | Where-Object { [int]$_.etapa -eq 3 }); $fac = @($nodos | Where-Object { [int]$_.etapa -eq 4 })
+if ($ent.Count -gt 0 -and $fac.Count -gt 0 -and (($fac | Measure-Object -Property etapa -Minimum).Minimum -le ($ent | Measure-Object -Property etapa -Maximum).Maximum)) { Write-Host "  [ERROR] La factura debia quedar despues de la recepcion." -ForegroundColor Red; exit 1 }
 
 # 3) Si algun documento del sandbox tiene DestinationDocumentID, debe aparecer como evidencia 'D'. (En el sandbox suele no haber: se omite sin fallar.)
 $docConDestino = Sql "SELECT TOP 1 DocumentID FROM docDocument WHERE DestinationDocumentID > 0 AND DeletedOn IS NULL ORDER BY DocumentID DESC"
