@@ -16,19 +16,25 @@ $sha = [System.Security.Cryptography.SHA256]::Create()
 $n = 0
 foreach ($f in $archivos) {
     $texto = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8)
-    if ($texto -notmatch '(?im)^\s*(//|#|--)\s*Plantilla\s*:\s*(.+?)\s*$') { continue }
-    $nombre = $Matches[2]
     $appKey = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+    $esNucleo = $appKey -in @("Cotizador", "ConfiguracionFormato")          # scripts de BrosLMV que ya están instalados como botones: solo se actualiza su código
+    if ($texto -match '(?im)^\s*(//|#|--)\s*Plantilla\s*:\s*(.+?)\s*$') { $nombre = $Matches[2] }
+    elseif ($esNucleo) { $nombre = $appKey }
+    else { continue }
     if ($Scripts.Count -gt 0 -and $Scripts -notcontains $appKey) { continue }
+    if ($esNucleo -and $Scripts.Count -eq 0) { continue }                  # sin -Scripts no se tocan: hay que pedirlos por nombre
     $hash = ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($texto)) | ForEach-Object { $_.ToString("x2") }) -join ""
     $codigo = $texto.Replace("'", "''"); $nombreSql = $nombre.Replace("'", "''")
     $tmp = Join-Path $env:TEMP ("pub_" + [Guid]::NewGuid().ToString('N') + ".sql")
-    $sql = @"
+    $sql = if ($esNucleo) { @"
+UPDATE zzBrosScript SET Codigo = N'$codigo', Modificado = GETDATE(), HashSHA256 = '$hash' WHERE AppKey = '$appKey';
+IF @@ROWCOUNT = 0 RAISERROR('El script $appKey no esta instalado en esta base (instala BrosLMV primero).', 16, 1);
+"@ } else { @"
 IF EXISTS (SELECT 1 FROM zzBrosScript WHERE AppKey = '$appKey')
     UPDATE zzBrosScript SET Nombre = N'$nombreSql', Codigo = N'$codigo', Activo = 1, Categoria = N'Desarrollo', Modificado = GETDATE(), HashSHA256 = '$hash' WHERE AppKey = '$appKey';
 ELSE
     INSERT INTO zzBrosScript (AppKey, Nombre, Codigo, Modulo, Activo, Modificado, HashSHA256, Categoria) VALUES ('$appKey', N'$nombreSql', N'$codigo', 0, 1, GETDATE(), '$hash', N'Desarrollo');
-"@
+"@ }
     [System.IO.File]::WriteAllText($tmp, $sql, (New-Object System.Text.UTF8Encoding($true)))
     # -x: sin sustitución de variables (el código trae «$(…)»); -b: que un error de SQL falle
     $salida = sqlcmd -S $Server -E -d $Database -x -b -i $tmp 2>&1

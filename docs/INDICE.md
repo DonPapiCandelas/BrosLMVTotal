@@ -32,6 +32,7 @@
 | [`SALDOS_ESTADOS_CUENTA.md`](SALDOS_ESTADOS_CUENTA.md) | Plantilla de fábrica: cuentas por cobrar y por pagar con fecha de corte y antigüedad, y estados de cuenta de clientes y proveedores |
 | [`CREAR_DOCUMENTO.md`](CREAR_DOCUMENTO.md) | Plantillas de fábrica «Crear documento» (C#/Python × HTML/Windows Forms): factura, pedido, remisión, compra, OC y recepción, con documentos derivados |
 | [`COBRO_PAGO.md`](COBRO_PAGO.md) | Plantillas avanzadas «Cobro a cliente / Pago a proveedor» (C#/Python × HTML/Windows Forms): la receta de SQL directo, límites y pruebas |
+| [`CONFIGURACION_FORMATO.md`](CONFIGURACION_FORMATO.md) | Configuración de formato: formatos por tipo de documento, carpeta y nombre de los PDF, correo, y el editor de formato con vista previa |
 | [`CAPACIDADES.md`](CAPACIDADES.md) | Qué se puede construir: reportes, análisis, integraciones |
 | [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) | Reportes HTML rápidos y portables (`ctx.dashboard()`, `ctx.show_html`) |
 

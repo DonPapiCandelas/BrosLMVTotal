@@ -170,6 +170,154 @@ Func<int, string, string> previewNombre = (mid, pat) =>
     return (res.Length == 0 ? "(vacio)" : res) + ".pdf";
 };
 
+// ===================== motor de etiquetas (el mismo de «Generar documento (PDF)» y «PDF masivo») =====================
+// Resuelve un formato HTML contra un documento: columnas de vwLBSDocDocumentPrint40-DocumentID, referencias del Diccionario de referencia (engAddendaFieldRef) y [Format(col,máscara)].
+var ciE = System.Globalization.CultureInfo.InvariantCulture;
+var cacheRefE = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+Dictionary<string, string> sqlRefsE = null;
+var refsExistenE = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+var sinResolverE = new HashSet<string>();
+var reFormatE = new System.Text.RegularExpressions.Regex(@"\[Format\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([^\)\]]+?)\s*\)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+var reTagE = new System.Text.RegularExpressions.Regex(@"\[([A-Za-z_][A-Za-z0-9_]*)\]");
+
+List<Dictionary<string, object>> CargarFilasE(long doc)
+{
+    foreach (var tvf in new[] { "vwLBSDocDocumentPrint40-DocumentID", "vwLBSDocDocumentPrint33-DocumentID", "vwLBSDocDocumentPrint-DocumentID" })
+    {
+        try { var f = ctx.Query("SELECT * FROM dbo.[" + tvf + "](" + doc + ")"); if (f.Count > 0) return f; } catch { }
+    }
+    return new List<Dictionary<string, object>>();
+}
+string ResolverRefE(string clave, long doc, long item)
+{
+    string ck = clave + "|" + doc + "|" + item;
+    if (cacheRefE.TryGetValue(ck, out var hit)) return hit;
+    string val = "";
+    try
+    {
+        if (sqlRefsE == null)
+        {
+            sqlRefsE = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var rr in ctx.Query("SELECT FieldRefKey, SQL FROM engAddendaFieldRef WHERE DeletedOn IS NULL")) sqlRefsE[S(rr["FieldRefKey"])] = S(rr["SQL"]);
+        }
+        if (sqlRefsE.ContainsKey(clave))
+        {
+            refsExistenE.Add(clave);
+            string sql = sqlRefsE[clave];
+            if (sql.Trim().Length > 0)
+            {
+                sql = sql.Replace("{DocumentID}", doc.ToString()).Replace("{DocumentItemID}", item.ToString());
+                var ov = ctx.Scalar(sql);
+                val = ov == null || ov is DBNull ? "" : (ov is DateTime dref ? dref.ToString("dd/MM/yyyy") : Convert.ToString(ov, ciE));
+            }
+        }
+    }
+    catch { val = ""; }
+    cacheRefE[ck] = val;
+    return val;
+}
+string FmtValorE(object ov) => ov == null || ov is DBNull ? "" : (ov is DateTime dt ? dt.ToString("dd/MM/yyyy") : Convert.ToString(ov, ciE));
+string ResolverE(string txt, Dictionary<string, object> fila, long doc, long item)
+{
+    txt = reFormatE.Replace(txt, m =>
+    {
+        string col = m.Groups[1].Value, mask = m.Groups[2].Value.Trim();
+        object raw = fila != null && fila.ContainsKey(col) ? fila[col] : (object)ResolverRefE(col, doc, item);
+        if (raw == null || raw is DBNull || Convert.ToString(raw) == "") return "";
+        double dv;
+        if (double.TryParse(Convert.ToString(raw, ciE), System.Globalization.NumberStyles.Any, ciE, out dv))
+        {
+            try { return dv.ToString(mask, ciE); } catch { return dv.ToString("#,##0.00"); }
+        }
+        return Convert.ToString(raw);
+    });
+    txt = reTagE.Replace(txt, m =>
+    {
+        string tag = m.Groups[1].Value;
+        if (tag == "QRBros" || tag == "QRPayload" || tag == "DesgloseImpuestos") return m.Value;
+        if (fila != null && fila.ContainsKey(tag)) return System.Net.WebUtility.HtmlEncode(FmtValorE(fila[tag]));
+        string viaRef = ResolverRefE(tag, doc, item);
+        if (!string.IsNullOrEmpty(viaRef)) return System.Net.WebUtility.HtmlEncode(viaRef);
+        if (!refsExistenE.Contains(tag)) sinResolverE.Add(tag);
+        return "";
+    });
+    return txt;
+}
+string IncrustarImagenesE(string html, string baseDir)
+{
+    return System.Text.RegularExpressions.Regex.Replace(html, "src\\s*=\\s*\"([^\"]+)\"", m =>
+    {
+        string src = m.Groups[1].Value;
+        if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase) || src.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return m.Value;
+        string ruta = src;
+        try { if (!Path.IsPathRooted(ruta)) ruta = Path.Combine(baseDir, src); } catch { }
+        if (!File.Exists(ruta)) return "src=\"\"";
+        string ext = Path.GetExtension(ruta).TrimStart('.').ToLowerInvariant(); if (ext == "jpg") ext = "jpeg";
+        try { return "src=\"data:image/" + ext + ";base64," + Convert.ToBase64String(File.ReadAllBytes(ruta)) + "\""; } catch { return "src=\"\""; }
+    }, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+}
+// HTML ya resuelto de UN documento a partir del TEXTO del formato (así se prueba lo que se está escribiendo, sin guardar)
+string ResolverFormatoE(string fuente, long doc, string baseDir)
+{
+    var protegidos = new List<string>();
+    string html = System.Text.RegularExpressions.Regex.Replace(fuente, @"<(script|style)\b[\s\S]*?</\1>", mm => { protegidos.Add(mm.Value); return "@@BROSPROT" + (protegidos.Count - 1) + "@@"; }, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    var filas = CargarFilasE(doc);
+    var fila0 = filas.Count > 0 ? filas[0] : new Dictionary<string, object>();
+    Func<Dictionary<string, object>, long> itemDe = f => f.ContainsKey("DocumentItemID") && f["DocumentItemID"] != null && !(f["DocumentItemID"] is DBNull) ? Convert.ToInt64(f["DocumentItemID"]) : 0;
+    long item0 = itemDe(fila0);
+    var mDet = System.Text.RegularExpressions.Regex.Match(html, @"<DETAIL>(.*?)</DETAIL>", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+    var sb = new StringBuilder();
+    if (mDet.Success)
+    {
+        sb.Append(ResolverE(html.Substring(0, mDet.Index), fila0, doc, item0));
+        foreach (var f in filas) sb.Append(ResolverE(mDet.Groups[1].Value, f, doc, itemDe(f)));
+        sb.Append(ResolverE(html.Substring(mDet.Index + mDet.Length), fila0, doc, item0));
+    }
+    else sb.Append(ResolverE(html, fila0, doc, item0));
+    string outHtml = IncrustarImagenesE(sb.ToString(), baseDir ?? "");
+    outHtml = System.Text.RegularExpressions.Regex.Replace(outHtml, "windows-1252", "utf-8", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    if (outHtml.IndexOf("[QRPayload]", StringComparison.Ordinal) >= 0)
+    {
+        string payload = System.Net.WebUtility.HtmlDecode(ResolverE("[EmisorRfc]|[Serie][Folio]|[FechaDocumento]|[Format(Total,#,##0.00)] [Moneda]", fila0, doc, item0));
+        string uuidQr = fila0.ContainsKey("Uuid") ? S(fila0["Uuid"]).Trim() : "";
+        if (uuidQr.Length >= 32)
+        {
+            string sello = fila0.ContainsKey("selloCFD") ? S(fila0["selloCFD"]).Trim() : ""; double totQr;
+            double.TryParse(fila0.ContainsKey("Total") ? S(fila0["Total"]) : "0", System.Globalization.NumberStyles.Any, ciE, out totQr);
+            payload = "https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id=" + uuidQr + "&re=" + S(fila0.ContainsKey("EmisorRfc") ? fila0["EmisorRfc"] : "") + "&rr=" + S(fila0.ContainsKey("ReceptorRfc") ? fila0["ReceptorRfc"] : "") +
+                "&tt=" + totQr.ToString("0000000000.000000", ciE) + "&fe=" + (sello.Length >= 8 ? sello.Substring(sello.Length - 8) : sello);
+        }
+        payload = payload.Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;");
+        outHtml = outHtml.Replace("[QRPayload]", payload);
+    }
+    if (outHtml.IndexOf("[QRBros]", StringComparison.Ordinal) >= 0)
+        outHtml = System.Text.RegularExpressions.Regex.Replace(outHtml, @"<img[^>]*\[QRBros\][^>]*>", "").Replace("[QRBros]", "");
+    if (outHtml.IndexOf("[DesgloseImpuestos]", StringComparison.Ordinal) >= 0)
+    {
+        var sbtx = new StringBuilder();
+        try
+        {
+            foreach (var t in ctx.Query("SELECT TaxName, CAST(Retention AS INT) AS Ret, SUM(Amount) AS Monto FROM docDocumentTaxDetail WHERE DocumentID=" + doc +
+                " GROUP BY TaxName, CAST(Retention AS INT) HAVING ABS(SUM(Amount)) > 0.005 ORDER BY CAST(Retention AS INT), TaxName"))
+            {
+                bool ret = Convert.ToInt32(t["Ret"]) == 1; double mt = Convert.ToDouble(t["Monto"], ciE);
+                sbtx.Append("<div class=\"row keep\"><span class=\"k\">" + (ret ? "Ret. " : "") + System.Net.WebUtility.HtmlEncode(S(t["TaxName"])) + "</span><span class=\"v\">" + (ret ? "-" : "") + "$" + mt.ToString("#,##0.00", ciE) + "</span></div>");
+            }
+        }
+        catch { }
+        outHtml = outHtml.Replace("[DesgloseImpuestos]", sbtx.ToString());
+    }
+    for (int i = 0; i < protegidos.Count; i++) outHtml = outHtml.Replace("@@BROSPROT" + i + "@@", protegidos[i]);
+    return outHtml;
+}
+string LeerArchivoFormatoE(string archivo)
+{
+    byte[] bytes = File.ReadAllBytes(archivo);
+    if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) return new UTF8Encoding(false).GetString(bytes, 3, bytes.Length - 3);
+    try { return new UTF8Encoding(false, true).GetString(bytes); } catch { return Encoding.GetEncoding(1252).GetString(bytes); }
+}
+var respaldados = new HashSet<string>();                      // un solo respaldo por archivo y por sesión del editor
+
 // ===================== ventana + WebView2 =====================
 string HTML = INTERFAZ_HTML();
 var frm = new Form { Text = "BrosLMV  ·  Configuración de formato", Width = 1060, Height = 740,
@@ -217,6 +365,59 @@ frm.Load += async (s, e) =>
                 {
                     using (var d = new FolderBrowserDialog { ShowNewFolderButton = true, Description = "Carpeta destino de los PDF (puede ser de red)" })
                         data = o("ruta", d.ShowDialog() == DialogResult.OK ? d.SelectedPath : null);
+                }
+                else if (action == "editorAbrir")
+                {
+                    long fid = Convert.ToInt64(p["formatId"]);
+                    var fr = ctx.Query("SELECT f.ModuleID, f.FormatName, f.FileName, f.FormatIsDefault, ISNULL(m.ModuleName,'') AS Modulo FROM engModulePrintFormat f LEFT JOIN engModule m ON m.ModuleID=f.ModuleID WHERE f.PrintFormatID=" + fid);
+                    if (fr.Count == 0) throw new Exception("El formato ya no existe.");
+                    string arch = S(fr[0]["FileName"]); int mid = Convert.ToInt32(fr[0]["ModuleID"]);
+                    if (!File.Exists(arch)) throw new Exception("No existe el archivo del formato:\n" + arch);
+                    var docsMod = ctx.Query("SELECT TOP 40 d.DocumentID, ISNULL(d.FolioPrefix,'') AS Serie, ISNULL(CAST(d.Folio AS NVARCHAR(30)),'') AS Folio, ISNULL(be.CommercialName, be.OfficialName) AS Entidad, d.DateDocument " +
+                        "FROM docDocument d LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID=d.BusinessEntityID WHERE d.ModuleID=" + mid + " AND d.OwnedBusinessEntityID=" + owned + " AND d.DeletedOn IS NULL ORDER BY d.DocumentID DESC")
+                        .Select(d => (object)o("id", L(d["DocumentID"]), "etiqueta", (S(d["Serie"]) + S(d["Folio"])).Trim() + " · " + S(d["Entidad"]) + " (ID " + L(d["DocumentID"]) + ")")).ToArray();
+                    data = o("nombre", S(fr[0]["FormatName"]), "archivo", arch, "modulo", S(fr[0]["Modulo"]), "esDefault", B(fr[0]["FormatIsDefault"]), "html", LeerArchivoFormatoE(arch), "docs", docsMod);
+                }
+                else if (action == "editorVista")
+                {
+                    sinResolverE.Clear();
+                    string htmlV = ""; string errV = null;
+                    long docV = Convert.ToInt64(p["docId"]);
+                    if (docV <= 0) errV = "No hay documentos de este tipo para probar el formato. Crea uno en Comercial y vuelve a abrir el editor.";
+                    else
+                    {
+                        try { string archV = S(ctx.Scalar("SELECT FileName FROM engModulePrintFormat WHERE PrintFormatID=" + Convert.ToInt64(p["formatId"]))); htmlV = ResolverFormatoE(S(p["html"]), docV, Path.GetDirectoryName(archV)); }
+                        catch (Exception exv) { errV = exv.Message; }
+                        if (errV == null && htmlV.Length > 3000000) { errV = "El documento resuelto es demasiado grande para la vista previa (" + (htmlV.Length / 1024) + " KB)."; htmlV = ""; }
+                    }
+                    data = o("html", htmlV, "faltan", sinResolverE.OrderBy(x => x).ToArray(), "error", errV);
+                }
+                else if (action == "editorGuardar")
+                {
+                    long fid = Convert.ToInt64(p["formatId"]);
+                    string arch = S(ctx.Scalar("SELECT FileName FROM engModulePrintFormat WHERE PrintFormatID=" + fid));
+                    if (string.IsNullOrEmpty(arch)) throw new Exception("El formato ya no existe.");
+                    string respaldo = "";
+                    if (File.Exists(arch) && respaldados.Add(arch))
+                    {
+                        respaldo = arch + ".respaldo-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                        File.Copy(arch, respaldo, true);
+                    }
+                    File.WriteAllText(arch, S(p["html"]), new UTF8Encoding(false));
+                    data = o("ok", true, "respaldo", respaldo);
+                }
+                else if (action == "editorEtiquetas")
+                {
+                    var lst = new List<object>();
+                    try
+                    {
+                        foreach (var c in ctx.Query("SELECT name FROM sys.columns WHERE object_id=OBJECT_ID('dbo.[vwLBSDocDocumentPrint40-DocumentID]') ORDER BY column_id"))
+                            lst.Add(o("k", S(c["name"]), "d", "", "t", "col", "r", false, "c", false));
+                    }
+                    catch { }
+                    foreach (var rf in ctx.Query("SELECT FieldRefKey, ISNULL(Description,'') AS Descr, ISNULL(Custom,0) AS Cus, CASE WHEN SQL LIKE '%{DocumentItemID}%' THEN 1 ELSE 0 END AS Renglon FROM engAddendaFieldRef WHERE DeletedOn IS NULL ORDER BY FieldRefKey"))
+                        lst.Add(o("k", S(rf["FieldRefKey"]), "d", S(rf["Descr"]), "t", "ref", "r", Convert.ToInt32(rf["Renglon"]) == 1, "c", B(rf["Cus"])));
+                    data = o("etiquetas", lst.ToArray());
                 }
                 else if (action == "editarHtml")
                 {
@@ -604,6 +805,27 @@ button.btn.sm{padding:6px 10px;font-size:12px}
 .tpl-list .t.sel{background:#EAF1FE;color:var(--accent-d);font-weight:600}
 .muted{color:var(--muted)}
 .mono{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--muted);word-break:break-all}
+#editor{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column}
+#editor .eh{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:wrap}
+#editor .eh h3{margin:0;font-size:14px;font-weight:650}#editor .eh .ar{color:var(--muted);font-size:11px;font-family:ui-monospace,Consolas,monospace;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#editor .eh select{width:auto;max-width:300px;padding:6px 8px}#editor .esp{flex:1}
+#editor .estado{font-size:12px;color:var(--muted)}#editor .estado.sucio{color:#B45309;font-weight:600}
+#editor .aviso{padding:6px 14px;background:#FFF7E6;color:#7A4B06;border-bottom:1px solid #F0D9AD;font-size:12px}
+#editor .cuerpo{flex:1;min-height:0;display:flex}
+#editor .col{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
+#editor .col h4{margin:0;padding:6px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--card);border-bottom:1px solid var(--line-2)}
+#edTexto{flex:1;width:100%;border:0;border-radius:0;resize:none;min-height:0;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre;overflow:auto;padding:10px 12px;tab-size:2}
+#edTexto:focus{box-shadow:none}
+#edVista{flex:1;border:0;width:100%;background:#fff}
+#edFaltan{padding:5px 12px;font-size:12px;background:#FFF7E6;color:#7A4B06;border-top:1px solid #F0D9AD}#edFaltan code{background:#FDEBC8;border-radius:4px;padding:0 4px}
+#edErr{padding:24px;color:var(--bad);text-align:center}
+#edTags .b{padding:8px 10px;border-bottom:1px solid var(--line-2)}#edTags input{width:100%;padding:7px 9px}
+#edLista{flex:1;overflow:auto;padding:4px 6px}
+#edLista .g{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:9px 6px 3px}
+#edLista .t{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;cursor:pointer;font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+#edLista .t:hover{background:var(--line-2)}#edLista .t small{color:var(--muted);font-family:inherit;margin-left:auto;font-size:10.5px}
+#edLista .t.nueva{color:#166534}
+#edAyuda{padding:7px 10px;font-size:11px;color:var(--muted);border-top:1px solid var(--line-2)}
 </style></head>
 <body><div class='app'>
   <header><h1>Configuración de formato</h1><p>Cómo BrosLMV genera y envía los documentos en PDF.</p></header>
@@ -624,6 +846,29 @@ button.btn.sm{padding:6px 10px;font-size:12px}
     <div id='view-mail' hidden></div>
     <div id='view-diag' hidden></div>
   </main>
+</div>
+<div id='editor' hidden>
+  <div class='eh'>
+    <h3>Editor de formato</h3><span id='edNombre'></span><span class='ar' id='edArchivo'></span>
+    <span class='esp'></span>
+    <label class='muted' style='font-size:12px'>Probar con</label><select id='edDoc'></select>
+    <span class='estado' id='edEstado'>Guardado</span>
+    <button class='btn sm' onclick='edAlternarTags()' title='Mostrar u ocultar el panel de etiquetas'>Etiquetas</button>
+    <button class='btn sm' onclick='edInsertarDetalle()' title='Envuelve la fila de la tabla que se repite por renglón'>Insertar &lt;DETAIL&gt;</button>
+    <button class='btn sm primary' onclick='edGuardar()'>Guardar (Ctrl+S)</button>
+    <button class='btn sm' onclick='edCerrar()'>Cerrar</button>
+  </div>
+  <div class='aviso' id='edAviso' hidden></div>
+  <div class='cuerpo'>
+    <div class='col' style='flex:1 1 38%'><h4>Formato (HTML con [Etiquetas])</h4><textarea id='edTexto' spellcheck='false'></textarea></div>
+    <div class='col' style='flex:1.2 1 42%'><h4>Vista previa con el documento elegido</h4><div id='edErr' hidden></div><iframe id='edVista'></iframe><div id='edFaltan' hidden></div></div>
+    <div class='col' id='edTags' style='flex:0 0 260px;border-right:0'>
+      <h4>Etiquetas</h4>
+      <div class='b'><input id='edBuscar' placeholder='Buscar etiqueta…' autocomplete='off'></div>
+      <div id='edLista'></div>
+      <div id='edAyuda'>Clic: inserta <b>[Etiqueta]</b>. Mayús+clic: inserta <b>[Format(Etiqueta,#,##0.00)]</b>. Las de renglón van dentro de <b>&lt;DETAIL&gt;…&lt;/DETAIL&gt;</b>.</div>
+    </div>
+  </div>
 </div>
 <div id='toast' class='toast'></div>
 <script>
@@ -703,7 +948,7 @@ function renderDetail(c){
        <div class='inline' style='margin-top:8px'>
          <button class='btn sm' onclick='nuevoFormato()'>Nuevo…</button>
          <button class='btn sm' onclick='nuevoFormato(""dup"")'>Duplicar</button>
-         <button class='btn sm' onclick='editarHtml()'>Editar HTML</button>
+         <button class='btn sm primary' onclick='editarHtml()'>Editar formato…</button>
          <button class='btn sm' onclick='quitarFormato()'>Quitar</button>
        </div>
        <div class='mono' id='fmtArch' style='margin-top:8px'>${esc(c.archivo)}</div>
@@ -753,7 +998,7 @@ async function guardarModulo(){
     personalizado:chk('pers'),defComercial:chk('defcom'),
     ruta:val('m_ruta'),patron:val('m_patron'),preguntar:chk('m_preg'),abrir:chk('m_abrir')});
   DATA=await call('cargarTodo'); renderList(document.getElementById('q').value.toLowerCase()); renderDetail(c); toast('Guardado','ok');}
-async function editarHtml(){const id=+val('fmt');if(!id){toast('No hay archivo','bad');return;}await call('editarHtml',{formatId:id});}
+async function editarHtml(){const id=+val('fmt');if(!id){toast('No hay archivo','bad');return;}abrirEditor(id);}
 async function quitarFormato(){const id=+val('fmt');if(!id)return;
   if(!confirm('¿Quitar este formato? (No borra el archivo .html)'))return;
   try{const c=await call('quitarFormato',{id:sel,formatId:id});renderDetail(c);toast('Formato quitado','ok');}
@@ -766,7 +1011,7 @@ async function nuevoFormato(dup){
   try{const r=await call('nuevoFormato',{id:sel,nombre,modo,origenFormatId:origen});
     if(r&&r.cancel){return;} renderDetail(r.cfg);
     const s=document.getElementById('fmt'); if(s) s.value=r.nuevo; document.getElementById('fmt').dispatchEvent(new Event('change'));
-    toast('Formato creado — usa “Editar HTML” para ajustarlo','ok');}
+    toast('Formato creado — usa “Editar formato…” para ajustarlo','ok');}
   catch(e){toast(e.message,'bad');}}
 // -------- Diagnóstico --------
 async function renderDiag(){
@@ -879,6 +1124,71 @@ async function guardarPlantilla(){if(!plSel){toast('Selecciona o crea una planti
 async function eliminarPlantilla(){if(!plSel)return;if(!confirm('¿Eliminar esta plantilla?'))return;
   await call('eliminarPlantilla',{id:plSel});plSel=0;DATA=await call('cargarTodo');renderTpls();
   ['t_nom','t_asu','t_cc','t_bcc','t_cue'].forEach(i=>document.getElementById(i).value='');toast('Plantilla eliminada','ok');}
+
+let ed={id:0,sucio:false,etiquetas:null,rid:0,timer:null,esDefault:false};
+async function abrirEditor(id){
+  try{
+    const r=await call('editorAbrir',{formatId:id});
+    ed.id=id;ed.sucio=false;ed.esDefault=r.esDefault;
+    document.getElementById('edNombre').textContent=r.modulo+' · '+r.nombre;
+    document.getElementById('edArchivo').textContent=r.archivo;document.getElementById('edArchivo').title=r.archivo;
+    const ta=document.getElementById('edTexto');ta.value=r.html;
+    const sel=document.getElementById('edDoc');
+    sel.innerHTML=r.docs.length?r.docs.map(d=>'<option value='+d.id+'>'+esc(d.etiqueta)+'</option>').join(''):'<option value=0>(no hay documentos de este tipo)</option>';
+    const av=document.getElementById('edAviso');
+    if(r.esDefault){av.hidden=false;av.textContent='Este es el formato predeterminado de Comercial: al guardar también cambias cómo imprime Comercial. Se guarda una copia de respaldo del archivo original. Si prefieres no tocarlo, duplícalo desde la lista de formatos.';}
+    else av.hidden=true;
+    edEstado();document.getElementById('editor').hidden=false;
+    if(!ed.etiquetas){try{ed.etiquetas=(await call('editorEtiquetas')).etiquetas;}catch(e){ed.etiquetas=[];}}
+    edPintarEtiquetas();edVista();ta.focus();
+  }catch(e){toast(e.message,'bad');}
+}
+function edAlternarTags(){const p=document.getElementById('edTags');p.hidden=!p.hidden;}
+function edEstado(){const e=document.getElementById('edEstado');e.textContent=ed.sucio?'Sin guardar ●':'Guardado';e.className='estado'+(ed.sucio?' sucio':'');}
+function edProgramar(){ed.sucio=true;edEstado();clearTimeout(ed.timer);ed.timer=setTimeout(edVista,600);}
+async function edVista(){
+  const mi=++ed.rid,html=document.getElementById('edTexto').value,doc=+document.getElementById('edDoc').value;
+  try{
+    const r=await call('editorVista',{formatId:ed.id,html:html,docId:doc});
+    if(mi!==ed.rid)return;
+    const fr=document.getElementById('edVista'),er=document.getElementById('edErr'),fa=document.getElementById('edFaltan');
+    if(r.error){er.hidden=false;er.textContent=r.error;fr.style.display='none';}
+    else{er.hidden=true;fr.style.display='';fr.srcdoc=r.html;}
+    if(r.faltan&&r.faltan.length){fa.hidden=false;fa.innerHTML='Sin valor en este documento: '+r.faltan.map(x=>'<code>['+esc(x)+']</code>').join(' ')+' — si es una referencia nueva, revisa el Diccionario de referencia de Comercial.';}
+    else fa.hidden=true;
+  }catch(e){if(mi===ed.rid){const er=document.getElementById('edErr');er.hidden=false;er.textContent=e.message;}}
+}
+async function edGuardar(){
+  try{
+    const r=await call('editorGuardar',{formatId:ed.id,html:document.getElementById('edTexto').value});
+    ed.sucio=false;edEstado();toast(r.respaldo?'Guardado. Respaldo del original: '+r.respaldo.split('\\').pop():'Guardado','ok');
+  }catch(e){toast(e.message,'bad');}
+}
+function edCerrar(){if(ed.sucio&&!confirm('Hay cambios sin guardar. ¿Cerrar sin guardarlos?'))return;document.getElementById('editor').hidden=true;}
+function edInsertar(txt){const ta=document.getElementById('edTexto');const a=ta.selectionStart,b=ta.selectionEnd;ta.value=ta.value.slice(0,a)+txt+ta.value.slice(b);ta.selectionStart=ta.selectionEnd=a+txt.length;ta.focus();edProgramar();}
+function edInsertarDetalle(){
+  const ta=document.getElementById('edTexto'),a=ta.selectionStart,b=ta.selectionEnd,sel=ta.value.slice(a,b);
+  if(sel){ta.value=ta.value.slice(0,a)+'<DETAIL>'+sel+'</DETAIL>'+ta.value.slice(b);ta.selectionStart=ta.selectionEnd=b+17;}else{edInsertar('<DETAIL></DETAIL>');}
+  ta.focus();edProgramar();
+}
+function edPintarEtiquetas(){
+  const q=(document.getElementById('edBuscar').value||'').toLowerCase().trim(),vistos={},cols=[],refs=[],propias=[];
+  (ed.etiquetas||[]).forEach(t=>{if(vistos[t.k])return;vistos[t.k]=1;if(q&&(t.k+' '+t.d).toLowerCase().indexOf(q)<0)return;(t.t==='col'?cols:(t.c?propias:refs)).push(t);});
+  const g=(titulo,l)=>l.length?'<div class=g>'+titulo+' ('+l.length+')</div>'+l.slice(0,300).map(t=>'<div class=\'t'+(t.c?' nueva':'')+'\' data-k=\''+esc(t.k)+'\' title=\''+esc(t.d||t.k)+'\'>['+esc(t.k)+']'+(t.r?'<small>renglón</small>':'')+'</div>').join(''):'';
+  document.getElementById('edLista').innerHTML=g('Referencias propias',propias)+g('Columnas del documento',cols)+g('Diccionario de referencia',refs)||'<div class=g>Sin resultados</div>';
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  const ta=document.getElementById('edTexto');
+  ta.addEventListener('input',edProgramar);
+  ta.addEventListener('keydown',e=>{
+    if(e.key==='Tab'){e.preventDefault();edInsertar('  ');}
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();edGuardar();}
+  });
+  document.getElementById('edDoc').addEventListener('change',edVista);
+  document.getElementById('edBuscar').addEventListener('input',edPintarEtiquetas);
+  document.getElementById('edLista').addEventListener('click',e=>{const t=e.target.closest('.t');if(!t)return;const k=t.getAttribute('data-k');edInsertar(e.shiftKey?'[Format('+k+',#,##0.00)]':'['+k+']');});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.getElementById('editor').hidden)edCerrar();});
+});
 
 (async function(){DATA=await call('cargarTodo');renderList('');renderDetail(DATA.general);})();
 </script></body></html>";
