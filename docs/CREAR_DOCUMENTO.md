@@ -14,18 +14,19 @@ Son ejemplos **funcionales**: sirven tal cual, y sirven para copiar. Nada va esc
 
 ## La ventana: una estación de captura
 
-Las dos versiones de C# (HTML y Windows Forms) y la de Python en HTML comparten el mismo diseño, pensado para sentirse como parte de Comercial:
+La versión **HTML** (C# y Python) y la de **Windows Forms** de C# tienen **diseños propios**: la HTML aprovecha la web (tarjetas, consultas en vivo), y la de Windows Forms toma el estilo clásico de un documento de Comercial (cinta oscura con acciones e información del documento, grupos numerados, la etiqueta arriba de cada campo para que nada se encime ni se corte, tabla de partidas editable y totales con importe en letra). Las dos capturan lo mismo y comparten el mismo núcleo:
 
 - **Cinta de acciones** (arriba): **Guardar y abrir** (F5), **Guardar y nuevo** (F6, para capturar varios seguidos sin cerrar la ventana), **Limpiar** y **Cancelar** (Esc). Junto a ellas, la **información del documento**: fecha, folio probable y almacén.
 - **Tipo de documento** en dos grupos, **Ventas** y **Compras** (cada grupo con su color).
 - **1 · Cliente o proveedor** con búsqueda por nombre, RFC o clave (F2). Al elegirlo ves su **RFC, saldo abierto, límite de crédito, descuento habitual y último documento**; se propone su **condición de pago**; y se aplica su descuento habitual a las partidas nuevas de una venta.
+- **Moneda, centro de costo y datos fiscales:** **moneda** con su **tipo de cambio** del catálogo (editable; con pesos queda fijo en 1), **centro de costo** y, en la **factura de cliente**, los datos del **CFDI**: **uso del CFDI** (el habitual del cliente), **forma de pago** y **método de pago** (con crédito propone PPD y forma 99; de contado, PUE y efectivo; si eliges PPD la forma pasa a 99, como exige el SAT). Se guardan en el documento (`docDocumentCFD`).
 - **2 · Partir de un documento ya existente**: los pendientes de surtir **de esa persona** salen solos al elegirla (no hace falta seleccionar nada antes en la lista; lo seleccionado se sigue marcando automáticamente).
 - **3 · Partidas** con búsqueda por nombre, clave o **código de barras** (escanea y Enter, F3), **existencia del almacén** en cada producto y marcas de lote o serie. Cantidad, precio, descuento e impuesto editables; el total se recalcula al instante.
 - **Resumen** (partidas, piezas, subtotal, descuento, impuestos y total) con **avisos**: excede el límite de crédito, piden más de la existencia, precio en cero. También **barra de crédito** y los **últimos documentos** de la persona (clic para abrirlos en Comercial).
 - **Siempre se abre el documento nativo de Comercial** al guardar. Si no se pudiera abrir, la ventana lo dice y te da el folio para buscarlo.
 - **No bloquea Comercial**: la ventana se puede minimizar y se sigue trabajando.
 
-La versión **HTML** consulta a Comercial **en vivo** mientras capturas (pendientes y últimos documentos de la persona) mediante `ctx.ShowHtmlModeless` y respuestas `__JS__…` (ver [`UI_VENTANAS.md`](UI_VENTANAS.md)); la versión de **Python en HTML** abre la misma página pero con lo precargado (no tiene consultas en vivo ni «Guardar y nuevo»). La versión **Windows Forms** de C# trae el mismo diseño con controles nativos. La de **Python en Windows Forms** sigue con la ventana sencilla de antes.
+La versión **HTML** consulta a Comercial **en vivo** mientras capturas (pendientes y últimos documentos de la persona) mediante `ctx.ShowHtmlModeless` y respuestas `__JS__…` (ver [`UI_VENTANAS.md`](UI_VENTANAS.md)); la versión de **Python en HTML** abre la misma página pero con lo precargado (no tiene consultas en vivo ni «Guardar y nuevo»). La versión **Windows Forms** de C# es no modal y trae además el botón **Historial** (últimos documentos de la persona; doble clic abre el documento en Comercial). La de **Python en Windows Forms** sigue con la ventana sencilla de antes.
 
 ## Cómo usarlas
 

@@ -91,7 +91,7 @@ def catalogos(claves):
     # Saldo = facturas, notas de cargo, recibos y gastos con saldo menos notas de crédito con saldo (docDocument.Balance; es la foto de hoy).
     def ent(tabla):
         return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.PaymentTermID,0) AS cond, ISNULL(x.Discount,0) AS descto, "
-                "ISNULL(x.CreditLimit,0) AS credito, ISNULL(sd.Saldo,0) AS saldo, sd.Ultimo AS ultimo FROM " + tabla + " x "
+                "ISNULL(x.CreditLimit,0) AS credito, ISNULL(sd.Saldo,0) AS saldo, sd.Ultimo AS ultimo, ISNULL(x.CurrencyID,0) AS moneda, " + ("ISNULL(x.ReceptorUsoCFDI,'')" if tabla == "orgCustomer" else "''") + " AS uso FROM " + tabla + " x "
                 "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID "
                 "LEFT JOIN (SELECT d.BusinessEntityID, SUM(CASE WHEN d.DocumentTypeID = 6 THEN -ISNULL(d.Balance,0) ELSE ISNULL(d.Balance,0) END) AS Saldo, CONVERT(VARCHAR(10), MAX(d.DateDocument), 23) AS Ultimo FROM docDocument d "
                 "  WHERE d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.DocumentTypeID IN (5,6,7,8,9,13) GROUP BY d.BusinessEntityID) sd ON sd.BusinessEntityID = be.BusinessEntityID "
@@ -99,13 +99,28 @@ def catalogos(claves):
 
     def lista(tabla):
         return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "cond": I(r["cond"]), "desc": D(r["descto"]), "credito": D(r["credito"]),
-                 "saldo": D(r["saldo"]), "ultimo": S(r["ultimo"])} for r in ctx.query(ent(tabla))]
+                 "saldo": D(r["saldo"]), "ultimo": S(r["ultimo"]), "moneda": I(r["moneda"]), "uso": S(r["uso"])} for r in ctx.query(ent(tabla))]
 
     lados = set(t["lado"] for t in TIPOS if t["clave"] in claves)
     cat["clientes"] = lista("orgCustomer") if "C" in lados else []
     cat["proveedores"] = lista("orgSupplier") if "P" in lados else []
     cat["condiciones"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "venta": I(r["v"]) == 1, "compra": I(r["c"]) == 1} for r in ctx.query(
         "SELECT PaymentTermID AS id, PaymentTermName AS nombre, Sales AS v, Buys AS c FROM engPaymentTerm WHERE DeletedOn IS NULL ORDER BY PaymentTermID")]
+    # Moneda con su tipo de cambio; catálogos del SAT (forma de pago, método de pago, uso del CFDI) tal como los guarda Comercial; centros de costo
+    cat["monedas"] = [{"id": I(r["id"]), "simbolo": S(r["simbolo"]), "nombre": S(r["nombre"]), "tc": D(r["tc"])} for r in ctx.query(
+        "SELECT CurrencyID AS id, IntlSymbol AS simbolo, Currency AS nombre, Rate AS tc FROM vwLBSCurrencyList ORDER BY CurrencyID")]
+
+    def sat(g1, g2=None):
+        sql = "SELECT ISNULL(Custom1,'') AS clave, ItemValue AS nombre FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'%s' AND ISNULL(Custom1,'') <> '' ORDER BY CboOrder, ItemData"
+        l = ctx.query(sql % g1)
+        if len(l) == 0 and g2:
+            l = ctx.query(sql % g2)
+        return [{"clave": S(r["clave"]), "nombre": S(r["nombre"])} for r in l]
+    cat["formas"] = sat("Anexo20v33_FormaPago")
+    cat["metodos"] = sat("Anexo20v33_MetodoDePago")
+    cat["usos"] = sat("Anexo20v40_UsoCFDI", "Anexo20v33_UsoCFDI")
+    cat["centros"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query(
+        "SELECT CostCenterID AS id, CostCenterName AS nombre FROM orgCostCenter WHERE DeletedOn IS NULL AND OwnedBusinessEntityID IN (0, " + str(empresa) + ") ORDER BY CostCenterName")]
     cat["impuestos"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "perc": D(r["perc"])} for r in ctx.query(
         "SELECT t.TaxTypeID AS id, t.TaxTypeName AS nombre, ISNULL(tp.IVA_Perc,0) AS perc FROM vwLBSTaxType t LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = t.TaxTypeID ORDER BY t.TaxTypeName")]
     # Productos: lo mínimo para buscar y poner precio. Tope de seguridad de 30,000.
@@ -249,7 +264,12 @@ def crear_documento(spec):
 
     try:
         # Encabezado: perfil del módulo + lo que capturó la persona
-        sets = [t["perfil"], "CampaignID=NULL", "CostCenterID=NULL", "ProjectID=NULL"]
+        centro = I(spec.get("centro"))
+        sets = [t["perfil"], "CampaignID=NULL", "CostCenterID=" + (str(centro) if centro > 0 else "NULL"), "ProjectID=NULL"]
+        moneda = I(spec.get("moneda"))
+        tc = D(spec.get("tc"))
+        if moneda > 0:
+            sets.append("CurrencyID=" + str(moneda) + ", Rate=" + Num(tc if tc > 0 else 1))
         if t["condicion"]:
             sets.append("PaymentTermID=" + str(I(spec.get("condicion"))))
         fecha = S(spec.get("fecha"))
@@ -296,6 +316,13 @@ def crear_documento(spec):
         ctx.erp.Save(doc)
         if _error_erp():
             raise Exception("Save: " + S(_error_erp()))
+        if clave == "factura_cliente":                     # datos del comprobante: el motor deja la fila de docDocumentCFD con valores por omisión (G03 / PPD / 99)
+            cf = []
+            for col, llave in (("ReceptorUsoCFDI", "uso"), ("FormaPago", "forma"), ("MetodoPago", "metodo")):
+                if S(spec.get(llave)) != "":
+                    cf.append(col + "=N'" + Sq(S(spec.get(llave))) + "'")
+            if cf:
+                ctx.execute("UPDATE docDocumentCFD SET " + ", ".join(cf) + " WHERE DocumentID=" + str(doc))
         if t["condicion"]:
             try:
                 base = datetime.datetime.strptime(fecha[:10], "%Y-%m-%d") if len(fecha) >= 10 else datetime.datetime.today()
@@ -430,6 +457,18 @@ td .pn{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;over
    <div class='ent' id='entCard'></div>
    <div id='avisoEnt'></div>
   </div>
+  <div class='card'><h2>Moneda, centro de costo<span id='lblCfdi'> y datos fiscales del CFDI</span></h2>
+   <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px'>
+    <div><label>Moneda</label><select id='mon'></select></div>
+    <div><label>Tipo de cambio</label><input type='number' id='tc' min='0' step='0.0001'></div>
+    <div><label>Centro de costo</label><select id='cc'></select></div>
+   </div>
+   <div id='bxCfdi' style='display:none;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px'>
+    <div><label>Uso del CFDI</label><select id='uso'></select></div>
+    <div><label>Forma de pago</label><select id='forma'></select></div>
+    <div><label>Método de pago</label><select id='metodo'></select></div>
+   </div>
+  </div>
   <div class='card' id='cardOrigen' style='display:none'><h2><b>2</b>Partir de un documento ya existente<span class='der2' id='orgEstado'></span></h2><div class='org' id='origenes'></div>
    <div class='nota' style='color:var(--suave);font-size:12px;margin-top:6px'>Se cargan solo las partidas que aún faltan por surtir; puedes combinar varios documentos de la misma persona.</div></div>
   <div class='card'><h2><b id='nPart'>2</b>Partidas<span class='der2'><span class='kbd'>F3</span> buscar producto · escanea o escribe el código de barras y Enter</span></h2>
@@ -491,7 +530,7 @@ $('prod').__exacto=function(v){v=String(v||'').trim();if(!v)return null;return C
 function pintarTipos(){var h='',g='';TIPOS.forEach(function(t){var gr=t.lado==='C'?'Ventas':'Compras';if(gr!==g){h+='<span class=grp>'+gr+'</span>';g=gr;}
   h+='<button class=\'tipo '+(t.lado==='C'?'v':'c')+(t.clave===ST.tipo?' on':'')+'\' onclick=\'setTipo(&quot;'+t.clave+'&quot;)\'><i>'+({factura_cliente:'🧾',pedido:'📋',remision:'🚚',factura_compra:'📥',orden_compra:'🛒',recepcion:'📦'}[t.clave]||'📄')+'</i>'+esc(t.nombre)+'</button>';});$('tipos').innerHTML=h;}
 function setTipo(c,mantener){var antes=tipoAct().lado;ST.tipo=c;var t=tipoAct();if(t.lado!==antes&&!mantener){ST.ent=null;$('ent').value='';}ST.origenes=[];ST.pend=[];ST.partidas=ST.partidas.filter(function(p){return !p.orig;});
-  document.body.className=t.lado==='C'?'venta':'compra';$('lblEnt').textContent=t.lado==='C'?'Cliente':'Proveedor';$('bxCond').style.display=t.condicion?'':'none';$('bxEntrega').style.display=t.entrega?'':'none';
+  document.body.className=t.lado==='C'?'venta':'compra';$('lblEnt').textContent=t.lado==='C'?'Cliente':'Proveedor';$('bxCond').style.display=t.condicion?'':'none';$('bxEntrega').style.display=t.entrega?'':'none';var cf=t.clave==='factura_cliente';$('bxCfdi').style.display=cf?'grid':'none';$('lblCfdi').style.display=cf?'':'none';ST.manual=false;
   $('cond').innerHTML=CAT.condiciones.filter(function(x){return t.lado==='C'?x.venta:x.compra;}).map(function(x){return '<option value='+x.id+'>'+esc(x.nombre)+'</option>';}).join('');
   ST.partidas.forEach(function(p){p.precio=precioDe(p.id);});
   $('ttl').textContent='Nuevo documento · '+t.nombre;$('sub').textContent='Módulo '+t.modulo+(t.lado==='C'?' · ventas':' · compras');$('pMod').innerHTML='Módulo <b>'+t.modulo+'</b> · '+esc(t.nombre);
@@ -500,6 +539,8 @@ function setTipo(c,mantener){var antes=tipoAct().lado;ST.tipo=c;var t=tipoAct();
 // ---- cliente / proveedor ----
 function elegirEnt(x){ST.ent=x;$('ent').value=x.nombre;$('ent').classList.remove('mal');
   if(x.cond&&tipoAct().condicion&&[].some.call($('cond').options,function(o){return +o.value===x.cond;}))$('cond').value=x.cond;
+  if(x.moneda&&[].some.call($('mon').options,function(o){return +o.value===x.moneda;})){$('mon').value=x.moneda;cambiaMon();}
+  if(x.uso&&[].some.call($('uso').options,function(o){return o.value===x.uso;}))$('uso').value=x.uso;autoMetodo();
   pintarEnt();cargarContexto();pintarPartidas();$('prod').focus();}
 function pintarEnt(){var x=ST.ent,c=$('entCard'),t=tipoAct();
   if(!x){c.style.display='none';$('cardCred').style.display='none';$('cardHist').style.display='none';$('avisoEnt').innerHTML='';return;}
@@ -556,9 +597,10 @@ function validar(){var t=tipoAct();document.querySelectorAll('.mal').forEach(fun
   if(!ST.ent){$('ent').classList.add('mal');$('ent').focus();aviso('Elige el '+(t.lado==='C'?'cliente':'proveedor')+' de la lista (escribe y selecciona).','mal');return false;}
   if(!ST.partidas.length){$('prod').focus();aviso('Agrega al menos una partida.','mal');return false;}
   if(ST.partidas.some(function(p){return !(p.cant>0);})){aviso('Todas las partidas deben tener cantidad mayor a cero.','mal');return false;}
+  if(tipoAct().clave==='factura_cliente'&&!($('uso').value&&$('forma').value&&$('metodo').value)){aviso('Completa los datos fiscales: uso del CFDI, forma de pago y método de pago.','mal');return false;}
   return true;}
 function crear(otro){if(ST.guardando||!validar())return;var t=tipoAct();ST.guardando=true;$('bGuardar').disabled=true;$('bNuevo').disabled=true;$('bGuardar').querySelector('span').textContent='Creando…';
-  enviar({accion:'crear',nuevo:!!otro&&VIVO,spec:JSON.stringify({tipo:ST.tipo,almacen:+$('alm').value,entidad:ST.ent.id,condicion:t.condicion?+$('cond').value:0,fecha:$('fecha').value,entrega:t.entrega?$('entrega').value:'',titulo:$('titulo').value,comentarios:$('coment').value,
+  enviar({accion:'crear',nuevo:!!otro&&VIVO,spec:JSON.stringify({tipo:ST.tipo,almacen:+$('alm').value,entidad:ST.ent.id,condicion:t.condicion?+$('cond').value:0,fecha:$('fecha').value,entrega:t.entrega?$('entrega').value:'',titulo:$('titulo').value,comentarios:$('coment').value,moneda:+$('mon').value,tc:+$('tc').value||1,centro:+$('cc').value||0,uso:$('uso').value,forma:$('forma').value,metodo:$('metodo').value,
     origenes:ST.origenes,partidas:ST.partidas.map(function(p){return {id:p.id,nombre:p.nombre,cant:p.cant,precio:p.precio,desc:p.desc,imp:p.imp,origenItem:p.origenItem||0};})})});}
 function liberar(){ST.guardando=false;$('bGuardar').disabled=false;$('bNuevo').disabled=false;$('bGuardar').querySelector('span').textContent='Guardar y abrir';}
 function falloCrear(m){liberar();aviso(m,'mal');var a=document.createElement('div');a.className='aviso r';a.textContent=m;$('avisosRes').insertBefore(a,$('avisosRes').firstChild);}
@@ -569,6 +611,16 @@ document.addEventListener('keydown',function(e){if(e.key==='F5'){e.preventDefaul
 // ---- arranque ----
 $('alm').innerHTML=CAT.almacenes.map(function(a){return '<option value='+a.id+'>'+esc(a.nombre)+'</option>';}).join('');$('alm').addEventListener('change',pintarPartidas);
 var hoy=new Date(),iso=function(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);};
+function opcs(l,v,t){return l.map(function(x){return '<option value="'+esc(x[v])+'">'+esc(t(x))+'</option>';}).join('');}
+$('mon').innerHTML=opcs(CAT.monedas,'id',function(x){return x.simbolo+' · '+x.nombre;});$('mon').value=3;
+$('cc').innerHTML='<option value=0>(ninguno)</option>'+opcs(CAT.centros,'id',function(x){return x.nombre;});
+$('uso').innerHTML=opcs(CAT.usos,'clave',function(x){return x.clave+' · '+x.nombre;});$('forma').innerHTML=opcs(CAT.formas,'clave',function(x){return x.clave+' · '+x.nombre;});$('metodo').innerHTML=opcs(CAT.metodos,'clave',function(x){return x.clave+' · '+x.nombre;});
+$('uso').value='G03';
+function cambiaMon(){var m=CAT.monedas.filter(function(x){return x.id===+$('mon').value;})[0];if(m){$('tc').value=m.tc;$('tc').disabled=m.simbolo==='MXN';}pintarPartidas();}
+function autoMetodo(){if(ST.manual||tipoAct().clave!=='factura_cliente')return;var c=$('cond').selectedOptions[0],contado=c&&/contado/i.test(c.textContent);$('metodo').value=contado?'PUE':'PPD';$('forma').value=contado?'01':'99';}
+$('mon').addEventListener('change',cambiaMon);$('cond').addEventListener('change',autoMetodo);
+$('metodo').addEventListener('change',function(){ST.manual=true;if($('metodo').value==='PPD')$('forma').value='99';});$('forma').addEventListener('change',function(){ST.manual=true;});
+cambiaMon();
 $('fecha').value=iso(hoy);$('entrega').value=iso(hoy);$('pUsr').textContent=DATOS.usuario||'—';$('pEmp').innerHTML=DATOS.empresa?'Empresa <b>'+esc(DATOS.empresa)+'</b>':'';
 if(!VIVO)$('bNuevo').style.display='none';
 if(DATOS.inicial){var I=DATOS.inicial;ST.tipo=I.tipo;}

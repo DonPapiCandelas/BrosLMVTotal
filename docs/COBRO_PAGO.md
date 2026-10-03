@@ -14,7 +14,7 @@ Cuatro plantillas de fábrica (Consola → Plantillas → Tesorería), la misma 
 
 ## La ventana: una estación de tesorería
 
-Las dos versiones de C# (HTML y Windows Forms) y la de Python en HTML comparten el mismo diseño, el mismo de «Crear documento» (ver [`CREAR_DOCUMENTO.md`](CREAR_DOCUMENTO.md)):
+La versión **HTML** (C# y Python) y la de **Windows Forms** de C# capturan lo mismo y comparten el núcleo, cada una con su diseño. La de Windows Forms usa el estilo clásico de un documento de Comercial, el mismo de «Crear documento» (ver [`CREAR_DOCUMENTO.md`](CREAR_DOCUMENTO.md)): cinta oscura, grupos numerados con la etiqueta arriba de cada campo, **antigüedad de saldos por tramos con barras**, documentos marcables con la columna **Aplicar** editable y resumen de lo que quedaría. Estas son las funciones:
 
 - **Cinta de acciones:** **Registrar** (F5; «Registrar cobro» o «Registrar pago»), **Registrar y nuevo** (F6, para capturar varios seguidos), **Limpiar** y **Cancelar** (Esc). Junto a ellas, la **información del movimiento**: fecha, folio probable (`COB-n` / `PAG-n`) y cuenta (la predeterminada ya viene elegida).
 - **1 · Cliente o proveedor** con búsqueda por nombre o RFC (F2); **las personas con saldo salen primero** y cada una muestra cuánto debe y en cuántos documentos. Al elegirla ves su **saldo pendiente, lo vencido, número de documentos, límite y crédito disponible, su último cobro o pago** y su **antigüedad de saldos** (vigente, 1-30, 31-60, 61-90 y más de 90 días).

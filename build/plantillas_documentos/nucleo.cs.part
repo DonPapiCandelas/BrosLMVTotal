@@ -17,6 +17,7 @@ var TIPOS = new List<Dictionary<string, object>>
     T("recepcion",       "Recepción de compra",  184, "P", "compra", "DepotIDFrom=0, UserID=0, PaymentTermID=0, StatusDeliveryID=0",        false, true,  "entrega",  183),
 };
 var tipoPor = TIPOS.ToDictionary(t => (string)t["clave"]);
+bool LlevaCfdi(string clave) => clave == "factura_cliente";          // uso del CFDI, forma y método de pago: solo el comprobante fiscal
 
 // ---------- Catálogos para el formulario ----------
 Dictionary<string, object> Catalogos(IEnumerable<string> claves)
@@ -28,19 +29,33 @@ Dictionary<string, object> Catalogos(IEnumerable<string> claves)
     // Saldo = facturas, notas de cargo, recibos y gastos con saldo menos notas de crédito con saldo (docDocument.Balance; es la foto de hoy).
     string ent(string tabla) =>
         "SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.PaymentTermID,0) AS cond, ISNULL(x.Discount,0) AS descto, " +
-        "ISNULL(x.CreditLimit,0) AS credito, ISNULL(sd.Saldo,0) AS saldo, sd.Ultimo AS ultimo FROM " + tabla + " x " +
+        "ISNULL(x.CreditLimit,0) AS credito, ISNULL(sd.Saldo,0) AS saldo, sd.Ultimo AS ultimo, ISNULL(x.CurrencyID,0) AS moneda, " + (tabla == "orgCustomer" ? "ISNULL(x.ReceptorUsoCFDI,'')" : "''") + " AS uso FROM " + tabla + " x " +
         "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID " +
         "LEFT JOIN (SELECT d.BusinessEntityID, SUM(CASE WHEN d.DocumentTypeID = 6 THEN -ISNULL(d.Balance,0) ELSE ISNULL(d.Balance,0) END) AS Saldo, MAX(d.DateDocument) AS Ultimo FROM docDocument d " +
         "  WHERE d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND d.OwnedBusinessEntityID = " + empresa + " AND d.DocumentTypeID IN (5,6,7,8,9,13) GROUP BY d.BusinessEntityID) sd ON sd.BusinessEntityID = be.BusinessEntityID " +
         "WHERE be.DeletedOn IS NULL AND x.DeletedOn IS NULL ORDER BY nombre";
     Func<string, List<Dictionary<string, object>>> lista = tabla => ctx.Query(ent(tabla))
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["rfc"] = S(r["rfc"]), ["cond"] = I(r["cond"]), ["desc"] = D(r["descto"]),
-            ["credito"] = D(r["credito"]), ["saldo"] = D(r["saldo"]), ["ultimo"] = Nulo(r["ultimo"]) ? "" : Convert.ToDateTime(r["ultimo"], ci).ToString("yyyy-MM-dd") }).ToList();
+            ["credito"] = D(r["credito"]), ["saldo"] = D(r["saldo"]), ["moneda"] = I(r["moneda"]), ["uso"] = S(r["uso"]), ["ultimo"] = Nulo(r["ultimo"]) ? "" : Convert.ToDateTime(r["ultimo"], ci).ToString("yyyy-MM-dd") }).ToList();
     var lados = TIPOS.Where(t => claves.Contains((string)t["clave"])).Select(t => (string)t["lado"]).Distinct().ToList();
     cat["clientes"] = lados.Contains("C") ? lista("orgCustomer") : new List<Dictionary<string, object>>();
     cat["proveedores"] = lados.Contains("P") ? lista("orgSupplier") : new List<Dictionary<string, object>>();
     cat["condiciones"] = ctx.Query("SELECT PaymentTermID AS id, PaymentTermName AS nombre, Sales AS v, Buys AS c FROM engPaymentTerm WHERE DeletedOn IS NULL ORDER BY PaymentTermID")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["venta"] = I(r["v"]) == 1, ["compra"] = I(r["c"]) == 1 }).ToList();
+    // Moneda con su tipo de cambio vigente; catálogos del SAT (forma de pago, método de pago, uso del CFDI) tal como los guarda Comercial; centros de costo de la empresa
+    cat["monedas"] = ctx.Query("SELECT CurrencyID AS id, IntlSymbol AS simbolo, Currency AS nombre, Rate AS tc FROM vwLBSCurrencyList ORDER BY CurrencyID")
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["simbolo"] = S(r["simbolo"]), ["nombre"] = S(r["nombre"]), ["tc"] = D(r["tc"]) }).ToList();
+    Func<string, string, List<Dictionary<string, object>>> sat = (g1, g2) =>
+    {
+        var l = ctx.Query("SELECT ISNULL(Custom1,'') AS clave, ItemValue AS nombre FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'" + g1 + "' AND ISNULL(Custom1,'') <> '' ORDER BY CboOrder, ItemData");
+        if (l.Count == 0 && g2 != null) l = ctx.Query("SELECT ISNULL(Custom1,'') AS clave, ItemValue AS nombre FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'" + g2 + "' AND ISNULL(Custom1,'') <> '' ORDER BY CboOrder, ItemData");
+        return l.Select(r => new Dictionary<string, object> { ["clave"] = S(r["clave"]), ["nombre"] = S(r["nombre"]) }).ToList();
+    };
+    cat["formas"] = sat("Anexo20v33_FormaPago", null);
+    cat["metodos"] = sat("Anexo20v33_MetodoDePago", null);
+    cat["usos"] = sat("Anexo20v40_UsoCFDI", "Anexo20v33_UsoCFDI");
+    cat["centros"] = ctx.Query("SELECT CostCenterID AS id, CostCenterName AS nombre FROM orgCostCenter WHERE DeletedOn IS NULL AND OwnedBusinessEntityID IN (0, " + empresa + ") ORDER BY CostCenterName")
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
     cat["impuestos"] = ctx.Query("SELECT t.TaxTypeID AS id, t.TaxTypeName AS nombre, ISNULL(tp.IVA_Perc,0) AS perc FROM vwLBSTaxType t LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = t.TaxTypeID ORDER BY t.TaxTypeName")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["perc"] = D(r["perc"]) }).ToList();
     // Productos: lo mínimo para buscar y poner precio. Tope de seguridad: un catálogo enorme se carga por completo pero se avisa.
@@ -164,6 +179,7 @@ void ArmarAgenda(int doc, int condicion, DateTime fecha)
 
 // ---------- Crear el documento ----------
 // «spec»: tipo, almacen, entidad, condicion, fecha (yyyy-MM-dd), entrega (yyyy-MM-dd), titulo, comentarios, origenes [ids], partidas [{id, cant, precio, desc (0-100), imp, origenItem}]
+//   y, opcionales: moneda (id), tc (tipo de cambio), centro (id del centro de costo), uso / forma / metodo (claves SAT; solo la factura de cliente)
 // Regresa el DocumentID. Si algo no es válido lanza una excepción con un mensaje que se le puede mostrar a la persona.
 long CrearDocumento(Dictionary<string, object> spec)
 {
@@ -194,7 +210,10 @@ long CrearDocumento(Dictionary<string, object> spec)
     try
     {
     // Encabezado: perfil del módulo + lo que capturó la persona
-    var set = new List<string> { (string)t["perfil"], "CampaignID=NULL", "CostCenterID=NULL", "ProjectID=NULL" };
+    int centro = spec.ContainsKey("centro") ? I(spec["centro"]) : 0;
+    var set = new List<string> { (string)t["perfil"], "CampaignID=NULL", "CostCenterID=" + (centro > 0 ? centro.ToString(ci) : "NULL"), "ProjectID=NULL" };
+    int moneda = spec.ContainsKey("moneda") ? I(spec["moneda"]) : 0; double tc = spec.ContainsKey("tc") ? D(spec["tc"]) : 0;
+    if (moneda > 0) set.Add("CurrencyID=" + moneda + ", Rate=" + Num(tc > 0 ? tc : 1));
     if ((bool)t["condicion"]) set.Add("PaymentTermID=" + I(spec["condicion"]));
     string fecha = S(spec.ContainsKey("fecha") ? spec["fecha"] : ""); if (fecha.Length >= 10) set.Add("DateDocument='" + Sq(fecha.Substring(0, 10).Replace("-", "")) + "'");
     string entrega = S(spec.ContainsKey("entrega") ? spec["entrega"] : ""); if ((bool)t["entrega"] && entrega.Length >= 10) set.Add("DateDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "', DateDocDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "'");
@@ -223,6 +242,15 @@ long CrearDocumento(Dictionary<string, object> spec)
     }
     ctx.erp.Save(doc);
     if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("Save: " + ctx.erp.LastError);
+    if (LlevaCfdi(clave))                                             // datos del comprobante: el motor deja la fila de docDocumentCFD con valores por omisión (G03 / PPD / 99)
+    {
+        var cf = new List<string>();
+        string uso = S(spec.ContainsKey("uso") ? spec["uso"] : ""), forma = S(spec.ContainsKey("forma") ? spec["forma"] : ""), metodo = S(spec.ContainsKey("metodo") ? spec["metodo"] : "");
+        if (uso != "") cf.Add("ReceptorUsoCFDI=N'" + Sq(uso) + "'");
+        if (forma != "") cf.Add("FormaPago=N'" + Sq(forma) + "'");
+        if (metodo != "") cf.Add("MetodoPago=N'" + Sq(metodo) + "'");
+        if (cf.Count > 0) ctx.NonQuery("UPDATE docDocumentCFD SET " + string.Join(", ", cf) + " WHERE DocumentID=" + doc);
+    }
     if ((bool)t["condicion"])
     {
         DateTime fechaBase = DateTime.Today; if (fecha.Length >= 10) DateTime.TryParse(fecha.Substring(0, 10), ci, DateTimeStyles.None, out fechaBase);

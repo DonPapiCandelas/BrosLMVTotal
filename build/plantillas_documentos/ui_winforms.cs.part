@@ -1,11 +1,15 @@
 // ===================================================================================================================================
-// VENTANA (Windows Forms, NO modal: Show, nunca ShowDialog → se puede minimizar y seguir trabajando en Comercial). Diseño de «estación de captura» al estilo de Comercial:
-//   cinta de acciones (Guardar y abrir F5 · Guardar y nuevo F6 · Limpiar · Cancelar Esc) + panel de información del documento (fecha, folio, almacén),
-//   selector de tipo, persona con búsqueda (RFC, saldo, crédito), documentos de origen pendientes, partidas con existencia, y un resumen con avisos.
+// VENTANA (Windows Forms, NO modal: Show, nunca ShowDialog → se puede minimizar y seguir trabajando en Comercial).
+// Diseño de «documento de Comercial»: cinta oscura con las acciones y la información del documento (fecha, serie, folio, entrega), grupos numerados
+// con una etiqueta arriba de cada campo (nada se encima ni se corta), y las partidas con captura rápida + tabla editable.
+//   1 · Cliente / proveedor (búsqueda por nombre o RFC, saldo, crédito) · 2 · Almacén, centro de costo y moneda con tipo de cambio ·
+//   3 · Datos fiscales del CFDI (uso, forma y método de pago; solo la factura de cliente) · 4 · Documento de origen (si el tipo parte de otro) ·
+//   Partidas · Comentarios · Totales con importe en letra.
 // Los manejadores llevan try/catch porque, en modeless, el script «ya terminó» cuando se hace clic. Al guardar SIEMPRE se abre el documento nativo de Comercial.
 // ===================================================================================================================================
 class Opcion { public int Id { get; set; } public string Nombre { get; set; } public string Extra { get; set; } public override string ToString() => Nombre; }
 class Fila { public int Id; public string Clave = "", Nombre = "", Unidad = ""; public double Cant = 1, Max = 0, Precio, Desc; public int Imp; public long OrigenItem; public long Origen; }
+class Pastilla { public string Titulo, Valor; public Color Color; }
 
 var catalogo = Catalogos(CLAVES);
 var origenes = Origenes(seleccion);
@@ -13,177 +17,280 @@ Func<string, List<Dictionary<string, object>>> cat = k => (List<Dictionary<strin
 var impuestos = cat("impuestos").Select(i => new Opcion { Id = I(i["id"]), Nombre = S(i["nombre"]), Extra = S(i["perc"]) }).ToList();
 var percImp = cat("impuestos").ToDictionary(i => I(i["id"]), i => D(i["perc"]));
 var productos = cat("productos");
+var monedas = cat("monedas");
 var existencias = (Dictionary<string, object>)catalogo["existencias"];
 var folios = (Dictionary<string, object>)catalogo["folios"];
 var filas = new List<Fila>();
 var origenSel = new List<long>();
 var pendientes = new List<Dictionary<string, object>>();
-Dictionary<string, object> entSel = null;
-bool guardando = false;
+var pastillas = new List<Pastilla>();
+Dictionary<string, object> entSel = null, prodSel = null;
+bool guardando = false, suspender = false, metodoManual = false, verG3 = true, verG4 = false;          // Control.Visible miente hasta que la ventana se muestra: se llevan banderas propias
+int tipoIdx = 0;
 string quienSoy = "", nombreEmpresa = "";
 try { quienSoy = S(ctx.Scalar("SELECT TOP 1 ISNULL(UserName,'') FROM engUser WHERE UserID = " + ctx.erp.UserId)); } catch { }
 try { nombreEmpresa = S(ctx.Scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + empresa)); } catch { }
 
 // ---------- diseño ----------
-var C_NAVY = Color.FromArgb(21, 50, 79); var C_NAVY2 = Color.FromArgb(29, 68, 104); var C_BG = Color.FromArgb(238, 242, 247); var C_LINE = Color.FromArgb(216, 224, 235);
-var C_TXT = Color.FromArgb(22, 38, 58); var C_MUTED = Color.FromArgb(100, 116, 139); var C_VENTA = Color.FromArgb(45, 111, 224); var C_COMPRA = Color.FromArgb(15, 118, 110);
-var C_ROJO = Color.FromArgb(200, 40, 40); var C_AMBAR = Color.FromArgb(180, 83, 9); var C_VERDE = Color.FromArgb(22, 128, 59); var C_ZEBRA = Color.FromArgb(248, 250, 252);
-var F_BASE = new Font("Segoe UI", 9f); var F_B = new Font("Segoe UI", 9f, FontStyle.Bold); var F_H = new Font("Segoe UI Semibold", 13f); var F_SM = new Font("Segoe UI", 8f);
-var F_EMO = new Font("Segoe UI Emoji", 17f); var F_TOT = new Font("Segoe UI Semibold", 17f); var F_TIT = new Font("Segoe UI Semibold", 8f);
+var C_BG = Color.FromArgb(241, 245, 249); var C_LINE = Color.FromArgb(203, 213, 225); var C_TXT = Color.FromArgb(30, 41, 59); var C_MUTED = Color.FromArgb(100, 116, 139);
+var C_HEAD = Color.FromArgb(248, 250, 252); var C_SEL = Color.FromArgb(238, 242, 255); var C_RIB = Color.FromArgb(51, 65, 85); var C_RIB_TX = Color.FromArgb(226, 232, 240); var C_RIB_MU = Color.FromArgb(148, 163, 184);
+var C_VENTA = Color.FromArgb(37, 99, 235); var C_COMPRA = Color.FromArgb(15, 118, 110); var C_ROJO = Color.FromArgb(200, 40, 40); var C_AMBAR = Color.FromArgb(180, 83, 9); var C_VERDE = Color.FromArgb(22, 128, 59);
+var F_BASE = new Font("Segoe UI", 9f); var F_B = new Font("Segoe UI", 9f, FontStyle.Bold); var F_H2 = new Font("Segoe UI", 9.5f, FontStyle.Bold); var F_SM = new Font("Segoe UI", 8.5f);
+var F_ICON = new Font("Segoe UI Emoji", 20f); var F_TOT = new Font("Segoe UI Semibold", 18f); var F_VAL = new Font("Segoe UI Semibold", 11f); var F_ITAL = new Font("Segoe UI", 9f, FontStyle.Italic);
 
-var frm = new Form { Text = "Crear documento · BrosLMV", ClientSize = new Size(1240, 840), MinimumSize = new Size(1100, 700), StartPosition = FormStartPosition.CenterScreen, BackColor = C_BG, Font = F_BASE, KeyPreview = true };
+var frm = new Form { Text = "Crear documento · BrosLMV", ClientSize = new Size(1200, 900), MinimumSize = new Size(1160, 820), StartPosition = FormStartPosition.CenterScreen, BackColor = C_BG, Font = F_BASE, KeyPreview = true };
 void Seguro(Action a) { try { a(); } catch (Exception ex) { guardando = false; MessageBox.Show(ex.Message, "Crear documento", MessageBoxButtons.OK, MessageBoxIcon.Warning); } }
-Dictionary<string, object> TipoActual() => TIPOS[cmbTipoIdx];
+Dictionary<string, object> TipoActual() => TIPOS[tipoIdx];
 bool EsVenta() => (string)TipoActual()["lado"] == "C";
+bool ConCfdi() => LlevaCfdi((string)TipoActual()["clave"]);
 Color Acento() => EsVenta() ? C_VENTA : C_COMPRA;
-int cmbTipoIdx = 0;
 
-// ---- cinta superior ----
-var cinta = new Panel { Size = new Size(1240, 100), Dock = DockStyle.Top, BackColor = C_NAVY };
-cinta.Paint += (s, e) => { using (var b = new System.Drawing.Drawing2D.LinearGradientBrush(cinta.ClientRectangle, C_NAVY2, C_NAVY, 90f)) e.Graphics.FillRectangle(b, cinta.ClientRectangle); };
-var lblMarca = new Label { Text = "BROSLMV", Font = F_TIT, ForeColor = Color.FromArgb(147, 197, 253), BackColor = Color.Transparent, Location = new Point(18, 14), AutoSize = true }; cinta.Controls.Add(lblMarca);
-var lblTitulo = new Label { Text = "Nuevo documento", Font = F_H, ForeColor = Color.White, BackColor = Color.Transparent, Location = new Point(16, 30), AutoSize = true }; cinta.Controls.Add(lblTitulo);
-var lblSub = new Label { Text = "", Font = F_SM, ForeColor = Color.FromArgb(182, 199, 218), BackColor = Color.Transparent, Location = new Point(18, 68), AutoSize = true }; cinta.Controls.Add(lblSub);
-int bx = 340;
-Panel Boton(string icono, string texto, string tecla, bool primario, Action alClic)
+// controles declarados de antemano (los manejadores de abajo los usan antes de que se construyan)
+Panel ribbon = null, info = null, pTipos = null, pPie = null, g1 = null, g2 = null, g3 = null, g4 = null, g5 = null, g6 = null, g7 = null, pChips = null, btnGuardar = null;
+Label lblRibTitulo = null, lblEntregaEt = null, lblOrigenEst = null, lblNumPart = null, lblSub = null, lblDes = null, lblImp = null, lblTot = null, lblTotEt = null, lblLetra = null, lblPie = null, lblAvisos = null, lblToast = null, lblHint = null;
+DateTimePicker dtFecha = null, dtEntrega = null;
+TextBox txtSerie = null, txtFolio = null, txtEnt = null, txtRfc = null, txtProd = null, txtTitulo = null, txtComent = null;
+ComboBox cmbCond = null, cmbAlm = null, cmbCC = null, cmbMon = null, cmbUso = null, cmbForma = null, cmbMetodo = null, cmbImp = null;
+NumericUpDown nudTC = null, nudCant = null, nudPrecio = null, nudDesc = null;
+CheckedListBox clbOrigen = null; DataGridView grid = null; ListBox lstEnt = null, lstProd = null;
+var btnsTipo = new List<Button>(); var botonesCinta = new List<Panel>();
+
+// ---------- piezas de construcción ----------
+Panel Grupo(Func<string> titulo)
 {
-    var p = new Panel { Location = new Point(bx, 12), Size = new Size(96, 76), Cursor = Cursors.Hand, BackColor = Color.Transparent }; bx += 100;
-    var li = new Label { Text = icono, Font = F_EMO, ForeColor = Color.White, BackColor = Color.Transparent, AutoSize = false, Size = new Size(96, 34), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(0, 2) };
-    var lt = new Label { Text = texto, Font = F_SM, ForeColor = Color.FromArgb(232, 238, 246), BackColor = Color.Transparent, AutoSize = false, Size = new Size(96, 18), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(0, 38) };
-    var lk = new Label { Text = tecla, Font = F_SM, ForeColor = Color.FromArgb(147, 169, 194), BackColor = Color.Transparent, AutoSize = false, Size = new Size(96, 14), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(0, 55) };
-    p.Controls.AddRange(new Control[] { li, lt, lk });
-    Action<bool> hover = on => { p.BackColor = on ? Color.FromArgb(40, 255, 255, 255) : Color.Transparent; };
-    foreach (Control c in new Control[] { p, li, lt, lk }) { c.MouseEnter += (s, e) => hover(true); c.MouseLeave += (s, e) => hover(false); c.Click += (s, e) => Seguro(alClic); }
-    p.Paint += (s, e) => { if (primario) using (var b = new SolidBrush(Acento())) e.Graphics.FillRectangle(b, p.ClientRectangle); };
-    cinta.Controls.Add(p); return p;
+    var p = new Panel { BackColor = Color.White, Size = new Size(600, 120) };
+    p.Paint += (s, e) =>
+    {
+        var g = e.Graphics; using (var pen = new Pen(C_LINE)) g.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1);
+        using (var b = new SolidBrush(C_HEAD)) g.FillRectangle(b, 1, 1, p.Width - 2, 27); using (var pen = new Pen(C_LINE)) g.DrawLine(pen, 0, 28, p.Width, 28);
+        using (var b = new SolidBrush(Acento())) g.FillRectangle(b, 1, 1, 4, 27);
+        using (var b = new SolidBrush(C_TXT)) g.DrawString(titulo(), F_H2, b, 14, 5);
+    };
+    return p;
 }
-Panel btnGuardar = null, btnNuevo = null;
-btnGuardar = Boton("💾", "Guardar y abrir", "F5", true, () => Crear(false));
-btnNuevo = Boton("➕", "Guardar y nuevo", "F6", false, () => Crear(true));
-bx += 10; Boton("🧹", "Limpiar", " ", false, () => Limpiar());
-Boton("✕", "Cancelar", "Esc", false, () => frm.Close());
+Label Et(Control padre, string t, int x, int y) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = Color.Transparent }; padre.Controls.Add(l); return l; }
+TextBox Cuadro(Control padre, string etiqueta, int x, int y, int w, bool soloLectura = false)
+{
+    if (etiqueta != "") Et(padre, etiqueta, x, y);
+    var t = new TextBox { Location = new Point(x, y + 17), Size = new Size(w, 24), ReadOnly = soloLectura, BorderStyle = BorderStyle.FixedSingle, ForeColor = soloLectura ? C_MUTED : C_TXT }; padre.Controls.Add(t); return t;
+}
+ComboBox Lista(Control padre, string etiqueta, int x, int y, int w, int anchoMenu = 0)
+{
+    Et(padre, etiqueta, x, y);
+    var c = new ComboBox { Location = new Point(x, y + 17), Size = new Size(w, 24), DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat }; if (anchoMenu > 0) c.DropDownWidth = anchoMenu; padre.Controls.Add(c); return c;
+}
+NumericUpDown Numero(Control padre, string etiqueta, int x, int y, int w, int dec, decimal max)
+{
+    Et(padre, etiqueta, x, y);
+    var n = new NumericUpDown { Location = new Point(x, y + 17), Size = new Size(w, 24), DecimalPlaces = dec, Maximum = max, Minimum = 0, ThousandsSeparator = true, TextAlign = HorizontalAlignment.Right }; padre.Controls.Add(n); return n;
+}
+void PonerPorId(ComboBox c, int id) { for (int i = 0; i < c.Items.Count; i++) if (((Opcion)c.Items[i]).Id == id) { c.SelectedIndex = i; return; } if (c.Items.Count > 0) c.SelectedIndex = 0; }
+void PonerPorClave(ComboBox c, string clave) { for (int i = 0; i < c.Items.Count; i++) if (string.Equals(((Opcion)c.Items[i]).Extra, clave, StringComparison.OrdinalIgnoreCase)) { c.SelectedIndex = i; return; } }
+string ClaveDe(ComboBox c) { var o = c.SelectedItem as Opcion; return o == null ? "" : o.Extra ?? ""; }
+void LlenarSat(ComboBox c, string grupo) { c.Items.Clear(); foreach (var x in cat(grupo)) c.Items.Add(new Opcion { Id = c.Items.Count, Extra = S(x["clave"]), Nombre = S(x["clave"]) + "  ·  " + S(x["nombre"]) }); }
 
-var info = new Panel { Size = new Size(430, 78), Location = new Point(frm.ClientSize.Width - 450, 11), Anchor = AnchorStyles.Top | AnchorStyles.Right, BackColor = Color.Transparent }; cinta.Controls.Add(info);
-info.Paint += (s, e) => { using (var pen = new Pen(Color.FromArgb(70, 255, 255, 255))) e.Graphics.DrawRectangle(pen, 0, 0, info.Width - 1, info.Height - 1); };
-Label Mini(string t, int x, int y) { var l = new Label { Text = t, Font = F_TIT, ForeColor = Color.FromArgb(159, 180, 204), BackColor = Color.Transparent, Location = new Point(x, y), AutoSize = true }; info.Controls.Add(l); return l; }
-Mini("FECHA", 12, 8); var dtFecha = new DateTimePicker { Format = DateTimePickerFormat.Short, Location = new Point(12, 26), Size = new Size(120, 24) }; info.Controls.Add(dtFecha);
-Mini("FOLIO", 150, 8); var lblFolio = new Label { Text = "—", Font = new Font("Segoe UI Semibold", 12f), ForeColor = Color.White, BackColor = Color.Transparent, Location = new Point(148, 24), AutoSize = true }; info.Controls.Add(lblFolio);
-var lblFolioN = new Label { Text = "lo asigna Comercial", Font = F_SM, ForeColor = Color.FromArgb(159, 180, 204), BackColor = Color.Transparent, Location = new Point(150, 46), AutoSize = true }; info.Controls.Add(lblFolioN);
-Mini("ALMACÉN", 290, 8); var cmbAlm = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(290, 26), Size = new Size(128, 24) }; info.Controls.Add(cmbAlm);
-foreach (var a in cat("almacenes")) cmbAlm.Items.Add(new Opcion { Id = I(a["id"]), Nombre = S(a["nombre"]) });
-if (cmbAlm.Items.Count > 0) cmbAlm.SelectedIndex = 0;
+// ---------- cinta superior ----------
+ribbon = new Panel { BackColor = C_RIB, Size = new Size(1176, 100) };
+lblRibTitulo = new Label { Text = "Nuevo documento", Font = F_H2, ForeColor = C_RIB_TX, BackColor = C_RIB, Location = new Point(12, 5), AutoSize = true }; ribbon.Controls.Add(lblRibTitulo);
+int bx = 12;
+Panel Boton(string icono, string texto, string tecla, Color? colorIcono, Action alClic)
+{
+    var p = new Panel { Location = new Point(bx, 26), Size = new Size(84, 68), BackColor = C_RIB, Cursor = Cursors.Hand }; bx += 88;
+    var li = new Label { Text = icono, Font = F_ICON, ForeColor = colorIcono ?? C_RIB_TX, BackColor = C_RIB, AutoSize = false, Size = new Size(84, 34), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(0, 0) };
+    var lt = new Label { Text = texto, Font = F_SM, ForeColor = C_RIB_TX, BackColor = C_RIB, AutoSize = false, Size = new Size(84, 18), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(0, 35) };
+    var lk = new Label { Text = tecla, Font = F_SM, ForeColor = C_RIB_MU, BackColor = C_RIB, AutoSize = false, Size = new Size(84, 15), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(0, 52) };
+    p.Controls.AddRange(new Control[] { li, lt, lk });
+    Action<bool> hover = on => { var c = on ? Color.FromArgb(71, 85, 105) : C_RIB; p.BackColor = c; li.BackColor = c; lt.BackColor = c; lk.BackColor = c; };
+    foreach (Control c in new Control[] { p, li, lt, lk }) { c.MouseEnter += (s, e) => hover(true); c.MouseLeave += (s, e) => hover(false); c.Click += (s, e) => Seguro(alClic); }
+    ribbon.Controls.Add(p); botonesCinta.Add(p); return p;
+}
+void Separador() { ribbon.Controls.Add(new Panel { Location = new Point(bx, 30), Size = new Size(1, 60), BackColor = C_RIB_MU }); bx += 12; }
+btnGuardar = Boton("💾", "Guardar y abrir", "F5", Color.FromArgb(96, 165, 250), () => Crear(false));
+Boton("➕", "Guardar y nuevo", "F6", null, () => Crear(true));
+Boton("❌", "Cancelar", "Esc", Color.FromArgb(248, 113, 113), () => frm.Close());
+Separador();
+Boton("🧹", "Limpiar", "", null, () => Limpiar());
 
-// ---- tipos ----
-var pTipos = new Panel { Dock = DockStyle.Top, Height = 46, BackColor = Color.White, Padding = new Padding(14, 7, 14, 0) };
-pTipos.Paint += (s, e) => e.Graphics.DrawLine(new Pen(C_LINE), 0, pTipos.Height - 1, pTipos.Width, pTipos.Height - 1);
-var flTipos = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, AutoScroll = false, BackColor = Color.Transparent }; pTipos.Controls.Add(flTipos);
-var btnsTipo = new List<Button>();
-string IconoTipo(string c) { switch (c) { case "factura_cliente": return "🧾 "; case "pedido": return "📋 "; case "remision": return "🚚 "; case "factura_compra": return "📥 "; case "orden_compra": return "🛒 "; case "recepcion": return "📦 "; default: return "📄 "; } }
+info = new Panel { Size = new Size(430, 86), BackColor = C_RIB }; ribbon.Controls.Add(info);
+info.Paint += (s, e) => { using (var pen = new Pen(C_RIB_MU)) e.Graphics.DrawRectangle(pen, 0, 7, info.Width - 1, info.Height - 10); };
+new Label { Text = "Información del documento", Font = F_SM, ForeColor = C_RIB_MU, BackColor = C_RIB, Location = new Point(10, 0), AutoSize = true }.Parent = info;
+Label EtR(string t, int x, int y) { var l = new Label { Text = t, Font = F_SM, ForeColor = C_RIB_TX, BackColor = C_RIB, Location = new Point(x, y), AutoSize = true }; info.Controls.Add(l); return l; }
+EtR("Fecha", 14, 20); dtFecha = new DateTimePicker { Format = DateTimePickerFormat.Short, Location = new Point(14, 37), Size = new Size(118, 24) }; info.Controls.Add(dtFecha);
+EtR("Serie", 146, 20); txtSerie = new TextBox { Location = new Point(146, 37), Size = new Size(64, 24), ReadOnly = true, BorderStyle = BorderStyle.FixedSingle }; info.Controls.Add(txtSerie);
+EtR("Folio", 222, 20); txtFolio = new TextBox { Location = new Point(222, 37), Size = new Size(86, 24), ReadOnly = true, BorderStyle = BorderStyle.FixedSingle }; info.Controls.Add(txtFolio);
+lblEntregaEt = EtR("Entrega esperada", 320, 20); dtEntrega = new DateTimePicker { Format = DateTimePickerFormat.Short, Location = new Point(320, 37), Size = new Size(100, 24), Value = DateTime.Today.AddDays(7) }; info.Controls.Add(dtEntrega);
+EtR("(el folio definitivo lo asigna Comercial al guardar)", 14, 64).ForeColor = C_RIB_MU;
+
+// ---------- tipos de documento ----------
+pTipos = new Panel { BackColor = Color.White, Size = new Size(1176, 40) };
+pTipos.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawRectangle(pen, 0, 0, pTipos.Width - 1, pTipos.Height - 1); };
+var flTipos = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, AutoScroll = false, BackColor = Color.White, Padding = new Padding(8, 5, 8, 0) }; pTipos.Controls.Add(flTipos);
 string grupoActual = "";
 for (int i = 0; i < TIPOS.Count; i++)
 {
     int idx = i; var t = TIPOS[i]; string g = (string)t["lado"] == "C" ? "VENTAS" : "COMPRAS";
-    if (g != grupoActual) { grupoActual = g; flTipos.Controls.Add(new Label { Text = g, Font = F_TIT, ForeColor = C_MUTED, AutoSize = false, Size = new Size(g.Length * 9 + 14, 30), TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(8, 0, 0, 0) }); }
-    var b = new Button { Text = (string)t["nombre"], FlatStyle = FlatStyle.Flat, Height = 30, AutoSize = true, Padding = new Padding(8, 0, 8, 0), Margin = new Padding(3, 0, 3, 0), BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand, Font = F_BASE };
+    if (g != grupoActual) { grupoActual = g; flTipos.Controls.Add(new Label { Text = g, Font = new Font("Segoe UI Semibold", 8f), ForeColor = C_MUTED, AutoSize = false, Size = new Size(g.Length * 8 + 18, 28), TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(6, 0, 2, 0) }); }
+    var b = new Button { Text = (string)t["nombre"], FlatStyle = FlatStyle.Flat, Height = 28, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(10, 0, 10, 0), Margin = new Padding(3, 0, 3, 0), BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand, Font = F_BASE };
     b.FlatAppearance.BorderColor = C_LINE; b.Click += (s, e) => Seguro(() => CambiarTipo(idx)); btnsTipo.Add(b); flTipos.Controls.Add(b);
 }
 
-// ---- pie ----
-var pie = new Panel { Dock = DockStyle.Bottom, Height = 26, BackColor = Color.White };
-pie.Paint += (s, e) => e.Graphics.DrawLine(new Pen(C_LINE), 0, 0, pie.Width, 0);
-var lblPie = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = C_MUTED, Font = F_SM, Padding = new Padding(14, 0, 0, 0) }; pie.Controls.Add(lblPie);
-// ---- cuerpo ----
-var pCuerpo = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 12, 14, 8), BackColor = C_BG };
-var pDer = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 322, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(12, 0, 0, 0), BackColor = C_BG };
-var tabla = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, BackColor = C_BG }; pCuerpo.Controls.Add(tabla); pCuerpo.Controls.Add(pDer);
-tabla.RowStyles.Add(new RowStyle(SizeType.Absolute, 128)); tabla.RowStyles.Add(new RowStyle(SizeType.Absolute, 0)); tabla.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); tabla.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
-
-
-Panel Tarjeta(Func<string> num, Func<string> titulo, Action<Panel> poner, Size? tam = null)
+// ---------- 1 · persona ----------
+g1 = Grupo(() => NumeroGrupo(g1) + ". " + (EsVenta() ? "Cliente" : "Proveedor"));
+txtEnt = Cuadro(g1, "Buscar por nombre o RFC  (F2)", 14, 34, 320); txtRfc = Cuadro(g1, "RFC", 346, 34, 130, true);
+cmbCond = Lista(g1, "Condición de pago", 488, 34, 118);
+pChips = new Panel { Location = new Point(14, 88), Size = new Size(500, 34), BackColor = Color.White }; g1.Controls.Add(pChips);
+pChips.Paint += (s, e) =>
 {
-    var p = new Panel { Size = tam ?? new Size(890, 128), Dock = DockStyle.Fill, BackColor = Color.White, Margin = new Padding(0, 0, 0, 10), Padding = new Padding(12, 34, 12, 10) };
-    p.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1); string n = num(); int x0 = 12;
-        if (n != "") { using (var b = new SolidBrush(Acento())) e.Graphics.FillEllipse(b, 12, 9, 18, 18); using (var b2 = new SolidBrush(Color.White)) e.Graphics.DrawString(n, F_TIT, b2, 17, 11); x0 = 36; }
-        using (var b3 = new SolidBrush(C_MUTED)) e.Graphics.DrawString(titulo().ToUpperInvariant(), F_TIT, b3, x0, 11); };
-    poner(p); return p;
-}
-Label Et(Control padre, string t, int x, int y, Font f = null, Color? c = null) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = c ?? C_MUTED, Font = f ?? F_SM, BackColor = Color.Transparent }; padre.Controls.Add(l); return l; }
-TextBox Cuadro(Control padre, int x, int y, int w) { var t = new TextBox { Location = new Point(x, y), Size = new Size(w, 24), BorderStyle = BorderStyle.FixedSingle }; padre.Controls.Add(t); return t; }
+    int x = 0; var g = e.Graphics; g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+    foreach (var p in pastillas)
+    {
+        var sz1 = g.MeasureString(p.Titulo, F_SM); var sz2 = g.MeasureString(p.Valor, F_B); int w = (int)Math.Max(sz1.Width, sz2.Width) + 18;
+        using (var b = new SolidBrush(C_HEAD)) g.FillRectangle(b, x, 0, w, 32); using (var pen = new Pen(C_LINE)) g.DrawRectangle(pen, x, 0, w - 1, 31);
+        using (var b = new SolidBrush(C_MUTED)) g.DrawString(p.Titulo, F_SM, b, x + 9, 1); using (var b = new SolidBrush(p.Color)) g.DrawString(p.Valor, F_B, b, x + 9, 15);
+        x += w + 6;
+    }
+};
+var btnHist = new Button { Text = "Historial", Location = new Point(526, 90), Size = new Size(80, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnHist.FlatAppearance.BorderColor = C_LINE; g1.Controls.Add(btnHist);
+txtRfc.TabStop = false;
 
-// 1 · persona
-TextBox txtEnt = null; ComboBox cmbCond = null; Label lblEntInfo = null;
-var card1 = Tarjeta(() => "1", () => EsVenta() ? "Cliente" : "Proveedor", p => {
-    txtEnt = Cuadro(p, 12, 38, 470); txtEnt.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-    cmbCond = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(500, 38), Size = new Size(200, 24), Anchor = AnchorStyles.Top | AnchorStyles.Right }; p.Controls.Add(cmbCond);
-    lblEntInfo = new Label { Location = new Point(12, 70), Size = new Size(690, 44), ForeColor = C_TXT, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, BackColor = C_ZEBRA, Padding = new Padding(8, 4, 8, 4), Visible = false }; p.Controls.Add(lblEntInfo); });
-tabla.Controls.Add(card1, 0, 0);
-var lstEnt = new ListBox { Visible = false, Size = new Size(470, 190), BorderStyle = BorderStyle.FixedSingle, Font = F_BASE }; frm.Controls.Add(lstEnt);
+// ---------- 2 · almacén, centro de costo y moneda ----------
+g2 = Grupo(() => NumeroGrupo(g2) + ". Almacén, centro de costo y moneda");
+cmbAlm = Lista(g2, "Almacén", 14, 34, 230); cmbCC = Lista(g2, "Centro de costo", 256, 34, 210);
+cmbMon = Lista(g2, "Moneda", 14, 84, 230); nudTC = Numero(g2, "Tipo de cambio", 256, 84, 120, 4, 9999999M);
+foreach (var a in cat("almacenes")) cmbAlm.Items.Add(new Opcion { Id = I(a["id"]), Nombre = S(a["nombre"]) });
+if (cmbAlm.Items.Count > 0) cmbAlm.SelectedIndex = 0;
+cmbCC.Items.Add(new Opcion { Id = 0, Nombre = "(ninguno)" }); foreach (var c in cat("centros")) cmbCC.Items.Add(new Opcion { Id = I(c["id"]), Nombre = S(c["nombre"]) }); cmbCC.SelectedIndex = 0;
+foreach (var m in monedas) cmbMon.Items.Add(new Opcion { Id = I(m["id"]), Nombre = S(m["simbolo"]) + "  ·  " + S(m["nombre"]), Extra = S(m["tc"]) });
+PonerPorId(cmbMon, 3);
 
-// 2 · origen
-CheckedListBox clbOrigen = null; Label lblOrigenEst = null;
-var card2 = Tarjeta(() => "2", () => "Partir de un documento ya existente", p => {
-    lblOrigenEst = new Label { Location = new Point(360, 10), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, Anchor = AnchorStyles.Top | AnchorStyles.Left }; p.Controls.Add(lblOrigenEst);
-    clbOrigen = new CheckedListBox { Location = new Point(12, 34), Size = new Size(690, 80), CheckOnClick = true, BorderStyle = BorderStyle.None, BackColor = Color.White, Dock = DockStyle.Fill }; p.Controls.Add(clbOrigen); });
-tabla.Controls.Add(card2, 0, 1);
+// ---------- 3 · datos fiscales (solo la factura de cliente) ----------
+g3 = Grupo(() => NumeroGrupo(g3) + ". Datos fiscales del CFDI");
+cmbUso = Lista(g3, "Uso del CFDI", 14, 34, 410, 640); cmbForma = Lista(g3, "Forma de pago", 436, 34, 330, 520); cmbMetodo = Lista(g3, "Método de pago", 778, 34, 290, 420);
+LlenarSat(cmbUso, "usos"); LlenarSat(cmbForma, "formas"); LlenarSat(cmbMetodo, "metodos"); PonerPorClave(cmbUso, "G03"); PonerPorClave(cmbMetodo, "PUE"); PonerPorClave(cmbForma, "01");
 
-// 3 · partidas
-TextBox txtProd = null; DataGridView grid = null;
-var card3 = Tarjeta(() => (int)TipoActual()["origen"] > 0 ? "3" : "2", () => "Partidas", p => {
-    txtProd = Cuadro(p, 12, 38, 520);
-    Et(p, "F3 buscar · escanea el código de barras y Enter", 544, 43);
-    grid = new DataGridView { Location = new Point(12, 70), Size = new Size(690, 300), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect, BackgroundColor = Color.White, BorderStyle = BorderStyle.None, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, EnableHeadersVisualStyles = false, CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal, GridColor = Color.FromArgb(238, 242, 247), RowTemplate = { Height = 30 } };
-    grid.ColumnHeadersDefaultCellStyle.BackColor = C_ZEBRA; grid.ColumnHeadersDefaultCellStyle.ForeColor = C_MUTED; grid.ColumnHeadersDefaultCellStyle.Font = F_TIT; grid.ColumnHeadersHeight = 30; grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Producto", HeaderText = "PRODUCTO", ReadOnly = true, FillWeight = 42 });
-    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Exist", HeaderText = "EXISTENCIA", ReadOnly = true, FillWeight = 11 });
-    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Cant", HeaderText = "CANTIDAD", FillWeight = 11 });
-    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Precio", HeaderText = "PRECIO", FillWeight = 12 });
-    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Desc", HeaderText = "DESC. %", FillWeight = 8 });
-    grid.Columns.Add(new DataGridViewComboBoxColumn { Name = "Imp", HeaderText = "IMPUESTO", DataSource = impuestos, DisplayMember = "Nombre", ValueMember = "Id", FillWeight = 13, FlatStyle = FlatStyle.Flat });
-    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Importe", HeaderText = "IMPORTE", ReadOnly = true, FillWeight = 13 });
-    grid.Columns.Add(new DataGridViewButtonColumn { Name = "Quitar", HeaderText = "", Text = "✕", UseColumnTextForButtonValue = true, FillWeight = 4, FlatStyle = FlatStyle.Flat });
-    foreach (var c in new[] { "Exist", "Cant", "Precio", "Desc", "Importe" }) grid.Columns[c].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-    grid.Columns["Importe"].DefaultCellStyle.Font = F_B;
-    p.Controls.Add(grid); p.Resize += (s, e) => grid.Size = new Size(Math.Max(100, p.Width - 24), Math.Max(60, p.Height - grid.Top - 12)); }, new Size(890, 400));
-tabla.Controls.Add(card3, 0, 2);
-var lstProd = new ListBox { Visible = false, Size = new Size(520, 210), BorderStyle = BorderStyle.FixedSingle, Font = F_BASE }; frm.Controls.Add(lstProd);
+// ---------- 4 · documento de origen ----------
+g4 = Grupo(() => NumeroGrupo(g4) + ". Partir de un documento existente");
+lblOrigenEst = new Label { Location = new Point(330, 7), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = C_HEAD }; g4.Controls.Add(lblOrigenEst);
+clbOrigen = new CheckedListBox { Location = new Point(14, 36), Size = new Size(1000, 70), CheckOnClick = true, BorderStyle = BorderStyle.None, BackColor = Color.White }; g4.Controls.Add(clbOrigen);
 
-// 4 · título, entrega, comentarios
-TextBox txtTitulo = null, txtComent = null; DateTimePicker dtEntrega = null; Label lblEntregaEt = null;
-var card4 = Tarjeta(() => (int)TipoActual()["origen"] > 0 ? "4" : "3", () => "Referencia y comentarios", p => {
-    Et(p, "Título (opcional)", 12, 36); txtTitulo = Cuadro(p, 12, 52, 300); txtTitulo.MaxLength = 120;
-    lblEntregaEt = Et(p, "Fecha de entrega", 330, 36); dtEntrega = new DateTimePicker { Format = DateTimePickerFormat.Short, Location = new Point(330, 52), Size = new Size(120, 24) }; p.Controls.Add(dtEntrega);
-    Et(p, "Comentarios (opcional)", 470, 36); txtComent = Cuadro(p, 470, 52, 230); txtComent.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; });
-tabla.Controls.Add(card4, 0, 3);
+// ---------- partidas ----------
+g5 = Grupo(() => NumeroGrupo(g5) + ". Partidas");
+txtProd = Cuadro(g5, "Producto: nombre, clave o código de barras  (F3)", 14, 34, 340);
+var btnBuscaProd = new Button { Text = "Ver todos", Location = new Point(360, 51), Size = new Size(76, 26), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnBuscaProd.FlatAppearance.BorderColor = C_LINE; g5.Controls.Add(btnBuscaProd);
+nudCant = Numero(g5, "Cantidad", 450, 34, 92, 4, 999999999M); nudCant.Value = 1;
+nudPrecio = Numero(g5, "Precio unitario", 554, 34, 118, 2, 999999999M);
+nudDesc = Numero(g5, "Descuento %", 684, 34, 84, 2, 100M);
+cmbImp = Lista(g5, "Impuesto", 780, 34, 170); foreach (var i in impuestos) cmbImp.Items.Add(i); if (cmbImp.Items.Count > 0) cmbImp.SelectedIndex = 0;
+var btnAgregar = new Button { Text = "Agregar", Location = new Point(964, 50), Size = new Size(92, 28), FlatStyle = FlatStyle.Flat, ForeColor = Color.White, Cursor = Cursors.Hand, Font = F_B }; btnAgregar.FlatAppearance.BorderSize = 0; g5.Controls.Add(btnAgregar);
+var btnQuitar = new Button { Text = "Quitar", Location = new Point(1062, 50), Size = new Size(80, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_ROJO, Cursor = Cursors.Hand }; btnQuitar.FlatAppearance.BorderColor = C_LINE; g5.Controls.Add(btnQuitar);
+lblNumPart = new Label { Location = new Point(14, 86), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, Text = "Sin partidas" }; g5.Controls.Add(lblNumPart);
+lblHint = new Label { Location = new Point(420, 86), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, Text = "Escribe el nombre y Enter · escanea el código de barras y Enter agrega directo · edita cantidad, precio, descuento e impuesto en la tabla." }; g5.Controls.Add(lblHint);
+grid = new DataGridView
+{
+    Location = new Point(14, 106), Size = new Size(560, 160), AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false,
+    SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, BackgroundColor = Color.White, BorderStyle = BorderStyle.FixedSingle, EnableHeadersVisualStyles = false, CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+    ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single, GridColor = Color.FromArgb(230, 235, 242), RowTemplate = { Height = 30 }, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+};
+grid.ColumnHeadersDefaultCellStyle.BackColor = C_HEAD; grid.ColumnHeadersDefaultCellStyle.ForeColor = C_TXT; grid.ColumnHeadersDefaultCellStyle.Font = F_B; grid.ColumnHeadersHeight = 30; grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = C_HEAD; grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = C_TXT;
+grid.DefaultCellStyle.SelectionBackColor = C_SEL; grid.DefaultCellStyle.SelectionForeColor = C_TXT; grid.DefaultCellStyle.Padding = new Padding(4, 0, 4, 0);
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Clave", HeaderText = "CLAVE", ReadOnly = true, FillWeight = 12 });
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Desc", HeaderText = "DESCRIPCIÓN", ReadOnly = true, FillWeight = 34 });
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Exist", HeaderText = "EXIST.", ReadOnly = true, FillWeight = 8 });
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Unidad", HeaderText = "U.M.", ReadOnly = true, FillWeight = 6 });
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Cant", HeaderText = "CANTIDAD", FillWeight = 9 });
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Precio", HeaderText = "PRECIO", FillWeight = 10 });
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "DescPerc", HeaderText = "DESC. %", FillWeight = 7 });
+grid.Columns.Add(new DataGridViewComboBoxColumn { Name = "Imp", HeaderText = "IMPUESTO", DataSource = impuestos, DisplayMember = "Nombre", ValueMember = "Id", FillWeight = 13, FlatStyle = FlatStyle.Flat });
+grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Importe", HeaderText = "IMPORTE", ReadOnly = true, FillWeight = 11 });
+foreach (var c in new[] { "Exist", "Cant", "Precio", "DescPerc", "Importe" }) { grid.Columns[c].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight; grid.Columns[c].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight; }
+grid.Columns["Importe"].DefaultCellStyle.Font = F_B; grid.Columns["Desc"].DefaultCellStyle.WrapMode = DataGridViewTriState.False;
+g5.Controls.Add(grid);
 
-// ---- panel derecho: resumen, crédito y últimos documentos ----
-Label lblN = null, lblP = null, lblSub2 = null, lblDes = null, lblImp = null, lblTot = null, lblAvisos = null, lblCredTxt = null, lblHistEt = null; Panel barraCred = null, barraRel = null; ListBox lstHist = null;
-var cRes = Tarjeta(() => "", () => "Resumen", p => {
-    int y = 36; Func<string, Label> fila = t => { Et(p, t, 12, y, F_BASE, C_TXT); var v = new Label { Text = "0", AutoSize = false, Size = new Size(120, 18), TextAlign = ContentAlignment.MiddleRight, Location = new Point(164, y - 1), ForeColor = C_TXT, BackColor = Color.Transparent }; p.Controls.Add(v); y += 22; return v; };
-    lblN = fila("Partidas"); lblP = fila("Piezas"); lblSub2 = fila("Subtotal"); lblDes = fila("Descuento"); lblImp = fila("Impuestos"); y += 4;
-    Et(p, "Total", 12, y + 6, new Font("Segoe UI Semibold", 11f), C_TXT); lblTot = new Label { Text = "0.00", Font = F_TOT, AutoSize = false, Size = new Size(176, 34), TextAlign = ContentAlignment.MiddleRight, Location = new Point(108, y), BackColor = Color.Transparent }; p.Controls.Add(lblTot); y += 44;
-    lblAvisos = new Label { Location = new Point(12, y), Size = new Size(272, 90), ForeColor = C_AMBAR, Font = F_SM, BackColor = Color.Transparent }; p.Controls.Add(lblAvisos); }, new Size(296, 268));
-cRes.Dock = DockStyle.None; cRes.Size = new Size(296, 268); cRes.Margin = new Padding(0, 0, 0, 10); pDer.Controls.Add(cRes);
-var cCred = Tarjeta(() => "", () => "Crédito", p => {
-    barraRel = new Panel { Location = new Point(12, 40), Size = new Size(272, 8), BackColor = Color.FromArgb(229, 234, 241) }; p.Controls.Add(barraRel);
-    barraCred = new Panel { Location = new Point(0, 0), Size = new Size(0, 8), BackColor = C_VERDE }; barraRel.Controls.Add(barraCred);
-    lblCredTxt = new Label { Location = new Point(12, 54), Size = new Size(272, 34), ForeColor = C_MUTED, Font = F_SM, BackColor = Color.Transparent }; p.Controls.Add(lblCredTxt); }, new Size(296, 100));
-cCred.Dock = DockStyle.None; cCred.Size = new Size(296, 100); cCred.Margin = new Padding(0, 0, 0, 10); cCred.Visible = false; pDer.Controls.Add(cCred);
-var cHist = Tarjeta(() => "", () => "Últimos documentos (doble clic para abrir)", p => {
-    lstHist = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = F_BASE, BackColor = Color.White }; p.Controls.Add(lstHist); }, new Size(296, 170));
-cHist.Dock = DockStyle.None; cHist.Size = new Size(296, 170); cHist.Margin = new Padding(0, 0, 0, 10); cHist.Visible = false; pDer.Controls.Add(cHist);
-var lblAyuda = new Label { Text = "Atajos: F2 persona · F3 producto · F5 guardar y abrir · F6 guardar y nuevo · Esc cancelar.\nSiempre se abre el documento nativo de Comercial al guardar.", Size = new Size(290, 60), ForeColor = C_MUTED, Font = F_SM }; pDer.Controls.Add(lblAyuda);
+// ---------- comentarios ----------
+g6 = Grupo(() => "Referencia y comentarios");
+txtTitulo = Cuadro(g6, "Título (opcional)", 14, 34, 190); txtTitulo.MaxLength = 120;
+txtComent = Cuadro(g6, "Comentarios (opcional)", 216, 34, 210); txtComent.MaxLength = 250;
+Et(g6, "Ambos se guardan en el encabezado del documento.", 14, 80);
+// ---------- totales ----------
+g7 = Grupo(() => "Totales");
+Label Total(string cap, int x, out Label val) { Et(g7, cap, x, 34); val = new Label { Text = "0.00", Font = F_VAL, ForeColor = C_TXT, Location = new Point(x, 50), Size = new Size(140, 24), TextAlign = ContentAlignment.MiddleLeft, BackColor = Color.Transparent }; g7.Controls.Add(val); return val; }
+Total("Subtotal", 14, out lblSub); Total("Descuento", 164, out lblDes); Total("Impuestos", 314, out lblImp);
+lblTotEt = new Label { Text = "TOTAL", Font = F_SM, ForeColor = C_MUTED, AutoSize = false, Size = new Size(240, 16), TextAlign = ContentAlignment.MiddleRight, Location = new Point(560, 32) }; g7.Controls.Add(lblTotEt);
+lblTot = new Label { Text = "0.00", Font = F_TOT, AutoSize = false, Size = new Size(240, 36), TextAlign = ContentAlignment.MiddleRight, Location = new Point(560, 46) }; g7.Controls.Add(lblTot);
+lblLetra = new Label { Text = "", Font = F_ITAL, ForeColor = C_MUTED, AutoSize = false, Size = new Size(780, 20), Location = new Point(14, 86), AutoEllipsis = true }; g7.Controls.Add(lblLetra);
 
-var lblToast = new Label { AutoSize = false, Height = 32, Visible = false, ForeColor = Color.White, BackColor = C_TXT, TextAlign = ContentAlignment.MiddleCenter, Font = F_B }; frm.Controls.Add(lblToast); lblToast.BringToFront();
+// ---------- pie ----------
+pPie = new Panel { BackColor = Color.White, Size = new Size(1200, 40) };
+pPie.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawLine(pen, 0, 0, pPie.Width, 0); };
+lblPie = new Label { Location = new Point(14, 12), AutoSize = true, ForeColor = C_MUTED, Font = F_BASE }; pPie.Controls.Add(lblPie);
+lblAvisos = new Label { Location = new Point(520, 5), Size = new Size(660, 30), ForeColor = C_AMBAR, Font = F_BASE, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true }; pPie.Controls.Add(lblAvisos);
+
+lstEnt = new ListBox { Visible = false, Size = new Size(520, 258), BorderStyle = BorderStyle.FixedSingle, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 42, IntegralHeight = false };
+lstProd = new ListBox { Visible = false, Size = new Size(640, 294), BorderStyle = BorderStyle.FixedSingle, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 42, IntegralHeight = false };
+Action<ListBox, DrawItemEventArgs> dibujaLista = (lb, ev) =>
+{
+    if (ev.Index < 0) return; var o = lb.Items[ev.Index] as Opcion; bool sel = (ev.State & DrawItemState.Selected) == DrawItemState.Selected;
+    using (var b = new SolidBrush(sel ? C_SEL : Color.White)) ev.Graphics.FillRectangle(b, ev.Bounds); if (o == null) return;
+    var sf = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+    using (var b = new SolidBrush(C_TXT)) ev.Graphics.DrawString(o.Nombre, F_B, b, new RectangleF(ev.Bounds.Left + 10, ev.Bounds.Top + 4, ev.Bounds.Width - 18, 18), sf);
+    using (var b = new SolidBrush(C_MUTED)) ev.Graphics.DrawString(o.Extra ?? "", F_SM, b, new RectangleF(ev.Bounds.Left + 10, ev.Bounds.Top + 22, ev.Bounds.Width - 18, 16), sf);
+};
+lstEnt.DrawItem += (s, ev) => dibujaLista(lstEnt, ev); lstProd.DrawItem += (s, ev) => dibujaLista(lstProd, ev);
+lblToast = new Label { AutoSize = false, Height = 34, Visible = false, ForeColor = Color.White, BackColor = C_TXT, TextAlign = ContentAlignment.MiddleCenter, Font = F_B };
 var tToast = new System.Windows.Forms.Timer { Interval = 4500 }; tToast.Tick += (s, e) => { lblToast.Visible = false; tToast.Stop(); };
-void Aviso(string m, bool mal = false) { lblToast.Text = m; lblToast.BackColor = mal ? C_ROJO : C_VERDE; lblToast.Width = Math.Min(frm.ClientSize.Width - 80, 900); lblToast.Location = new Point((frm.ClientSize.Width - lblToast.Width) / 2, frm.ClientSize.Height - 72); lblToast.Visible = true; lblToast.BringToFront(); tToast.Stop(); tToast.Start(); }
+void Aviso(string m, bool mal = false) { lblToast.Text = m; lblToast.BackColor = mal ? C_ROJO : C_VERDE; lblToast.Width = Math.Min(frm.ClientSize.Width - 80, 900); lblToast.Location = new Point((frm.ClientSize.Width - lblToast.Width) / 2, frm.ClientSize.Height - 96); lblToast.Visible = true; lblToast.BringToFront(); tToast.Stop(); tToast.Start(); }
 
-frm.Controls.Add(pCuerpo); frm.Controls.Add(pie); frm.Controls.Add(pTipos); frm.Controls.Add(cinta);       // orden de acople de Windows Forms: el Fill primero, los bordes después (el último agregado queda arriba)
+foreach (var c in new Control[] { ribbon, pTipos, g1, g2, g3, g4, g5, g6, g7, pPie, lstEnt, lstProd, lblToast }) frm.Controls.Add(c);
+
+// ---------- distribución (todo a mano: nada se encima y se ajusta al tamaño de la ventana) ----------
+int NumeroGrupo(Panel g) { int n = 0; foreach (var x in new[] { g1, g2, g3, g4, g5 }) { if ((x == g3 && !verG3) || (x == g4 && !verG4)) continue; n++; if (x == g) return n; } return n; }
+void Distribuir()
+{
+    int W = frm.ClientSize.Width, H = frm.ClientSize.Height, m = 12, w = W - 2 * m;
+    ribbon.SetBounds(m, 10, w, 100); info.Location = new Point(ribbon.Width - info.Width - 10, 6);
+    pTipos.SetBounds(m, 118, w, 40);
+    int y = 166; g1.SetBounds(m, y, 620, 132); g2.SetBounds(m + 632, y, w - 632, 132); y += 140;
+    g3.Visible = verG3; g4.Visible = verG4;
+    if (verG3) { g3.SetBounds(m, y, w, 80); y += 88; }
+    if (verG4) { g4.SetBounds(m, y, w, 116); y += 124; }
+    int yb = H - 40 - 112 - 8;
+    g6.SetBounds(m, yb, 440, 112); g7.SetBounds(m + 452, yb, w - 452, 112);
+    g5.SetBounds(m, y, w, Math.Max(170, yb - 8 - y));
+    pPie.SetBounds(0, H - 40, W, 40);
+    grid.SetBounds(14, 106, g5.Width - 28, g5.Height - 118); clbOrigen.SetBounds(14, 36, g4.Width - 28, g4.Height - 46);
+    lblTotEt.SetBounds(g7.Width - 254, 32, 240, 16); lblTot.SetBounds(g7.Width - 254, 46, 240, 36); lblLetra.SetBounds(14, 86, g7.Width - 28, 20);
+    lblAvisos.SetBounds(Math.Max(420, lblPie.Right + 20), 5, Math.Max(100, W - Math.Max(420, lblPie.Right + 20) - 14), 30);
+    foreach (var g in new[] { g1, g2, g3, g4, g5, g6, g7 }) g.Invalidate();
+}
+frm.Resize += (s, e) => Distribuir();
 
 // ---------- lógica ----------
 Dictionary<string, object> ProdPor(int id) => productos.FirstOrDefault(x => I(x["id"]) == id);
 double PrecioDe(int id) { var p = ProdPor(id); return p == null ? 0 : !EsVenta() ? D(p["costo"]) : D(p["venta"]); }
-double ExistDe(int id) { object e; if (!existencias.TryGetValue(id.ToString(), out e)) return 0; var m = (Dictionary<string, object>)e; object q; var a = cmbAlm.SelectedItem as Opcion; return a != null && m.TryGetValue(a.Id.ToString(), out q) ? D(q) : 0; }
+double ExistDe(int id) { object e; if (!existencias.TryGetValue(id.ToString(), out e)) return 0; var mm = (Dictionary<string, object>)e; object q; var a = cmbAlm.SelectedItem as Opcion; return a != null && mm.TryGetValue(a.Id.ToString(), out q) ? D(q) : 0; }
+Dictionary<string, object> MonedaSel() { var o = cmbMon.SelectedItem as Opcion; return o == null ? null : monedas.FirstOrDefault(x => I(x["id"]) == o.Id); }
+
+string[] UNI = { "", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE" };
+string[] DEC = { "", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA" };
+string[] VEI = { "VEINTIUNO", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO", "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE" };
+string[] CEN = { "", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS" };
+string Centenas(int n)
+{
+    if (n == 0) return ""; if (n == 100) return "CIEN"; string r = ""; int c = n / 100, d = n % 100;
+    if (c > 0) r += CEN[c] + " ";
+    if (d > 0) { if (d <= 20) r += UNI[d]; else { int a = d / 10, u = d % 10; if (a == 2 && u > 0) r += VEI[u - 1]; else { r += DEC[a]; if (u > 0) r += " Y " + UNI[u]; } } }
+    return r.Trim();
+}
+string EnLetras(long n)
+{
+    if (n == 0) return "CERO"; string r = ""; long mill = n / 1000000; n %= 1000000; long mil = n / 1000; n %= 1000;
+    if (mill > 0) r += mill == 1 ? "UN MILLÓN " : Centenas((int)mill) + " MILLONES ";
+    if (mil > 0) r += mil == 1 ? "MIL " : Centenas((int)mil) + " MIL ";
+    if (n > 0) r += Centenas((int)n);
+    r = r.Trim(); if (r.EndsWith("UNO")) r = r.Substring(0, r.Length - 3) + "UN"; return r;
+}
+string ALetras(double v, string moneda, bool mn) { if (v < 0) v = 0; long e = (long)Math.Floor(v); int c = (int)Math.Round((v - e) * 100); if (c == 100) { e++; c = 0; } return EnLetras(e) + " " + moneda + " " + c.ToString("00") + "/100" + (mn ? " M.N." : ""); }
+
 void Totales()
 {
     double sub = 0, des = 0, imp = 0, pz = 0; int faltan = 0;
@@ -194,13 +301,17 @@ void Totales()
         if (i < grid.Rows.Count) grid.Rows[i].Cells["Importe"].Value = baseImp.ToString("N2");
         var pr = ProdPor(f.Id); if (EsVenta() && f.Origen == 0 && pr != null && !(bool)pr["servicio"] && f.Cant > ExistDe(f.Id)) faltan++;
     }
-    double tot = sub - des + imp;
-    lblN.Text = filas.Count.ToString(); lblP.Text = pz.ToString("0.####"); lblSub2.Text = sub.ToString("N2"); lblDes.Text = des.ToString("N2"); lblImp.Text = imp.ToString("N2"); lblTot.Text = tot.ToString("N2"); lblTot.ForeColor = Acento();
+    double tot = sub - des + imp; var mon = MonedaSel(); string sim = mon == null ? "" : S(mon["simbolo"]);
+    lblSub.Text = sub.ToString("N2"); lblDes.Text = "-" + des.ToString("N2"); lblDes.ForeColor = des > 0 ? C_ROJO : C_TXT; lblImp.Text = imp.ToString("N2"); lblTot.Text = tot.ToString("N2"); lblTot.ForeColor = Acento(); lblTotEt.Text = "TOTAL" + (sim != "" ? " (" + sim + ")" : "");
+    lblNumPart.Text = filas.Count == 0 ? "Sin partidas" : filas.Count + " partida(s) · " + pz.ToString("0.####") + " pieza(s)";
+    string palabra = mon == null ? "PESOS" : S(mon["nombre"]).ToUpperInvariant().Contains("PESO") ? "PESOS" : S(mon["nombre"]).ToUpperInvariant().Contains("EURO") ? "EUROS" : S(mon["nombre"]).ToUpperInvariant().Contains("LAR") ? "DÓLARES" : S(mon["nombre"]).ToUpperInvariant();
+    lblLetra.Text = "SON: " + ALetras(tot, palabra, mon != null && S(mon["simbolo"]) == "MXN");
     var av = new List<string>();
-    if (EsVenta() && entSel != null && D(entSel["credito"]) > 0 && D(entSel["saldo"]) + tot > D(entSel["credito"])) av.Add("⚠ El saldo con este documento (" + (D(entSel["saldo"]) + tot).ToString("N2") + ") excede el límite de crédito.");
-    if (faltan > 0) av.Add("⚠ " + faltan + " partida(s) piden más de la existencia del almacén.");
-    if (filas.Any(f => f.Precio <= 0)) av.Add("⚠ Hay partidas con precio en cero.");
-    lblAvisos.Text = string.Join("\n", av);
+    if (EsVenta() && entSel != null && D(entSel["credito"]) > 0 && D(entSel["saldo"]) + tot > D(entSel["credito"])) av.Add("⚠ El saldo con este documento (" + (D(entSel["saldo"]) + tot).ToString("N2") + ") excede el límite de crédito");
+    if (faltan > 0) av.Add("⚠ " + faltan + " partida(s) piden más de la existencia del almacén");
+    if (filas.Any(f => f.Precio <= 0)) av.Add("⚠ Hay partidas con precio en cero");
+    if (ConCfdi() && ClaveDe(cmbMetodo) == "PPD" && ClaveDe(cmbForma) != "99") av.Add("⚠ Con método PPD la forma de pago debe ser 99 (por definir)");
+    lblAvisos.Text = string.Join("     ", av);
     foreach (DataGridViewRow r in grid.Rows) if (r.Index < filas.Count) { var f = filas[r.Index]; var pr = ProdPor(f.Id); bool falta = EsVenta() && f.Origen == 0 && pr != null && !(bool)pr["servicio"] && f.Cant > ExistDe(f.Id); r.Cells["Exist"].Style.ForeColor = falta ? C_AMBAR : C_MUTED; }
 }
 void PintarGrid()
@@ -209,27 +320,22 @@ void PintarGrid()
     foreach (var f in filas)
     {
         var pr = ProdPor(f.Id); bool serv = pr != null && (bool)pr["servicio"];
-        int r = grid.Rows.Add((f.Nombre.Length > 70 ? f.Nombre.Substring(0, 67) + "…" : f.Nombre) + (f.Origen != 0 ? "  · origen" : "") + "\n" + f.Clave + (f.Unidad != "" ? " · " + f.Unidad : ""), serv ? "servicio" : ExistDe(f.Id).ToString("0.####"), f.Cant, f.Precio, f.Desc, f.Imp, "", "✕");
+        int r = grid.Rows.Add(f.Clave, f.Nombre + (f.Origen != 0 ? "   · de origen" : ""), serv ? "servicio" : ExistDe(f.Id).ToString("0.####"), f.Unidad, f.Cant, f.Precio, f.Desc, f.Imp, "");
         if (!impuestos.Any(o => o.Id == f.Imp)) grid.Rows[r].Cells["Imp"].Value = impuestos.FirstOrDefault()?.Id;
-        grid.Rows[r].Height = 38; grid.Rows[r].Cells["Producto"].Style.WrapMode = DataGridViewTriState.True;
     }
     Totales();
 }
 void PintarEntidad()
 {
-    bool hay = entSel != null; lblEntInfo.Visible = hay; cCred.Visible = hay && D(entSel["credito"]) > 0; cHist.Visible = false;
-    if (!hay) { lstHist.Items.Clear(); return; }
-    lblEntInfo.Text = "RFC  " + (S(entSel["rfc"]) == "" ? "—" : S(entSel["rfc"])) + "        Saldo abierto  " + D(entSel["saldo"]).ToString("N2") + (D(entSel["credito"]) > 0 ? "        Límite de crédito  " + D(entSel["credito"]).ToString("N2") : "") +
-        "        Último documento  " + (S(entSel["ultimo"]) == "" ? "—" : S(entSel["ultimo"]));
-    if (cCred.Visible)
+    pastillas.Clear(); txtRfc.Text = entSel == null ? "" : S(entSel["rfc"]) == "" ? "(sin RFC)" : S(entSel["rfc"]); btnHist.Enabled = entSel != null;
+    if (entSel != null)
     {
-        double uso = Math.Max(0, Math.Min(100, D(entSel["saldo"]) / D(entSel["credito"]) * 100)); barraCred.Width = (int)(barraRel.Width * uso / 100); barraCred.BackColor = uso >= 100 ? C_ROJO : uso >= 80 ? Color.FromArgb(217, 119, 6) : C_VERDE;
-        lblCredTxt.Text = "Usado " + D(entSel["saldo"]).ToString("N2") + "   ·   Disponible " + (D(entSel["credito"]) - D(entSel["saldo"])).ToString("N2");
+        double saldo = D(entSel["saldo"]), cred = D(entSel["credito"]);
+        pastillas.Add(new Pastilla { Titulo = "Saldo abierto", Valor = saldo.ToString("N2"), Color = saldo > 0 ? C_AMBAR : C_TXT });
+        if (cred > 0) { pastillas.Add(new Pastilla { Titulo = "Límite de crédito", Valor = cred.ToString("N2"), Color = C_TXT }); pastillas.Add(new Pastilla { Titulo = "Disponible", Valor = (cred - saldo).ToString("N2"), Color = cred - saldo < 0 ? C_ROJO : C_VERDE }); }
+        pastillas.Add(new Pastilla { Titulo = "Último documento", Valor = S(entSel["ultimo"]) == "" ? "—" : S(entSel["ultimo"]), Color = C_TXT });
     }
-    lstHist.Items.Clear();
-    var ult = UltimosDe(L(entSel["id"]));
-    foreach (var d in ult) lstHist.Items.Add(new Opcion { Id = I(d["id"]), Extra = S(d["modulo"]), Nombre = S(d["tipo"]) + " " + S(d["folio"]) + "  ·  " + S(d["fecha"]) + "  ·  " + D(d["total"]).ToString("N2") });
-    cHist.Visible = ult.Count > 0;
+    pChips.Invalidate();
 }
 List<Dictionary<string, object>> OrigenesVisibles()
 {
@@ -247,8 +353,8 @@ List<Dictionary<string, object>> OrigenesVisibles()
 void PintarOrigenes()
 {
     var t = TipoActual(); int mod = (int)t["origen"]; var os = OrigenesVisibles(); string clave = (string)t["clave"];
-    bool ver = mod > 0; tabla.RowStyles[1].Height = ver ? 128 : 0; card2.Visible = ver;
-    lblOrigenEst.Text = ver ? (os.Count > 0 ? os.Count + " disponible(s)" : entSel == null ? "elige primero la persona" : "sin pendientes") : "";
+    bool ver = mod > 0; if (verG4 != ver) { verG4 = ver; Distribuir(); }
+    lblOrigenEst.Text = ver ? (os.Count > 0 ? os.Count + " disponible(s): marca los que quieras surtir" : entSel == null ? "elige primero la persona" : "esta persona no tiene pendientes") : "";
     clbOrigen.Items.Clear();
     foreach (var o in os)
     {
@@ -256,74 +362,97 @@ void PintarOrigenes()
         clbOrigen.Items.Add(new Opcion { Id = (int)L(o["id"]), Nombre = (S(o["folio"]) == "" ? "Documento " + L(o["id"]) : S(o["folio"])) + "  ·  " + S(o["entidadNombre"]) + "  ·  " + (S(o["fecha"]) != "" ? S(o["fecha"]) + "  ·  " : "") + n + " partida(s) pendiente(s)" + (D(o["total"]) > 0 ? "  ·  total " + D(o["total"]).ToString("N2") : "") }, origenSel.Contains(L(o["id"])));
     }
 }
+// El método de pago sigue a la condición (contado → una sola exhibición; crédito → parcialidades, forma 99) mientras la persona no lo cambie a mano
+void AutoMetodo()
+{
+    if (!ConCfdi() || metodoManual) return; var c = cmbCond.SelectedItem as Opcion; bool contado = c != null && c.Nombre.ToUpperInvariant().Contains("CONTADO");
+    suspender = true; PonerPorClave(cmbMetodo, contado ? "PUE" : "PPD"); PonerPorClave(cmbForma, contado ? "01" : "99"); suspender = false;
+}
 void ElegirEntidad(Dictionary<string, object> x)
 {
     entSel = x; txtEnt.Text = S(x["nombre"]); lstEnt.Visible = false;
-    int cond = I(x["cond"]); if ((bool)TipoActual()["condicion"]) for (int i = 0; i < cmbCond.Items.Count; i++) if (((Opcion)cmbCond.Items[i]).Id == cond) cmbCond.SelectedIndex = i;
+    int cond = I(x["cond"]); if ((bool)TipoActual()["condicion"] && cond > 0) PonerPorId(cmbCond, cond);
+    if (I(x["moneda"]) > 0) PonerPorId(cmbMon, I(x["moneda"]));
+    if (ConCfdi() && S(x["uso"]) != "") PonerPorClave(cmbUso, S(x["uso"]));
+    AutoMetodo();
     pendientes = PendientesDe(L(x["id"]), (string)TipoActual()["clave"]);
     PintarEntidad(); PintarOrigenes(); PintarGrid(); txtProd.Focus();
 }
 void CambiarTipo(int idx)
 {
-    string ladoAntes = (string)TipoActual()["lado"]; cmbTipoIdx = idx; var t = TipoActual();
+    string ladoAntes = (string)TipoActual()["lado"]; tipoIdx = idx; var t = TipoActual();
     if ((string)t["lado"] != ladoAntes) { entSel = null; txtEnt.Text = ""; }
     origenSel.Clear(); pendientes.Clear(); filas.RemoveAll(f => f.Origen != 0);
     for (int i = 0; i < btnsTipo.Count; i++) { bool on = i == idx; btnsTipo[i].BackColor = on ? ((string)TIPOS[i]["lado"] == "C" ? C_VENTA : C_COMPRA) : Color.White; btnsTipo[i].ForeColor = on ? Color.White : C_TXT; btnsTipo[i].FlatAppearance.BorderColor = on ? btnsTipo[i].BackColor : C_LINE; btnsTipo[i].Font = on ? F_B : F_BASE; }
-    lblTitulo.Text = "Nuevo documento · " + (string)t["nombre"]; lblSub.Text = "Módulo " + (int)t["modulo"] + ((string)t["lado"] == "C" ? " · ventas" : " · compras");
-    ((Control)card1).Invalidate(); card2.Invalidate(); card3.Invalidate(); card4.Invalidate(); cRes.Invalidate(); cCred.Invalidate(); cHist.Invalidate(); btnGuardar.Invalidate();
-    cmbCond.Visible = (bool)t["condicion"]; lblEntregaEt.Visible = dtEntrega.Visible = (bool)t["entrega"];
+    lblRibTitulo.Text = "Nuevo documento  ·  " + (string)t["nombre"]; btnGuardar.Invalidate(); btnAgregar.BackColor = Acento();
+    cmbCond.Enabled = (bool)t["condicion"]; lblEntregaEt.Visible = dtEntrega.Visible = (bool)t["entrega"];
     cmbCond.Items.Clear();
     foreach (var c in cat("condiciones").Where(c => (string)t["lado"] == "C" ? (bool)c["venta"] : (bool)c["compra"])) cmbCond.Items.Add(new Opcion { Id = I(c["id"]), Nombre = S(c["nombre"]) });
     if (cmbCond.Items.Count > 0) cmbCond.SelectedIndex = 0;
+    verG3 = ConCfdi(); metodoManual = false; AutoMetodo();
     foreach (var f in filas) f.Precio = PrecioDe(f.Id);
     lblPie.Text = "Elaboró: " + (quienSoy == "" ? "—" : quienSoy) + "      Empresa: " + nombreEmpresa + "      Módulo " + (int)t["modulo"] + " · " + (string)t["nombre"];
-    object fo; lblFolio.Text = folios.TryGetValue((string)t["clave"], out fo) ? "≈ " + fo : "—";
-    PintarEntidad(); PintarOrigenes(); PintarGrid();
+    object fo; txtFolio.Text = folios.TryGetValue((string)t["clave"], out fo) ? "≈ " + fo : ""; txtSerie.Text = "";
+    try { var a = cmbAlm.SelectedItem as Opcion; string pre = a == null ? "" : ctx.erp.GetFolioPrefix((int)t["modulo"], a.Id); txtSerie.Text = pre ?? ""; } catch { }
+    PintarEntidad(); PintarOrigenes(); PintarGrid(); Distribuir();
     if (entSel != null) ElegirEntidad(entSel);
 }
 
-// búsqueda con lista desplegable (persona y producto)
-void Desplegar(TextBox txt, ListBox lst, IEnumerable<Dictionary<string, object>> fuente, Func<Dictionary<string, object>, string> texto, Func<Dictionary<string, object>, string> buscar, int max)
+// ---------- búsqueda con lista desplegable (persona y producto) ----------
+void Desplegar(TextBox txt, ListBox lst, IEnumerable<Dictionary<string, object>> fuente, Func<Dictionary<string, object>, string> linea1, Func<Dictionary<string, object>, string> linea2, Func<Dictionary<string, object>, string> buscar, int max)
 {
     var q = txt.Text.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
     var vis = fuente.Where(x => { var h = buscar(x).ToLowerInvariant(); return q.All(w => h.Contains(w)); }).Take(max).ToList();
-    lst.Items.Clear(); foreach (var x in vis) lst.Items.Add(new Opcion { Id = I(x["id"]), Nombre = texto(x) });
-    var pos = frm.PointToClient(txt.Parent.PointToScreen(new Point(txt.Left, txt.Bottom)));
-    lst.Location = pos; lst.Width = Math.Max(txt.Width, 380); lst.Visible = lst.Items.Count > 0; if (lst.Visible) { lst.BringToFront(); lst.SelectedIndex = 0; }
+    lst.Items.Clear(); foreach (var x in vis) lst.Items.Add(new Opcion { Id = I(x["id"]), Nombre = linea1(x), Extra = linea2(x) });
+    lst.Location = frm.PointToClient(txt.Parent.PointToScreen(new Point(txt.Left, txt.Bottom + 1))); lst.Height = Math.Min(280, lst.Items.Count * lst.ItemHeight + 4);
+    lst.Visible = lst.Items.Count > 0; if (lst.Visible) { lst.BringToFront(); lst.SelectedIndex = 0; }
 }
 IEnumerable<Dictionary<string, object>> FuenteEntidad() => cat(EsVenta() ? "clientes" : "proveedores");
-string BuscarEntidad(Dictionary<string, object> x) => S(x["nombre"]) + " " + S(x["rfc"]) + " " + S(x["id"]);
-string TextoEntidad(Dictionary<string, object> x) => S(x["nombre"]) + (S(x["rfc"]) != "" ? "   [" + S(x["rfc"]) + "]" : "") + (D(x["saldo"]) != 0 ? "   saldo " + D(x["saldo"]).ToString("N2") : "");
-Action ElegirDeLista = () => { var o = lstEnt.SelectedItem as Opcion; if (o == null) return; var x = FuenteEntidad().First(e => I(e["id"]) == o.Id); ElegirEntidad(x); };
-txtEnt.TextChanged += (_, __) => Seguro(() => { if (txtEnt.Focused) { if (entSel != null) { entSel = null; pendientes.Clear(); PintarEntidad(); PintarOrigenes(); } Desplegar(txtEnt, lstEnt, FuenteEntidad(), TextoEntidad, BuscarEntidad, 60); } });
-txtEnt.Enter += (_, __) => Seguro(() => { txtEnt.SelectAll(); if (entSel == null) Desplegar(txtEnt, lstEnt, FuenteEntidad(), TextoEntidad, BuscarEntidad, 60); });
+Action ElegirDeLista = () => { var o = lstEnt.SelectedItem as Opcion; if (o == null) return; ElegirEntidad(FuenteEntidad().First(e => I(e["id"]) == o.Id)); };
+Action DespliegaEnt = () => Desplegar(txtEnt, lstEnt, FuenteEntidad(), x => S(x["nombre"]), x => (S(x["rfc"]) == "" ? "sin RFC" : S(x["rfc"])) + "   ·   saldo " + D(x["saldo"]).ToString("N2") + (D(x["credito"]) > 0 ? "   ·   crédito " + D(x["credito"]).ToString("N2") : ""), x => S(x["nombre"]) + " " + S(x["rfc"]) + " " + S(x["id"]), 60);
+txtEnt.TextChanged += (_, __) => Seguro(() => { if (txtEnt.Focused) { if (entSel != null) { entSel = null; pendientes.Clear(); PintarEntidad(); PintarOrigenes(); } DespliegaEnt(); } });
+txtEnt.Enter += (_, __) => Seguro(() => { txtEnt.SelectAll(); if (entSel == null) DespliegaEnt(); });
 txtEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Down && lstEnt.Visible) { lstEnt.Focus(); ev.Handled = true; } if (ev.KeyCode == Keys.Enter) { Seguro(ElegirDeLista); ev.SuppressKeyPress = true; } if (ev.KeyCode == Keys.Escape && lstEnt.Visible) { lstEnt.Visible = false; ev.SuppressKeyPress = true; ev.Handled = true; } };
 lstEnt.Click += (_, __) => Seguro(ElegirDeLista);
 lstEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Seguro(ElegirDeLista); ev.SuppressKeyPress = true; } };
 txtEnt.Leave += (_, __) => { if (!lstEnt.Focused) lstEnt.Visible = false; };
 
-void AgregarProducto(Dictionary<string, object> p)
+void LimpiarCaptura() { prodSel = null; suspender = true; txtProd.Text = ""; suspender = false; nudCant.Value = 1; nudPrecio.Value = 0; nudDesc.Value = 0; }
+void AgregarCaptura()
 {
-    var ya = filas.FirstOrDefault(f => f.Id == I(p["id"]) && f.Origen == 0);
-    if (ya != null) ya.Cant += 1;
-    else filas.Add(new Fila { Id = I(p["id"]), Clave = S(p["clave"]), Nombre = S(p["nombre"]), Unidad = S(p["unidad"]), Cant = 1, Precio = PrecioDe(I(p["id"])), Desc = EsVenta() && entSel != null ? D(entSel["desc"]) : 0, Imp = I(p["imp"]) });
-    lstProd.Visible = false; txtProd.Text = ""; PintarGrid();
-    if (ya == null && grid.Rows.Count > 0) { grid.CurrentCell = grid.Rows[grid.Rows.Count - 1].Cells["Cant"]; grid.Focus(); grid.BeginEdit(true); }
+    if (prodSel == null) { txtProd.Focus(); throw new Exception("Busca y elige un producto."); }
+    int id = I(prodSel["id"]); double cant = (double)nudCant.Value, precio = (double)nudPrecio.Value, desc = (double)nudDesc.Value; int imp = (cmbImp.SelectedItem as Opcion)?.Id ?? 0;
+    if (cant <= 0) { nudCant.Focus(); throw new Exception("La cantidad debe ser mayor a cero."); }
+    var ya = filas.FirstOrDefault(f => f.Id == id && f.Origen == 0);
+    if (ya != null) { ya.Cant += cant; if (precio > 0) ya.Precio = precio; ya.Desc = desc; ya.Imp = imp; }
+    else filas.Add(new Fila { Id = id, Clave = S(prodSel["clave"]), Nombre = S(prodSel["nombre"]), Unidad = S(prodSel["unidad"]), Cant = cant, Precio = precio, Desc = desc, Imp = imp });
+    lstProd.Visible = false; LimpiarCaptura(); PintarGrid(); txtProd.Focus();
 }
-Action ElegirProducto = () =>
+void ElegirProducto(Dictionary<string, object> p)
+{
+    prodSel = p; suspender = true; txtProd.Text = S(p["clave"]) + " — " + S(p["nombre"]); suspender = false; lstProd.Visible = false;
+    nudCant.Value = 1; nudPrecio.Value = (decimal)PrecioDe(I(p["id"])); nudDesc.Value = (decimal)Math.Min(100, EsVenta() && entSel != null ? D(entSel["desc"]) : 0); PonerPorId(cmbImp, I(p["imp"]));
+    nudCant.Focus(); nudCant.Select(0, 10);
+}
+Action ElegirDeListaProd = () =>
 {
     string v = txtProd.Text.Trim(); Dictionary<string, object> p = null;
     if (v != "") p = productos.FirstOrDefault(x => (S(x["barras"]) != "" && S(x["barras"]) == v) || string.Equals(S(x["clave"]), v, StringComparison.OrdinalIgnoreCase));
-    if (p == null) { var o = lstProd.SelectedItem as Opcion; if (o == null) return; p = productos.First(x => I(x["id"]) == o.Id); }
-    AgregarProducto(p);
+    if (p != null) { ElegirProducto(p); AgregarCaptura(); return; }                      // código de barras o clave exacta: se agrega directo (flujo de lector)
+    var o = lstProd.Visible ? lstProd.SelectedItem as Opcion : null;
+    if (o != null) { ElegirProducto(productos.First(x => I(x["id"]) == o.Id)); return; }
+    if (prodSel != null) AgregarCaptura();
 };
-string TextoProducto(Dictionary<string, object> x) => S(x["nombre"]) + (S(x["clave"]) != "" ? "   [" + S(x["clave"]) + "]" : "") + "   " + ((bool)x["servicio"] ? "servicio" : "exist. " + ExistDe(I(x["id"])).ToString("0.####")) + "   " + PrecioDe(I(x["id"])).ToString("N2");
-string BuscarProducto(Dictionary<string, object> x) => S(x["nombre"]) + " " + S(x["clave"]) + " " + S(x["barras"]);
-txtProd.TextChanged += (_, __) => Seguro(() => { if (txtProd.Focused) Desplegar(txtProd, lstProd, productos, TextoProducto, BuscarProducto, 40); });
-txtProd.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Down && lstProd.Visible) { lstProd.Focus(); ev.Handled = true; } if (ev.KeyCode == Keys.Enter) { Seguro(ElegirProducto); ev.SuppressKeyPress = true; } if (ev.KeyCode == Keys.Escape && lstProd.Visible) { lstProd.Visible = false; ev.SuppressKeyPress = true; ev.Handled = true; } };
-lstProd.Click += (_, __) => Seguro(ElegirProducto);
-lstProd.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Seguro(ElegirProducto); ev.SuppressKeyPress = true; } };
+Action DespliegaProd = () => Desplegar(txtProd, lstProd, productos, x => S(x["nombre"]), x => (S(x["clave"]) != "" ? S(x["clave"]) + "   ·   " : "") + ((bool)x["servicio"] ? "servicio" : "existencia " + ExistDe(I(x["id"])).ToString("0.####")) + "   ·   precio " + PrecioDe(I(x["id"])).ToString("N2"), x => S(x["nombre"]) + " " + S(x["clave"]) + " " + S(x["barras"]), 60);
+txtProd.TextChanged += (_, __) => Seguro(() => { if (txtProd.Focused && !suspender) { prodSel = null; DespliegaProd(); } });
+txtProd.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Down && lstProd.Visible) { lstProd.Focus(); ev.Handled = true; } if (ev.KeyCode == Keys.Enter) { Seguro(ElegirDeListaProd); ev.SuppressKeyPress = true; } if (ev.KeyCode == Keys.Escape && lstProd.Visible) { lstProd.Visible = false; ev.SuppressKeyPress = true; ev.Handled = true; } };
+lstProd.Click += (_, __) => Seguro(ElegirDeListaProd);
+lstProd.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Seguro(ElegirDeListaProd); ev.SuppressKeyPress = true; } };
 txtProd.Leave += (_, __) => { if (!lstProd.Focused) lstProd.Visible = false; };
+btnBuscaProd.Click += (_, __) => Seguro(() => { txtProd.Text = ""; txtProd.Focus(); DespliegaProd(); });
+foreach (Control c in new Control[] { nudCant, nudPrecio, nudDesc }) c.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Seguro(AgregarCaptura); ev.SuppressKeyPress = true; } };
+btnAgregar.Click += (_, __) => Seguro(AgregarCaptura);
+btnQuitar.Click += (_, __) => Seguro(() => { if (grid.CurrentRow != null && grid.CurrentRow.Index >= 0 && grid.CurrentRow.Index < filas.Count) { filas.RemoveAt(grid.CurrentRow.Index); PintarGrid(); } });
 
 grid.CellEndEdit += (_, ev) => Seguro(() =>
 {
@@ -332,14 +461,18 @@ grid.CellEndEdit += (_, ev) => Seguro(() =>
     double n; double.TryParse(Convert.ToString(v, CultureInfo.CurrentCulture), NumberStyles.Any, CultureInfo.CurrentCulture, out n); if (n < 0) n = 0;
     if (col == "Cant") { f.Cant = f.Max > 0 && n > f.Max ? f.Max : n; grid.Rows[ev.RowIndex].Cells["Cant"].Value = f.Cant; }
     else if (col == "Precio") f.Precio = n;
-    else if (col == "Desc") { f.Desc = Math.Min(100, n); grid.Rows[ev.RowIndex].Cells["Desc"].Value = f.Desc; }
+    else if (col == "DescPerc") { f.Desc = Math.Min(100, n); grid.Rows[ev.RowIndex].Cells["DescPerc"].Value = f.Desc; }
     else if (col == "Imp" && v != null) f.Imp = Convert.ToInt32(v);
     Totales();
 });
-grid.CellContentClick += (_, ev) => Seguro(() => { if (ev.RowIndex >= 0 && ev.RowIndex < filas.Count && grid.Columns[ev.ColumnIndex].Name == "Quitar") { filas.RemoveAt(ev.RowIndex); PintarGrid(); } });
 grid.CurrentCellDirtyStateChanged += (_, __) => { if (grid.IsCurrentCellDirty && grid.CurrentCell is DataGridViewComboBoxCell) grid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
 grid.DataError += (_, ev) => ev.ThrowException = false;
-cmbAlm.SelectedIndexChanged += (_, __) => Seguro(PintarGrid);
+grid.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Delete && !grid.IsCurrentCellInEditMode) Seguro(() => { if (grid.CurrentRow != null && grid.CurrentRow.Index < filas.Count) { filas.RemoveAt(grid.CurrentRow.Index); PintarGrid(); } }); };
+cmbAlm.SelectedIndexChanged += (_, __) => Seguro(() => { PintarGrid(); try { var a = cmbAlm.SelectedItem as Opcion; txtSerie.Text = a == null ? "" : ctx.erp.GetFolioPrefix((int)TipoActual()["modulo"], a.Id) ?? ""; } catch { } });
+cmbMon.SelectedIndexChanged += (_, __) => Seguro(() => { var m = MonedaSel(); if (m != null) { nudTC.Value = (decimal)Math.Max(0.0001, D(m["tc"])); nudTC.Enabled = S(m["simbolo"]) != "MXN"; } Totales(); });
+cmbCond.SelectedIndexChanged += (_, __) => Seguro(AutoMetodo);
+cmbMetodo.SelectionChangeCommitted += (_, __) => Seguro(() => { metodoManual = true; if (ClaveDe(cmbMetodo) == "PPD") { suspender = true; PonerPorClave(cmbForma, "99"); suspender = false; } Totales(); });
+cmbForma.SelectionChangeCommitted += (_, __) => Seguro(() => { metodoManual = true; Totales(); });
 
 clbOrigen.ItemCheck += (_, ev) => frm.BeginInvoke(new Action(() => Seguro(() =>
 {
@@ -350,8 +483,7 @@ clbOrigen.ItemCheck += (_, ev) => frm.BeginInvoke(new Action(() => Seguro(() =>
     filas.RemoveAll(f => f.Origen != 0);
     foreach (var o in os)
     {
-        var porTipo = (Dictionary<string, object>)o["partidasPor"];
-        if (!porTipo.ContainsKey((string)t["clave"])) continue;
+        var porTipo = (Dictionary<string, object>)o["partidasPor"]; if (!porTipo.ContainsKey((string)t["clave"])) continue;
         foreach (var p in (List<Dictionary<string, object>>)porTipo[(string)t["clave"]])
             filas.Add(new Fila { Id = I(p["id"]), Clave = S(p["clave"]), Nombre = S(p["nombre"]), Unidad = S(p["unidad"]), Cant = D(p["cant"]), Max = D(p["cant"]), Precio = D(p["precio"]), Desc = D(p["desc"]), Imp = I(p["imp"]), OrigenItem = L(p["origenItem"]), Origen = L(o["id"]) });
     }
@@ -363,11 +495,24 @@ clbOrigen.ItemCheck += (_, ev) => frm.BeginInvoke(new Action(() => Seguro(() =>
     }
     PintarGrid();
 })));
-lstHist.DoubleClick += (_, __) => Seguro(() => { var o = lstHist.SelectedItem as Opcion; if (o != null) ctx.erp.AbrirDocumento(o.Id, int.Parse(o.Extra)); });
+
+// historial de la persona: ventana aparte, también sin bloquear
+btnHist.Click += (_, __) => Seguro(() =>
+{
+    if (entSel == null) return; var ult = UltimosDe(L(entSel["id"]));
+    var h = new Form { Text = "Últimos documentos · " + S(entSel["nombre"]), Size = new Size(640, 330), StartPosition = FormStartPosition.CenterParent, BackColor = Color.White, Font = F_BASE, MinimizeBox = true, MaximizeBox = false };
+    var l = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 42, IntegralHeight = false };
+    l.DrawItem += (s, ev) => dibujaLista(l, ev);
+    foreach (var d in ult) l.Items.Add(new Opcion { Id = I(d["id"]), Extra = S(d["fecha"]) + "   ·   total " + D(d["total"]).ToString("N2") + (D(d["saldo"]) > 0 ? "   ·   saldo " + D(d["saldo"]).ToString("N2") : ""), Nombre = S(d["tipo"]) + " " + S(d["folio"]) });
+    var modulos = ult.ToDictionary(d => I(d["id"]), d => I(d["modulo"]));
+    l.DoubleClick += (s, ev) => Seguro(() => { var o = l.SelectedItem as Opcion; if (o != null && modulos.ContainsKey(o.Id)) ctx.erp.AbrirDocumento(o.Id, modulos[o.Id]); });
+    h.Controls.Add(l); h.Controls.Add(new Label { Text = "Doble clic para abrir el documento en Comercial", Dock = DockStyle.Bottom, Height = 26, ForeColor = C_MUTED, Font = F_SM, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(10, 0, 0, 0) });
+    h.Show(frm);
+});
 
 void Limpiar()
 {
-    entSel = null; txtEnt.Text = ""; filas.Clear(); origenSel.Clear(); pendientes.Clear(); txtTitulo.Text = ""; txtComent.Text = ""; txtProd.Text = "";
+    entSel = null; txtEnt.Text = ""; filas.Clear(); origenSel.Clear(); pendientes.Clear(); txtTitulo.Text = ""; txtComent.Text = ""; LimpiarCaptura(); metodoManual = false; AutoMetodo();
     PintarEntidad(); PintarOrigenes(); PintarGrid(); txtEnt.Focus();
 }
 void Crear(bool otro)
@@ -376,14 +521,17 @@ void Crear(bool otro)
     if (entSel == null) { txtEnt.Focus(); throw new Exception("Elige el " + ((string)t["lado"] == "C" ? "cliente" : "proveedor") + " de la lista (escribe y selecciona)."); }
     if (filas.Count == 0) { txtProd.Focus(); throw new Exception("Agrega al menos una partida."); }
     if (filas.Any(f => f.Cant <= 0)) throw new Exception("Todas las partidas deben tener cantidad mayor a cero.");
+    if (ConCfdi() && (ClaveDe(cmbUso) == "" || ClaveDe(cmbForma) == "" || ClaveDe(cmbMetodo) == "")) throw new Exception("Completa los datos fiscales: uso del CFDI, forma de pago y método de pago.");
     var spec = new Dictionary<string, object>
     {
         ["tipo"] = (string)t["clave"], ["almacen"] = ((Opcion)cmbAlm.SelectedItem)?.Id ?? 0, ["entidad"] = I(entSel["id"]),
         ["condicion"] = (bool)t["condicion"] ? ((Opcion)cmbCond.SelectedItem)?.Id ?? 0 : 0,
         ["fecha"] = dtFecha.Value.ToString("yyyy-MM-dd"), ["entrega"] = (bool)t["entrega"] ? dtEntrega.Value.ToString("yyyy-MM-dd") : "",
         ["titulo"] = txtTitulo.Text, ["comentarios"] = txtComent.Text, ["origenes"] = origenSel.Cast<object>().ToList(),
+        ["moneda"] = ((Opcion)cmbMon.SelectedItem)?.Id ?? 0, ["tc"] = (double)nudTC.Value, ["centro"] = ((Opcion)cmbCC.SelectedItem)?.Id ?? 0,
         ["partidas"] = filas.Select(f => (object)new Dictionary<string, object> { ["id"] = f.Id, ["nombre"] = f.Nombre, ["cant"] = f.Cant, ["precio"] = f.Precio, ["desc"] = f.Desc, ["imp"] = f.Imp, ["origenItem"] = f.OrigenItem }).ToList()
     };
+    if (ConCfdi()) { spec["uso"] = ClaveDe(cmbUso); spec["forma"] = ClaveDe(cmbForma); spec["metodo"] = ClaveDe(cmbMetodo); }
     guardando = true; Cursor.Current = Cursors.WaitCursor;
     long doc;
     try { doc = CrearDocumento(spec); }
@@ -406,19 +554,21 @@ frm.KeyDown += (_, ev) =>
 };
 
 // ---------- Arranque: modeless ----------
+{ var m0 = MonedaSel(); if (m0 != null) { nudTC.Value = (decimal)Math.Max(0.0001, D(m0["tc"])); nudTC.Enabled = S(m0["simbolo"]) != "MXN"; } }
 CambiarTipo(0);
 if (origenes.Count > 0)                   // seleccionados en la lista de Comercial: se propone el tipo que parte de ellos y se marcan
 {
     int ti = TIPOS.FindIndex(t => (int)t["origen"] == I(origenes[0]["modulo"]));
     if (ti >= 0) { CambiarTipo(ti); for (int i = 0; i < clbOrigen.Items.Count; i++) clbOrigen.SetItemChecked(i, true); }
 }
+Distribuir();
 string capturaPrueba = Environment.GetEnvironmentVariable("BROSLMV_DOC_SHOT");        // pruebas: guarda una captura de la ventana (con datos de ejemplo) y no la deja abierta
 if (!string.IsNullOrEmpty(capturaPrueba))
 {
     int tipoShot = int.TryParse(Environment.GetEnvironmentVariable("BROSLMV_DOC_SHOT_TIPO"), out var ts) ? ts : 0; CambiarTipo(tipoShot);
     var lista = FuenteEntidad().ToList(); if (lista.Count > 0) ElegirEntidad(lista.OrderByDescending(e => D(e["saldo"])).First());
-    foreach (var p in productos.Take(3)) AgregarProducto(p);
-    frm.Show(); Application.DoEvents(); frm.PerformLayout(); Application.DoEvents();
+    foreach (var p in productos.Take(3)) { ElegirProducto(p); AgregarCaptura(); }
+    frm.Show(); Application.DoEvents(); frm.PerformLayout(); Distribuir(); Application.DoEvents();
     using (var bmp = new Bitmap(frm.Width, frm.Height)) { frm.DrawToBitmap(bmp, new Rectangle(0, 0, frm.Width, frm.Height)); bmp.Save(capturaPrueba, System.Drawing.Imaging.ImageFormat.Png); }
     frm.Dispose(); return "CAPTURA";
 }

@@ -101,6 +101,17 @@ $suma = ($ag | ForEach-Object { [double](($_ -split '\|')[1]) } | Measure-Object
 if (-not (Cerca $suma $totPed 0.011)) { Fallo "Las parcialidades suman $suma y el pedido $totPed." }
 if ((($ag[1] -split '\|')[2]) -le (($ag[0] -split '\|')[2])) { Fallo "La segunda parcialidad debia vencer despues de la primera." }
 Write-Host "  Factura de cliente $fcl (696.00, sin inventario) y pedido $ped creados."
+# Datos fiscales del CFDI, moneda extranjera con tipo de cambio y centro de costo: deben quedar tal cual en el documento
+$cat2 = $ser.DeserializeObject((Correr @{ catalogo = $true }))
+foreach ($k in 'monedas', 'formas', 'metodos', 'usos', 'centros') { if (@($cat2[$k]).Count -lt 1) { Fallo "El catalogo debia traer '$k'." } }
+$cc = [int](Sql "SELECT TOP 1 CostCenterID FROM orgCostCenter WHERE DeletedOn IS NULL ORDER BY CostCenterID")
+$ffi = Doc @{ tipo = 'factura_cliente'; almacen = $alm; entidad = $cli; condicion = 1; fecha = $hoy; titulo = 'DEMO CREAR DOC - factura con datos fiscales'; moneda = 2; tc = 18.5; centro = $cc; uso = 'G01'; forma = '03'; metodo = 'PUE'; partidas = @(@{ id = 4; cant = 1; precio = 100; desc = 0; imp = 5 }) }
+$cfd = Sql "SELECT ReceptorUsoCFDI + '/' + FormaPago + '/' + MetodoPago FROM docDocumentCFD WHERE DocumentID=$ffi"
+if ($cfd -ne 'G01/03/PUE') { Fallo "docDocumentCFD debia quedar G01/03/PUE y quedo '$cfd'." }
+$enc = Sql "SELECT CAST(CurrencyID AS varchar(5)) + '/' + CAST(CAST(Rate AS decimal(18,2)) AS varchar(20)) + '/' + CAST(ISNULL(CostCenterID,0) AS varchar(10)) FROM docDocument WHERE DocumentID=$ffi"
+if ($enc -ne "2/18.50/$cc") { Fallo "El encabezado debia quedar moneda 2, tipo de cambio 18.50 y centro $cc, y quedo '$enc'." }
+Write-Host "  Factura $ffi con datos fiscales: $cfd, moneda USD a 18.50 y centro de costo $cc."
+
 
 # 6) Remision desde el pedido (vinculo por encabezado): pendientes por producto
 $p = @(Pendientes @($ped)); $pend = @($p[0]['partidasPor']['remision'])
