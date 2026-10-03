@@ -395,7 +395,7 @@ cmbCta.SelectedIndexChanged += (_, __) => Seguro(() => { if (cmbCta.Focused || m
 nudTc.ValueChanged += (_, __) => Seguro(() => { if (!ajustandoTc) PintarDocs(); });
 pEdad.Resize += (_, __) => pEdad.Invalidate();
 
-grid.CellContentClick += (_, ev) => Seguro(() =>
+grid.CellContentClick += (_, ev) => grid.BeginInvoke(new Action(() => Seguro(() =>
 {
     if (pintando || ev.RowIndex < 0 || grid.Columns[ev.ColumnIndex].Name != "Marca") return;
     grid.EndEdit(); long id = (long)grid.Rows[ev.RowIndex].Tag; var d = DocsDeEnt().First(x => L(x["id"]) == id); bool on = Convert.ToBoolean(grid.Rows[ev.RowIndex].Cells["Marca"].EditedFormattedValue);
@@ -403,8 +403,8 @@ grid.CellContentClick += (_, ev) => Seguro(() =>
     if (on && !(Sc(d) > 0)) Aviso("Captura primero el tipo de cambio.", true);
     if (on) seleccion[id] = Sc(d); else { seleccion.Remove(id); parcSel.Remove(id); }
     PintarDocs();
-});
-grid.CellEndEdit += (_, ev) => Seguro(() =>
+})));
+grid.CellEndEdit += (_, ev) => grid.BeginInvoke(new Action(() => Seguro(() =>
 {
     string col = ev.ColumnIndex < 0 ? "" : grid.Columns[ev.ColumnIndex].Name;
     if (pintando || ev.RowIndex < 0 || (col != "Aplicar" && col != "Parc")) return;
@@ -418,7 +418,7 @@ grid.CellEndEdit += (_, ev) => Seguro(() =>
     }
     double n; double.TryParse(Convert.ToString(grid.Rows[ev.RowIndex].Cells["Aplicar"].Value, CultureInfo.CurrentCulture), NumberStyles.Any, CultureInfo.CurrentCulture, out n); double tope = Sc(d); if (n > tope) { n = tope; Aviso("El importe se ajustó al saldo del documento."); } n = Math.Max(0, n);
     if (n > 0) seleccion[id] = n; else { seleccion.Remove(id); parcSel.Remove(id); } PintarDocs();
-});
+})));
 grid.DataError += (_, ev) => ev.ThrowException = false;
 grid.CellDoubleClick += (_, ev) => Seguro(() => { if (ev.RowIndex >= 0 && grid.Columns[ev.ColumnIndex].Name != "Marca" && grid.Columns[ev.ColumnIndex].Name != "Aplicar" && grid.Columns[ev.ColumnIndex].Name != "Parc") AbrirDetalle((long)grid.Rows[ev.RowIndex].Tag); });
 void DetalleSel() { if (grid.CurrentRow == null || grid.CurrentRow.Tag == null) { Aviso("Elige un documento de la lista (clic en su renglón).", true); return; } AbrirDetalle((long)grid.CurrentRow.Tag); }

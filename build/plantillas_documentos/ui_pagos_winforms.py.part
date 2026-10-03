@@ -1122,7 +1122,7 @@ def principal():
             pintar_docs()
         except Exception as ex:
             msg(str(ex))
-    grid.CellContentClick += clic_celda
+    grid.CellContentClick += lambda s, ev: grid.BeginInvoke(System.Action(lambda: clic_celda(s, ev)))      # diferido: repintar la rejilla dentro de su propio evento da «llamada reentrante»
 
     def fin_edicion(sender, ev):
         col = grid.Columns[ev.ColumnIndex].Name if ev.ColumnIndex >= 0 else ""
@@ -1162,7 +1162,7 @@ def principal():
             pintar_docs()
         except Exception as ex:
             msg(str(ex))
-    grid.CellEndEdit += fin_edicion
+    grid.CellEndEdit += lambda s, ev: grid.BeginInvoke(System.Action(lambda: fin_edicion(s, ev)))
     grid.DataError += lambda s, ev: setattr(ev, "ThrowException", False)
 
     def doble_clic(sender, ev):
