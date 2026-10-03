@@ -58,7 +58,7 @@ def fecha_txt(v):
     return v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else S(v)[:10]
 
 
-empresa = ctx.erp.OwnedBusinessEntityId
+empresa = I(ctx.erp.OwnedBusinessEntityId())      # en Python ctx.erp.X siempre es una función (relevo al addon): se llama, aunque en C# sea una propiedad
 
 
 def L(v):

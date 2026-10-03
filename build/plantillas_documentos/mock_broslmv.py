@@ -30,7 +30,7 @@ def sqlcmd(sql):
 
 
 class Erp:
-    OwnedBusinessEntityId = 1
+    def OwnedBusinessEntityId(self): return 1        # como el real: en Python todo ctx.erp.X es una función
     _items = 0
 
     def NuevoDocumento(self, modulo, almacen, entidad):

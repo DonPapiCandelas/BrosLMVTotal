@@ -309,9 +309,17 @@ Panel Grupo(Func<string> titulo)
 Label Et(Control padre, string t, int x, int y) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = Color.Transparent }; padre.Controls.Add(l); return l; }
 TextBox Cuadro(Control padre, string etiqueta, int x, int y, int w, bool soloLectura = false)
 {
+    // Marco de altura fija que dibuja el borde; el TextBox va adentro SIN borde y centrado. Así la altura no depende de cómo calcule Windows la del TextBox
+    // (cambia con el monitor y la escala) y ya no se encima con la etiqueta.
     if (etiqueta != "") Et(padre, etiqueta, x, y);
-    var t = new TextBox { Location = new Point(x, y + 17), Size = new Size(w, 24), ReadOnly = soloLectura, BorderStyle = BorderStyle.FixedSingle, ForeColor = soloLectura ? C_MUTED : C_TXT }; padre.Controls.Add(t); return t;
+    var marco = new Panel { Location = new Point(x, y + 18), Size = new Size(w, 26), BackColor = soloLectura ? C_HEAD : Color.White };
+    marco.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawRectangle(pen, 0, 0, marco.Width - 1, marco.Height - 1); };
+    var t = new TextBox { BorderStyle = BorderStyle.None, ReadOnly = soloLectura, BackColor = marco.BackColor, ForeColor = soloLectura ? C_MUTED : C_TXT, Width = w - 14 };
+    t.Location = new Point(7, Math.Max(0, (26 - t.Height) / 2)); t.Tag = marco;
+    marco.Controls.Add(t); padre.Controls.Add(marco); marco.Click += (s, e) => t.Focus();
+    return t;
 }
+Control Caja(TextBox t) { return (t.Tag as Control) ?? t; }
 ComboBox Lista(Control padre, string etiqueta, int x, int y, int w, int anchoMenu = 0)
 {
     Et(padre, etiqueta, x, y);
@@ -557,7 +565,7 @@ void Desplegar()
     var vis = FuenteEnt().Where(x => { var h = (S(x["nombre"]) + " " + S(x["rfc"]) + " " + S(x["id"])).ToLowerInvariant(); return q.All(w => h.Contains(w)); }).Take(60).ToList();
     lstEnt.Items.Clear();
     foreach (var x in vis) lstEnt.Items.Add(new Opcion { Id = I(x["id"]), Nombre = S(x["nombre"]), Extra = (S(x["rfc"]) == "" ? "sin RFC" : S(x["rfc"])) + "   ·   " + (ES.ContainsKey(I(x["id"])) ? "debe " + ES[I(x["id"])][0].ToString("N2") + " en " + ES[I(x["id"])][2] + " documento(s)" : "sin saldo") });
-    lstEnt.Location = frm.PointToClient(txtEnt.Parent.PointToScreen(new Point(txtEnt.Left, txtEnt.Bottom + 1))); lstEnt.Height = Math.Min(280, lstEnt.Items.Count * lstEnt.ItemHeight + 4);
+    var cj = Caja(txtEnt); lstEnt.Location = frm.PointToClient(cj.Parent.PointToScreen(new Point(cj.Left, cj.Bottom + 1))); lstEnt.Height = Math.Min(280, lstEnt.Items.Count * lstEnt.ItemHeight + 4);
     lstEnt.Visible = lstEnt.Items.Count > 0; if (lstEnt.Visible) { lstEnt.BringToFront(); lstEnt.SelectedIndex = 0; }
 }
 Action ElegirDeLista = () => { var o = lstEnt.SelectedItem as Opcion; if (o == null) return; ElegirEnt(FuenteEnt().First(e => I(e["id"]) == o.Id)); };

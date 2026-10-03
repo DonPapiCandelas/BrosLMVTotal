@@ -71,9 +71,17 @@ Panel Grupo(Func<string> titulo)
 Label Et(Control padre, string t, int x, int y) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = Color.Transparent }; padre.Controls.Add(l); return l; }
 TextBox Cuadro(Control padre, string etiqueta, int x, int y, int w, bool soloLectura = false)
 {
+    // Marco de altura fija que dibuja el borde; el TextBox va adentro SIN borde y centrado. Así la altura no depende de cómo calcule Windows la del TextBox
+    // (cambia con el monitor y la escala) y ya no se encima con la etiqueta.
     if (etiqueta != "") Et(padre, etiqueta, x, y);
-    var t = new TextBox { Location = new Point(x, y + 17), Size = new Size(w, 24), ReadOnly = soloLectura, BorderStyle = BorderStyle.FixedSingle, ForeColor = soloLectura ? C_MUTED : C_TXT }; padre.Controls.Add(t); return t;
+    var marco = new Panel { Location = new Point(x, y + 18), Size = new Size(w, 26), BackColor = soloLectura ? C_HEAD : Color.White };
+    marco.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawRectangle(pen, 0, 0, marco.Width - 1, marco.Height - 1); };
+    var t = new TextBox { BorderStyle = BorderStyle.None, ReadOnly = soloLectura, BackColor = marco.BackColor, ForeColor = soloLectura ? C_MUTED : C_TXT, Width = w - 14 };
+    t.Location = new Point(7, Math.Max(0, (26 - t.Height) / 2)); t.Tag = marco;
+    marco.Controls.Add(t); padre.Controls.Add(marco); marco.Click += (s, e) => t.Focus();
+    return t;
 }
+Control Caja(TextBox t) { return (t.Tag as Control) ?? t; }
 ComboBox Lista(Control padre, string etiqueta, int x, int y, int w, int anchoMenu = 0)
 {
     Et(padre, etiqueta, x, y);
@@ -404,7 +412,7 @@ void Desplegar(TextBox txt, ListBox lst, IEnumerable<Dictionary<string, object>>
     var q = txt.Text.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
     var vis = fuente.Where(x => { var h = buscar(x).ToLowerInvariant(); return q.All(w => h.Contains(w)); }).Take(max).ToList();
     lst.Items.Clear(); foreach (var x in vis) lst.Items.Add(new Opcion { Id = I(x["id"]), Nombre = linea1(x), Extra = linea2(x) });
-    lst.Location = frm.PointToClient(txt.Parent.PointToScreen(new Point(txt.Left, txt.Bottom + 1))); lst.Height = Math.Min(280, lst.Items.Count * lst.ItemHeight + 4);
+    var cj = Caja(txt); lst.Location = frm.PointToClient(cj.Parent.PointToScreen(new Point(cj.Left, cj.Bottom + 1))); lst.Height = Math.Min(280, lst.Items.Count * lst.ItemHeight + 4);
     lst.Visible = lst.Items.Count > 0; if (lst.Visible) { lst.BringToFront(); lst.SelectedIndex = 0; }
 }
 IEnumerable<Dictionary<string, object>> FuenteEntidad() => cat(EsVenta() ? "clientes" : "proveedores");
