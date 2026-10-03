@@ -11,6 +11,8 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 ## [3.0.0] — 2026-10-02 — Plantillas de fábrica para publicar
 
 ### Cambiado
+- **«PDF masivo»:** nueva **Vista previa** por tipo de documento (cambia de documento y de formato, avisa las etiquetas del formato que salen sin valor); respeta la **carpeta y el patrón propios** de un tipo personalizado en «Configuración de formato»; el reporte final lista las etiquetas sin valor.
+- **«PDF masivo» y «Generar documento (PDF)»:** en un documento **timbrado** el QR es el de **verificación del SAT** (UUID, RFC emisor y receptor, total y últimos 8 del sello) en lugar de un texto simple; y «PDF masivo» lee el Diccionario de referencia una sola vez por ejecución (6 documentos: de ~37 s a ~7 s).
 - **«Asignar centro de costo»** trabaja solo con los **documentos seleccionados en la lista** (se quitó la búsqueda por filtros); la ventana los muestra antes de la vista previa.
 
 ### Corregido

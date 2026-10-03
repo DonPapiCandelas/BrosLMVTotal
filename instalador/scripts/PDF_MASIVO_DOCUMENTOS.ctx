@@ -70,6 +70,7 @@ foreach (var f in ctx.Query("SELECT ModuleID, PrintFormatID, FormatName, FileNam
     formatosPorModulo[mid].Add(f);
 }
 var formatoPreferido = new Dictionary<int, long>();
+var propio = new Dictionary<int, string[]>();                  // módulo -> { carpeta, patrón } cuando «Configuración de formato» lo tiene personalizado
 string rutaPdfConfig = "", patronConfig = "[Serie][Folio] - [Modulo]";
 bool abrirCarpetaConfig = true;
 try
@@ -79,7 +80,11 @@ try
     {
         int mid = I(row["ModuleID"]);
         if (mid == 0) rowGen = row;
-        else if (row["PrintFormatID"] != null && !(row["PrintFormatID"] is DBNull)) formatoPreferido[mid] = L(row["PrintFormatID"]);
+        else
+        {
+            if (row["PrintFormatID"] != null && !(row["PrintFormatID"] is DBNull)) formatoPreferido[mid] = L(row["PrintFormatID"]);
+            if (row["PdfPersonalizado"] != null && !(row["PdfPersonalizado"] is DBNull) && Convert.ToBoolean(row["PdfPersonalizado"])) propio[mid] = new[] { S(row["RutaPdf"]), S(row["PatronNombre"]) };
+        }
     }
     if (rowGen != null)
     {
@@ -100,6 +105,7 @@ long FormatoInicial(int modulo)
 
 // ---------- 3) Motor de etiquetas (las mismas de Comercial y de «Generar documento (PDF)») ----------
 var cacheRef = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+Dictionary<string, string> sqlRefs = null;
 var refsExisten = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var sinResolver = new HashSet<string>();
 
@@ -119,11 +125,16 @@ string ResolverRef(string clave, long doc, long item)
     string val = "";
     try
     {
-        var r = ctx.Query("SELECT SQL FROM engAddendaFieldRef WHERE FieldRefKey=N'" + clave.Replace("'", "''") + "' AND DeletedOn IS NULL");
-        if (r.Count > 0)
+        // El diccionario de referencia se lee UNA vez por ejecución (no una consulta por etiqueta y por renglón)
+        if (sqlRefs == null)
+        {
+            sqlRefs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var rr in ctx.Query("SELECT FieldRefKey, SQL FROM engAddendaFieldRef WHERE DeletedOn IS NULL")) sqlRefs[S(rr["FieldRefKey"])] = S(rr["SQL"]);
+        }
+        if (sqlRefs.ContainsKey(clave))
         {
             refsExisten.Add(clave);
-            string sql = S(r[0]["SQL"]);
+            string sql = sqlRefs[clave];
             if (sql.Trim().Length > 0)
             {
                 sql = sql.Replace("{DocumentID}", doc.ToString()).Replace("{DocumentItemID}", item.ToString());
@@ -225,6 +236,15 @@ string ConstruirHtml(long doc, string archivoFormato)
     if (outHtml.IndexOf("[QRPayload]", StringComparison.Ordinal) >= 0)
     {
         string payload = System.Net.WebUtility.HtmlDecode(Resolver("[EmisorRfc]|[Serie][Folio]|[FechaDocumento]|[Format(Total,#,##0.00)] [Moneda]", fila0, doc, item0));
+        // Documento TIMBRADO: el QR de la representación impresa es el del SAT (verificación de CFDI), no un texto cualquiera
+        string uuidQr = fila0.ContainsKey("Uuid") ? S(fila0["Uuid"]).Trim() : "";
+        if (uuidQr.Length >= 32)
+        {
+            string sello = fila0.ContainsKey("selloCFD") ? S(fila0["selloCFD"]).Trim() : "";
+            double totQr; double.TryParse(fila0.ContainsKey("Total") ? S(fila0["Total"]) : "0", NumberStyles.Any, ci, out totQr);
+            payload = "https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id=" + uuidQr + "&re=" + S(fila0.ContainsKey("EmisorRfc") ? fila0["EmisorRfc"] : "") +
+                "&rr=" + S(fila0.ContainsKey("ReceptorRfc") ? fila0["ReceptorRfc"] : "") + "&tt=" + totQr.ToString("0000000000.000000", ci) + "&fe=" + (sello.Length >= 8 ? sello.Substring(sello.Length - 8) : sello);
+        }
         payload = payload.Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;");
         outHtml = outHtml.Replace("[QRPayload]", payload);
     }
@@ -296,6 +316,14 @@ class Parametros
     public Dictionary<int, long> Formato = new Dictionary<int, long>();    // módulo -> PrintFormatID
 }
 
+string PatronDe(int mid, Parametros p) => propio.ContainsKey(mid) && !string.IsNullOrWhiteSpace(propio[mid][1]) ? propio[mid][1] : p.Patron;
+// Con PDF sueltos, un tipo de documento personalizado en «Configuración de formato» va a SU carpeta (dentro de ella, la subcarpeta «Lote …»); con ZIP o unido todo va a la carpeta principal
+string CarpetaDe(int mid, string principal, Parametros p)
+{
+    if (p.Modo != "sueltos" || !propio.ContainsKey(mid) || string.IsNullOrWhiteSpace(propio[mid][0])) return principal;
+    return Path.Combine(propio[mid][0], Path.GetFileName(principal));
+}
+
 string CarpetaSugerida()
 {
     string baseDir = !string.IsNullOrWhiteSpace(rutaPdfConfig) && Directory.Exists(rutaPdfConfig) ? rutaPdfConfig
@@ -316,14 +344,14 @@ string PaginaOpciones(Parametros p, string mensaje)
     foreach (var g in docs.GroupBy(d => I(d["ModuleID"])))
     {
         int mid = g.Key; string nombre = S(g.First()["ModuloNombre"]);
-        sb.Append("<tr><td>" + Esc(nombre) + "</td><td>" + g.Count() + "</td><td>");
+        sb.Append("<tr><td>" + Esc(nombre) + (propio.ContainsKey(mid) ? "<div class='av'>Usa su propia " + (!string.IsNullOrWhiteSpace(propio[mid][0]) ? "carpeta" + (!string.IsNullOrWhiteSpace(propio[mid][1]) ? " y patrón" : "") : "configuración de nombre") + " (Configuración de formato)</div>" : "") + "</td><td>" + g.Count() + "</td><td>");
         if (!formatosPorModulo.ContainsKey(mid)) sb.Append("<span class='av'>Sin formato HTML: se omitirán estos documentos</span>");
         else
         {
             long sel = p.Formato.ContainsKey(mid) ? p.Formato[mid] : FormatoInicial(mid);
             sb.Append("<select id='fmt" + mid + "'>");
             foreach (var f in formatosPorModulo[mid]) sb.Append("<option value='" + S(f["PrintFormatID"]) + "'" + (L(f["PrintFormatID"]) == sel ? " selected" : "") + ">" + Esc(S(f["FormatName"])) + (I(f["FormatIsDefault"]) == 1 ? " (predeterminado)" : "") + "</option>");
-            sb.Append("</select>");
+            sb.Append("</select> <button onclick=\"vista(" + mid + ")\">Vista previa</button>");
         }
         sb.Append("</td></tr>");
     }
@@ -338,8 +366,38 @@ string PaginaOpciones(Parametros p, string mensaje)
         "<label><input type='checkbox' id='abrir'" + (p.AbrirCarpeta ? " checked" : "") + "> Abrir la carpeta al terminar</label></div></div>");
     sb.Append("<div class='acc'><button onclick=\"enviar({accion:'cancelar'})\">Cancelar</button><button class='p' onclick='ir()'>Generar los PDF</button></div></div>" +
         "<script>function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}function v(i){return document.getElementById(i).value;}" +
-        "function ir(){var f={};[].slice.call(document.querySelectorAll('select[id^=fmt]')).forEach(function(s){f[s.id.substring(3)]=+s.value;});" +
+        "function datos(mid){var f={};[].slice.call(document.querySelectorAll('select[id^=fmt]')).forEach(function(s){f[s.id.substring(3)]=+s.value;});var m=document.querySelector('input[name=modo]:checked');return {mid:mid,carpeta:v('carpeta'),patron:v('patron'),modo:m?m.value:'sueltos',abrir:document.getElementById('abrir').checked,formatos:f};}function vista(mid){var o=datos(mid);o.accion='vista';enviar(o);}function ir(){var f={};[].slice.call(document.querySelectorAll('select[id^=fmt]')).forEach(function(s){f[s.id.substring(3)]=+s.value;});" +
         "var m=document.querySelector('input[name=modo]:checked');enviar({accion:'generar',carpeta:v('carpeta'),patron:v('patron'),modo:m?m.value:'sueltos',abrir:document.getElementById('abrir').checked,formatos:f});}</script></body></html>");
+    return sb.ToString();
+}
+
+// Vista previa: el documento ya resuelto con el formato elegido, tal como se mandará al PDF (aproximada: el PDF respeta los saltos de página del motor).
+// También avisa qué etiquetas del formato NO tienen valor: si se creó una referencia nueva en el Diccionario de referencia de Comercial y aquí sale vacía, se ve al instante.
+string PaginaVista(int mid, long docId, long fid)
+{
+    var delModulo = docs.Where(d => I(d["ModuleID"]) == mid).ToList();
+    var fmts = formatosPorModulo.ContainsKey(mid) ? formatosPorModulo[mid] : new List<Dictionary<string, object>>();
+    var fmt = fmts.FirstOrDefault(f => L(f["PrintFormatID"]) == fid) ?? (fmts.Count > 0 ? fmts[0] : null);
+    string cuerpo = "", problema = "";
+    sinResolver.Clear();
+    if (fmt == null) problema = "Este tipo de documento no tiene un formato HTML.";
+    else { try { cuerpo = ConstruirHtml(docId, S(fmt["FileName"])); } catch (Exception ex) { problema = "No se pudo armar el documento: " + ex.Message; } }
+    var faltan = sinResolver.OrderBy(x => x).ToList();
+    if (cuerpo.Length > 1500000) { problema = "El documento con su formato es demasiado grande para la vista previa (" + (cuerpo.Length / 1024) + " KB); se puede generar el PDF normalmente."; cuerpo = ""; }
+    var sb = new StringBuilder("<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><style>*{box-sizing:border-box}html,body{height:100%}body{margin:0;font:13px 'Segoe UI',Arial,sans-serif;background:#4b5563;color:#16263a;display:flex;flex-direction:column}" +
+        ".barra{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 14px;background:#fff;border-bottom:1px solid #cbd5e1}.barra label{color:#64748b;font-size:12px}select,button{font:inherit;border:1px solid #cbd5e1;border-radius:6px;padding:5px 10px;background:#fff}button{cursor:pointer}button.p{background:#2d6fe0;color:#fff;border-color:#2d6fe0}" +
+        ".esp{flex:1}.av{padding:6px 14px;background:#fff7e6;color:#7a4b06;border-bottom:1px solid #f0d9ad;font-size:12px}.av code{background:#fdebc8;border-radius:4px;padding:0 4px}.er{padding:30px;color:#fff;text-align:center}iframe{flex:1;border:0;width:100%;background:#fff}</style></head><body>");
+    sb.Append("<div class='barra'><b>" + Esc(delModulo.Count > 0 ? S(delModulo[0]["ModuloNombre"]) : "Documento") + "</b>");
+    sb.Append("<label>Documento</label><select id='doc' onchange='cambia()'>");
+    foreach (var d in delModulo) sb.Append("<option value='" + S(d["DocumentID"]) + "'" + (L(d["DocumentID"]) == docId ? " selected" : "") + ">" + Esc((S(d["Serie"]) + S(d["Folio"])).Trim() + " · " + S(d["Entidad"]) + " (ID " + S(d["DocumentID"]) + ")") + "</option>");
+    sb.Append("</select><button onclick='mueve(-1)' title='Documento anterior'>◀</button><button onclick='mueve(1)' title='Documento siguiente'>▶</button><label>Formato</label><select id='fmt' onchange='cambia()'>");
+    foreach (var f in fmts) sb.Append("<option value='" + S(f["PrintFormatID"]) + "'" + (fmt != null && L(f["PrintFormatID"]) == L(fmt["PrintFormatID"]) ? " selected" : "") + ">" + Esc(S(f["FormatName"])) + "</option>");
+    sb.Append("</select><span class='esp'></span><button onclick=\"enviar({accion:'volver'})\">← Volver</button><button class='p' onclick=\"enviar({accion:'usar',fmt:+v('fmt')})\">Usar este formato</button></div>");
+    if (faltan.Count > 0) sb.Append("<div class='av'>Estas etiquetas del formato no tienen valor en este documento (salen vacías): " + string.Join(" ", faltan.Select(x => "<code>[" + Esc(x) + "]</code>")) + " — si es una referencia nueva, revisa que exista en el Diccionario de referencia de Comercial y que su SQL regrese un valor.</div>");
+    if (problema != "") sb.Append("<div class='er'>" + Esc(problema) + "</div>");
+    else sb.Append("<iframe srcdoc=\"" + Esc(cuerpo) + "\"></iframe>");
+    sb.Append("<script>function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}function v(i){return document.getElementById(i).value;}" +
+        "function cambia(){enviar({accion:'vista',doc:+v('doc'),fmt:+v('fmt')});}function mueve(n){var s=document.getElementById('doc'),i=s.selectedIndex+n;if(i>=0&&i<s.options.length){s.selectedIndex=i;cambia();}}</script></body></html>");
     return sb.ToString();
 }
 
@@ -368,6 +426,7 @@ Dictionary<string, object> Ejecutar(Parametros p, Action<int, int, string> avanc
     var resultados = new List<Resultado>();
     var manifiesto = new List<string>();
     var nombresUsados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var carpetasUsadas = new List<string>();
     var porPdf = new Dictionary<string, Resultado>(StringComparer.OrdinalIgnoreCase);
     // 5a) HTML de cada documento (aquí mismo, por SQL: no se puede hacer fuera de Comercial)
     int hechos = 0;
@@ -383,11 +442,14 @@ Dictionary<string, object> Ejecutar(Parametros p, Action<int, int, string> avanc
             long fid = p.Formato.ContainsKey(mid) ? p.Formato[mid] : FormatoInicial(mid);
             var fmt = formatosPorModulo[mid].FirstOrDefault(f => L(f["PrintFormatID"]) == fid) ?? formatosPorModulo[mid][0];
             string html = ConstruirHtml(doc, S(fmt["FileName"]));
-            string nombre = NombreDe(d, p.Patron), final = nombre; int k = 2;
-            while (!nombresUsados.Add(final)) final = nombre + " (" + (k++) + ")";
+            string carpetaDoc = CarpetaDe(mid, carpeta, p);
+            Directory.CreateDirectory(carpetaDoc);
+            if (!carpetasUsadas.Contains(carpetaDoc)) carpetasUsadas.Add(carpetaDoc);
+            string nombre = NombreDe(d, PatronDe(mid, p)), final = nombre; int k = 2;
+            while (!nombresUsados.Add(carpetaDoc + "|" + final)) final = nombre + " (" + (k++) + ")";
             string rutaHtml = Path.Combine(temporal, "d" + doc + ".html");
             File.WriteAllText(rutaHtml, html, new UTF8Encoding(false));
-            string rutaPdf = Path.Combine(carpeta, final + ".pdf");
+            string rutaPdf = Path.Combine(carpetaDoc, final + ".pdf");
             manifiesto.Add(rutaHtml + "\t" + rutaPdf);
             var r = new Resultado { Documento = etiqueta, Estado = "PENDIENTE", Archivo = rutaPdf };
             resultados.Add(r); porPdf[rutaPdf] = r;
@@ -450,7 +512,7 @@ Dictionary<string, object> Ejecutar(Parametros p, Action<int, int, string> avanc
 
     return new Dictionary<string, object>
     {
-        ["carpeta"] = carpeta, ["ok"] = resultados.Count(x => x.Estado == "OK"), ["errores"] = resultados.Count(x => x.Estado == "ERROR"),
+        ["carpeta"] = carpeta, ["otrasCarpetas"] = carpetasUsadas.Where(c => !string.Equals(c, carpeta, StringComparison.OrdinalIgnoreCase)).ToList(), ["sinResolver"] = sinResolver.OrderBy(x => x).ToList(), ["ok"] = resultados.Count(x => x.Estado == "OK"), ["errores"] = resultados.Count(x => x.Estado == "ERROR"),
         ["omitidos"] = resultados.Count(x => x.Estado == "OMITIDO"), ["cancelados"] = resultados.Count(x => x.Estado == "CANCELADO"),
         ["unido"] = unidoRuta != null && File.Exists(unidoRuta) ? unidoRuta : "", ["zip"] = zipRuta != null && File.Exists(zipRuta) ? zipRuta : "",
         ["detalle"] = resultados.Select(x => new Dictionary<string, object> { ["documento"] = x.Documento, ["estado"] = x.Estado, ["motivo"] = x.Motivo ?? "", ["archivo"] = x.Archivo ?? "" }).ToList()
@@ -458,6 +520,27 @@ Dictionary<string, object> Ejecutar(Parametros p, Action<int, int, string> avanc
 }
 
 // ---------- Modo de pruebas: sin ventanas ----------
+if (modoPrueba && parPrueba.ContainsKey("soloHtml"))        // pruebas: escribe el HTML ya resuelto de cada documento y dice qué etiquetas quedaron sin valor
+{
+    var pph = LeerParametros(parPrueba);
+    Directory.CreateDirectory(pph.Carpeta);
+    var informe = new List<Dictionary<string, object>>();
+    foreach (var d in docs)
+    {
+        int mid = I(d["ModuleID"]); if (!formatosPorModulo.ContainsKey(mid)) continue;
+        long fid = pph.Formato.ContainsKey(mid) ? pph.Formato[mid] : FormatoInicial(mid);
+        var fmt = formatosPorModulo[mid].FirstOrDefault(f => L(f["PrintFormatID"]) == fid) ?? formatosPorModulo[mid][0];
+        sinResolver.Clear();
+        string html = ConstruirHtml(L(d["DocumentID"]), S(fmt["FileName"]));
+        File.WriteAllText(Path.Combine(pph.Carpeta, "d" + d["DocumentID"] + ".html"), html, new UTF8Encoding(false));
+        if (parPrueba.ContainsKey("vista")) File.WriteAllText(Path.Combine(pph.Carpeta, "vista" + d["DocumentID"] + ".html"), PaginaVista(mid, L(d["DocumentID"]), fid), new UTF8Encoding(false));
+        informe.Add(new Dictionary<string, object> { ["doc"] = L(d["DocumentID"]), ["modulo"] = mid, ["formato"] = S(fmt["FormatName"]), ["bytes"] = html.Length, ["sinResolver"] = sinResolver.OrderBy(x => x).ToList() });
+    }
+    string jsonH = ser.Serialize(informe);
+    string salidaH = Environment.GetEnvironmentVariable("BROSLMV_PDFM_OUT");
+    if (!string.IsNullOrEmpty(salidaH)) File.WriteAllText(salidaH, jsonH, new UTF8Encoding(false));
+    return jsonH;
+}
 if (modoPrueba)
 {
     var pp = LeerParametros(parPrueba);
@@ -482,6 +565,24 @@ while (true)
         actual = LeerParametros(r);
         using (var dlg = new FolderBrowserDialog { Description = "Carpeta donde se guardarán los PDF", SelectedPath = Directory.Exists(actual.Carpeta) ? actual.Carpeta : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) })
             if (dlg.ShowDialog() == DialogResult.OK) actual.Carpeta = Path.Combine(dlg.SelectedPath, "Lote " + DateTime.Now.ToString("yyyyMMdd_HHmm"));
+        continue;
+    }
+    if (accion == "vista")
+    {
+        actual = LeerParametros(r);
+        int vMid = I(r["mid"]);
+        long vDoc = docs.Where(d => I(d["ModuleID"]) == vMid).Select(d => L(d["DocumentID"])).FirstOrDefault();
+        long vFmt = actual.Formato.ContainsKey(vMid) ? actual.Formato[vMid] : FormatoInicial(vMid);
+        string nombreMod = S(docs.First(d => I(d["ModuleID"]) == vMid)["ModuloNombre"]);
+        while (true)
+        {
+            var rv = ctx.ShowHtmlFormulario(PaginaVista(vMid, vDoc, vFmt), "Vista previa — " + nombreMod, 1120, 880, 0);
+            if (!rv.ContainsKey("submitted") || !(bool)rv["submitted"]) break;
+            string av = S(rv.ContainsKey("accion") ? rv["accion"] : "");
+            if (av == "vista") { vDoc = L(rv["doc"]); vFmt = L(rv["fmt"]); continue; }
+            if (av == "usar") { actual.Formato[vMid] = L(rv["fmt"]); aviso = "Formato elegido para " + nombreMod + "."; }
+            break;
+        }
         continue;
     }
     if (accion != "generar") return "OK";
@@ -516,7 +617,10 @@ while (true)
     sb.Append("<h1>" + ((int)resultado["errores"] == 0 && (int)resultado["omitidos"] == 0 && (int)resultado["cancelados"] == 0 ? "Listo" : "Terminó con avisos") + "</h1>");
     sb.Append("<div class='card'><span class='ok'>" + resultado["ok"] + " PDF generado(s)</span> · <span class='er'>" + resultado["errores"] + " con error</span> · <span class='am'>" + resultado["omitidos"] + " omitido(s)</span>" +
         ((int)resultado["cancelados"] > 0 ? " · " + resultado["cancelados"] + " cancelado(s)" : "") + "<div style='margin-top:6px;color:#64748b'>Carpeta: " + Esc(S(resultado["carpeta"])) + "</div>" +
-        (S(resultado["unido"]) != "" ? "<div>PDF unido: " + Esc(S(resultado["unido"])) + "</div>" : "") + (S(resultado["zip"]) != "" ? "<div>ZIP: " + Esc(S(resultado["zip"])) + "</div>" : "") + "</div>");
+        (S(resultado["unido"]) != "" ? "<div>PDF unido: " + Esc(S(resultado["unido"])) + "</div>" : "") + (S(resultado["zip"]) != "" ? "<div>ZIP: " + Esc(S(resultado["zip"])) + "</div>" : "") +
+        (((List<string>)resultado["otrasCarpetas"]).Count > 0 ? "<div style='color:#64748b'>También en: " + Esc(string.Join("; ", (List<string>)resultado["otrasCarpetas"])) + "</div>" : "") + "</div>");
+    if (((List<string>)resultado["sinResolver"]).Count > 0)
+        sb.Append("<div class='card'><b>Etiquetas del formato sin valor</b><div style='color:#64748b;margin-top:4px'>Salieron vacías en algún documento: " + Esc(string.Join(", ", ((List<string>)resultado["sinResolver"]).Select(x => "[" + x + "]"))) + ". Si es una referencia nueva, revisa el Diccionario de referencia de Comercial.</div></div>");
     var malos = ((List<Dictionary<string, object>>)resultado["detalle"]).Where(x => S(x["estado"]) != "OK").ToList();
     if (malos.Count > 0)
     {

@@ -90,6 +90,22 @@ $c4 = Join-Path $tmpRoot "ambos"
 $r = Correr "zip+unido" $c4 "[Modulo] - [Folio]"
 if (@(Get-ChildItem $c4 -Filter *.zip).Count -ne 1 -or @(Get-ChildItem $c4 -Filter *.pdf).Count -ne 1) { Fallo "ZIP+unido: debia haber un ZIP y un PDF." }
 
+# 7) Un tipo de documento personalizado en «Configuracion de formato» (carpeta y patron propios) va a SU carpeta y con SU patron en el modo de PDF sueltos
+$modP = [int](Sql "SELECT ModuleID FROM docDocument WHERE DocumentID=$($conFormato[0])")
+$antes = Sql "SELECT CONCAT(PdfPersonalizado,'|',ISNULL(RutaPdf,''),'|',ISNULL(PatronNombre,'')) FROM zzBrosFormatoConfig WHERE OwnedBusinessEntityID=1 AND ModuleID=$modP"
+$existia = [bool]$antes
+$propia = Join-Path $tmpRoot "propia"
+sqlcmd -S $Server -E -d $Database -Q "IF EXISTS (SELECT 1 FROM zzBrosFormatoConfig WHERE OwnedBusinessEntityID=1 AND ModuleID=$modP) UPDATE zzBrosFormatoConfig SET PdfPersonalizado=1, RutaPdf=N'$propia', PatronNombre=N'PROPIO-[Folio]' WHERE OwnedBusinessEntityID=1 AND ModuleID=$modP ELSE INSERT INTO zzBrosFormatoConfig (OwnedBusinessEntityID, ModuleID, PdfPersonalizado, RutaPdf, PatronNombre) VALUES (1, $modP, 1, N'$propia', N'PROPIO-[Folio]')" | Out-Null
+$c5 = Join-Path $tmpRoot "general"
+$r = Correr "sueltos" $c5 "[Modulo] - [Folio]"
+if ($existia) {
+    $o = $antes -split '\|'
+    sqlcmd -S $Server -E -d $Database -Q "UPDATE zzBrosFormatoConfig SET PdfPersonalizado=$($o[0]), RutaPdf=$(if ($o[1]) { "N'$($o[1])'" } else { 'NULL' }), PatronNombre=$(if ($o[2]) { "N'$($o[2])'" } else { 'NULL' }) WHERE OwnedBusinessEntityID=1 AND ModuleID=$modP" | Out-Null
+} else { sqlcmd -S $Server -E -d $Database -Q "DELETE FROM zzBrosFormatoConfig WHERE OwnedBusinessEntityID=1 AND ModuleID=$modP" | Out-Null }
+$enPropia = @(Get-ChildItem $propia -Recurse -Filter "PROPIO-*.pdf" -ErrorAction SilentlyContinue)
+if ($enPropia.Count -lt 1) { Fallo "El tipo personalizado debia salir en su propia carpeta con su patron (PROPIO-...)." }
+Write-Host "  Tipo personalizado: $($enPropia.Count) PDF en su carpeta propia con su patron."
+
 Limpiar
 Write-Host ("  {0} PDF por lote (+{1} omitido): sueltos / ZIP / unido / ZIP+unido, todo conforme." -f $esperadosOk, $esperadosOmitidos)
 exit 0
