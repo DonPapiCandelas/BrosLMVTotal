@@ -274,15 +274,6 @@ Func<FormatoItem, string> construirHtml = (fmt) =>
     {
         string payload = System.Net.WebUtility.HtmlDecode(resolver(
             "[EmisorRfc]|[Serie][Folio]|[FechaDocumento]|[Format(Total,#,##0.00)] [Moneda]", fila0, documentId, item0));
-        // Documento TIMBRADO: el QR de la representacion impresa es el del SAT (verificacion de CFDI), no un texto cualquiera
-        string uuidQr = fila0.ContainsKey("Uuid") && fila0["Uuid"] != null && !(fila0["Uuid"] is DBNull) ? Convert.ToString(fila0["Uuid"]).Trim() : "";
-        if (uuidQr.Length >= 32)
-        {
-            string Dato(string k) => fila0.ContainsKey(k) && fila0[k] != null && !(fila0[k] is DBNull) ? Convert.ToString(fila0[k]).Trim() : "";
-            string sello = Dato("selloCFD"); double totQr; double.TryParse(Dato("Total"), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out totQr);
-            payload = "https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id=" + uuidQr + "&re=" + Dato("EmisorRfc") + "&rr=" + Dato("ReceptorRfc") +
-                "&tt=" + totQr.ToString("0000000000.000000", System.Globalization.CultureInfo.InvariantCulture) + "&fe=" + (sello.Length >= 8 ? sello.Substring(sello.Length - 8) : sello);
-        }
         // va dentro de data-qr="..." -> escapar comillas y <>
         payload = payload.Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;");
         outHtml = outHtml.Replace("[QRPayload]", payload);
