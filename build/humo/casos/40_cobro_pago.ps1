@@ -73,6 +73,11 @@ if ($mv.Count -lt 1 -or -not (Cerca $mv[0]['monto'] 200) -or [string]$mv[0]['fol
 $dc = @($ser.DeserializeObject((Pago @{ docs = $true; lado = 'C' })) | Where-Object { [long]$_['id'] -eq $fc })
 if ($dc.Count -ne 1 -or -not (Cerca $dc[0]['saldo'] 496)) { Fallo "DocsConSaldo: la factura $fc debia salir con saldo 496 despues del cobro." }
 Write-Host ("  Consultas en vivo: ultimo cobro {0} por {1:N2} y saldo actualizado de la factura ({2:N2})." -f $mv[0]['folio'], $mv[0]['monto'], $dc[0]['saldo'])
+# Comportamiento de pago de la persona (barras de 12 meses, dias promedio, atraso y puntualidad) y el metodo de pago (PUE/PPD) de cada documento con saldo
+$ip = $ser.DeserializeObject((Pago @{ inteligencia = $true; entidad = $cli; tipo = 'cobro' }))
+if (@($ip['meses']).Count -ne 12 -or -not $ip.ContainsKey('puntual') -or -not $ip.ContainsKey('atraso') -or -not $ip.ContainsKey('dias')) { Fallo "La inteligencia de pago debia traer 12 meses, dias, atraso y puntualidad." }
+if (-not $dc[0].ContainsKey('metodo')) { Fallo "Los documentos con saldo debian traer el metodo de pago (PUE/PPD)." }
+Write-Host ("  Inteligencia de pago del cliente: {0} cobro(s) en 12 meses por {1:N2}." -f $ip['mov12'], $ip['total12'])
 $op = Sql "SELECT TOP 1 FinancialOperationID FROM docFinancialOperation WHERE DocumentID=$fc ORDER BY FinancialOperationID DESC"
 $cabOp = (Sql "SELECT CONCAT(ModuleID,'|',DocRecipientID,'|',DocumentTypeID,'|',Amount,'|',PaymentMethodID,'|',FolioPrefix) FROM docFinancialOperation WHERE FinancialOperationID=$op") -split '\|'
 if ($cabOp[0] -ne '248' -or $cabOp[1] -ne '1' -or $cabOp[2] -ne '31' -or -not (Cerca $cabOp[3] 200) -or $cabOp[4] -ne '3' -or $cabOp[5] -ne 'COB') { Fallo "La operacion financiera del cobro no trae los datos esperados ($($cabOp -join ' | '))." }

@@ -10,6 +10,8 @@
 # Qué enseña:
 #   · El patrón completo de creación: NuevoDocumento → perfil del módulo → AgregarArticulo × N → RecalcCompleto → AffectStockNEW (solo si el módulo lo pide) → Save → agenda de pago.
 #   · Documentos DERIVADOS: selecciona antes una o varias órdenes de compra (o un pedido) en la lista y la ventana ofrece partir de ellas con lo que aún falta por surtir.
-#   · ctx.show_html_formulario: una ventana HTML de dos vías que devuelve lo capturado (el timeout de arriba es del script completo: la persona puede tardar).
+#   · Ventana HTML «en vivo» desde Python: ctx.show_html(..., modal=False) abre la ventana sin bloquear Comercial y el script levanta un servidor HTTP que solo escucha en esta computadora
+#     (ver ventana_en_vivo más abajo). La página le manda peticiones con fetch y el script contesta con JavaScript: consultas en vivo a Comercial, gráficas, borrador, «Guardar y nuevo»…
+#     con todo el poder de Python a la mano (librerías, archivos, lo que necesites). La ventana se cierra con window.close() y, si la cierras tú, el script termina solo.
 # Para un botón de un solo tipo (por ejemplo solo «Orden de compra») deja esa fila en la tabla TIPOS y borra las demás.
-# Nota: el cuerpo de la página (HTML) es idéntico al de la plantilla de C#; la diferencia está solo en el lenguaje que crea el documento.
+# Nota: el cuerpo de la página (HTML) es idéntico al de la plantilla de C#; la diferencia está solo en el lenguaje que atiende la ventana y crea el documento.

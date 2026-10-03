@@ -41,3 +41,54 @@ def fecha_txt(v):
 
 
 empresa = ctx.erp.OwnedBusinessEntityId
+
+
+def L(v):
+    return I(v)
+
+
+# ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
+# El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
+def carpeta_local():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    d = os.path.join(base, "BrosLMV", "borradores")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def archivo_borrador(que):
+    try:
+        uid = int(ctx.user_id)
+    except Exception:
+        uid = 0
+    return os.path.join(carpeta_local(), que + "_" + str(empresa) + "_" + str(uid) + ".json")
+
+
+def leer_borrador(que, vence=True):
+    try:
+        a = archivo_borrador(que)
+        if not os.path.exists(a):
+            return None
+        if vence and (datetime.datetime.now().timestamp() - os.path.getmtime(a)) > 7 * 86400:
+            return None
+        with open(a, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def guardar_borrador(que, obj):
+    try:
+        with open(archivo_borrador(que), "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def borrar_borrador(que):
+    try:
+        a = archivo_borrador(que)
+        if os.path.exists(a):
+            os.remove(a)
+    except Exception:
+        pass

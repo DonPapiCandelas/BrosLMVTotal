@@ -784,6 +784,7 @@ namespace BrosLMV
                             var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment
                                 .CreateAsync(userDataFolder: perfil);
                             await webView.EnsureCoreWebView2Async(env);
+                            webView.CoreWebView2.WindowCloseRequested += (s2, e2) => frm.Close();      // window.close() en la página cierra la ventana (la usan las ventanas HTML «en vivo» de Python)
 
                             if (spec.EsperarRespuesta)
                             {

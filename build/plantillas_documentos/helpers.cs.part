@@ -10,3 +10,11 @@ string Sq(string s) => (s ?? "").Replace("'", "''");                       // te
 string Num(double d) => d.ToString("0.########", ci);                       // número para un literal SQL (siempre con punto)
 
 int empresa = ctx.erp.OwnedBusinessEntityId;
+
+// ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
+// El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
+string CarpetaLocal() { string d = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BrosLMV", "borradores"); System.IO.Directory.CreateDirectory(d); return d; }
+string ArchivoBorrador(string que) { int u = 0; try { u = ctx.erp.UserId; } catch { } return System.IO.Path.Combine(CarpetaLocal(), que + "_" + empresa + "_" + u + ".json"); }
+string LeerBorrador(string que, bool vence = true) { try { string a = ArchivoBorrador(que); if (!System.IO.File.Exists(a) || (vence && (DateTime.Now - System.IO.File.GetLastWriteTime(a)).TotalDays > 7)) return null; return System.IO.File.ReadAllText(a, System.Text.Encoding.UTF8); } catch { return null; } }
+void GuardarBorrador(string que, string json) { try { System.IO.File.WriteAllText(ArchivoBorrador(que), json, new System.Text.UTF8Encoding(false)); } catch { } }
+void BorrarBorrador(string que) { try { string a = ArchivoBorrador(que); if (System.IO.File.Exists(a)) System.IO.File.Delete(a); } catch { } }

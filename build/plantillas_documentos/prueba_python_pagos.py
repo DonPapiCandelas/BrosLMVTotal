@@ -81,11 +81,11 @@ print("  Rechazos con mensaje claro (sobrepago, documento ajeno, sin cuenta, sin
 
 # Humo de la ventana
 os.environ.pop("BROSLMV_PAGO_TEST", None)
-if "show_html_formulario" in codigo:
+if ("show_html_formulario" in codigo or "ventana_en_vivo" in codigo):
     os.environ["BROSLMV_PAGO_HTML"] = os.path.join(os.environ.get("TEMP", "."), "prueba_py_pago.html")
 espacio2 = {"__name__": "plantilla"}
 exec(compile(codigo, PLANTILLA, "exec"), espacio2)
-if "show_html_formulario" in codigo:
+if ("show_html_formulario" in codigo or "ventana_en_vivo" in codigo):
     pagina = open(os.environ["BROSLMV_PAGO_HTML"], encoding="utf-8").read()
     os.remove(os.environ["BROSLMV_PAGO_HTML"])
     if "__DATOS__" in pagina or "var DATOS={" not in pagina:

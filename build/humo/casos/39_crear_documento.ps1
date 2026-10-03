@@ -122,6 +122,14 @@ if (@($pv | Where-Object { [long]$_['id'] -eq $ped }).Count -ne 1) { Fallo "Pend
 $ult = @($ser.DeserializeObject((Correr @{ ultimos = $true; entidad = $cli })))
 if ($ult.Count -lt 1 -or -not $ult[0].ContainsKey('folio')) { Fallo "UltimosDe: debia regresar los ultimos documentos del cliente." }
 Write-Host ("  Consultas en vivo: {0} pendiente(s) de remitir y {1} documento(s) recientes del cliente." -f $pv.Count, $ult.Count)
+# Inteligencia de una persona (gráfica mensual, productos habituales con su último precio, días de pago y último documento para «Repetir»)
+$pi = [int](Sql "SELECT TOP 1 BusinessEntityID FROM docDocument WHERE ModuleID=152 AND DeletedOn IS NULL AND CancelledOn IS NULL GROUP BY BusinessEntityID ORDER BY COUNT(*) DESC")
+$ia = $ser.DeserializeObject((Correr @{ inteligencia = $true; entidad = $pi; tipo = 'factura_compra' }))
+if (@($ia['meses']).Count -ne 12) { Fallo "La inteligencia debia traer 12 meses y trajo $(@($ia['meses']).Count)." }
+if (-not $ia.ContainsKey('top') -or -not $ia.ContainsKey('ultimo') -or -not $ia.ContainsKey('diasPago') -or -not $ia.ContainsKey('ticket')) { Fallo "La inteligencia debia traer top, ultimo, diasPago y ticket." }
+$ult2 = $ia['ultimo']; if ($ult2 -eq $null -or @($ult2['partidas']).Count -lt 1) { Fallo "El proveedor $pi tiene facturas de compra: debia traer su ultimo documento con partidas." }
+if (@($ia['top']).Count -ge 1 -and [double]$ia['top'][0]['precio'] -lt 0) { Fallo "El ultimo precio del producto habitual no puede ser negativo." }
+Write-Host ("  Inteligencia del proveedor {0}: {1} productos habituales, ultimo documento {2} con {3} partida(s), {4} doc. en 12 meses." -f $pi, @($ia['top']).Count, $ult2['folio'], @($ult2['partidas']).Count, $ia['docs12'])
 $rem = Doc @{ tipo = 'remision'; almacen = $alm; entidad = $cli; fecha = $hoy; entrega = $hoy; titulo = 'DEMO CREAR DOC - remision'; origenes = @($ped)
               partidas = @($pend | ForEach-Object { @{ id = $_['id']; cant = $_['cant']; precio = $_['precio']; desc = $_['desc']; imp = $_['imp']; origenItem = $_['origenItem'] } }) }
 if ((Sql "SELECT SourceDocumentID FROM docDocument WHERE DocumentID=$rem") -ne "$ped") { Fallo "La remision debia guardar el pedido como SourceDocumentID." }

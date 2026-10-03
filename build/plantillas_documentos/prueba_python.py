@@ -72,14 +72,14 @@ print("  Validaciones rechazadas con mensaje claro.")
 
 # Humo de la ventana: se ejecuta el cuerpo de la ventana (construcción de controles, catálogos, primer pintado) con controles de mentira.
 # Atrapa nombres mal escritos y errores de lógica al armar la pantalla; NO prueba los clics.
-if "Form()" in codigo or "show_html_formulario" in codigo:
+if "Form()" in codigo or ("show_html_formulario" in codigo or "ventana_en_vivo" in codigo):
     os.environ.pop("BROSLMV_DOC_TEST", None)
     os.environ.pop("BROSLMV_DOC_HTML", None)
-    if "show_html_formulario" in codigo:
+    if ("show_html_formulario" in codigo or "ventana_en_vivo" in codigo):
         os.environ["BROSLMV_DOC_HTML"] = os.path.join(os.environ.get("TEMP", "."), "prueba_py_pagina.html")
     espacio2 = {"__name__": "plantilla"}
     exec(compile(codigo, PLANTILLA, "exec"), espacio2)
-    if "show_html_formulario" in codigo:
+    if ("show_html_formulario" in codigo or "ventana_en_vivo" in codigo):
         pagina = open(os.environ["BROSLMV_DOC_HTML"], encoding="utf-8").read()
         if "__DATOS__" in pagina or "var DATOS={" not in pagina:
             fallo("La página HTML no recibió sus datos.")

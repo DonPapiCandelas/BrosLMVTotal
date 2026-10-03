@@ -25,6 +25,17 @@ La versión **HTML** (C# y Python) y la de **Windows Forms** de C# capturan lo m
 
 La versión **HTML** consulta a Comercial **en vivo** (últimos movimientos de la persona y saldos ya actualizados después de registrar, sin cerrar la ventana) con `ctx.ShowHtmlModeless` y respuestas `__JS__…`; la de **Python en HTML** abre la misma página con lo precargado (sin consultas en vivo ni «Registrar y nuevo»); la de **Windows Forms** de C# trae el mismo diseño con controles nativos. La de **Python en Windows Forms** sigue con la ventana sencilla de antes.
 
+## Lo que solo una ventana web puede dar (WebView2)
+
+Las plantillas **WebView2** (C# y Python) consultan a Comercial en vivo y suman:
+
+- **Cartera completa** (por cobrar o por pagar): **dona de antigüedad** (vigente, 1-30, 31-60, 61-90, más de 90), porcentaje vencido y **principales deudores o acreedores** con barras (un clic abre a la persona).
+- **Pronóstico de vencimientos** de las próximas 8 semanas (de la persona o de toda la cartera) con lo ya vencido aparte.
+- **Comportamiento de pago de la persona** (en vivo): barras de los últimos 12 meses, **días promedio de pago**, **atraso promedio** frente al vencimiento y **% de pagos a tiempo**.
+- **Cinco estrategias para repartir el monto:** más antiguos primero, solo vencidos, mayor saldo primero, menor saldo primero (liquida más documentos) y proporcional; cada documento muestra una barra con cuánto de su saldo se aplica.
+- **Revisión previa** con avisos con sentido fiscal: documentos **PPD** (recuerda emitir —o pedir al proveedor— el **complemento de pago**), pago en efectivo mayor a $2,000 (no deducible, LISR art. 27), falta de referencia para conciliar, monto que sobra o falta, fecha futura.
+- **Paleta de comandos (Ctrl+K)** para acciones, personas y **folios de documentos** (abre a la persona y lo marca), **recibo o comprobante imprimible (Ctrl+P)** con importe en letra, **copiar los documentos a Excel**, **deshacer/rehacer**, **borrador automático** y **tema oscuro**.
+
 ## Cómo usarlas
 
 1. En la **Consola** abre la plantilla que prefieras, guárdala como botón (nombre sugerido `COBRO_PAGO`) y ponla en el ribbon con *Crear botón…*.

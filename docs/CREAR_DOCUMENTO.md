@@ -28,6 +28,20 @@ La versión **HTML** (C# y Python) y la de **Windows Forms** de C# tienen **dise
 
 La versión **HTML** consulta a Comercial **en vivo** mientras capturas (pendientes y últimos documentos de la persona) mediante `ctx.ShowHtmlModeless` y respuestas `__JS__…` (ver [`UI_VENTANAS.md`](UI_VENTANAS.md)); la versión de **Python en HTML** abre la misma página pero con lo precargado (no tiene consultas en vivo ni «Guardar y nuevo»). La versión **Windows Forms** de C# es no modal y trae además el botón **Historial** (últimos documentos de la persona; doble clic abre el documento en Comercial). La de **Python en Windows Forms** sigue con la ventana sencilla de antes.
 
+## Lo que solo una ventana web puede dar (WebView2)
+
+Las dos plantillas **WebView2** (C# y Python) hablan **en vivo** con Comercial y traen herramientas de una aplicación moderna; todo está en el mismo formulario y lo hacen igual con C# o con Python (con Python, ver [`UI_VENTANAS.md`](UI_VENTANAS.md) §5):
+
+- **Inteligencia de la persona** (consulta en vivo al elegirla): **gráfica de los últimos 12 meses** (barras SVG con promedio), total y ticket promedio, **días promedio de pago**, y los **productos que más maneja con su último precio**: un clic en «+» los agrega con ese precio y descuento. En la búsqueda de productos aparece «últ.» con el último precio de esa persona.
+- **Repetir último:** carga las partidas del último documento de ese tipo de la persona (con sus precios), con confirmación.
+- **Margen estimado en vivo** (utilidad y % sobre la venta neta con el costo del catálogo, y cuántas partidas van bajo costo) y **Revisión previa** con marcas de «todo en orden / por corregir»: persona, partidas, precios en cero, existencia, límite de crédito, datos del CFDI (con PPD la forma debe ser 99, con PUE no puede serlo), formato del RFC, fecha futura y tipo de cambio.
+- **Paleta de comandos (Ctrl+K):** una sola caja para ejecutar acciones, cambiar de tipo de documento, **buscar personas y productos** (Enter los elige o los agrega).
+- **Pegar desde Excel (Ctrl+Shift+V)** o **arrastrar un CSV/TXT** a la ventana: clave o código de barras, cantidad y precio (opcional); avisa cuáles no encontró.
+- **Vista previa imprimible (Ctrl+P)** con el importe en letra, lista para imprimir.
+- **Deshacer y rehacer (Ctrl+Z / Ctrl+Y)** sobre las partidas.
+- **Borrador automático:** lo capturado se guarda en la carpeta local de datos (`%LOCALAPPDATA%\BrosLMV\borradores`); si la ventana se cierra o Comercial se cae, al abrirla te ofrece **recuperarlo** (7 días). Al guardar el documento se borra.
+- **Tema claro u oscuro** (se recuerda) y atajos de teclado en todo.
+
 ## Cómo usarlas
 
 1. En la **Consola** abre la plantilla que prefieras, guárdala como botón (nombre sugerido `CREAR_DOCUMENTO`) y ponla en el ribbon con *Crear botón…*.

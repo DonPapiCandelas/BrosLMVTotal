@@ -10,4 +10,6 @@
 #
 # Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
 # el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
-# Nota: el cuerpo de la página (HTML) es idéntico al de la plantilla de C#; la diferencia está solo en el lenguaje que aplica el movimiento.
+#   · Ventana HTML «en vivo» desde Python (ctx.show_html(..., modal=False) + un servidor HTTP local que solo escucha en esta computadora; ver ventana_en_vivo más abajo): la página consulta
+#     en vivo a Comercial (movimientos, comportamiento de pago, saldos tras registrar) y el script le contesta con JavaScript. La ventana no bloquea Comercial.
+# Nota: el cuerpo de la página (HTML) es idéntico al de la plantilla de C#; la diferencia está solo en el lenguaje que atiende la ventana y aplica el movimiento.

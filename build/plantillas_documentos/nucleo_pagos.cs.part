@@ -37,11 +37,11 @@ List<Dictionary<string, object>> DocsConSaldo(string lado)
     if (mods.Count == 0) return new List<Dictionary<string, object>>();
     return ctx.Query(
         "SELECT TOP 30000 d.DocumentID AS id, d.ModuleID AS modulo, d.BusinessEntityID AS ent, d.FolioPrefix, d.Folio, d.DateDocument AS fecha, ISNULL(d.Total,0) AS total, ISNULL(d.Balance,0) AS saldo, ISNULL(d.Title,'') AS titulo, " +
-        "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS vence " +
+        "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS vence, ISNULL((SELECT TOP 1 c.MetodoPago FROM docDocumentCFD c WHERE c.DocumentID = d.DocumentID), '') AS metodo " +
         "FROM docDocument d WHERE d.ModuleID IN (" + string.Join(",", mods) + ") AND d.OwnedBusinessEntityID = " + empresa + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) > 0.004 ORDER BY d.DateDocument")
         .Select(r => new Dictionary<string, object> { ["id"] = L(r["id"]), ["modulo"] = I(r["modulo"]), ["tipo"] = nombreMod[I(r["modulo"])], ["ent"] = I(r["ent"]), ["folio"] = (S(r["FolioPrefix"]) + S(r["Folio"])).Trim(),
             ["fecha"] = Nulo(r["fecha"]) ? "" : Convert.ToDateTime(r["fecha"], ci).ToString("yyyy-MM-dd"), ["vence"] = Nulo(r["vence"]) ? "" : Convert.ToDateTime(r["vence"], ci).ToString("yyyy-MM-dd"),
-            ["total"] = D(r["total"]), ["saldo"] = D(r["saldo"]), ["titulo"] = S(r["titulo"]) }).ToList();
+            ["total"] = D(r["total"]), ["saldo"] = D(r["saldo"]), ["titulo"] = S(r["titulo"]), ["metodo"] = S(r["metodo"]) }).ToList();
 }
 // Los últimos cobros o pagos de esa persona (los 8 más recientes que no estén cancelados), con la cuenta y a cuántos documentos se aplicaron
 List<Dictionary<string, object>> MovimientosDe(long entidad, string clave)
@@ -52,6 +52,38 @@ List<Dictionary<string, object>> MovimientosDe(long entidad, string clave)
         "WHERE o.BusinessEntityID = " + entidad + " AND o.ModuleID = " + (int)tipoPor[clave]["modOp"] + " AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL ORDER BY o.DateOperation DESC, o.FinancialOperationID DESC")
         .Select(r => new Dictionary<string, object> { ["id"] = L(r["id"]), ["folio"] = (S(r["FolioPrefix"]) + "-" + S(r["Folio"])).Trim(), ["fecha"] = Nulo(r["DateOperation"]) ? "" : Convert.ToDateTime(r["DateOperation"], ci).ToString("yyyy-MM-dd"),
             ["monto"] = D(r["Monto"]), ["cuenta"] = S(r["Cuenta"]), ["docs"] = I(r["Docs"]) }).ToList();
+}
+
+// Comportamiento de pago de una persona: lo cobrado (o pagado) por mes en los últimos 12 meses, los días promedio que tarda desde la fecha del documento, el atraso promedio
+// frente al vencimiento y el porcentaje de pagos a tiempo. Todo sale de Comercial en ese momento.
+Dictionary<string, object> InteligenciaPago(long entidad, string clave)
+{
+    var res = new Dictionary<string, object>();
+    if (!tipoPor.ContainsKey(clave) || entidad <= 0) return res;
+    var t = tipoPor[clave]; string lado = (string)t["lado"]; var mods = modulosLado[lado];
+    var porMes = new Dictionary<string, double[]>();
+    foreach (var r in ctx.Query("SELECT CONVERT(CHAR(7), o.DateOperation, 120) AS mes, SUM(ISNULL(o.Amount,0)) AS total, COUNT(*) AS n FROM docFinancialOperation o WHERE o.BusinessEntityID = " + entidad + " AND o.ModuleID = " + (int)t["modOp"] +
+        " AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL AND o.DateOperation >= DATEADD(MONTH, -11, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)) GROUP BY CONVERT(CHAR(7), o.DateOperation, 120)"))
+        porMes[S(r["mes"])] = new[] { D(r["total"]), D(r["n"]) };
+    var meses = new List<Dictionary<string, object>>(); double total12 = 0; int mov12 = 0; var hoy = DateTime.Today;
+    for (int i = 11; i >= 0; i--)
+    {
+        var m = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-i); string k = m.ToString("yyyy-MM", ci); double[] v; if (!porMes.TryGetValue(k, out v)) v = new double[] { 0, 0 };
+        meses.Add(new Dictionary<string, object> { ["mes"] = k, ["total"] = Math.Round(v[0], 2), ["n"] = (int)v[1] }); total12 += v[0]; mov12 += (int)v[1];
+    }
+    res["meses"] = meses; res["total12"] = Math.Round(total12, 2); res["mov12"] = mov12;
+    if (mods.Count > 0)
+    {
+        var e = ctx.Query("SELECT COUNT(*) AS n, AVG(CAST(DATEDIFF(DAY, d.DateDocument, p.DateOperation) AS float)) AS dias, AVG(CAST(DATEDIFF(DAY, ISNULL(ag.due, d.DateDocument), p.DateOperation) AS float)) AS atraso, " +
+            "SUM(CASE WHEN p.DateOperation <= ISNULL(ag.due, d.DateDocument) THEN 1.0 ELSE 0 END) AS aTiempo FROM docDocumentPayment p JOIN docDocument d ON d.DocumentID = p.DocumentID " +
+            "OUTER APPLY (SELECT MAX(a.DatePayment) AS due FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) ag " +
+            "WHERE d.BusinessEntityID = " + entidad + " AND d.OwnedBusinessEntityID = " + empresa + " AND d.ModuleID IN (" + string.Join(",", mods) + ") AND p.DeletedOn IS NULL");
+        int n = e.Count > 0 ? I(e[0]["n"]) : 0;
+        res["pagos"] = n; res["dias"] = n > 0 && !Nulo(e[0]["dias"]) ? (object)Math.Round(D(e[0]["dias"]), 1) : null;
+        res["atraso"] = n > 0 && !Nulo(e[0]["atraso"]) ? (object)Math.Round(D(e[0]["atraso"]), 1) : null;
+        res["puntual"] = n > 0 ? (object)Math.Round(D(e[0]["aTiempo"]) * 100.0 / n, 0) : null;
+    }
+    return res;
 }
 
 // ---------- Catálogos y documentos con saldo para el formulario ----------
@@ -167,6 +199,7 @@ if (!string.IsNullOrEmpty(modoPrueba))
     if (spec.ContainsKey("catalogo") && (bool)spec["catalogo"]) resultado = ser.Serialize(Catalogos());
     else if (spec.ContainsKey("movimientos")) resultado = ser.Serialize(MovimientosDe(L(spec["entidad"]), S(spec["tipo"])));
     else if (spec.ContainsKey("docs")) resultado = ser.Serialize(DocsConSaldo(S(spec["lado"])));
+    else if (spec.ContainsKey("inteligencia")) resultado = ser.Serialize(InteligenciaPago(L(spec["entidad"]), S(spec["tipo"])));
     else { try { resultado = "OK " + Aplicar(spec); } catch (Exception ex) { resultado = "ERROR " + ex.Message; } }
     string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_OUT");
     if (!string.IsNullOrEmpty(salidaPrueba)) System.IO.File.WriteAllText(salidaPrueba, resultado, new System.Text.UTF8Encoding(false));

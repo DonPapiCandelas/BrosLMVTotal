@@ -93,6 +93,17 @@ Esto permite **varios botones Python a la vez**: cada uno en su propio `Task`; s
 tiempo real de su propia llamada SQL/COM. **Verificado offline** (sin Comercial) con un arnés que
 simula el hilo de Comercial con su propio *message loop* real: `.temp_tests/harness_pythonui/TestUiPump.cs`.
 
+### Ventana HTML «en vivo» desde Python (3.0.0)
+
+Una ventana HTML de Python **no tiene** el hilo de Comercial ni el `__JS__` de C#, pero puede tener lo mismo con un patrón que no cambia el addon:
+
+1. `ctx.show_html(html, titulo, ancho, alto, False)` abre la ventana **sin bloquear** (modal=False) y el script sigue.
+2. El script levanta un servidor HTTP que **solo escucha en esta computadora** (`127.0.0.1`, puerto al azar y un token secreto en la URL) y se queda atendiéndolo en su bucle principal.
+3. La página manda sus peticiones con `fetch` (POST, texto plano, así que no hay *preflight*) y el servidor contesta con un **fragmento de JavaScript** que la página ejecuta (`respuesta(3, [...])`, `creado({...})`, `window.close()`…). Las llamadas a `ctx.query` y `ctx.erp` las sirve Comercial una por una, como en cualquier botón Python (sección 5).
+4. La página manda un **latido** cada 5 segundos: si deja de latir (cerraste la ventana) el script termina solo. Para cerrar la ventana desde el script se responde `window.close()`: **toda** ventana HTML de BrosLMV (`ShowHtmlModeless`, `ctx.show_html`) cierra su formulario cuando la página llama a `window.close()` (WebView2 `WindowCloseRequested`).
+
+La función `ventana_en_vivo(armar_pagina, despachar, titulo, ancho, alto)` de las plantillas «Crear documento» y «Cobro/Pago» (Python · ventana HTML) es esa receta completa y se puede copiar a cualquier botón. La página elige sola el transporte: con C# usa `postMessage`; con Python, HTTP (`DATOS.http`). Se prueba de punta a punta, sin Comercial, con `build/plantillas_documentos/prueba_python_servidor.py`.
+
 ## 6. Estado y plan
 
 - **Hecho:** (A) modeless para botones C# y Python (v2.13.0 consola, v2.18.1/2.19.0 plantillas y

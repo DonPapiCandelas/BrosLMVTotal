@@ -95,7 +95,7 @@ def origenes_de(ids):
     if not ids:
         return res
     docs = ctx.query(
-        "SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.BusinessEntityID, d.DepotID, ISNULL(be.CommercialName, be.OfficialName) AS Entidad FROM docDocument d "
+        "SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.BusinessEntityID, d.DepotID, d.DateDocument, ISNULL(d.Total,0) AS Total, ISNULL(be.CommercialName, be.OfficialName) AS Entidad FROM docDocument d "
         "LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID WHERE d.DocumentID IN (" + ",".join(str(int(x)) for x in ids) + ") "
         "AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND d.OwnedBusinessEntityID = " + str(empresa))
     for d in docs:
@@ -128,7 +128,80 @@ def origenes_de(ids):
                               "cant": pend, "precio": D(p["Precio"]), "desc": round(D(p["Descuento"]) * 100.0, 4), "imp": I(p["Imp"])})
             por_tipo[t["clave"]] = items
         res.append({"id": did, "modulo": mod, "folio": (S(d["FolioPrefix"]) + S(d["Folio"])).strip(), "entidad": I(d["BusinessEntityID"]),
-                    "entidadNombre": S(d["Entidad"]), "almacen": I(d["DepotID"]), "partidasPor": por_tipo})
+                    "entidadNombre": S(d["Entidad"]), "almacen": I(d["DepotID"]), "fecha": fecha_txt(d["DateDocument"]), "total": D(d["Total"]), "partidasPor": por_tipo})
+    return res
+
+
+# ---------- Consultas en vivo (las pide la ventana mientras se captura) ----------
+# Documentos que sirven de origen para el tipo elegido y que pertenecen a esa persona: los 40 más recientes del módulo de origen con partidas que aún faltan por surtir.
+def pendientes_de(entidad, clave_tipo):
+    if clave_tipo not in TIPO_POR or entidad <= 0:
+        return []
+    m_origen = TIPO_POR[clave_tipo]["origen"]
+    if not m_origen:
+        return []
+    ids = [I(r["DocumentID"]) for r in ctx.query("SELECT TOP 40 DocumentID FROM docDocument WHERE ModuleID = " + str(m_origen) + " AND BusinessEntityID = " + str(entidad) + " AND OwnedBusinessEntityID = " + str(empresa) +
+                                                 " AND DeletedOn IS NULL AND CancelledOn IS NULL ORDER BY DateDocument DESC, DocumentID DESC")]
+    return [o for o in origenes_de(ids) if len(o["partidasPor"].get(clave_tipo, [])) > 0]
+
+
+# Los últimos documentos de esa persona (cualquier módulo), para tener contexto antes de capturar
+def ultimos_de(entidad):
+    return [{"id": I(r["DocumentID"]), "modulo": I(r["ModuleID"]), "tipo": S(r["Modulo"]), "folio": (S(r["FolioPrefix"]) + S(r["Folio"])).strip(), "fecha": fecha_txt(r["DateDocument"]),
+             "total": D(r["Total"]), "saldo": D(r["Saldo"])} for r in ctx.query(
+        "SELECT TOP 6 d.DocumentID, d.ModuleID, ISNULL(m.ModuleName,'') AS Modulo, d.FolioPrefix, d.Folio, d.DateDocument, ISNULL(d.Total,0) AS Total, ISNULL(d.Balance,0) AS Saldo FROM docDocument d "
+        "LEFT JOIN engModule m ON m.ModuleID = d.ModuleID WHERE d.BusinessEntityID = " + str(entidad) + " AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL ORDER BY d.DateDocument DESC, d.DocumentID DESC")]
+
+
+# Inteligencia de una persona: facturado (o comprado) por mes en los últimos 12 meses, los productos que más maneja con su último precio, los días promedio que tarda en pagar y el
+# último documento de ese tipo con sus partidas (para «Repetir último»). Todo sale de Comercial en ese momento; nada se guarda.
+def inteligencia_de(entidad, clave_tipo):
+    res = {}
+    if clave_tipo not in TIPO_POR or entidad <= 0:
+        return res
+    t = TIPO_POR[clave_tipo]
+    lado = t["lado"]
+    mod_fact = [x for x in TIPOS if x["lado"] == lado and x["clave"] in ("factura_cliente", "factura_compra")][0]["modulo"]
+    quien = " d.BusinessEntityID = " + str(entidad) + " AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL"
+    por_mes = {}
+    for r in ctx.query("SELECT CONVERT(CHAR(7), d.DateDocument, 120) AS mes, SUM(ISNULL(d.Total,0)) AS total, COUNT(*) AS n FROM docDocument d WHERE" + quien + " AND d.ModuleID = " + str(mod_fact) +
+                       " AND d.DateDocument >= DATEADD(MONTH, -11, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)) GROUP BY CONVERT(CHAR(7), d.DateDocument, 120)"):
+        por_mes[S(r["mes"])] = (D(r["total"]), D(r["n"]))
+    meses = []
+    total12 = 0.0
+    docs12 = 0
+    hoy = datetime.date.today()
+    for i in range(11, -1, -1):
+        y, m = hoy.year, hoy.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        k = "%04d-%02d" % (y, m)
+        v = por_mes.get(k, (0.0, 0.0))
+        meses.append({"mes": k, "total": round(v[0], 2), "n": int(v[1])})
+        total12 += v[0]
+        docs12 += int(v[1])
+    res["meses"] = meses
+    res["total12"] = round(total12, 2)
+    res["docs12"] = docs12
+    res["ticket"] = round(total12 / docs12, 2) if docs12 > 0 else 0.0
+    ultimo = ("SELECT TOP 1 i2.%s FROM docDocumentItem i2 JOIN docDocument d2 ON d2.DocumentID = i2.DocumentID WHERE d2.BusinessEntityID = " + str(entidad) + " AND d2.ModuleID = " + str(mod_fact) +
+              " AND i2.ProductID = i.ProductID AND i2.DeletedOn IS NULL AND d2.DeletedOn IS NULL AND d2.CancelledOn IS NULL ORDER BY d2.DateDocument DESC, i2.DocumentItemID DESC")
+    top = ctx.query("SELECT TOP 10 i.ProductID AS id, MAX(ISNULL(p.ProductKey,'')) AS clave, MAX(ISNULL(p.ProductName, i.Description)) AS nombre, COUNT(DISTINCT d.DocumentID) AS veces, SUM(i.Quantity) AS cant, MAX(d.DateDocument) AS ult, ("
+                    + (ultimo % "UnitPrice") + ") AS precio, (" + (ultimo % "DiscountPerc") + ") AS descto FROM docDocumentItem i JOIN docDocument d ON d.DocumentID = i.DocumentID LEFT JOIN orgProduct p ON p.ProductID = i.ProductID WHERE" + quien +
+                    " AND d.ModuleID = " + str(mod_fact) + " AND i.DeletedOn IS NULL AND i.ProductID > 0 GROUP BY i.ProductID ORDER BY COUNT(DISTINCT d.DocumentID) DESC, MAX(d.DateDocument) DESC")
+    res["top"] = [{"id": I(r["id"]), "clave": S(r["clave"]), "nombre": S(r["nombre"]), "veces": I(r["veces"]), "cant": D(r["cant"]), "ult": fecha_txt(r["ult"]),
+                   "precio": D(r["precio"]), "desc": round(D(r["descto"]) * 100.0, 4)} for r in top]
+    dias = ctx.scalar("SELECT AVG(CAST(DATEDIFF(DAY, d.DateDocument, p.DateOperation) AS float)) FROM docDocumentPayment p JOIN docDocument d ON d.DocumentID = p.DocumentID WHERE" + quien + " AND d.ModuleID = " + str(mod_fact) + " AND p.DeletedOn IS NULL")
+    res["diasPago"] = round(D(dias), 1) if dias is not None else None
+    ud = ctx.query("SELECT TOP 1 d.DocumentID, d.FolioPrefix, d.Folio, d.DateDocument FROM docDocument d WHERE" + quien + " AND d.ModuleID = " + str(t["modulo"]) + " ORDER BY d.DateDocument DESC, d.DocumentID DESC")
+    if ud:
+        idd = I(ud[0]["DocumentID"])
+        ps = [{"id": I(r["ProductID"]), "cant": D(r["Quantity"]), "precio": D(r["UnitPrice"]), "desc": round(D(r["DiscountPerc"]) * 100.0, 4), "imp": I(r["TaxTypeID"])} for r in ctx.query(
+            "SELECT ProductID, Quantity, UnitPrice, DiscountPerc, TaxTypeID FROM docDocumentItem WHERE DocumentID = " + str(idd) + " AND DeletedOn IS NULL AND ProductID > 0 ORDER BY LineNumber")]
+        res["ultimo"] = {"id": idd, "folio": (S(ud[0]["FolioPrefix"]) + S(ud[0]["Folio"])).strip(), "fecha": fecha_txt(ud[0]["DateDocument"]), "partidas": ps}
+    else:
+        res["ultimo"] = None
     return res
 
 
@@ -300,6 +373,12 @@ if _modo_prueba:
         _res = json.dumps(origenes_de(seleccion), ensure_ascii=False, default=str)
     elif _spec.get("catalogo"):
         _res = json.dumps(catalogos(CLAVES), ensure_ascii=False, default=str)
+    elif _spec.get("pendientesDe"):
+        _res = json.dumps(pendientes_de(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
+    elif _spec.get("ultimos"):
+        _res = json.dumps(ultimos_de(I(_spec["entidad"])), ensure_ascii=False, default=str)
+    elif _spec.get("inteligencia"):
+        _res = json.dumps(inteligencia_de(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
     else:
         try:
             _res = "DOC " + str(crear_documento(_spec))

@@ -1,7 +1,10 @@
-
-
 # ===================================================================================================================================
-# VENTANA (WebView2). Al presionar «Registrar» regresa lo capturado y aquí se aplica. Si falla, la ventana se vuelve a abrir con lo capturado.
+# VENTANA (WebView2) EN VIVO, sin bloquear Comercial. La página es la estación completa de cobros y pagos (cartera, pronóstico, comportamiento de pago,
+# revisión previa, recibo imprimible…); este script se queda atendiendo lo que la página pide (ver ventana_en_vivo arriba) y contesta con JavaScript:
+#   aplicar     → registra el cobro o pago (una operación por documento) y devuelve el resumen con los folios; los saldos se vuelven a pedir
+#   movimientos → los últimos cobros o pagos de la persona      docs → documentos con saldo actualizados      inteligencia → su comportamiento de pago
+#   borrador / pref → guarda lo capturado y el tema en disco
+# Si algo falla, la página muestra el mensaje y no se pierde nada de lo capturado.
 # ===================================================================================================================================
 PAGINA = r'''__HTML_PY__'''
 
@@ -9,36 +12,70 @@ PAGINA = r'''__HTML_PY__'''
 def principal():
     global result
     catalogo = catalogos()
-    inicial = None
-    barra = chr(92)
+    usuario = ""
+    nombre_empresa = ""
+    try:
+        usuario = S(ctx.scalar("SELECT TOP 1 ISNULL(UserName,'') FROM engUser WHERE UserID = " + str(int(ctx.user_id))))
+    except Exception:
+        pass
+    try:
+        nombre_empresa = S(ctx.scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + str(empresa)))
+    except Exception:
+        pass
+
     html_prueba = os.environ.get("BROSLMV_PAGO_HTML")   # pruebas: escribe la página (con sus datos) en un archivo y no abre ventana
     if html_prueba:
-        d0 = {"tipos": TIPOS, "cat": catalogo, "inicial": None}
+        d0 = {"tipos": TIPOS, "cat": catalogo, "inicial": None, "usuario": usuario, "empresa": nombre_empresa}
         with open(html_prueba, "w", encoding="utf-8") as f:
-            f.write(PAGINA.replace("__DATOS__", json.dumps(d0, ensure_ascii=False, default=str).replace("</", "<" + barra + "/")))
+            f.write(PAGINA.replace("__DATOS__", js_json(d0)))
         result = "HTML"
         return
-    while True:
-        datos = {"tipos": TIPOS, "cat": catalogo, "inicial": inicial}
-        json_txt = json.dumps(datos, ensure_ascii=False, default=str).replace("</", "<" + barra + "/")
-        r = ctx.show_html_formulario(PAGINA.replace("__DATOS__", json_txt), "Cobro o pago", 1180, 900, 1800000)
-        if not r.get("submitted") or r.get("accion") != "aplicar":
-            result = "CANCELADO"
-            return
-        spec = json.loads(r["spec"])
+
+    def pagina(http):
+        datos = {"tipos": TIPOS, "cat": catalogo, "inicial": None, "vivo": True, "http": http, "usuario": usuario, "empresa": nombre_empresa,
+                 "borrador": leer_borrador("cobropago"), "pref": leer_borrador("pref_ui", False) or {}}
+        return PAGINA.replace("__DATOS__", js_json(datos))
+
+    def despachar(r, estado):
+        accion = S(r.get("accion"))
+        req = S(r.get("req") or "0")
+        if accion == "latido":
+            return ""
+        if accion == "cancelar":
+            estado["fin"] = True
+            return "window.close()"
+        if accion == "movimientos":
+            return "respuesta(" + req + "," + js_json(movimientos_de(I(r["entidad"]), S(r["tipo"]))) + ")"
+        if accion == "docs":
+            return "respuesta(" + req + "," + js_json(docs_con_saldo(S(r["lado"]))) + ")"
+        if accion == "inteligencia":
+            return "respuesta(" + req + "," + js_json(inteligencia_pago(I(r["entidad"]), S(r["tipo"]))) + ")"
+        if accion == "borrador":
+            guardar_borrador("cobropago", {"cuando": datetime.datetime.now().isoformat(), "spec": S(r.get("spec"))})
+            return ""
+        if accion == "borradorBorrar":
+            borrar_borrador("cobropago")
+            return ""
+        if accion == "pref":
+            guardar_borrador("pref_ui", {"tema": S(r.get("tema"))})
+            return ""
+        if accion != "aplicar":
+            return ""
+        spec = json.loads(S(r["spec"]))
+        otro = bool(r.get("nuevo"))
         try:
             resumen = aplicar(spec)
-            try:
-                ctx.erp.RefreshGrid()
-            except Exception:
-                pass
-            ctx.msg(resumen, "Cobro o pago registrado")
-            result = resumen
-            return
         except Exception as ex:
-            ctx.msg(str(ex), "Cobro o pago")
-            inicial = spec
-            catalogo = catalogos()          # los saldos pudieron cambiar
+            return "falloAplicar(" + js_json(S(ex)) + ")"                    # la ventana sigue con todo lo capturado
+        borrar_borrador("cobropago")
+        try:
+            ctx.erp.RefreshGrid()
+        except Exception:
+            pass
+        return "aplicado(" + js_json({"resumen": resumen, "nuevo": otro}) + ")"
+
+    ventana_en_vivo(pagina, despachar, "Cobros y pagos · BrosLMV", 1280, 900)
+    result = "OK"
 
 
 if not _modo_prueba:

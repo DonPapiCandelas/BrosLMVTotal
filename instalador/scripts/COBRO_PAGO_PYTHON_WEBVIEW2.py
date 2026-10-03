@@ -10,7 +10,9 @@
 #
 # Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
 # el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
-# Nota: el cuerpo de la página (HTML) es idéntico al de la plantilla de C#; la diferencia está solo en el lenguaje que aplica el movimiento.
+#   · Ventana HTML «en vivo» desde Python (ctx.show_html(..., modal=False) + un servidor HTTP local que solo escucha en esta computadora; ver ventana_en_vivo más abajo): la página consulta
+#     en vivo a Comercial (movimientos, comportamiento de pago, saldos tras registrar) y el script le contesta con JavaScript. La ventana no bloquea Comercial.
+# Nota: el cuerpo de la página (HTML) es idéntico al de la plantilla de C#; la diferencia está solo en el lenguaje que atiende la ventana y aplica el movimiento.
 
 import json
 import datetime
@@ -56,6 +58,57 @@ def fecha_txt(v):
 
 empresa = ctx.erp.OwnedBusinessEntityId
 
+
+def L(v):
+    return I(v)
+
+
+# ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
+# El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
+def carpeta_local():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    d = os.path.join(base, "BrosLMV", "borradores")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def archivo_borrador(que):
+    try:
+        uid = int(ctx.user_id)
+    except Exception:
+        uid = 0
+    return os.path.join(carpeta_local(), que + "_" + str(empresa) + "_" + str(uid) + ".json")
+
+
+def leer_borrador(que, vence=True):
+    try:
+        a = archivo_borrador(que)
+        if not os.path.exists(a):
+            return None
+        if vence and (datetime.datetime.now().timestamp() - os.path.getmtime(a)) > 7 * 86400:
+            return None
+        with open(a, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def guardar_borrador(que, obj):
+    try:
+        with open(archivo_borrador(que), "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def borrar_borrador(que):
+    try:
+        a = archivo_borrador(que)
+        if os.path.exists(a):
+            os.remove(a)
+    except Exception:
+        pass
+
 # ===================================================================================================================================
 # COBRO A CLIENTE / PAGO A PROVEEDOR.
 # ⚠ PLANTILLA AVANZADA, NO NATIVA: Comercial no ofrece ninguna función para aplicar un cobro o un pago (se buscó en el SDK y en el motor, véase MANUAL §10.5).
@@ -90,6 +143,74 @@ for _r in _modulos:
     nombre_mod[I(_r["ModuleID"])] = S(_r["ModuleName"])
 
 
+# ---------- Documentos con saldo pendiente de un lado (C = por cobrar, P = por pagar) ----------
+# Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero). La ventana los pide otra vez después de aplicar, para ver los saldos nuevos.
+def docs_con_saldo(lado):
+    mods = modulos_lado[lado]
+    if not mods:
+        return []
+    filas = ctx.query(
+        "SELECT TOP 30000 d.DocumentID AS id, d.ModuleID AS modulo, d.BusinessEntityID AS ent, d.FolioPrefix, d.Folio, d.DateDocument AS fecha, ISNULL(d.Total,0) AS total, ISNULL(d.Balance,0) AS saldo, ISNULL(d.Title,'') AS titulo, "
+        "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS vence, "
+        "ISNULL((SELECT TOP 1 c.MetodoPago FROM docDocumentCFD c WHERE c.DocumentID = d.DocumentID), '') AS metodo "
+        "FROM docDocument d WHERE d.ModuleID IN (" + ",".join(str(m) for m in mods) + ") AND d.OwnedBusinessEntityID = " + str(empresa) +
+        " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) > 0.004 ORDER BY d.DateDocument")
+    return [{"id": I(r["id"]), "modulo": I(r["modulo"]), "tipo": nombre_mod.get(I(r["modulo"]), ""), "ent": I(r["ent"]), "folio": (S(r["FolioPrefix"]) + S(r["Folio"])).strip(),
+             "fecha": fecha_txt(r["fecha"]), "vence": fecha_txt(r["vence"]), "total": D(r["total"]), "saldo": D(r["saldo"]), "titulo": S(r["titulo"]), "metodo": S(r["metodo"])} for r in filas]
+
+
+# Los últimos cobros o pagos de esa persona (los 8 más recientes que no estén cancelados), con la cuenta y a cuántos documentos se aplicaron
+def movimientos_de(entidad, clave):
+    if clave not in TIPO_POR or entidad <= 0:
+        return []
+    return [{"id": I(r["id"]), "folio": (S(r["FolioPrefix"]) + "-" + S(r["Folio"])).strip(), "fecha": fecha_txt(r["DateOperation"]), "monto": D(r["Monto"]), "cuenta": S(r["Cuenta"]), "docs": I(r["Docs"])} for r in ctx.query(
+        "SELECT TOP 8 o.FinancialOperationID AS id, o.FolioPrefix, o.Folio, o.DateOperation, ISNULL(o.Amount,0) AS Monto, ISNULL(f.FinancialEntityName,'') AS Cuenta, "
+        "(SELECT COUNT(*) FROM docDocumentPayment p WHERE p.FinancialOperationID = o.FinancialOperationID AND p.DeletedOn IS NULL) AS Docs FROM docFinancialOperation o LEFT JOIN orgFinancialEntity f ON f.FinancialEntityID = o.FinancialEntityID "
+        "WHERE o.BusinessEntityID = " + str(entidad) + " AND o.ModuleID = " + str(TIPO_POR[clave]["modOp"]) + " AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL ORDER BY o.DateOperation DESC, o.FinancialOperationID DESC")]
+
+
+# Comportamiento de pago de una persona: lo cobrado (o pagado) por mes en los últimos 12 meses, los días promedio que tarda desde la fecha del documento, el atraso promedio
+# frente al vencimiento y el porcentaje de pagos a tiempo. Todo sale de Comercial en ese momento.
+def inteligencia_pago(entidad, clave):
+    res = {}
+    if clave not in TIPO_POR or entidad <= 0:
+        return res
+    t = TIPO_POR[clave]
+    mods = modulos_lado[t["lado"]]
+    por_mes = {}
+    for r in ctx.query("SELECT CONVERT(CHAR(7), o.DateOperation, 120) AS mes, SUM(ISNULL(o.Amount,0)) AS total, COUNT(*) AS n FROM docFinancialOperation o WHERE o.BusinessEntityID = " + str(entidad) + " AND o.ModuleID = " + str(t["modOp"]) +
+                       " AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL AND o.DateOperation >= DATEADD(MONTH, -11, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)) GROUP BY CONVERT(CHAR(7), o.DateOperation, 120)"):
+        por_mes[S(r["mes"])] = (D(r["total"]), D(r["n"]))
+    meses = []
+    total12 = 0.0
+    mov12 = 0
+    hoy = datetime.date.today()
+    for i in range(11, -1, -1):
+        y, m = hoy.year, hoy.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        k = "%04d-%02d" % (y, m)
+        v = por_mes.get(k, (0.0, 0.0))
+        meses.append({"mes": k, "total": round(v[0], 2), "n": int(v[1])})
+        total12 += v[0]
+        mov12 += int(v[1])
+    res["meses"] = meses
+    res["total12"] = round(total12, 2)
+    res["mov12"] = mov12
+    if mods:
+        e = ctx.query("SELECT COUNT(*) AS n, AVG(CAST(DATEDIFF(DAY, d.DateDocument, p.DateOperation) AS float)) AS dias, AVG(CAST(DATEDIFF(DAY, ISNULL(ag.due, d.DateDocument), p.DateOperation) AS float)) AS atraso, "
+                      "SUM(CASE WHEN p.DateOperation <= ISNULL(ag.due, d.DateDocument) THEN 1.0 ELSE 0 END) AS aTiempo FROM docDocumentPayment p JOIN docDocument d ON d.DocumentID = p.DocumentID "
+                      "OUTER APPLY (SELECT MAX(a.DatePayment) AS due FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) ag "
+                      "WHERE d.BusinessEntityID = " + str(entidad) + " AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.ModuleID IN (" + ",".join(str(m) for m in mods) + ") AND p.DeletedOn IS NULL")
+        n = I(e[0]["n"]) if e else 0
+        res["pagos"] = n
+        res["dias"] = round(D(e[0]["dias"]), 1) if n > 0 and e[0]["dias"] is not None else None
+        res["atraso"] = round(D(e[0]["atraso"]), 1) if n > 0 and e[0]["atraso"] is not None else None
+        res["puntual"] = round(D(e[0]["aTiempo"]) * 100.0 / n) if n > 0 else None
+    return res
+
+
 # ---------- Catálogos y documentos con saldo para el formulario ----------
 def catalogos():
     cat = {}
@@ -112,19 +233,9 @@ def catalogos():
     cat["formas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")]
     # Folio siguiente de cada tipo (el mismo cálculo que usa aplicar)
     cat["folios"] = {t["clave"]: I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + str(t["modOp"]) + " AND FolioPrefix = N'" + t["prefijo"] + "'")) for t in TIPOS}
-    # Documentos con saldo pendiente de cada lado. Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero).
-    for lado in ("C", "P"):
-        mods = modulos_lado[lado]
-        if not mods:
-            cat["docs" + lado] = []
-            continue
-        filas = ctx.query(
-            "SELECT TOP 30000 d.DocumentID AS id, d.ModuleID AS modulo, d.BusinessEntityID AS ent, d.FolioPrefix, d.Folio, d.DateDocument AS fecha, ISNULL(d.Total,0) AS total, ISNULL(d.Balance,0) AS saldo, ISNULL(d.Title,'') AS titulo, "
-            "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS vence "
-            "FROM docDocument d WHERE d.ModuleID IN (" + ",".join(str(m) for m in mods) + ") AND d.OwnedBusinessEntityID = " + str(empresa) +
-            " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) > 0.004 ORDER BY d.DateDocument")
-        cat["docs" + lado] = [{"id": I(r["id"]), "modulo": I(r["modulo"]), "tipo": nombre_mod.get(I(r["modulo"]), ""), "ent": I(r["ent"]), "folio": (S(r["FolioPrefix"]) + S(r["Folio"])).strip(),
-                               "fecha": fecha_txt(r["fecha"]), "vence": fecha_txt(r["vence"]), "total": D(r["total"]), "saldo": D(r["saldo"]), "titulo": S(r["titulo"])} for r in filas]
+    # Documentos con saldo pendiente de cada lado (los más antiguos primero)
+    cat["docsC"] = docs_con_saldo("C")
+    cat["docsP"] = docs_con_saldo("P")
     return cat
 
 
@@ -225,6 +336,12 @@ if _modo_prueba:
     _spec = json.loads(_modo_prueba)
     if _spec.get("catalogo"):
         _res = json.dumps(catalogos(), ensure_ascii=False, default=str)
+    elif _spec.get("movimientos"):
+        _res = json.dumps(movimientos_de(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
+    elif _spec.get("docs"):
+        _res = json.dumps(docs_con_saldo(S(_spec["lado"])), ensure_ascii=False, default=str)
+    elif _spec.get("inteligencia"):
+        _res = json.dumps(inteligencia_pago(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
     else:
         try:
             _res = "OK " + aplicar(_spec)
@@ -239,7 +356,96 @@ if _modo_prueba:
 
 
 # ===================================================================================================================================
-# VENTANA (WebView2). Al presionar «Registrar» regresa lo capturado y aquí se aplica. Si falla, la ventana se vuelve a abrir con lo capturado.
+# VENTANA «EN VIVO» PARA PYTHON.
+# ctx.show_html abre la ventana SIN bloquear a Comercial (modal=False) y este script se queda atendiendo a la página: levanta un servidor HTTP que solo escucha
+# en esta computadora (127.0.0.1, puerto al azar y un token secreto), y la página le manda sus peticiones con fetch. Cada respuesta es un fragmento de
+# JavaScript que la página ejecuta (por ejemplo «respuesta(3, [...])»). Así Python tiene lo mismo que C# con ShowHtmlModeless: consultas en vivo a Comercial,
+# crear documentos sin cerrar la ventana y lo que se te ocurra, con toda la librería de Python a la mano.
+# La página manda un latido cada pocos segundos: si deja de latir (la ventana se cerró) el script termina solo.
+# ===================================================================================================================================
+import http.server
+import secrets
+import time
+import urllib.parse
+
+
+def js_json(o):
+    """JSON seguro para incrustarlo en una página o en un fragmento de JavaScript."""
+    return json.dumps(o, ensure_ascii=False, default=str).replace("</", "<" + chr(92) + "/")
+
+
+def ventana_en_vivo(armar_pagina, despachar, titulo, ancho, alto):
+    """armar_pagina(http) → texto HTML de la página (http = {"url", "token"}); despachar(peticion, estado) → fragmento de JavaScript (o "").
+    Sale cuando la página lo pide (estado["fin"] = True) o cuando la ventana deja de latir."""
+    token = secrets.token_hex(16)
+    estado = {"fin": False, "visto": False, "ultimo": time.time()}
+
+    class _Manejador(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _cors(self):
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "*")
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+
+        def do_OPTIONS(self):
+            self.send_response(204)
+            self._cors()
+            self.end_headers()
+
+        def do_POST(self):
+            if urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("t", [""])[0] != token:
+                self.send_response(403)
+                self._cors()
+                self.end_headers()
+                return
+            n = int(self.headers.get("Content-Length") or 0)
+            cuerpo = self.rfile.read(n).decode("utf-8") if n else "{}"
+            estado["visto"] = True
+            estado["ultimo"] = time.time()
+            try:
+                js = despachar(json.loads(cuerpo), estado)
+            except Exception as ex:
+                js = "aviso(" + js_json(S(ex)) + ",'mal')"
+            estado["ultimo"] = time.time()
+            datos = (js or "").encode("utf-8")
+            self.send_response(200)
+            self._cors()
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(datos)))
+            self.end_headers()
+            self.wfile.write(datos)
+
+    class _Servidor(http.server.HTTPServer):
+        def handle_error(self, request, client_address):
+            pass                                   # una conexión cortada por el navegador no debe tumbar la ventana
+
+    servidor = _Servidor(("127.0.0.1", 0), _Manejador)
+    servidor.timeout = 1.0
+    url = "http://127.0.0.1:%d/api" % servidor.server_address[1]
+    ctx.show_html(armar_pagina({"url": url, "token": token}), titulo, ancho, alto, False)
+    inicio = time.time()
+    try:
+        while not estado["fin"]:
+            servidor.handle_request()
+            ahora = time.time()
+            if not estado["visto"] and ahora - inicio > 90:
+                break                              # la ventana nunca llegó a cargar
+            if estado["visto"] and ahora - estado["ultimo"] > 25:
+                break                              # dejó de latir: se cerró
+    finally:
+        servidor.server_close()
+    return estado
+
+# ===================================================================================================================================
+# VENTANA (WebView2) EN VIVO, sin bloquear Comercial. La página es la estación completa de cobros y pagos (cartera, pronóstico, comportamiento de pago,
+# revisión previa, recibo imprimible…); este script se queda atendiendo lo que la página pide (ver ventana_en_vivo arriba) y contesta con JavaScript:
+#   aplicar     → registra el cobro o pago (una operación por documento) y devuelve el resumen con los folios; los saldos se vuelven a pedir
+#   movimientos → los últimos cobros o pagos de la persona      docs → documentos con saldo actualizados      inteligencia → su comportamiento de pago
+#   borrador / pref → guarda lo capturado y el tema en disco
+# Si algo falla, la página muestra el mensaje y no se pierde nada de lo capturado.
 # ===================================================================================================================================
 PAGINA = r'''<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Cobro o pago</title><style>
 :root{--marino:#15324F;--marino2:#1d4468;--azul:#2D6FE0;--acc:#2D6FE0;--accsuave:#E8F0FF;--texto:#16263A;--suave:#64748B;--linea:#D8E0EB;--fondo:#EEF2F7;--tarjeta:#fff;--rojo:#C82828;--ambar:#B45309;--verde:#16803B;--zebra:#F8FAFC}
@@ -281,6 +487,35 @@ td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;vertical-ali
 .kbd{border:1px solid var(--linea);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:10.5px;color:var(--suave);background:#fff}
 .vel{position:fixed;inset:0;background:#0f1e32aa;z-index:70;display:none;align-items:center;justify-content:center}.vel.on{display:flex}.modal{background:#fff;border-radius:14px;box-shadow:0 20px 60px #0006;width:min(560px,92vw);padding:20px 22px}.modal h3{margin:0 0 4px;font-size:18px;color:var(--acc)}.modal pre{background:var(--zebra);border:1px solid var(--linea);border-radius:9px;padding:10px 12px;font:12.5px 'Consolas','Segoe UI',monospace;white-space:pre-wrap;margin:10px 0}.modal .bt{display:flex;gap:8px;justify-content:flex-end}.modal button{border:1px solid var(--linea);background:#fff;border-radius:8px;padding:7px 16px;cursor:pointer}.modal button.p{background:var(--acc);border-color:var(--acc);color:#fff}
 @media (max-width:1180px){.cinta{flex-wrap:wrap}}@media (max-width:1100px){.cuerpo{flex-direction:column;overflow:auto}.der{width:auto;flex:none}.izq{overflow:visible}}
+/* ---- extras: el poder de WebView2 (gráficas, paleta, vista previa, tema) ---- */
+.cinta{flex-wrap:wrap;row-gap:8px}.marca{min-width:230px;flex:1 1 230px}.ab{min-width:80px}.ab.s{min-width:60px;padding:6px 6px}.info input,.info select{width:128px}
+.ab.s{min-width:64px;padding:6px 8px}.ab.s i{font-size:18px}.ab.s span{font-size:10px}
+.ov{position:fixed;inset:0;background:#0b1220a8;z-index:80;display:none;align-items:flex-start;justify-content:center;padding-top:9vh}.ov.on{display:flex}
+.palc{width:min(640px,92vw);background:var(--tarjeta);border:1px solid var(--linea);border-radius:14px;box-shadow:0 24px 60px #0008;overflow:hidden}
+.palc input{border:0;border-bottom:1px solid var(--linea);border-radius:0;padding:14px 16px;font-size:15px;background:transparent}.palc input:focus{outline:0}
+.pall{max-height:52vh;overflow:auto}.pall div{padding:9px 16px;display:flex;justify-content:space-between;gap:14px;cursor:pointer;border-bottom:1px solid var(--zebra)}.pall div.sel,.pall div:hover{background:var(--accsuave)}.pall small{color:var(--suave)}.pall .gr{cursor:default;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--suave);background:var(--zebra);padding:5px 16px}
+.palc .pie2{padding:7px 16px;color:var(--suave);font-size:11px;background:var(--zebra);display:flex;gap:14px}
+.caja{width:min(760px,94vw);background:var(--tarjeta);border:1px solid var(--linea);border-radius:14px;box-shadow:0 24px 60px #0008;padding:16px 18px}.caja h3{margin:0 0 8px;font-size:15px}.caja textarea{height:210px;font:12px Consolas,monospace}
+.caja .bt{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}.btn{border:1px solid var(--linea);background:var(--tarjeta);border-radius:8px;padding:6px 14px;cursor:pointer}.btn.p{background:var(--acc);border-color:var(--acc);color:#fff}
+.hoja{background:#fff;color:#16263A;width:min(860px,96vw);max-height:86vh;overflow:auto;border-radius:6px;box-shadow:0 24px 60px #0009;padding:34px 40px}.hoja h1{margin:0;font-size:22px}.hoja table{margin-top:14px}.hoja th{position:static;background:#F1F5F9;color:#334155}.hoja td,.hoja th{padding:6px 8px;border-bottom:1px solid #E2E8F0}
+.hoja .tt{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;border-bottom:2px solid #16263A;padding-bottom:10px}.hoja .bloque{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin-top:12px;font-size:12.5px}.hoja .tot2{margin-left:auto;margin-top:12px;width:280px;font-variant-numeric:tabular-nums}.hoja .tot2 div{display:flex;justify-content:space-between;padding:2px 0}.hoja .tot2 .g{font-size:17px;font-weight:700;border-top:2px solid #16263A;margin-top:4px;padding-top:5px}.hoja .letra{margin-top:10px;font-style:italic;color:#475569;font-size:12px}
+.ban{display:none;margin:0 0 12px;border:1px solid #F0D9AD;background:#FFF7E6;color:#7A4B06;border-radius:10px;padding:8px 12px;gap:10px;align-items:center}.ban.on{display:flex}.ban span{flex:1}
+.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 12px;margin:8px 0}.kpi div b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--suave);font-weight:600}.kpi div span{font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
+.top{display:flex;flex-direction:column;gap:2px;margin-top:6px}.top a{display:flex;justify-content:space-between;gap:8px;padding:5px 7px;border-radius:7px;align-items:center}.top a:hover{background:var(--accsuave)}.top small{color:var(--suave);display:block}.top button{border:1px solid var(--linea);background:var(--tarjeta);border-radius:6px;cursor:pointer;width:26px;height:26px;color:var(--acc);font-weight:700}
+.rev{display:flex;flex-direction:column;gap:3px;font-size:12px}.rev div{display:flex;gap:7px;align-items:flex-start}.rev i{font-style:normal;font-weight:700;width:14px;text-align:center}.rev .v i{color:var(--verde)}.rev .a i{color:var(--ambar)}.rev .r i{color:var(--rojo)}
+.mg{display:flex;align-items:baseline;justify-content:space-between}.mg b{font-size:20px;font-variant-numeric:tabular-nums}
+.txsm{color:var(--suave);font-size:11.5px}
+body.oscuro{--fondo:#0E1620;--tarjeta:#162231;--texto:#E5ECF5;--suave:#93A5BC;--linea:#2B3C52;--zebra:#1A2A3C;--accsuave:#1E3552;--marino:#0B1626;--marino2:#12263F}
+body.oscuro .tipos,body.oscuro .pie,body.oscuro input,body.oscuro select,body.oscuro textarea,body.oscuro .lista,body.oscuro .tipo,body.oscuro .kbd,body.oscuro .res{background:var(--tarjeta);color:var(--texto)}
+body.oscuro .res{background:linear-gradient(180deg,#162231,#1A2A3C)}body.oscuro .chip{background:#223349;color:#B8C7DA}body.oscuro .info input,body.oscuro .info select{background:#1B2B3F;border-color:#2B3C52;color:#E5ECF5}
+body.oscuro .tipo.on{color:#fff}body.oscuro .aviso.a{background:#3a2c10;color:#f3d08a;border-color:#5b4416}body.oscuro .aviso.r{background:#3d1717;color:#f5b5b5;border-color:#6b2a2a}
+@media print{body>*:not(#ovPrev){display:none!important}#ovPrev{display:block!important;position:static;background:#fff;padding:0}.hoja{box-shadow:none;max-height:none;width:100%}.noprint{display:none!important}}
+/* ---- extras de cobros y pagos ---- */
+.herr select{width:auto;padding:5px 8px;border-radius:8px}
+.edad{background:var(--tarjeta)}body.oscuro .edad,body.oscuro .herr button,body.oscuro .modal,body.oscuro .edad{background:var(--tarjeta);color:var(--texto)}
+.donut{display:flex;gap:14px;align-items:center}.donut svg{flex:0 0 112px}.leyenda{display:flex;flex-direction:column;gap:3px;font-size:11.5px;flex:1}.leyenda div{display:flex;justify-content:space-between;gap:8px}.leyenda i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px}
+.deud{display:flex;flex-direction:column;gap:5px;margin-top:8px}.deud a{display:block;cursor:pointer;border-radius:7px;padding:3px 5px}.deud a:hover{background:var(--accsuave)}.deud .fl{display:flex;justify-content:space-between;gap:8px}.deud .bar{height:6px;border-radius:4px;background:var(--linea);margin-top:3px;overflow:hidden}.deud .bar i{display:block;height:100%;background:var(--acc)}
+tr.on td .mini{display:block;height:4px;border-radius:3px;background:var(--linea);margin-top:3px;overflow:hidden}tr.on td .mini i{display:block;height:100%;background:var(--acc)}
 </style></head><body>
 <div class='cinta'>
  <div class='marca'><small>BROSLMV · TESORERÍA</small><b id='ttl'>Cobro a cliente</b><span id='sub'></span></div>
@@ -290,6 +525,11 @@ td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;vertical-ali
   <div class='sep'></div>
   <button class='ab' onclick='limpiar()'><i>🧹</i><span>Limpiar</span><em>&nbsp;</em></button>
   <button class='ab' onclick='cancelar()'><i>✕</i><span>Cancelar</span><em>Esc</em></button>
+  <div class='sep'></div>
+  <button class='ab s' onclick='abrirPaleta()' title='Paleta de comandos (Ctrl+K)'><i>🔎</i><span>Paleta</span><em>Ctrl+K</em></button>
+  <button class='ab s' onclick='vistaPrevia()' title='Recibo o comprobante imprimible (Ctrl+P)'><i>🖨️</i><span>Vista previa</span><em>Ctrl+P</em></button>
+  <button class='ab s' onclick='copiarDocs()' title='Copia los documentos con saldo para pegarlos en Excel'><i>📋</i><span>Copiar</span><em>a Excel</em></button>
+  <button class='ab s' onclick='alternarTema()' title='Tema claro u oscuro'><i>🌓</i><span>Tema</span><em>&nbsp;</em></button>
  </div>
  <div class='info'>
   <div><label>Fecha</label><input type='date' id='fecha'></div>
@@ -310,10 +550,10 @@ td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;vertical-ali
     <div><label>Referencia o número de rastreo (opcional)</label><input id='ref' maxlength='60' placeholder='SPEI, cheque, folio de depósito…'></div>
     <div><label id='lblMonto'>Monto recibido (opcional)</label><input type='number' step='any' min='0' id='monto' placeholder='Para repartirlo solo'></div>
    </div>
-   <div style='color:var(--suave);font-size:12px;margin-top:7px'>Si capturas el monto, «Distribuir» lo reparte entre los documentos <b>más antiguos primero</b>; también puedes marcar y ajustar cada uno a mano.</div>
+   <div style='color:var(--suave);font-size:12px;margin-top:7px'>Si capturas el monto, «Distribuir» lo reparte entre los documentos con la estrategia que elijas (por omisión, <b>más antiguos primero</b>); también puedes marcar y ajustar cada uno a mano.</div>
   </div>
   <div class='card'><h2><b>3</b>Documentos con saldo<span class='der2' id='docsEstado'></span></h2>
-   <div class='herr'><button onclick='marcarTodos()'>Marcar todos</button><button onclick='marcarVencidos()'>Marcar vencidos</button><button onclick='quitarMarcas()'>Quitar marcas</button><span class='esp'></span><button class='p' onclick='distribuir()'>Distribuir el monto (más antiguos primero)</button></div>
+   <div class='herr'><button onclick='marcarTodos()'>Marcar todos</button><button onclick='marcarVencidos()'>Marcar vencidos</button><button onclick='quitarMarcas()'>Quitar marcas</button><span class='esp'></span><select id='estrat' title='Cómo se reparte el monto entre los documentos'><option value='antiguos'>Más antiguos primero</option><option value='vencidos'>Solo vencidos</option><option value='mayor'>Mayor saldo primero</option><option value='menor'>Menor saldo primero (liquida más documentos)</option><option value='prop'>Proporcional al saldo</option></select><button class='p' onclick='distribuir()'>Distribuir el monto</button></div>
    <div class='tw'><table><thead><tr><th></th><th class='l'>Documento</th><th>Fecha</th><th>Vence</th><th>Estado</th><th>Total</th><th>Saldo</th><th>Aplicar</th></tr></thead><tbody id='tb'></tbody></table></div>
   </div>
  </div>
@@ -322,16 +562,25 @@ td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;vertical-ali
    <div class='tot'><span>Documentos marcados</span><span id='tN'>0</span><span>Saldo de la persona</span><span id='tSal'>0.00</span><span>Quedaría</span><span id='tQ'>0.00</span><span id='lblMon2'>Monto recibido</span><span id='tMon'>—</span><span class='g'>Total a aplicar</span><span class='g' id='tTot'>0.00</span></div>
    <div id='avisosRes'></div>
   </div>
+  <div class='card' id='cardRev'><h2>Revisión previa <span class='der2' id='revSub'></span></h2><div class='rev' id='revis'></div></div>
+  <div class='card' id='cardComp' style='display:none'><h2>Comportamiento de pago <span class='der2 txsm' id='compSub'></span></h2><div id='comp'></div></div>
+  <div class='card' id='cardPron'><h2><span id='pronTit'>Vencimientos</span><span class='der2 txsm'>próximas 8 semanas</span></h2><div id='pron'></div></div>
+  <div class='card' id='cardCart'><h2><span id='cartTit'>Cartera</span><span class='der2 txsm' id='cartSub'></span></h2><div id='cart'></div></div>
   <div class='card' id='cardMov' style='display:none'><h2 id='hMov'>Últimos movimientos</h2><div class='hist' id='hist'></div></div>
   <div class='card' style='color:var(--suave);font-size:12px'><b style='color:var(--texto)'>Cómo funciona</b><br>Se registra <b>una operación (folio) por documento</b>, con su aplicación, su espejo, la transferencia bancaria y el reparto de impuestos, en una transacción por documento. <b>Plantilla avanzada, no nativa:</b> no genera la póliza contable (la hace el Motor de Asientos al contabilizar); pruébala primero en una base de pruebas.<br><br><span class='kbd'>F2</span> persona · <span class='kbd'>F5</span> registrar · <span class='kbd'>F6</span> registrar y nuevo · <span class='kbd'>Esc</span> cancelar</div>
  </div>
 </div>
-<div class='pie'><span>Elaboró: <b id='pUsr'>—</b></span><span id='pEmp'></span><span id='pMod'></span></div>
+<div class='pie'><span>Elaboró: <b id='pUsr'>—</b></span><span id='pEmp'></span><span id='pMod'></span><span id='bdr' style='margin-left:auto'></span></div>
+<div class='ov' id='ovPal'><div class='palc'><input id='palq' placeholder='Acción, persona o folio de un documento…  (Esc cierra)' autocomplete='off'><div class='pall' id='pall'></div><div class='pie2'><span>↑↓ elegir</span><span>Enter ejecuta</span><span>Esc cierra</span></div></div></div>
+<div class='ov' id='ovPrev' style='padding-top:4vh'><div style='display:flex;flex-direction:column;gap:8px;align-items:center'><div class='noprint' style='display:flex;gap:8px'><button class='btn p' onclick='window.print()'>Imprimir</button><button class='btn' onclick='cerrarOv("ovPrev")'>Cerrar</button></div><div class='hoja' id='hoja'></div></div></div>
+<div class='ban' id='banBorr'></div>
 <div class='toast' id='toast'></div>
 <div class='vel' id='vel'><div class='modal'><h3 id='mTit'>Registrado</h3><div id='mSub' style='color:var(--suave)'></div><pre id='mPre'></pre><div class='bt'><button onclick='cerrarVentana()'>Cerrar ventana</button><button class='p' onclick='otroMas()'>Registrar otro</button></div></div></div>
 <script>
 var DATOS=__DATOS__;
-function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}
+// Dos transportes: con C# la página habla por el puente de WebView2 (postMessage); con Python habla por HTTP con un servidor que solo escucha en esta computadora (DATOS.http) y la respuesta es un fragmento de JavaScript.
+function enviar(o){if(DATOS.http){fetch(DATOS.http.url+'?t='+DATOS.http.token,{method:'POST',body:JSON.stringify(o)}).then(function(r){return r.text();}).then(function(t){if(t)(0,eval)(t);}).catch(function(){});}else window.chrome.webview.postMessage(JSON.stringify(o));}
+if(DATOS.http){enviar({accion:'latido'});setInterval(function(){enviar({accion:'latido'});},5000);}
 function esc(s){return String(s==null?'':s).replace(/[&<>']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c];});}
 function f2(n){return (n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function $(i){return document.getElementById(i);}
@@ -371,7 +620,7 @@ $('ent').addEventListener('input',function(){if(ST.ent){ST.ent=null;ST.sel={};pi
 // ---- tipo ----
 function pintarTipos(){$('tipos').innerHTML=TIPOS.map(function(t){return '<button class=\'tipo '+(t.lado==='C'?'c':'p')+(t.clave===ST.tipo?' on':'')+'\' onclick=\'setTipo(&quot;'+t.clave+'&quot;)\'><i style=font-style:normal>'+(t.lado==='C'?'💰':'💸')+'</i>'+esc(t.nombre)+'</button>';}).join('');}
 function setTipo(c){var antes=tipoAct().lado;ST.tipo=c;var t=tipoAct();if(t.lado!==antes){ST.ent=null;$('ent').value='';}ST.sel={};
-  document.body.className=t.lado==='C'?'cobro':'pago';$('ttl').textContent=t.nombre;$('sub').textContent=t.lado==='C'?'Cuentas por cobrar · entra dinero':'Cuentas por pagar · sale dinero';
+  document.body.classList.remove('cobro','pago');document.body.classList.add(t.lado==='C'?'cobro':'pago');$('ttl').textContent=t.nombre;$('sub').textContent=t.lado==='C'?'Cuentas por cobrar · entra dinero':'Cuentas por pagar · sale dinero';
   $('lblEnt').textContent=t.lado==='C'?'Cliente':'Proveedor';$('lblCta').textContent=t.lado==='C'?'Entra a la cuenta':'Sale de la cuenta';$('lblMonto').textContent=t.lado==='C'?'Monto recibido (opcional)':'Monto a pagar (opcional)';$('lblMon2').textContent=t.lado==='C'?'Monto recibido':'Monto a pagar';
   $('bGTxt').textContent=t.lado==='C'?'Registrar cobro':'Registrar pago';$('pMod').innerHTML='Operación <b>'+t.modOp+'</b> · folio '+esc(t.prefijo)+'-n';
   var f=CAT.folios&&CAT.folios[t.clave];$('folio').innerHTML=(f?esc(t.prefijo)+'-'+f:'—')+'<small>lo asigna el sistema</small>';
@@ -443,6 +692,150 @@ setTipo(ST.tipo);
 if(DATOS.inicial){var I2=DATOS.inicial;var en=ENT().filter(function(x){return x.id===I2.entidad;})[0];if(en){ST.ent=en;$('ent').value=en.nombre;}$('cta').value=I2.cuenta;$('forma').value=I2.forma;$('fecha').value=I2.fecha;$('ref').value=I2.referencia||'';
   ST.sel={};I2.aplicaciones.forEach(function(a){ST.sel[a.doc]=a.monto;});ES=stats();pintarEnt();pintarDocs();}
 setTimeout(function(){$('ent').focus();},60);
+// =====================================================================================================================================
+// EXTRAS de cobros y pagos: lo que una ventana web puede mostrar que una ventana de formularios no:
+//   cartera completa con dona de antigüedad y principales deudores (un clic abre a la persona), pronóstico de vencimientos por semana,
+//   comportamiento de pago de la persona (consultado en vivo en Comercial), estrategias para repartir el monto, paleta de comandos (Ctrl+K),
+//   revisión previa con avisos fiscales (complemento de pago, efectivo), recibo imprimible, copiar a Excel, deshacer, borrador y tema oscuro.
+// Va al final y «envuelve» las funciones de arriba: si se quita este bloque, la ventana sigue funcionando igual.
+// =====================================================================================================================================
+var EX={hist:[],fut:[],snapT:0,intel:null,bT:0,borr:DATOS.borrador||null,pref:DATOS.pref||{}};
+var TAB=String.fromCharCode(9),NL=String.fromCharCode(10),CR=String.fromCharCode(13);
+function cerrarOv(id){$(id).classList.remove('on');}
+function f0(n){return (n||0).toLocaleString('es-MX',{maximumFractionDigits:1});}
+// ---------- deshacer / rehacer sobre lo marcado ----------
+function snap(){var s=JSON.stringify(ST.sel);if(EX.hist.length&&EX.hist[EX.hist.length-1]===s)return;EX.hist.push(s);if(EX.hist.length>80)EX.hist.shift();EX.fut=[];}
+function deshacer(){if(EX.hist.length<2){aviso('No hay nada que deshacer.');return;}EX.fut.push(EX.hist.pop());ST.sel=JSON.parse(EX.hist[EX.hist.length-1]);pintarDocs();pedirBorrador();aviso('Deshecho · Ctrl+Y lo rehace');}
+function rehacer(){if(!EX.fut.length){aviso('No hay nada que rehacer.');return;}var s=EX.fut.pop();EX.hist.push(s);ST.sel=JSON.parse(s);pintarDocs();pedirBorrador();aviso('Rehecho');}
+['marca','marcarTodos','marcarVencidos','quitarMarcas'].forEach(function(n){var o=window[n];window[n]=function(){var r=o.apply(null,arguments);snap();pedirBorrador();return r;};});
+var _monto=monto;monto=function(id,v){_monto(id,v);clearTimeout(EX.snapT);EX.snapT=setTimeout(snap,700);pedirBorrador();};
+// ---------- estrategias para repartir el monto ----------
+distribuir=function(){var m=+$('monto').value;if(!ST.ent){aviso('Elige primero la persona.','mal');return;}if(!(m>0)){$('monto').classList.add('mal');$('monto').focus();aviso('Captura el monto que se va a repartir.','mal');return;}$('monto').classList.remove('mal');
+  var e=$('estrat').value,hoy=$('fecha').value,ds=docsDeEnt().slice(),resto=Math.round(m*100)/100,fv=function(d){return d.vence||d.fecha;};
+  if(e==='vencidos')ds=ds.filter(function(d){return d.vence&&d.vence<hoy;});
+  if(e==='mayor')ds.sort(function(a,b){return b.saldo-a.saldo||a.id-b.id;});
+  else if(e==='menor')ds.sort(function(a,b){return a.saldo-b.saldo||a.id-b.id;});
+  else ds.sort(function(a,b){return fv(a)<fv(b)?-1:fv(a)>fv(b)?1:a.id-b.id;});
+  ST.sel={};
+  if(e==='prop'){var tot=ds.reduce(function(a,d){return a+d.saldo;},0),usado=0;ds.forEach(function(d,i){var ap=i===ds.length-1?Math.round((Math.min(resto,tot)-usado)*100)/100:Math.round(Math.min(d.saldo,resto*d.saldo/tot)*100)/100;if(ap>0){ST.sel[d.id]=Math.min(ap,d.saldo);usado+=ST.sel[d.id];}});}
+  else ds.forEach(function(d){if(resto<=0)return;var ap=Math.min(d.saldo,resto);ST.sel[d.id]=Math.round(ap*100)/100;resto=Math.round((resto-ap)*100)/100;});
+  pintarDocs();snap();pedirBorrador();if(e==='vencidos'&&!Object.keys(ST.sel).length)aviso('Esta persona no tiene documentos vencidos.');};
+// ---------- envolver las funciones de la página ----------
+var _pintarDocs=pintarDocs;pintarDocs=function(){_pintarDocs();decorar();};
+function decorar(){docsDeEnt().forEach(function(d){var inp=$('ap'+d.id);if(inp&&ST.sel[d.id]!==undefined&&inp.parentNode){var pct=d.saldo>0?Math.min(100,ST.sel[d.id]/d.saldo*100):0;var m=document.createElement('span');m.className='mini';m.innerHTML='<i style="width:'+pct+'%"></i>';m.title=Math.round(pct)+' % del saldo';inp.parentNode.appendChild(m);}});}
+var _totales=totales;totales=function(){_totales();revisar();};
+var _pintarEnt=pintarEnt;pintarEnt=function(){_pintarEnt();pintarPron();if(!ST.ent){$('cardComp').style.display='none';EX.intel=null;}};
+var _cargarMov=cargarMov;cargarMov=function(){_cargarMov();cargarComp();EX.hist=[];snap();pedirBorrador();};      // elegirEnt la llama (la lista de personas conserva la función original, así que se engancha aquí)
+var _limpiarP=limpiarPersona;limpiarPersona=function(){_limpiarP();EX.hist=[];EX.fut=[];snap();};
+var _setTipo=setTipo;setTipo=function(c){_setTipo(c);pintarCartera();pintarPron();};
+var _aplicado=aplicado;aplicado=function(i){_aplicado(i);if(VIVO)enviar({accion:'borradorBorrar'});$('bdr').textContent='';};
+var _refr=refrescarDocs;refrescarDocs=function(){var r=_refr();if(r&&r.then)r.then(function(){pintarCartera();pintarPron();});return r;};
+// ---------- gráficas (SVG a mano: sin librerías) ----------
+var COL=['#16803B','#65A30D','#D97706','#EA580C','#C82828'],NOMB=['Vigente','1-30 días','31-60 días','61-90 días','Más de 90'];
+function svgDona(b,total){var R=42,C=2*Math.PI*R,off=0,s='<svg viewBox="0 0 112 112" width="112" height="112" role="img" aria-label="Antigüedad de saldos"><circle cx="56" cy="56" r="'+R+'" fill="none" stroke="var(--linea)" stroke-width="16"/>';
+  b.forEach(function(v,i){if(v<=0)return;var l=v/total*C;s+='<circle cx="56" cy="56" r="'+R+'" fill="none" stroke="'+COL[i]+'" stroke-width="16" stroke-dasharray="'+l+' '+(C-l)+'" stroke-dashoffset="'+(-off)+'" transform="rotate(-90 56 56)"><title>'+NOMB[i]+': '+f2(v)+' ('+Math.round(v/total*100)+' %)</title></circle>';off+=l;});
+  return s+'<text x="56" y="53" text-anchor="middle" font-size="9" fill="var(--suave)">saldo</text><text x="56" y="67" text-anchor="middle" font-size="11" font-weight="700" fill="var(--texto)">'+(total>=1e6?f0(total/1e6)+' M':total>=1e3?f0(total/1e3)+' mil':f2(total))+'</text></svg>';}
+function bucket(d,hoy){var dv=d.vence?dias(d.vence,hoy):-1;return dv<=0?0:dv<=30?1:dv<=60?2:dv<=90?3:4;}
+function pintarCartera(){var ds=docsLado(),hoy=$('fecha').value,tot=0,venc=0,b=[0,0,0,0,0],por={},t=tipoAct();
+  ds.forEach(function(d){tot+=d.saldo;var k=bucket(d,hoy);b[k]+=d.saldo;if(k>0)venc+=d.saldo;por[d.ent]=(por[d.ent]||0)+d.saldo;});
+  $('cartTit').textContent='Cartera · '+(t.lado==='C'?'por cobrar':'por pagar');$('cartSub').textContent=ds.length+' documento(s)';
+  if(!tot){$('cart').innerHTML='<div class=txsm>No hay saldo pendiente.</div>';return;}
+  var h='<div class=donut>'+svgDona(b,tot)+'<div class=leyenda>'+b.map(function(v,i){return '<div><span><i style="background:'+COL[i]+'"></i>'+NOMB[i]+'</span><b>'+f2(v)+'</b></div>';}).join('')+'<div style="border-top:1px solid var(--linea);padding-top:3px"><span>Vencido</span><b style="color:var(--rojo)">'+Math.round(venc/tot*100)+' %</b></div></div></div>';
+  var top=Object.keys(por).map(function(k){return {id:+k,v:por[k]};}).sort(function(a,b){return b.v-a.v;}).slice(0,8),mx=top[0].v;
+  h+='<div class=txsm style="margin-top:8px">'+(t.lado==='C'?'Principales deudores':'Principales acreedores')+' (clic para abrir)</div><div class=deud>'+top.map(function(x){var p=ENT().filter(function(e){return e.id===x.id;})[0];return '<a onclick="elegirPorId('+x.id+')"><div class=fl><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:190px">'+esc(p?p.nombre:'#'+x.id)+'</span><b>'+f2(x.v)+'</b></div><div class=bar><i style="width:'+(x.v/mx*100)+'%"></i></div></a>';}).join('')+'</div>';
+  $('cart').innerHTML=h;}
+function elegirPorId(id){var p=ENT().filter(function(e){return e.id===id;})[0];if(p)elegirEnt(p);}
+function pintarPron(){var ds=ST.ent?docsDeEnt():docsLado(),hoy=$('fecha').value,sem=[0,0,0,0,0,0,0,0],ven=0,t0=Date.parse(hoy+'T12:00:00'),t=tipoAct();
+  ds.forEach(function(d){if(!d.vence)return;var dv=dias(hoy,d.vence);if(dv<0)ven+=d.saldo;else if(dv<56)sem[Math.floor(dv/7)]+=d.saldo;});
+  $('pronTit').textContent=(ST.ent?'Vencimientos de '+ST.ent.nombre.split(' ').slice(0,2).join(' '):'Vencimientos · '+(t.lado==='C'?'por cobrar':'por pagar'));
+  var vals=[ven].concat(sem),mx=Math.max.apply(null,vals.concat([1])),W=310,H=112,base=18,bw=(W-8)/vals.length,s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Vencimientos por semana"><line x1="4" x2="'+(W-4)+'" y1="'+(H-base)+'" y2="'+(H-base)+'" stroke="var(--linea)"/>';
+  vals.forEach(function(v,i){var h=v/mx*(H-base-14),x=4+i*bw,y=H-base-h,lbl=i===0?'vencido':new Date(t0+(i-1)*7*864e5).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit'});
+    s+='<g><title>'+(i===0?'Ya vencido: ':'Semana del '+lbl+': ')+f2(v)+'</title><rect x="'+(x+2)+'" y="'+(v>0?y:H-base-1)+'" width="'+(bw-4)+'" height="'+(v>0?Math.max(h,1.5):1)+'" rx="3" fill="'+(i===0?'var(--rojo)':'var(--acc)')+'" opacity="'+(i===0?.85:.6)+'"/><text x="'+(x+bw/2)+'" y="'+(H-5)+'" font-size="7.5" text-anchor="middle" fill="var(--suave)">'+lbl+'</text></g>';});
+  $('pron').innerHTML=s+'</svg>'+(ven>0?'<div class=txsm style="color:var(--rojo)">Ya vencido: <b>'+f2(ven)+'</b></div>':'');}
+// ---------- comportamiento de pago (en vivo desde Comercial) ----------
+function mesCorto(m){return ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][+m.slice(5,7)-1];}
+function svgBarras(ms){var W=310,H=112,base=16,mx=Math.max.apply(null,ms.map(function(m){return m.total;}).concat([1])),bw=(W-8)/ms.length,s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Movimientos por mes"><line x1="4" x2="'+(W-4)+'" y1="'+(H-base)+'" y2="'+(H-base)+'" stroke="var(--linea)"/>';
+  ms.forEach(function(m,i){var h=m.total/mx*(H-base-12),x=4+i*bw,y=H-base-h;s+='<g><title>'+mesCorto(m.mes)+' '+m.mes.slice(0,4)+': '+f2(m.total)+' · '+m.n+' mov.</title><rect x="'+(x+1.5)+'" y="'+(m.total>0?y:H-base-1)+'" width="'+(bw-3)+'" height="'+(m.total>0?Math.max(h,1.5):1)+'" rx="3" fill="var(--acc)" opacity="'+(i===ms.length-1?1:.55)+'"/><text x="'+(x+bw/2)+'" y="'+(H-4)+'" font-size="8" text-anchor="middle" fill="var(--suave)">'+mesCorto(m.mes)+'</text></g>';});return s+'</svg>';}
+function cargarComp(){var x=ST.ent;if(!x||!VIVO)return;var t=tipoAct();$('cardComp').style.display='';$('comp').innerHTML='<div class=txsm>Calculando con los datos de Comercial…</div>';
+  llamar('inteligencia',{entidad:x.id,tipo:ST.tipo}).then(function(d){if(!ST.ent||ST.ent.id!==x.id)return;EX.intel=d;var p=d.puntual;
+    $('compSub').innerHTML=p==null?'':'<span class="chip '+(p>=80?'v':p>=50?'a':'r')+'">'+p+' % a tiempo</span>';
+    $('comp').innerHTML=svgBarras(d.meses)+'<div class=kpi><div><b>'+(t.lado==='C'?'Cobrado 12 meses':'Pagado 12 meses')+'</b><span>'+f2(d.total12)+'</span></div><div><b>Movimientos</b><span>'+d.mov12+'</span></div><div><b>Días promedio de pago</b><span>'+(d.dias==null?'—':f0(d.dias))+'</span></div><div><b>Atraso promedio</b><span style="color:'+(d.atraso>0?'var(--rojo)':'var(--verde)')+'">'+(d.atraso==null?'—':(d.atraso>0?'+':'')+f0(d.atraso)+' d')+'</span></div></div>';}).catch(function(){$('comp').innerHTML='<div class=txsm>No se pudo consultar el historial.</div>';});}
+// ---------- revisión previa ----------
+function revisar(){var t=tipoAct(),it=[],x=ST.ent,sel=ST.sel,n=0,tot=0,ppd=0;function ok(s){it.push(['v','✓',s]);}function av(s){it.push(['a','!',s]);}function ma(s){it.push(['r','✕',s]);}
+  for(var k in sel){if(sel[k]>0){n++;tot+=sel[k];var d=docPor(+k);if(d&&d.metodo==='PPD')ppd++;}}tot=Math.round(tot*100)/100;
+  x?ok((t.lado==='C'?'Cliente':'Proveedor')+': '+x.nombre):ma('Falta elegir '+(t.lado==='C'?'el cliente':'el proveedor'));
+  +$('cta').value?ok('Cuenta: '+($('cta').selectedOptions[0]||{}).textContent):ma('Falta elegir la cuenta');
+  n?ok(n+' documento(s) · '+f2(tot)):ma('Marca al menos un documento');
+  var m=+$('monto').value;if(m>0&&tot>0&&Math.abs(m-tot)>0.005)av(m>tot?'Sobran '+f2(m-tot)+' del monto (no se aplican)':'Faltan '+f2(tot-m)+' para cubrir lo marcado');
+  if($('fecha').value>iso(new Date()))av('La fecha es posterior a hoy');
+  if(ppd)av(ppd+' documento(s) PPD: '+(t.lado==='C'?'recuerda emitir el complemento de pago (REP)':'pide a tu proveedor el complemento de pago (REP)'));
+  var forma=+$('forma').value;if(n&&forma!==1&&!$('ref').value.trim())av('Sin referencia o número de rastreo: ayuda a conciliar el banco');
+  if(t.lado==='P'&&forma===1&&tot>2000)av('Pago en efectivo mayor a $2,000: no es deducible (LISR art. 27)');
+  var ma2=it.filter(function(a){return a[0]==='r';}).length,w=it.filter(function(a){return a[0]==='a';}).length;
+  $('revSub').innerHTML=ma2?'<span class="chip r">'+ma2+' por corregir</span>':w?'<span class="chip a">'+w+' aviso(s)</span>':'<span class="chip v">todo en orden</span>';
+  $('revis').innerHTML=it.map(function(a){return '<div class='+a[0]+'><i>'+a[1]+'</i><span>'+esc(a[2])+'</span></div>';}).join('');}
+['cta','forma','ref','fecha'].forEach(function(i){$(i).addEventListener('input',revisar);$(i).addEventListener('change',revisar);});
+$('fecha').addEventListener('change',function(){pintarCartera();pintarPron();});
+// ---------- paleta de comandos (Ctrl+K) ----------
+var PAL={sel:0,vis:[]};
+function comandos(){var c=[{g:'Acciones',a:'Registrar y abrir resumen',b:'F5',f:function(){aplicar(false);}},{g:'Acciones',a:'Registrar y capturar otro',b:'F6',f:function(){aplicar(true);}},{g:'Acciones',a:'Marcar todos los documentos',f:marcarTodos},{g:'Acciones',a:'Marcar solo los vencidos',f:marcarVencidos},{g:'Acciones',a:'Quitar marcas',f:quitarMarcas},
+  {g:'Acciones',a:'Vista previa del recibo',b:'Ctrl+P',f:vistaPrevia},{g:'Acciones',a:'Copiar documentos a Excel',f:copiarDocs},{g:'Acciones',a:'Deshacer',b:'Ctrl+Z',f:deshacer},{g:'Acciones',a:'Rehacer',b:'Ctrl+Y',f:rehacer},{g:'Acciones',a:'Cambiar tema claro/oscuro',f:alternarTema},{g:'Acciones',a:'Cancelar y cerrar',b:'Esc',f:cancelar}];
+  [['antiguos','Repartir el monto: más antiguos primero'],['vencidos','Repartir el monto: solo vencidos'],['mayor','Repartir el monto: mayor saldo primero'],['menor','Repartir el monto: menor saldo primero'],['prop','Repartir el monto: proporcional']].forEach(function(e){c.push({g:'Repartir el monto',a:e[1],f:function(){$('estrat').value=e[0];distribuir();}});});
+  TIPOS.forEach(function(t){c.push({g:'Tipo de movimiento',a:t.nombre,f:function(){setTipo(t.clave);}});});return c;}
+function abrirPaleta(){$('ovPal').classList.add('on');$('palq').value='';PAL.sel=0;pintarPaleta();setTimeout(function(){$('palq').focus();},20);}
+function pintarPaleta(){var q=norm($('palq').value).split(/\s+/).filter(Boolean),out=[];
+  comandos().forEach(function(c){var h=norm(c.a+' '+c.g);if(q.every(function(w){return h.indexOf(w)>=0;}))out.push(c);});
+  if(q.length&&q.join('').length>=2){var n=0;ENT().forEach(function(e){if(n>=6)return;var h=norm(e.nombre+' '+e.rfc);if(q.every(function(w){return h.indexOf(w)>=0;})){n++;var s=ES[e.id];out.push({g:tipoAct().lado==='C'?'Clientes':'Proveedores',a:e.nombre,b:s?'debe '+f2(s.pend):'sin saldo',f:function(){elegirEnt(e);}});}});
+    n=0;docsLado().forEach(function(d){if(n>=6)return;var h=norm(d.tipo+' '+d.folio+' '+(d.titulo||''));if(q.every(function(w){return h.indexOf(w)>=0;})){n++;out.push({g:'Documentos con saldo (abre a la persona y lo marca)',a:d.tipo+' '+d.folio,b:'saldo '+f2(d.saldo)+(d.vence?' · vence '+fmtF(d.vence):''),f:function(){elegirPorId(d.ent);marca(d.id,true);}});}});}
+  PAL.vis=out.slice(0,40);if(PAL.sel>=PAL.vis.length)PAL.sel=0;var g='',h='';PAL.vis.forEach(function(c,i){if(c.g!==g){g=c.g;h+='<div class=gr>'+esc(g)+'</div>';}h+='<div data-i="'+i+'" class="'+(i===PAL.sel?'sel':'')+'"><span>'+esc(c.a)+'</span><small>'+esc(c.b||'')+'</small></div>';});$('pall').innerHTML=h||'<div class=gr>Sin coincidencias</div>';}
+function ejecutarPaleta(i){var c=PAL.vis[i];if(!c)return;cerrarOv('ovPal');setTimeout(function(){c.f();},10);}
+$('palq').addEventListener('input',function(){PAL.sel=0;pintarPaleta();});
+$('palq').addEventListener('keydown',function(e){if(e.key==='ArrowDown'){PAL.sel=Math.min(PAL.vis.length-1,PAL.sel+1);pintarPaleta();var s=document.querySelector('#pall .sel');if(s)s.scrollIntoView({block:'nearest'});e.preventDefault();}else if(e.key==='ArrowUp'){PAL.sel=Math.max(0,PAL.sel-1);pintarPaleta();var s2=document.querySelector('#pall .sel');if(s2)s2.scrollIntoView({block:'nearest'});e.preventDefault();}else if(e.key==='Enter'){ejecutarPaleta(PAL.sel);e.preventDefault();}});
+$('pall').addEventListener('mousedown',function(e){var d=e.target.closest('div[data-i]');if(d){ejecutarPaleta(+d.getAttribute('data-i'));e.preventDefault();}});
+// ---------- copiar a Excel ----------
+function copiarDocs(){var ds=ST.ent?docsDeEnt():docsLado();if(!ds.length){aviso('No hay documentos con saldo que copiar.');return;}
+  var tx=['Documento','Persona','Fecha','Vence','Total','Saldo','Aplicar'].join(TAB)+NL+ds.map(function(d){var p=ENT().filter(function(e){return e.id===d.ent;})[0];return [d.tipo+' '+d.folio,p?p.nombre:d.ent,d.fecha,d.vence||'',d.total,d.saldo,ST.sel[d.id]!==undefined?ST.sel[d.id]:''].join(TAB);}).join(NL);
+  function listo(){aviso(ds.length+' documento(s) copiados: pégalos en Excel con Ctrl+V.','bien');}
+  function plan(){var a=document.createElement('textarea');a.value=tx;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();try{document.execCommand('copy');listo();}catch(e){aviso('No se pudo copiar al portapapeles.','mal');}document.body.removeChild(a);}
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(tx).then(listo).catch(plan);else plan();}
+// ---------- recibo imprimible ----------
+var U1=['','UNO','DOS','TRES','CUATRO','CINCO','SEIS','SIETE','OCHO','NUEVE','DIEZ','ONCE','DOCE','TRECE','CATORCE','QUINCE','DIECISÉIS','DIECISIETE','DIECIOCHO','DIECINUEVE','VEINTE'],D1=['','','VEINTE','TREINTA','CUARENTA','CINCUENTA','SESENTA','SETENTA','OCHENTA','NOVENTA'],V1=['VEINTIUNO','VEINTIDÓS','VEINTITRÉS','VEINTICUATRO','VEINTICINCO','VEINTISÉIS','VEINTISIETE','VEINTIOCHO','VEINTINUEVE'],C1=['','CIENTO','DOSCIENTOS','TRESCIENTOS','CUATROCIENTOS','QUINIENTOS','SEISCIENTOS','SETECIENTOS','OCHOCIENTOS','NOVECIENTOS'];
+function cent(n){if(n===0)return '';if(n===100)return 'CIEN';var r='',c=Math.floor(n/100),d=n%100;if(c>0)r+=C1[c]+' ';if(d>0){if(d<=20)r+=U1[d];else{var a=Math.floor(d/10),u=d%10;if(a===2&&u>0)r+=V1[u-1];else{r+=D1[a];if(u>0)r+=' Y '+U1[u];}}}return r.trim();}
+function enLetras(n){if(n===0)return 'CERO';var r='',mi=Math.floor(n/1000000);n%=1000000;var m=Math.floor(n/1000);n%=1000;if(mi>0)r+=mi===1?'UN MILLÓN ':cent(mi)+' MILLONES ';if(m>0)r+=m===1?'MIL ':cent(m)+' MIL ';if(n>0)r+=cent(n);r=r.trim();if(/UNO$/.test(r))r=r.slice(0,-3)+'UN';return r;}
+function aLetras(v){v=Math.max(0,v);var e=Math.floor(v),c=Math.round((v-e)*100);if(c===100){e++;c=0;}return enLetras(e)+' PESOS '+('0'+c).slice(-2)+'/100 M.N.';}
+function vistaPrevia(){var t=tipoAct(),x=ST.ent,f=CAT.folios&&CAT.folios[t.clave],filas=[],tot=0;
+  docsDeEnt().forEach(function(d){if(ST.sel[d.id]>0){tot+=ST.sel[d.id];filas.push('<tr><td class=l>'+esc(d.tipo+' '+d.folio)+'</td><td>'+fmtF(d.fecha)+'</td><td>'+f2(d.saldo)+'</td><td>'+f2(ST.sel[d.id])+'</td><td>'+f2(Math.max(0,d.saldo-ST.sel[d.id]))+'</td></tr>');}});tot=Math.round(tot*100)/100;
+  var h='<div class=tt><div><h1>'+(t.lado==='C'?'Recibo de cobro':'Comprobante de pago')+'</h1><div style="color:#64748B">'+esc(DATOS.empresa||'')+'</div></div><div style="text-align:right"><div><b>Folio</b> ≈ '+esc(t.prefijo)+'-'+(f||'—')+'</div><div><b>Fecha</b> '+fmtF($('fecha').value)+'</div></div></div>';
+  h+='<div class=bloque><div><b>'+(t.lado==='C'?'Cliente':'Proveedor')+'</b><br>'+esc(x?x.nombre:'(sin elegir)')+'</div><div><b>RFC</b><br>'+esc(x&&x.rfc||'—')+'</div><div><b>'+(t.lado==='C'?'Entra a la cuenta':'Sale de la cuenta')+'</b><br>'+esc(($('cta').selectedOptions[0]||{}).textContent||'—')+'</div><div><b>Forma de pago</b><br>'+esc(($('forma').selectedOptions[0]||{}).textContent||'—')+'</div>'+($('ref').value?'<div style="grid-column:span 2"><b>Referencia</b><br>'+esc($('ref').value)+'</div>':'')+'</div>';
+  h+='<table><thead><tr><th class=l>Documento</th><th>Fecha</th><th>Saldo anterior</th><th>Se aplica</th><th>Saldo restante</th></tr></thead><tbody>'+(filas.length?filas.join(''):'<tr><td colspan=5 style="text-align:center;color:#64748B;padding:18px">Sin documentos marcados</td></tr>')+'</tbody></table>';
+  h+='<div class=tot2><div class=g><span>Total</span><span>'+f2(tot)+'</span></div></div><div class=letra>SON: '+aLetras(tot)+'</div>';
+  h+='<div style="display:flex;gap:60px;margin-top:46px;font-size:12px"><div style="flex:1;border-top:1px solid #16263A;text-align:center;padding-top:4px">'+(t.lado==='C'?'Recibí':'Entregué')+'</div><div style="flex:1;border-top:1px solid #16263A;text-align:center;padding-top:4px">'+(t.lado==='C'?'Entregó':'Recibió')+'</div></div><div style="margin-top:14px;color:#94A3B8;font-size:10.5px">Vista previa generada por BrosLMV. Los folios definitivos los asigna Comercial al registrar (una operación por documento).</div>';
+  $('hoja').innerHTML=h;$('ovPrev').classList.add('on');}
+// ---------- borrador automático ----------
+function extrasSpec(){var aps={};for(var k in ST.sel){aps[k]=ST.sel[k];}return {tipo:ST.tipo,entidad:ST.ent?ST.ent.id:0,cuenta:+$('cta').value,forma:+$('forma').value,fecha:$('fecha').value,referencia:$('ref').value,monto:+$('monto').value||0,sel:aps};}
+function pedirBorrador(){if(!VIVO||ST.guardando)return;clearTimeout(EX.bT);EX.bT=setTimeout(function(){if(!ST.ent)return;enviar({accion:'borrador',spec:JSON.stringify(extrasSpec())});var d=new Date();$('bdr').textContent='Borrador guardado '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);},1500);}
+document.addEventListener('change',pedirBorrador);
+function restaurar(sp){setTipo(sp.tipo);var en=ENT().filter(function(x){return x.id===sp.entidad;})[0];$('cta').value=sp.cuenta;$('forma').value=sp.forma;$('fecha').value=sp.fecha||$('fecha').value;$('ref').value=sp.referencia||'';$('monto').value=sp.monto||'';
+  if(en){ES=stats();ST.ent=en;$('ent').value=en.nombre;ST.sel={};for(var k in sp.sel){if(docPor(+k))ST.sel[k]=sp.sel[k];}pintarEnt();pintarDocs();cargarMov();cargarComp();}snap();}
+(function(){var b=$('banBorr'),izq=document.querySelector('.izq');izq.insertBefore(b,izq.firstChild);
+  if(EX.borr&&EX.borr.spec&&!DATOS.inicial){var sp;try{sp=JSON.parse(EX.borr.spec);}catch(e){sp=null;}
+    if(sp&&sp.entidad){var cuando=EX.borr.cuando?new Date(EX.borr.cuando):null,min=cuando?Math.max(1,Math.round((Date.now()-cuando.getTime())/60000)):0,n=Object.keys(sp.sel||{}).length;
+      b.innerHTML='<span>Hay un <b>borrador sin registrar</b>'+(min?' de hace '+(min<90?min+' min':Math.round(min/60)+' h'):'')+' ('+n+' documento(s) marcados). ¿Lo recuperas?</span><button class=btn onclick="descartarBorrador()">Descartar</button><button class="btn p" onclick="recuperarBorrador()">Recuperar</button>';b.classList.add('on');EX.borrSpec=sp;}}})();
+function recuperarBorrador(){$('banBorr').classList.remove('on');restaurar(EX.borrSpec);aviso('Borrador recuperado.','bien');}
+function descartarBorrador(){$('banBorr').classList.remove('on');if(VIVO)enviar({accion:'borradorBorrar'});}
+// ---------- tema ----------
+function ponerTema(o){document.body.classList.toggle('oscuro',!!o);}
+function alternarTema(){var o=!document.body.classList.contains('oscuro');ponerTema(o);if(VIVO)enviar({accion:'pref',tema:o?'oscuro':'claro'});}
+if(EX.pref.tema==='oscuro')ponerTema(true);
+// ---------- atajos ----------
+document.addEventListener('keydown',function(e){var k=e.key.toLowerCase(),en=/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  if(e.ctrlKey&&k==='k'){e.preventDefault();abrirPaleta();}
+  else if(e.ctrlKey&&k==='p'){e.preventDefault();vistaPrevia();}
+  else if(e.ctrlKey&&k==='z'&&!en){e.preventDefault();deshacer();}
+  else if(e.ctrlKey&&k==='y'&&!en){e.preventDefault();rehacer();}
+  else if(e.key==='Escape'){var o=document.querySelector('.ov.on');if(o){o.classList.remove('on');e.stopPropagation();}}},true);
+// ---------- arranque de los extras ----------
+snap();pintarCartera();pintarPron();revisar();
 </script></body></html>
 '''
 
@@ -450,36 +843,70 @@ setTimeout(function(){$('ent').focus();},60);
 def principal():
     global result
     catalogo = catalogos()
-    inicial = None
-    barra = chr(92)
+    usuario = ""
+    nombre_empresa = ""
+    try:
+        usuario = S(ctx.scalar("SELECT TOP 1 ISNULL(UserName,'') FROM engUser WHERE UserID = " + str(int(ctx.user_id))))
+    except Exception:
+        pass
+    try:
+        nombre_empresa = S(ctx.scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + str(empresa)))
+    except Exception:
+        pass
+
     html_prueba = os.environ.get("BROSLMV_PAGO_HTML")   # pruebas: escribe la página (con sus datos) en un archivo y no abre ventana
     if html_prueba:
-        d0 = {"tipos": TIPOS, "cat": catalogo, "inicial": None}
+        d0 = {"tipos": TIPOS, "cat": catalogo, "inicial": None, "usuario": usuario, "empresa": nombre_empresa}
         with open(html_prueba, "w", encoding="utf-8") as f:
-            f.write(PAGINA.replace("__DATOS__", json.dumps(d0, ensure_ascii=False, default=str).replace("</", "<" + barra + "/")))
+            f.write(PAGINA.replace("__DATOS__", js_json(d0)))
         result = "HTML"
         return
-    while True:
-        datos = {"tipos": TIPOS, "cat": catalogo, "inicial": inicial}
-        json_txt = json.dumps(datos, ensure_ascii=False, default=str).replace("</", "<" + barra + "/")
-        r = ctx.show_html_formulario(PAGINA.replace("__DATOS__", json_txt), "Cobro o pago", 1180, 900, 1800000)
-        if not r.get("submitted") or r.get("accion") != "aplicar":
-            result = "CANCELADO"
-            return
-        spec = json.loads(r["spec"])
+
+    def pagina(http):
+        datos = {"tipos": TIPOS, "cat": catalogo, "inicial": None, "vivo": True, "http": http, "usuario": usuario, "empresa": nombre_empresa,
+                 "borrador": leer_borrador("cobropago"), "pref": leer_borrador("pref_ui", False) or {}}
+        return PAGINA.replace("__DATOS__", js_json(datos))
+
+    def despachar(r, estado):
+        accion = S(r.get("accion"))
+        req = S(r.get("req") or "0")
+        if accion == "latido":
+            return ""
+        if accion == "cancelar":
+            estado["fin"] = True
+            return "window.close()"
+        if accion == "movimientos":
+            return "respuesta(" + req + "," + js_json(movimientos_de(I(r["entidad"]), S(r["tipo"]))) + ")"
+        if accion == "docs":
+            return "respuesta(" + req + "," + js_json(docs_con_saldo(S(r["lado"]))) + ")"
+        if accion == "inteligencia":
+            return "respuesta(" + req + "," + js_json(inteligencia_pago(I(r["entidad"]), S(r["tipo"]))) + ")"
+        if accion == "borrador":
+            guardar_borrador("cobropago", {"cuando": datetime.datetime.now().isoformat(), "spec": S(r.get("spec"))})
+            return ""
+        if accion == "borradorBorrar":
+            borrar_borrador("cobropago")
+            return ""
+        if accion == "pref":
+            guardar_borrador("pref_ui", {"tema": S(r.get("tema"))})
+            return ""
+        if accion != "aplicar":
+            return ""
+        spec = json.loads(S(r["spec"]))
+        otro = bool(r.get("nuevo"))
         try:
             resumen = aplicar(spec)
-            try:
-                ctx.erp.RefreshGrid()
-            except Exception:
-                pass
-            ctx.msg(resumen, "Cobro o pago registrado")
-            result = resumen
-            return
         except Exception as ex:
-            ctx.msg(str(ex), "Cobro o pago")
-            inicial = spec
-            catalogo = catalogos()          # los saldos pudieron cambiar
+            return "falloAplicar(" + js_json(S(ex)) + ")"                    # la ventana sigue con todo lo capturado
+        borrar_borrador("cobropago")
+        try:
+            ctx.erp.RefreshGrid()
+        except Exception:
+            pass
+        return "aplicado(" + js_json({"resumen": resumen, "nuevo": otro}) + ")"
+
+    ventana_en_vivo(pagina, despachar, "Cobros y pagos · BrosLMV", 1280, 900)
+    result = "OK"
 
 
 if not _modo_prueba:

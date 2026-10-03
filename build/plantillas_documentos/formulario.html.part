@@ -51,6 +51,7 @@ td.x button{border:0;background:transparent;color:var(--suave);cursor:pointer;fo
 td .pn{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
 @media (max-width:1180px){.cinta{flex-wrap:wrap}}
 @media (max-width:1100px){.cuerpo{flex-direction:column;overflow:auto}.der{width:auto;flex:none}.izq{overflow:visible}}
+/*__EXTRAS_CSS__*/
 </style></head><body>
 <div class='cinta'>
  <div class='marca'><small>BROSLMV</small><b id='ttl'>Nuevo documento</b><span id='sub'></span></div>
@@ -60,6 +61,7 @@ td .pn{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;over
   <div class='sep'></div>
   <button class='ab' onclick='limpiar()'><i>🧹</i><span>Limpiar</span><em>&nbsp;</em></button>
   <button class='ab' onclick='cancelar()'><i>✕</i><span>Cancelar</span><em>Esc</em></button>
+<!--__EXTRAS_BTN__-->
  </div>
  <div class='info'>
   <div><label>Fecha</label><input type='date' id='fecha'></div>
@@ -105,16 +107,20 @@ td .pn{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;over
    <div id='avisosRes'></div>
    <div style='color:var(--suave);font-size:11.5px;margin-top:7px'>Total estimado: Comercial lo recalcula al guardar (descuentos globales, redondeos).</div>
   </div>
+<!--__EXTRAS_DER__-->
   <div class='card' id='cardCred' style='display:none'><h2>Crédito</h2><div id='cred'></div></div>
   <div class='card' id='cardHist' style='display:none'><h2>Últimos documentos <span class='der2' style='font-size:11px'>clic para abrir</span></h2><div class='hist' id='hist'></div></div>
   <div class='card' id='cardAyuda' style='color:var(--suave);font-size:12px'><b style='color:var(--texto)'>Atajos</b><br><span class='kbd'>F2</span> cliente · <span class='kbd'>F3</span> producto · <span class='kbd'>F5</span> guardar y abrir · <span class='kbd'>F6</span> guardar y nuevo · <span class='kbd'>Esc</span> cancelar<br>Siempre se abre el documento nativo de Comercial al guardar.</div>
  </div>
 </div>
-<div class='pie'><span>Elaboró: <b id='pUsr'>—</b></span><span id='pEmp'></span><span id='pMod'></span><span id='pInv'></span></div>
+<div class='pie'><span>Elaboró: <b id='pUsr'>—</b></span><span id='pEmp'></span><span id='pMod'></span><span id='pInv'></span><span id='bdr' style='margin-left:auto'></span></div>
+<!--__EXTRAS_OVERLAYS__-->
 <div class='toast' id='toast'></div>
 <script>
 var DATOS=__DATOS__;
-function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}
+// Dos transportes: con C# la página habla por el puente de WebView2 (postMessage); con Python habla por HTTP con un servidor que solo escucha en esta computadora (DATOS.http) y la respuesta es un fragmento de JavaScript.
+function enviar(o){if(DATOS.http){fetch(DATOS.http.url+'?t='+DATOS.http.token,{method:'POST',body:JSON.stringify(o)}).then(function(r){return r.text();}).then(function(t){if(t)(0,eval)(t);}).catch(function(){});}else window.chrome.webview.postMessage(JSON.stringify(o));}
+if(DATOS.http){enviar({accion:'latido'});setInterval(function(){enviar({accion:'latido'});},5000);}
 function esc(s){return String(s==null?'':s).replace(/[&<>']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c];});}
 function f2(n){return (n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function f0(n){return (n||0).toLocaleString('es-MX',{maximumFractionDigits:4});}
@@ -145,13 +151,13 @@ function combo(inp,lst,fuente,fila,elegir,limite,abrirAlFocus){
 }
 combo($('ent'),$('lstEnt'),ENT,function(x){return {a:x.nombre,b:x.rfc,c:(x.saldo?'saldo '+f2(x.saldo):''),buscar:x.nombre+' '+x.rfc+' '+x.id};},elegirEnt,60,true);
 $('ent').addEventListener('input',function(){if(ST.ent){ST.ent=null;pintarEnt();}});
-combo($('prod'),$('lstProd'),function(){return CAT.productos;},function(x){var ex=existDe(x.id);return {a:x.nombre,b:x.clave,c:(x.servicio?'servicio':'exist. '+f0(ex))+' · '+f2(precioDe(x.id)),buscar:x.nombre+' '+x.clave+' '+x.barras};},function(x){agregar(x);$('prod').value='';},30);
+combo($('prod'),$('lstProd'),function(){return CAT.productos;},function(x){var ex=existDe(x.id);return {a:x.nombre,b:x.clave,c:(x.servicio?'servicio':'exist. '+f0(ex))+' · '+f2(precioDe(x.id))+(EX.top[x.id]?' · últ. '+f2(EX.top[x.id].precio):''),buscar:x.nombre+' '+x.clave+' '+x.barras};},function(x){agregar(x);$('prod').value='';},30);
 $('prod').__exacto=function(v){v=String(v||'').trim();if(!v)return null;return CAT.productos.filter(function(p){return p.barras&&p.barras===v||norm(p.clave)===norm(v);})[0]||null;};
 // ---- tipos ----
 function pintarTipos(){var h='',g='';TIPOS.forEach(function(t){var gr=t.lado==='C'?'Ventas':'Compras';if(gr!==g){h+='<span class=grp>'+gr+'</span>';g=gr;}
   h+='<button class=\'tipo '+(t.lado==='C'?'v':'c')+(t.clave===ST.tipo?' on':'')+'\' onclick=\'setTipo(&quot;'+t.clave+'&quot;)\'><i>'+({factura_cliente:'🧾',pedido:'📋',remision:'🚚',factura_compra:'📥',orden_compra:'🛒',recepcion:'📦'}[t.clave]||'📄')+'</i>'+esc(t.nombre)+'</button>';});$('tipos').innerHTML=h;}
 function setTipo(c,mantener){var antes=tipoAct().lado;ST.tipo=c;var t=tipoAct();if(t.lado!==antes&&!mantener){ST.ent=null;$('ent').value='';}ST.origenes=[];ST.pend=[];ST.partidas=ST.partidas.filter(function(p){return !p.orig;});
-  document.body.className=t.lado==='C'?'venta':'compra';$('lblEnt').textContent=t.lado==='C'?'Cliente':'Proveedor';$('bxCond').style.display=t.condicion?'':'none';$('bxEntrega').style.display=t.entrega?'':'none';var cf=t.clave==='factura_cliente';$('bxCfdi').style.display=cf?'grid':'none';$('lblCfdi').style.display=cf?'':'none';ST.manual=false;
+  document.body.classList.remove('venta','compra');document.body.classList.add(t.lado==='C'?'venta':'compra');$('lblEnt').textContent=t.lado==='C'?'Cliente':'Proveedor';$('bxCond').style.display=t.condicion?'':'none';$('bxEntrega').style.display=t.entrega?'':'none';var cf=t.clave==='factura_cliente';$('bxCfdi').style.display=cf?'grid':'none';$('lblCfdi').style.display=cf?'':'none';ST.manual=false;
   $('cond').innerHTML=CAT.condiciones.filter(function(x){return t.lado==='C'?x.venta:x.compra;}).map(function(x){return '<option value='+x.id+'>'+esc(x.nombre)+'</option>';}).join('');
   ST.partidas.forEach(function(p){p.precio=precioDe(p.id);});
   $('ttl').textContent='Nuevo documento · '+t.nombre;$('sub').textContent='Módulo '+t.modulo+(t.lado==='C'?' · ventas':' · compras');$('pMod').innerHTML='Módulo <b>'+t.modulo+'</b> · '+esc(t.nombre);
@@ -253,4 +259,5 @@ if(DATOS.inicial){var I2=DATOS.inicial;var en=ENT().filter(function(x){return x.
 if(DATOS.origenes&&DATOS.origenes.length){var o1=DATOS.origenes[0];/* seleccionados en la lista de Comercial: se propone el tipo que parte de ellos */var ti=TIPOS.filter(function(t){return t.origen===o1.modulo;})[0];if(ti&&!DATOS.inicial){setTipo(ti.clave);}}
 if(!DATOS.inicial){var ov=origenesVisibles();if(ov.length){ST.origenes=ov.map(function(o){return o.id;});reconstruirOrigenes();}}
 setTimeout(function(){$('ent').focus();},60);
+/*__EXTRAS_JS__*/
 </script></body></html>

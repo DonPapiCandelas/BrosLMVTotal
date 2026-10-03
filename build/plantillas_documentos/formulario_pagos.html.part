@@ -38,6 +38,7 @@ td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;vertical-ali
 .kbd{border:1px solid var(--linea);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:10.5px;color:var(--suave);background:#fff}
 .vel{position:fixed;inset:0;background:#0f1e32aa;z-index:70;display:none;align-items:center;justify-content:center}.vel.on{display:flex}.modal{background:#fff;border-radius:14px;box-shadow:0 20px 60px #0006;width:min(560px,92vw);padding:20px 22px}.modal h3{margin:0 0 4px;font-size:18px;color:var(--acc)}.modal pre{background:var(--zebra);border:1px solid var(--linea);border-radius:9px;padding:10px 12px;font:12.5px 'Consolas','Segoe UI',monospace;white-space:pre-wrap;margin:10px 0}.modal .bt{display:flex;gap:8px;justify-content:flex-end}.modal button{border:1px solid var(--linea);background:#fff;border-radius:8px;padding:7px 16px;cursor:pointer}.modal button.p{background:var(--acc);border-color:var(--acc);color:#fff}
 @media (max-width:1180px){.cinta{flex-wrap:wrap}}@media (max-width:1100px){.cuerpo{flex-direction:column;overflow:auto}.der{width:auto;flex:none}.izq{overflow:visible}}
+/*__EXTRAS_CSS__*/
 </style></head><body>
 <div class='cinta'>
  <div class='marca'><small>BROSLMV · TESORERÍA</small><b id='ttl'>Cobro a cliente</b><span id='sub'></span></div>
@@ -47,6 +48,7 @@ td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;vertical-ali
   <div class='sep'></div>
   <button class='ab' onclick='limpiar()'><i>🧹</i><span>Limpiar</span><em>&nbsp;</em></button>
   <button class='ab' onclick='cancelar()'><i>✕</i><span>Cancelar</span><em>Esc</em></button>
+<!--__EXTRAS_BTN__-->
  </div>
  <div class='info'>
   <div><label>Fecha</label><input type='date' id='fecha'></div>
@@ -67,10 +69,10 @@ td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;vertical-ali
     <div><label>Referencia o número de rastreo (opcional)</label><input id='ref' maxlength='60' placeholder='SPEI, cheque, folio de depósito…'></div>
     <div><label id='lblMonto'>Monto recibido (opcional)</label><input type='number' step='any' min='0' id='monto' placeholder='Para repartirlo solo'></div>
    </div>
-   <div style='color:var(--suave);font-size:12px;margin-top:7px'>Si capturas el monto, «Distribuir» lo reparte entre los documentos <b>más antiguos primero</b>; también puedes marcar y ajustar cada uno a mano.</div>
+   <div style='color:var(--suave);font-size:12px;margin-top:7px'>Si capturas el monto, «Distribuir» lo reparte entre los documentos con la estrategia que elijas (por omisión, <b>más antiguos primero</b>); también puedes marcar y ajustar cada uno a mano.</div>
   </div>
   <div class='card'><h2><b>3</b>Documentos con saldo<span class='der2' id='docsEstado'></span></h2>
-   <div class='herr'><button onclick='marcarTodos()'>Marcar todos</button><button onclick='marcarVencidos()'>Marcar vencidos</button><button onclick='quitarMarcas()'>Quitar marcas</button><span class='esp'></span><button class='p' onclick='distribuir()'>Distribuir el monto (más antiguos primero)</button></div>
+   <div class='herr'><button onclick='marcarTodos()'>Marcar todos</button><button onclick='marcarVencidos()'>Marcar vencidos</button><button onclick='quitarMarcas()'>Quitar marcas</button><span class='esp'></span><!--__EXTRAS_HERR__--><button class='p' onclick='distribuir()'>Distribuir el monto</button></div>
    <div class='tw'><table><thead><tr><th></th><th class='l'>Documento</th><th>Fecha</th><th>Vence</th><th>Estado</th><th>Total</th><th>Saldo</th><th>Aplicar</th></tr></thead><tbody id='tb'></tbody></table></div>
   </div>
  </div>
@@ -79,16 +81,20 @@ td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;vertical-ali
    <div class='tot'><span>Documentos marcados</span><span id='tN'>0</span><span>Saldo de la persona</span><span id='tSal'>0.00</span><span>Quedaría</span><span id='tQ'>0.00</span><span id='lblMon2'>Monto recibido</span><span id='tMon'>—</span><span class='g'>Total a aplicar</span><span class='g' id='tTot'>0.00</span></div>
    <div id='avisosRes'></div>
   </div>
+<!--__EXTRAS_DER__-->
   <div class='card' id='cardMov' style='display:none'><h2 id='hMov'>Últimos movimientos</h2><div class='hist' id='hist'></div></div>
   <div class='card' style='color:var(--suave);font-size:12px'><b style='color:var(--texto)'>Cómo funciona</b><br>Se registra <b>una operación (folio) por documento</b>, con su aplicación, su espejo, la transferencia bancaria y el reparto de impuestos, en una transacción por documento. <b>Plantilla avanzada, no nativa:</b> no genera la póliza contable (la hace el Motor de Asientos al contabilizar); pruébala primero en una base de pruebas.<br><br><span class='kbd'>F2</span> persona · <span class='kbd'>F5</span> registrar · <span class='kbd'>F6</span> registrar y nuevo · <span class='kbd'>Esc</span> cancelar</div>
  </div>
 </div>
-<div class='pie'><span>Elaboró: <b id='pUsr'>—</b></span><span id='pEmp'></span><span id='pMod'></span></div>
+<div class='pie'><span>Elaboró: <b id='pUsr'>—</b></span><span id='pEmp'></span><span id='pMod'></span><span id='bdr' style='margin-left:auto'></span></div>
+<!--__EXTRAS_OVERLAYS__-->
 <div class='toast' id='toast'></div>
 <div class='vel' id='vel'><div class='modal'><h3 id='mTit'>Registrado</h3><div id='mSub' style='color:var(--suave)'></div><pre id='mPre'></pre><div class='bt'><button onclick='cerrarVentana()'>Cerrar ventana</button><button class='p' onclick='otroMas()'>Registrar otro</button></div></div></div>
 <script>
 var DATOS=__DATOS__;
-function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}
+// Dos transportes: con C# la página habla por el puente de WebView2 (postMessage); con Python habla por HTTP con un servidor que solo escucha en esta computadora (DATOS.http) y la respuesta es un fragmento de JavaScript.
+function enviar(o){if(DATOS.http){fetch(DATOS.http.url+'?t='+DATOS.http.token,{method:'POST',body:JSON.stringify(o)}).then(function(r){return r.text();}).then(function(t){if(t)(0,eval)(t);}).catch(function(){});}else window.chrome.webview.postMessage(JSON.stringify(o));}
+if(DATOS.http){enviar({accion:'latido'});setInterval(function(){enviar({accion:'latido'});},5000);}
 function esc(s){return String(s==null?'':s).replace(/[&<>']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c];});}
 function f2(n){return (n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function $(i){return document.getElementById(i);}
@@ -128,7 +134,7 @@ $('ent').addEventListener('input',function(){if(ST.ent){ST.ent=null;ST.sel={};pi
 // ---- tipo ----
 function pintarTipos(){$('tipos').innerHTML=TIPOS.map(function(t){return '<button class=\'tipo '+(t.lado==='C'?'c':'p')+(t.clave===ST.tipo?' on':'')+'\' onclick=\'setTipo(&quot;'+t.clave+'&quot;)\'><i style=font-style:normal>'+(t.lado==='C'?'💰':'💸')+'</i>'+esc(t.nombre)+'</button>';}).join('');}
 function setTipo(c){var antes=tipoAct().lado;ST.tipo=c;var t=tipoAct();if(t.lado!==antes){ST.ent=null;$('ent').value='';}ST.sel={};
-  document.body.className=t.lado==='C'?'cobro':'pago';$('ttl').textContent=t.nombre;$('sub').textContent=t.lado==='C'?'Cuentas por cobrar · entra dinero':'Cuentas por pagar · sale dinero';
+  document.body.classList.remove('cobro','pago');document.body.classList.add(t.lado==='C'?'cobro':'pago');$('ttl').textContent=t.nombre;$('sub').textContent=t.lado==='C'?'Cuentas por cobrar · entra dinero':'Cuentas por pagar · sale dinero';
   $('lblEnt').textContent=t.lado==='C'?'Cliente':'Proveedor';$('lblCta').textContent=t.lado==='C'?'Entra a la cuenta':'Sale de la cuenta';$('lblMonto').textContent=t.lado==='C'?'Monto recibido (opcional)':'Monto a pagar (opcional)';$('lblMon2').textContent=t.lado==='C'?'Monto recibido':'Monto a pagar';
   $('bGTxt').textContent=t.lado==='C'?'Registrar cobro':'Registrar pago';$('pMod').innerHTML='Operación <b>'+t.modOp+'</b> · folio '+esc(t.prefijo)+'-n';
   var f=CAT.folios&&CAT.folios[t.clave];$('folio').innerHTML=(f?esc(t.prefijo)+'-'+f:'—')+'<small>lo asigna el sistema</small>';
@@ -200,4 +206,5 @@ setTipo(ST.tipo);
 if(DATOS.inicial){var I2=DATOS.inicial;var en=ENT().filter(function(x){return x.id===I2.entidad;})[0];if(en){ST.ent=en;$('ent').value=en.nombre;}$('cta').value=I2.cuenta;$('forma').value=I2.forma;$('fecha').value=I2.fecha;$('ref').value=I2.referencia||'';
   ST.sel={};I2.aplicaciones.forEach(function(a){ST.sel[a.doc]=a.monto;});ES=stats();pintarEnt();pintarDocs();}
 setTimeout(function(){$('ent').focus();},60);
+/*__EXTRAS_JS__*/
 </script></body></html>

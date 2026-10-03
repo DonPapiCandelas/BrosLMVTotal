@@ -11,8 +11,10 @@ string quienSoy = "", nombreEmpresa = "";
 try { quienSoy = S(ctx.Scalar("SELECT TOP 1 ISNULL(UserName,'') FROM engUser WHERE UserID = " + ctx.erp.UserId)); } catch { }
 try { nombreEmpresa = S(ctx.Scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + empresa)); } catch { }
 Func<object, string> JsJson = o => ser.Serialize(o).Replace("</", "<\\/");
+Func<object> Borrador = () => { string j = LeerBorrador("cobropago"); return string.IsNullOrEmpty(j) ? null : ser.Deserialize<Dictionary<string, object>>(j); };
+Func<object> Pref = () => { string j = LeerBorrador("pref_ui", false); return string.IsNullOrEmpty(j) ? new Dictionary<string, object>() : ser.Deserialize<Dictionary<string, object>>(j); };
 string PaginaCon(Dictionary<string, object> inicial) =>
-    PAGINA.Replace("__DATOS__", JsJson(new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["inicial"] = inicial, ["vivo"] = true, ["usuario"] = quienSoy, ["empresa"] = nombreEmpresa }));
+    PAGINA.Replace("__DATOS__", JsJson(new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["inicial"] = inicial, ["vivo"] = true, ["usuario"] = quienSoy, ["empresa"] = nombreEmpresa, ["borrador"] = Borrador(), ["pref"] = Pref() }));
 
 string htmlPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_HTML");           // pruebas: escribe la página (con sus datos) en un archivo y no abre ventana
 if (!string.IsNullOrEmpty(htmlPrueba))
@@ -29,6 +31,10 @@ Func<Dictionary<string, object>, string> alMensaje = (r) =>
     {
         if (accion == "cancelar") return "__CERRAR__";
         if (accion == "movimientos") return "__JS__respuesta(" + req + "," + JsJson(MovimientosDe(L(r["entidad"]), S(r["tipo"]))) + ")";
+        if (accion == "inteligencia") return "__JS__respuesta(" + req + "," + JsJson(InteligenciaPago(L(r["entidad"]), S(r["tipo"]))) + ")";
+        if (accion == "borrador") { GuardarBorrador("cobropago", ser.Serialize(new Dictionary<string, object> { ["cuando"] = DateTime.Now.ToString("o"), ["spec"] = S(r["spec"]) })); return null; }
+        if (accion == "borradorBorrar") { BorrarBorrador("cobropago"); return null; }
+        if (accion == "pref") { GuardarBorrador("pref_ui", ser.Serialize(new Dictionary<string, object> { ["tema"] = S(r["tema"]) })); return null; }
         if (accion == "docs") return "__JS__respuesta(" + req + "," + JsJson(DocsConSaldo(S(r["lado"]))) + ")";
         if (accion != "aplicar") return null;
         var spec = ser.Deserialize<Dictionary<string, object>>(S(r["spec"]));
@@ -36,6 +42,7 @@ Func<Dictionary<string, object>, string> alMensaje = (r) =>
         string resumen;
         try { resumen = Aplicar(spec); }
         catch (Exception ex) { return "__JS__falloAplicar(" + JsJson(ex.Message) + ")"; }                          // la ventana sigue con todo lo capturado
+        BorrarBorrador("cobropago");                                                                        // ya se registró: el borrador no debe volver a ofrecerse
         try { ctx.erp.RefreshGrid(); } catch { }
         return "__JS__aplicado(" + JsJson(new Dictionary<string, object> { ["resumen"] = resumen, ["nuevo"] = otro }) + ")";
     }

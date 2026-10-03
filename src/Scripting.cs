@@ -1334,6 +1334,7 @@ namespace BrosLMV
                     if (!string.IsNullOrEmpty(puertoDepuracion)) opciones.AdditionalBrowserArguments = "--remote-debugging-port=" + puertoDepuracion;
                     var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, perfil, opciones);
                     await webView.EnsureCoreWebView2Async(env);
+                    webView.CoreWebView2.WindowCloseRequested += (s2, e2) => frm.Close();      // window.close() en la página cierra la ventana
                     webView.CoreWebView2.WebMessageReceived += (s2, e2) =>
                     {
                         try
