@@ -1,7 +1,7 @@
 # Manual del SDK de BrosLMV
 
 > Generado por `build/sdk/generar_referencia_sdk.py` desde `src/assets/sdk_catalogo.json` y `docs/SDK_GUIAS.md`. **No se edita a mano**: cambia el catálogo y regenera.
-> 219 funciones, 48 con ficha completa. La versión navegable con buscador está en la Consola (Más opciones → Manual del SDK…).
+> 220 funciones, 49 con ficha completa. La versión navegable con buscador está en la Consola (Más opciones → Manual del SDK…).
 
 ## Guías
 
@@ -2123,6 +2123,29 @@ Ejemplo:
 ```
 var r = ctx.ShowHtmlFormulario(html, "Datos");
 if ((bool)r["submitted"]) { /* usa r["campo"] */ }
+```
+
+
+### `ShowHtmlModeless` (C#)
+
+```
+ctx.ShowHtmlModeless(html, titulo?, ancho?, alto?, alMensaje?) : void
+```
+
+Ventana HTML que no bloquea: el script termina y cada mensaje de la página llega a tu función en el hilo de Comercial.
+
+Úsala cuando la ventana deba seguir abierta mientras se abren documentos o se llama a ctx.erp: ShowHtmlFormulario bloquea el hilo de Comercial y XEngine contesta «the other application is busy». La función alMensaje recibe los campos del mensaje (window.chrome.webview.postMessage(JSON.stringify({...}))) y regresa null (nada), "__CERRAR__" (cerrar la ventana) o un HTML nuevo (repinta). Maneja tus propios errores como en cualquier ventana modeless (MANUAL §10.2). Límite de ~2 MB de HTML.
+
+**Devuelve:** Nada: la ventana queda abierta y el script termina.
+
+Ejemplo:
+
+```
+ctx.ShowHtmlModeless(html, "Mi reporte", 1100, 760, m =>
+{
+    if ((string)m["accion"] == "abrir") ctx.erp.AbrirDocumento(Convert.ToInt32(m["id"]), Convert.ToInt32(m["modulo"]));
+    return null; // null = no hacer nada; "__CERRAR__" = cerrar; otro texto = HTML nuevo
+});
 ```
 
 

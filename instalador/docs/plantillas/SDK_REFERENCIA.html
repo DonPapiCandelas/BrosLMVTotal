@@ -35,11 +35,11 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}th,td{bord
 details.interno summary{cursor:pointer;color:var(--mut);margin:8px 0}
 @media (max-width:860px){.wrap{grid-template-columns:1fr}nav{position:static;height:auto}main{padding:16px}}
 </style></head><body><div class="wrap">
-<nav><h1>SDK de BrosLMV</h1><div class="sub">Manual de referencia · 219 funciones</div>
+<nav><h1>SDK de BrosLMV</h1><div class="sub">Manual de referencia · 220 funciones</div>
 <input id="q" type="search" placeholder="Buscar función…"><div class="seg"><button class="on" data-l="todos">Todo</button><button data-l="cs">C#</button><button data-l="py">Python</button><button data-l="sql">SQL</button></div>
 <h2>Guías</h2><a href="#guias">Guías del SDK</a><h2>C#</h2><a href="#cat-cs-Selecci-n-y-datos">Selección y datos</a><a href="#cat-cs-Consultas-SQL">Consultas SQL</a><a href="#cat-cs-Tokens">Tokens</a><a href="#cat-cs-Contexto">Contexto</a><a href="#cat-cs-Interacci-n">Interacción</a><a href="#cat-cs-ERP---Contexto">ERP · Contexto</a><a href="#cat-cs-ERP---Documento">ERP · Documento</a><a href="#cat-cs-ERP---Cobros-y-pagos">ERP · Cobros y pagos</a><a href="#cat-cs-ERP---UI">ERP · UI</a><a href="#cat-cs-ERP---Folio">ERP · Folio</a><a href="#cat-cs-ERP---Precios-y-existencias">ERP · Precios y existencias</a><a href="#cat-cs-ERP---Cr-dito">ERP · Crédito</a><a href="#cat-cs-ERP---Par-metros">ERP · Parámetros</a><a href="#cat-cs-ERP---Utilidades">ERP · Utilidades</a><a href="#cat-cs-ERP---DLookup">ERP · DLookup</a><a href="#cat-cs-ERP---Bit-cora">ERP · Bitácora</a><a href="#cat-cs-ERP---Impresi-n-y-export">ERP · Impresión y export</a><a href="#cat-cs-ERP---Correo">ERP · Correo</a><a href="#cat-cs-ERP---Web---sistema">ERP · Web / sistema</a><a href="#cat-cs-ERP---CFDI">ERP · CFDI</a><a href="#cat-cs-ERP---Avanzado">ERP · Avanzado</a><a href="#cat-cs-Utilidades">Utilidades</a><a href="#cat-cs-ERP---Esquema-y-entorno">ERP · Esquema y entorno</a><a href="#cat-cs-ERP---Fecha-y-texto">ERP · Fecha y texto</a><a href="#cat-cs-ERP---Costos">ERP · Costos</a><h2>Python</h2><a href="#cat-py-Python">Python</a><a href="#cat-py-ctx-erp--Comercial-">ctx.erp (Comercial)</a><h2>SQL</h2><a href="#cat-sql-Sentencias">Sentencias</a><a href="#cat-sql-Tokens">Tokens</a><h2>Otros</h2><a href="#internas">Funciones internas</a></nav>
 <main><h1>Manual del SDK de BrosLMV</h1>
-<p class="aviso">Todo lo que un script puede hacer con <code>ctx</code>: consultar datos, crear documentos, mostrar ventanas y más. 48 funciones tienen ficha completa (parámetros, ejemplos y notas); el resto trae firma, descripción y ejemplo.
+<p class="aviso">Todo lo que un script puede hacer con <code>ctx</code>: consultar datos, crear documentos, mostrar ventanas y más. 49 funciones tienen ficha completa (parámetros, ejemplos y notas); el resto trae firma, descripción y ejemplo.
 Este manual se genera del catálogo del SDK, así que siempre coincide con lo que el panel de referencias de la Consola muestra.</p>
 <div class="guias" id="guias"><h1>Guías del SDK de BrosLMV</h1>
 <p>Estas guías explican <strong>cómo se usan</strong> las funciones del SDK con ejemplos que se pueden copiar. Cada función tiene además su ficha en el manual (firma, parámetros, ejemplos y notas). Los ejemplos están en C# y Python; SQL puro tiene su propia guía (tokens). Regla de oro para todos: <strong>filtra siempre por la empresa activa</strong> y <strong>no escribas a mano</strong> IDs de módulos, almacenes o catálogos: léelos de la empresa.</p>
@@ -124,7 +124,7 @@ acc.GetType().InvokeMember(&quot;CrearPolizasDocumento&quot;, System.Reflection.
 <p>Para elegir archivos en Python: <code>ctx.select_file(...)</code> y <code>ctx.select_folder(...)</code>; para Excel: <code>ctx.read_excel(...)</code> y <code>ctx.write_excel(...)</code>.</p>
 <h2>7. Reglas de BrosLMV para scripts que van a más de un cliente</h2>
 <ol><li><strong>Empresa activa:</strong> las tablas con <code>OwnedBusinessEntityID</code> (almacenes, proveedores, clientes, centros de costo, tipos de gasto, documentos, pólizas) guardan una copia por empresa: filtra siempre por <code>ctx.erp.OwnedBusinessEntityId</code>.</li><li><strong>Nada escrito a mano:</strong> los módulos se identifican por su naturaleza en <code>engModuleParameter</code> (tipo de documento, destinatario, si recibe XML, qué afecta), no por un <code>ModuleID</code> fijo; catálogos y valores fiscales se leen de la empresa.</li><li><strong>Lotes de altas por <code>ctx.OpenConn()</code></strong>, con <code>SET NOCOUNT ON</code> y SQL que no duplique si se repite.</li><li><strong>Refrescar el grid una vez al final</strong> con <code>ctx.erp.RefreshGrid()</code> y, si creaste un documento, abrirlo con <code>ctx.erp.AbrirDocumento(...)</code>.</li><li><strong>Confirma lo irreversible</strong> (timbrar, cancelar, borrar) con <code>ctx.Confirm(...)</code>.</li></ol></div>
-<h2 id="ref-cs">Referencia de C# <span class="aviso">(139)</span></h2><section data-cat="1" id="cat-cs-Selecci-n-y-datos"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Selección y datos</h3><article class="ficha" id="cs-GetSelectedIds" data-lang="cs" data-txt="getselectedids ids de los documentos seleccionados en la vista. selección y datos">
+<h2 id="ref-cs">Referencia de C# <span class="aviso">(140)</span></h2><section data-cat="1" id="cat-cs-Selecci-n-y-datos"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">Selección y datos</h3><article class="ficha" id="cs-GetSelectedIds" data-lang="cs" data-txt="getselectedids ids de los documentos seleccionados en la vista. selección y datos">
 <h3><span class="lg lg-cs">C#</span> GetSelectedIds</h3>
 <pre class="firma"><code>ctx.GetSelectedIds() : List&lt;long&gt;</code></pre>
 <p class="resumen">IDs de los documentos seleccionados en la vista.</p>
@@ -416,6 +416,19 @@ var filas = ctx.Query(sql);</code></pre>
 <p class="ej">Ejemplo</p><pre><code>var r = ctx.ShowHtmlFormulario(html, "Datos");
 if ((bool)r["submitted"]) { /* usa r["campo"] */ }</code></pre>
 <p class="rel">Ver también: <a href="#cs-ShowHtml">ShowHtml</a></p>
+</article>
+<article class="ficha" id="cs-ShowHtmlModeless" data-lang="cs" data-txt="showhtmlmodeless ventana html que no bloquea: el script termina y cada mensaje de la página llega a tu función en el hilo de comercial. interacción">
+<h3><span class="lg lg-cs">C#</span> ShowHtmlModeless</h3>
+<pre class="firma"><code>ctx.ShowHtmlModeless(html, titulo?, ancho?, alto?, alMensaje?) : void</code></pre>
+<p class="resumen">Ventana HTML que no bloquea: el script termina y cada mensaje de la página llega a tu función en el hilo de Comercial.</p>
+<p>Úsala cuando la ventana deba seguir abierta mientras se abren documentos o se llama a ctx.erp: ShowHtmlFormulario bloquea el hilo de Comercial y XEngine contesta «the other application is busy». La función alMensaje recibe los campos del mensaje (window.chrome.webview.postMessage(JSON.stringify({...}))) y regresa null (nada), "__CERRAR__" (cerrar la ventana) o un HTML nuevo (repinta). Maneja tus propios errores como en cualquier ventana modeless (MANUAL §10.2). Límite de ~2 MB de HTML.</p>
+<p><strong>Devuelve:</strong> Nada: la ventana queda abierta y el script termina.</p>
+<p class="ej">Ejemplo</p><pre><code>ctx.ShowHtmlModeless(html, "Mi reporte", 1100, 760, m =&gt;
+{
+    if ((string)m["accion"] == "abrir") ctx.erp.AbrirDocumento(Convert.ToInt32(m["id"]), Convert.ToInt32(m["modulo"]));
+    return null; // null = no hacer nada; "__CERRAR__" = cerrar; otro texto = HTML nuevo
+});</code></pre>
+<p class="rel">Ver también: <a href="#cs-ShowHtmlFormulario">ShowHtmlFormulario</a>, <a href="#cs-ShowHtml">ShowHtml</a></p>
 </article></section><section data-cat="1" id="cat-cs-ERP---Contexto"><h3 style="margin:18px 0 8px;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.05em">ERP · Contexto</h3><article class="ficha" id="cs-erp-UserId" data-lang="cs" data-txt="erp.userid id real del usuario de contpaqi. erp · contexto">
 <h3><span class="lg lg-cs">C#</span> erp.UserId</h3>
 <pre class="firma"><code>ctx.erp.UserId : int</code></pre>

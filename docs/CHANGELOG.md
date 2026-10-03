@@ -11,6 +11,7 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 ## [3.0.0] — 2026-10-02 — Plantillas de fábrica para publicar
 
 ### Agregado
+- **`ctx.ShowHtmlModeless`** (SDK, C#): ventana HTML (WebView2) que **no bloquea**: el script termina y cada mensaje de la página llega a una función tuya en el hilo de Comercial, donde sí se puede llamar a `ctx.erp.*`. Resuelve el aviso de XEngine «the other application is busy» al abrir un documento desde una ventana HTML (la ventana modal `ShowHtmlFormulario` bloquea el hilo que Comercial necesita para cargarlo). «Trazabilidad del documento» y «Saldos y estados de cuenta» ya la usan.
 - **Plantilla «Trazabilidad del documento»** (`instalador/scripts/TRAZABILIDAD_DOCUMENTO.ctx`, documentación en `docs/TRAZABILIDAD_DOCUMENTO.md`): muestra de dónde viene y a dónde fue cualquier documento, en las dos direcciones
   y a través de todos los pasos (Solicitud → Orden de compra → Recepción → Factura → Pago; Cotización → Pedido → Remisión → Factura → Cobro), incluidos los módulos clonados (se clasifica por `ModuleIDBase`).
   Junta las **cuatro** formas en que se ligan los documentos: `SourceDocumentID` y `DestinationDocumentID` del encabezado, `SourceDocumentItemID`/`SourceDocumentID` de la partida y `DeliverDocumentItemID`.

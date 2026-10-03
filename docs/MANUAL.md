@@ -1029,6 +1029,8 @@ else:
 
 ### 9.4 `ctx.show_html`, `ctx.show_html_formulario` y `ctx.dashboard` (solo Python)
 
+> **C#:** además de `ctx.ShowHtml` y `ctx.ShowHtmlFormulario` existe `ctx.ShowHtmlModeless(html, titulo, ancho, alto, alMensaje)`: ventana HTML que **no bloquea** (el script termina y la ventana sigue viva; los mensajes de la página llegan a `alMensaje` en el hilo de Comercial). Úsala si la ventana debe seguir abierta mientras se abren documentos o se llama a `ctx.erp`: con `ShowHtmlFormulario` (bloquea) abrir un documento da el aviso de XEngine «the other application is busy».
+
 - `ctx.show_html(html, title="BrosLMV", width=800, height=600, modal=True)` — ventana con
   HTML/CSS/JS real (WebView2), embebida en CONTPAQi. Desde v2.24.0. **De una sola vía**:
   la ventana se muestra pero no hay forma de que le mande datos de vuelta al script.

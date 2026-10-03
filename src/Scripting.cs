@@ -1313,6 +1313,49 @@ namespace BrosLMV
             return resultado;
         }
 
+        // ctx.ShowHtmlModeless: ventana HTML (WebView2) que NO bloquea. A diferencia de ShowHtmlFormulario, el script TERMINA enseguida y la ventana
+        // sigue abierta; cada mensaje que la pagina manda con window.chrome.webview.postMessage(JSON.stringify({...})) llega a «alMensaje» en el hilo de
+        // Comercial (el mismo donde corren los botones de una ventana Windows Forms modeless), asi que ahi SI se puede llamar a ctx.erp.* y a ctx.Query.
+        // Esto evita el aviso de XEngine «the other application is busy» al abrir un documento desde la ventana: el hilo de Comercial queda libre.
+        // «alMensaje» recibe los campos del mensaje y regresa: null = no hacer nada; "__CERRAR__" = cerrar la ventana; otro texto = HTML nuevo para repintar.
+        public void ShowHtmlModeless(string html, string titulo = "BrosLMV", int ancho = 1100, int alto = 760, Func<Dictionary<string, object>, string> alMensaje = null)
+        {
+            string perfil = Path.Combine(Path.GetTempPath(), "BrosLMV_WebView2_" + Guid.NewGuid().ToString("N"));
+            var frm = new Form { Text = string.IsNullOrWhiteSpace(titulo) ? "BrosLMV" : titulo, StartPosition = FormStartPosition.CenterScreen, Width = ancho > 0 ? ancho : 1100, Height = alto > 0 ? alto : 760 };
+            var webView = new Microsoft.Web.WebView2.WinForms.WebView2 { Dock = DockStyle.Fill };
+            frm.Controls.Add(webView);
+            frm.Load += async (s, e) =>
+            {
+                try
+                {
+                    var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(userDataFolder: perfil);
+                    await webView.EnsureCoreWebView2Async(env);
+                    webView.CoreWebView2.WebMessageReceived += (s2, e2) =>
+                    {
+                        try
+                        {
+                            string json; try { json = e2.TryGetWebMessageAsString(); } catch { json = e2.WebMessageAsJson; }
+                            var campos = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Deserialize<Dictionary<string, object>>(json) ?? new Dictionary<string, object>();
+                            string respuesta = alMensaje == null ? null : alMensaje(campos);
+                            if (respuesta == "__CERRAR__") frm.Close();
+                            else if (!string.IsNullOrEmpty(respuesta)) webView.CoreWebView2.NavigateToString(respuesta);
+                        }
+                        catch (Exception ex) { MessageBox.Show(ex.Message, frm.Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                    };
+                    if (Directory.Exists(Rutas.Lib))
+                        webView.CoreWebView2.SetVirtualHostNameToFolderMapping("broslmv.local", Rutas.Lib, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
+                    webView.CoreWebView2.NavigateToString(html ?? "");
+                }
+                catch (Exception ex) { MessageBox.Show("No se pudo abrir la ventana: " + ex.Message, frm.Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); frm.Close(); }
+            };
+            frm.FormClosed += (s, e) =>
+            {
+                try { webView.Dispose(); } catch { }
+                try { Directory.Delete(perfil, true); } catch { /* limpieza best-effort */ }
+            };
+            frm.Show();
+        }
+
         // ---- ctx.erp: wrapper tipado de XEngine + COM auxiliares ----
         private ErpContext _erp;
         public ErpContext erp

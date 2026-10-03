@@ -267,25 +267,25 @@ if (!string.IsNullOrEmpty(modoPrueba))
     return "OK " + docs.Count + " documentos, " + pagos.Count + " pagos";
 }
 
-// ---------- 5) Ventana: se queda abierta hasta que la cierren ----------
-while (true)
+// ---------- 5) Ventana: modeless, se queda abierta hasta que la cierren ----------
+// El script termina enseguida y la ventana sigue viva (conserva su pestaña, su corte y su cliente); cada clic llega a este manejador en el hilo de Comercial.
+// Así abrir un documento no choca con XEngine («the other application is busy» pasaba cuando la ventana bloqueaba el hilo mientras Comercial cargaba el documento).
+Func<Dictionary<string, object>, string> alMensaje = r =>
 {
-    var r = ctx.ShowHtmlFormulario(Html(ser.Serialize(modelo)), "Saldos y estados de cuenta", 1280, 820, 0);
-    if (!r.ContainsKey("submitted") || !(bool)r["submitted"]) return "OK";
     string accion = r.ContainsKey("accion") ? S(r["accion"]) : "";
     if (accion == "abrir")
     {
         try { ctx.erp.AbrirDocumento((int)L(r["id"]), I(r["modulo"])); } catch (Exception ex) { ctx.Msg("No se pudo abrir el documento: " + ex.Message, "Saldos y estados de cuenta"); }
-        // Comercial carga el documento en este mismo hilo y le habla a XEngine: si aquí se vuelve a mostrar la ventana (que bloquea el hilo), XEngine contesta
-        // «the other application is busy». Por eso, al abrir un documento, el script TERMINA (como todos los que abren documentos) y la ventana se cierra.
-        return "OK";
+        return null;
     }
     if (accion == "csv")
     {
         string nombre = new string(S(r["nombre"]).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
         using (var dlg = new SaveFileDialog { Filter = "CSV para Excel (*.csv)|*.csv", FileName = nombre + ".csv" })
             if (dlg.ShowDialog() == DialogResult.OK) { File.WriteAllText(dlg.FileName, S(r["contenido"]), new UTF8Encoding(true)); ctx.Msg("Archivo guardado:\n" + dlg.FileName, "Saldos y estados de cuenta"); }
-        continue;
+        return null;
     }
-    return "OK";
-}
+    return null;
+};
+ctx.ShowHtmlModeless(Html(ser.Serialize(modelo)), "Saldos y estados de cuenta", 1280, 820, alMensaje);
+return "OK";

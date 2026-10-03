@@ -325,20 +325,18 @@ modelo.aristas.forEach(function(a){
 document.getElementById('tablaAristas').innerHTML=th+'</table>';
 </script></body></html>";
 
-// ---------- 7) Ventana: se queda abierta navegando hasta que la cierren ----------
-while (true)
+// ---------- 7) Ventana: modeless, se queda abierta navegando hasta que la cierren ----------
+// El script termina enseguida y la ventana sigue viva; cada clic llega a este manejador en el hilo de Comercial. Así abrir un documento no choca con XEngine
+// («the other application is busy» pasaba cuando la ventana bloqueaba el hilo mientras Comercial cargaba el documento).
+Func<Dictionary<string, object>, string> alMensaje = r =>
 {
-    var r = ctx.ShowHtmlFormulario(Html(ser.Serialize(modelo)), "Trazabilidad del documento", 1280, 820, 0);
-    if (!r.ContainsKey("submitted") || !(bool)r["submitted"]) return "OK";
     string accion = r.ContainsKey("accion") ? S(r["accion"]) : "";
     if (accion == "abrir")
     {
         long id = r.ContainsKey("id") ? L(r["id"]) : raiz;
         int modulo = r.ContainsKey("modulo") ? I(r["modulo"]) : (int)nodos[id]["modulo"];
         try { ctx.erp.AbrirDocumento((int)id, modulo); } catch (Exception ex) { ctx.Msg("No se pudo abrir el documento: " + ex.Message, "Trazabilidad"); }
-        // Comercial carga el documento en este mismo hilo y le habla a XEngine: si aquí se vuelve a mostrar la ventana (que bloquea el hilo), XEngine contesta
-        // «the other application is busy». Por eso, al abrir un documento, el script TERMINA (como todos los que abren documentos) y la ventana se cierra.
-        return "OK";
+        return null;
     }
     if (accion == "csv")
     {
@@ -353,7 +351,7 @@ while (true)
         }
         using (var dlg = new SaveFileDialog { Filter = "CSV (*.csv)|*.csv", FileName = "trazabilidad_" + raiz + ".csv" })
             if (dlg.ShowDialog() == DialogResult.OK) { File.WriteAllText(dlg.FileName, sb.ToString(), new UTF8Encoding(true)); ctx.Msg("Archivo guardado:\n" + dlg.FileName, "Trazabilidad"); }
-        continue;
+        return null;
     }
     if (accion == "centrar")
     {
@@ -368,8 +366,10 @@ while (true)
             foreach (var id in nodos.Keys) nodos[id]["gen"] = gen[id] - d0;
             modelo["raiz"] = raiz;
             modelo["nodos"] = nodos.Values.OrderBy(n => (int)n["gen"]).ThenBy(n => S(n["fecha"])).ToList();
+            return Html(ser.Serialize(modelo));
         }
-        continue;
     }
-    return "OK";
-}
+    return null;
+};
+ctx.ShowHtmlModeless(Html(ser.Serialize(modelo)), "Trazabilidad del documento", 1280, 820, alMensaje);
+return "OK";
