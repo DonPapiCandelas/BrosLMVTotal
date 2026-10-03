@@ -1,5 +1,10 @@
 #r "C:\BrosLMV\bin\Microsoft.Web.WebView2.Core.dll"
 #r "C:\BrosLMV\bin\Microsoft.Web.WebView2.WinForms.dll"
+// lang: csharp
+// AppKey recomendado: ConfiguracionFormato
+// Plantilla: Configuración de formato (gestor de formatos y Diseñador)
+// Categoria: Documentos
+// Documentacion: CONFIGURACION_FORMATO.html
 // BrosLMV.ConfiguracionFormato -- boton "Configuracion de formato" (pestana Soluciones LMV).
 // UI moderna en WebView2 (HTML/CSS/JS). C# = acceso a datos; JS <-> C# por postMessage.
 //

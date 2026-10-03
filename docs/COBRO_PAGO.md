@@ -43,7 +43,7 @@ Por **cada documento** marcado se crea **una operación** (con su propio folio) 
 
 - Atómico por documento: o se escriben las siete tablas o ninguna.
 - Si hay varios documentos y falla uno, el mensaje dice **cuáles ya quedaron aplicados** (los anteriores) y cuál falló; no se aplica nada al fallido.
-- Validado con la plantilla [«Saldos y estados de cuenta»](SALDOS_ESTADOS_CUENTA.md): el saldo que reconstruye desde los pagos coincide con `Balance` después de aplicar.
+- Validado con la plantilla [«Estado de cuenta de clientes»](ESTADO_CUENTA_CLIENTES.md) y [«de proveedores»](ESTADO_CUENTA_PROVEEDORES.md): el saldo que reconstruye desde los pagos coincide con `Balance` después de aplicar.
 
 ## Límites
 

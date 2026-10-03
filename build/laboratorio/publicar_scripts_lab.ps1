@@ -2,7 +2,7 @@
 # generar una versión nueva del instalador: se edita el archivo de instalador\scripts, se corre este script y se vuelve a ejecutar el botón en Comercial.
 # Escribe también el HashSHA256 del código, así Comercial no avisa «modificado por fuera de la Consola». AppKey = nombre del archivo sin extensión. Categoría: «Desarrollo».
 # Solo escribe en el laboratorio; se niega a correr contra otra base. Al final del desarrollo, las plantillas se instalan con la versión nueva (el instalador las refresca).
-# Uso:  .\build\laboratorio\publicar_scripts_lab.ps1 [-Scripts TRAZABILIDAD_DOCUMENTO,SALDOS_ESTADOS_CUENTA]     (sin -Scripts publica todas las plantillas)
+# Uso:  .\build\laboratorio\publicar_scripts_lab.ps1 [-Scripts TRAZABILIDAD_DOCUMENTO,ESTADO_CUENTA_CLIENTES]     (sin -Scripts publica todas las plantillas)
 param(
     [string]$Server   = "localhost\compac",
     [string]$Database = "BROSLMV_DESARROLLO",

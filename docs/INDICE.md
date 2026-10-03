@@ -29,7 +29,8 @@
 | [`TRAZABILIDAD_DOCUMENTO.md`](TRAZABILIDAD_DOCUMENTO.md) | Plantilla de fábrica «Trazabilidad del documento»: de dónde viene y a dónde fue (los cuatro tipos de vínculo, vínculos manuales) |
 | [`ASIGNAR_CENTRO_COSTO.md`](ASIGNAR_CENTRO_COSTO.md) | Plantilla de fábrica: asignar un centro de costo a muchos documentos, con vista previa y deshacer |
 | [`PDF_MASIVO_DOCUMENTOS.md`](PDF_MASIVO_DOCUMENTOS.md) | Plantilla de fábrica: PDF de todos los documentos seleccionados (sueltos, ZIP o unidos) y modo lote del motor HtmlToPdf |
-| [`SALDOS_ESTADOS_CUENTA.md`](SALDOS_ESTADOS_CUENTA.md) | Plantilla de fábrica: cuentas por cobrar y por pagar con fecha de corte y antigüedad, y estados de cuenta de clientes y proveedores |
+| [`ESTADO_CUENTA_CLIENTES.md`](ESTADO_CUENTA_CLIENTES.md) | Plantilla de fábrica: cuentas por cobrar (solo clientes) con fecha de corte, antigüedad, calendario, detalle del documento y estado de cuenta |
+| [`ESTADO_CUENTA_PROVEEDORES.md`](ESTADO_CUENTA_PROVEEDORES.md) | Plantilla de fábrica: cuentas por pagar (solo proveedores), igual que la de clientes pero separada para que cada usuario vea solo su módulo |
 | [`CREAR_DOCUMENTO.md`](CREAR_DOCUMENTO.md) | Plantillas de fábrica «Crear documento» (C#/Python × HTML/Windows Forms): factura, pedido, remisión, compra, OC y recepción, con documentos derivados |
 | [`COBRO_PAGO.md`](COBRO_PAGO.md) | Plantillas avanzadas «Cobro a cliente / Pago a proveedor» (C#/Python × HTML/Windows Forms): la receta de SQL directo, límites y pruebas |
 | [`CONFIGURACION_FORMATO.md`](CONFIGURACION_FORMATO.md) | Configuración de formato: formatos por tipo de documento, carpeta y nombre de los PDF, correo, y el editor de formato con vista previa |

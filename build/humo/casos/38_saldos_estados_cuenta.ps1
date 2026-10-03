@@ -1,4 +1,5 @@
-# Caso de humo #38: la plantilla de fabrica SALDOS_ESTADOS_CUENTA.ctx corriendo headless (BrosLMV.Runner) contra el laboratorio.
+# Caso de humo #38: las plantillas de fabrica ESTADO_CUENTA_CLIENTES.ctx y ESTADO_CUENTA_PROVEEDORES.ctx corriendo headless (BrosLMV.Runner) contra el laboratorio.
+# Cada una solo carga SU lado (clientes = por cobrar, proveedores = por pagar): se comprueba que no se mezclan y se juntan para validar los saldos.
 # Registra la PLANTILLA REAL, la corre sin ventanas con BROSLMV_SALDOS_TEST y BROSLMV_SALDOS_OUT, y comprueba que el saldo que se reconstruye
 # desde los hechos (Total - pagos vigentes <= corte - notas de credito aplicadas) coincide, documento por documento, con:
 #   (a) docDocument.Balance cuando el corte es hoy, y
@@ -11,36 +12,46 @@ param(
 )
 $ErrorActionPreference = "Continue"
 $AppKey = "HUMO_SALDOS"
-$plantilla = Join-Path $PSScriptRoot "..\..\..\instalador\scripts\SALDOS_ESTADOS_CUENTA.ctx"
+$plantillas = [ordered]@{ C = (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\ESTADO_CUENTA_CLIENTES.ctx"); P = (Join-Path $PSScriptRoot "..\..\..\instalador\scripts\ESTADO_CUENTA_PROVEEDORES.ctx") }
 if (-not (Test-Path $RunnerExe)) { Write-Host "  [ERROR] No existe $RunnerExe -- compila el Runner primero." -ForegroundColor Red; exit 1 }
-if (-not (Test-Path $plantilla)) { Write-Host "  [ERROR] No existe la plantilla $plantilla" -ForegroundColor Red; exit 1 }
+foreach ($pl in $plantillas.Values) { if (-not (Test-Path $pl)) { Write-Host "  [ERROR] No existe la plantilla $pl" -ForegroundColor Red; exit 1 } }
 
 function Sql([string]$q) { (sqlcmd -S $Server -E -d $Database -h -1 -W -s"|" -Q "SET NOCOUNT ON; $q" 2>&1 | Where-Object { $_ -ne '' }) }
 function Fallo([string]$m) { Write-Host "  [ERROR] $m" -ForegroundColor Red; exit 1 }
+Add-Type -AssemblyName System.Web.Extensions
+$ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer; $ser.MaxJsonLength = [int]::MaxValue
 
-# 1) Registrar la plantilla real
-$codigo = (Get-Content $plantilla -Raw -Encoding UTF8) -replace "'", "''"
-$tmpSql = Join-Path $env:TEMP ("humo_saldos_" + [Guid]::NewGuid().ToString('N') + ".sql")
-@"
+# 1) y 2) Registrar cada plantilla real, correrla sin ventanas y leer su modelo; despues se juntan los dos lados
+$docs = @(); $pagos = @(); $hoy = $null
+foreach ($lado in $plantillas.Keys) {
+    $codigo = (Get-Content $plantillas[$lado] -Raw -Encoding UTF8) -replace "'", "''"
+    $tmpSql = Join-Path $env:TEMP ("humo_saldos_" + [Guid]::NewGuid().ToString('N') + ".sql")
+    @"
 IF EXISTS (SELECT 1 FROM zzBrosScript WHERE AppKey = '$AppKey')
     UPDATE zzBrosScript SET Codigo = N'$codigo', Activo = 1, Modificado = GETDATE() WHERE AppKey = '$AppKey';
 ELSE
     INSERT INTO zzBrosScript (AppKey, Nombre, Codigo, Activo, Modificado) VALUES ('$AppKey', 'Humo - Saldos', N'$codigo', 1, GETDATE());
 "@ | Out-File $tmpSql -Encoding utf8
-$out = sqlcmd -S $Server -E -d $Database -i $tmpSql -W 2>&1; $ex = $LASTEXITCODE; Remove-Item $tmpSql -Force -ErrorAction SilentlyContinue
-if ($ex -ne 0) { Write-Host "  [ERROR] No se pudo registrar la plantilla de prueba:" -ForegroundColor Red; $out | ForEach-Object { Write-Host "    $_" }; exit 1 }
-
-# 2) Correr la plantilla (sin ventanas) y leer el modelo
-$salida = Join-Path $env:TEMP ("saldos_" + [Guid]::NewGuid().ToString('N') + ".json")
-$env:BROSLMV_SALDOS_TEST = '{"meses":12}'; $env:BROSLMV_SALDOS_OUT = $salida
-$log = & $RunnerExe --appkey $AppKey --bd $Database 2>&1; $code = $LASTEXITCODE
-Remove-Item Env:\BROSLMV_SALDOS_TEST, Env:\BROSLMV_SALDOS_OUT -ErrorAction SilentlyContinue
-if ($code -ne 0 -or -not (Test-Path $salida)) { Write-Host ($log -join "`n"); Fallo "El Runner fallo (exit $code)." }
-Add-Type -AssemblyName System.Web.Extensions
-$ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer; $ser.MaxJsonLength = [int]::MaxValue
-$m = $ser.DeserializeObject((Get-Content $salida -Raw -Encoding UTF8)); Remove-Item $salida -Force
-$docs = @($m['docs']); $pagos = @($m['pagos'])
-Write-Host ("  Modelo: {0} documentos, {1} pagos." -f $docs.Count, $pagos.Count)
+    $out = sqlcmd -S $Server -E -d $Database -i $tmpSql -W 2>&1; $ex = $LASTEXITCODE; Remove-Item $tmpSql -Force -ErrorAction SilentlyContinue
+    if ($ex -ne 0) { Write-Host "  [ERROR] No se pudo registrar la plantilla de prueba:" -ForegroundColor Red; $out | ForEach-Object { Write-Host "    $_" }; exit 1 }
+    $salida = Join-Path $env:TEMP ("saldos_" + [Guid]::NewGuid().ToString('N') + ".json"); $htmlP = Join-Path $env:TEMP ("saldos_" + [Guid]::NewGuid().ToString('N') + ".html")
+    $env:BROSLMV_SALDOS_TEST = '{"meses":12}'; $env:BROSLMV_SALDOS_OUT = $salida; $env:BROSLMV_SALDOS_HTML = $htmlP
+    $log = & $RunnerExe --appkey $AppKey --bd $Database 2>&1; $code = $LASTEXITCODE
+    Remove-Item Env:\BROSLMV_SALDOS_TEST, Env:\BROSLMV_SALDOS_OUT, Env:\BROSLMV_SALDOS_HTML -ErrorAction SilentlyContinue
+    if ($code -ne 0 -or -not (Test-Path $salida)) { Write-Host ($log -join "`n"); Fallo "El Runner fallo con la plantilla del lado $lado (exit $code)." }
+    $m = $ser.DeserializeObject((Get-Content $salida -Raw -Encoding UTF8)); Remove-Item $salida -Force
+    $dl = @($m['docs']); $pl = @($m['pagos']); $hoy = [string]$m['hoy']
+    # Cada plantilla solo trae SU lado: ni un documento del otro modulo
+    $ajenos = @($dl | Where-Object { $_['lado'] -ne $lado })
+    if ($ajenos.Count -gt 0) { Fallo "La plantilla del lado $lado trajo $($ajenos.Count) documento(s) del otro lado." }
+    $h = Get-Content $htmlP -Raw -Encoding UTF8; Remove-Item $htmlP -Force
+    if ($h -notmatch 'LADO=.' + $lado) { Fallo "El HTML del lado $lado no declara su lado." }
+    if ($h -match 'segLado|setLado') { Fallo "El HTML ya no debe traer el selector cobrar/pagar." }
+    foreach ($necesario in 'vistaCal', 'verDoc', 'xlsx.bundle.js', 'Exportar a Excel') { if ($h -notmatch [regex]::Escape($necesario)) { Fallo "Al HTML del lado $lado le falta: $necesario." } }
+    Write-Host ("  Lado {0}: {1} documentos, {2} pagos; ningun documento del otro lado." -f $lado, $dl.Count, $pl.Count)
+    $docs += $dl; $pagos += $pl
+}
+Write-Host ("  Modelo conjunto: {0} documentos, {1} pagos." -f $docs.Count, $pagos.Count)
 $demo = @($docs | Where-Object { $_['titulo'] -like 'DEMO SALDOS*' })
 if ($demo.Count -lt 10) { Fallo "Faltan los documentos de la siembra (hay $($demo.Count), se esperaban 10). Corre build\laboratorio\sembrar_demo_saldos.ps1." }
 

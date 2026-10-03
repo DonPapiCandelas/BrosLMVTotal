@@ -1,0 +1,432 @@
+// lang: csharp
+// AppKey recomendado: ESTADO_CUENTA_CLIENTES
+// Plantilla: Estado de cuenta de clientes (cuentas por cobrar)
+// Categoria: Reportes
+// Documentacion: ESTADO_CUENTA_CLIENTES.html
+// job: safe-offline
+// Cuentas por cobrar y estado de cuenta de cada cliente, con fecha de corte, antigüedad de saldos, calendario de vencimientos y detalle de cada documento.
+// Solo LEE: no cambia nada. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
+// Este script solo trabaja con clientes: «Estado de cuenta de proveedores» tiene su propio botón, así cada usuario ve únicamente la información del módulo que le corresponde.
+//
+// Cómo calcula (nada va escrito a mano; los módulos se clasifican por los parámetros del propio módulo, así los clones se comportan como el original):
+//   · Qué es de clientes:               DocRecipient = 1 (engModuleParameter, por ModuleIDBase).
+//   · Qué suma y qué resta:               FinancialAffectation (±1; 0 = no afecta saldos). Una factura suma y una nota de crédito resta.
+//   · Saldo a una fecha de corte:         Total − pagos vigentes con DateOperation ≤ corte − notas de crédito aplicadas (PaymentWithDocumentID). docDocument.Balance es solo la foto de hoy.
+//   · Vencimiento:                        la última fecha de la agenda de pago (docDocumentPaymentAgenda); sin agenda, la fecha del documento. Las notas de crédito no vencen.
+// Los números se calculan en la ventana (navegador): cambiar la fecha de corte es instantáneo y no vuelve a consultar. La ventana NO bloquea Comercial: se puede minimizar.
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;
+
+var ci = CultureInfo.InvariantCulture;
+var ser = new JavaScriptSerializer { MaxJsonLength = 128 * 1024 * 1024 };
+
+string S(object v) => v == null || v is DBNull ? "" : Convert.ToString(v, ci);
+long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v, ci); } catch { return 0; } }
+int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
+decimal M(object v) { try { return v == null || v is DBNull ? 0m : Convert.ToDecimal(v, ci); } catch { return 0m; } }
+bool Nulo(object v) => v == null || v is DBNull;
+string FechaTxt(object v) => Nulo(v) ? "" : Convert.ToDateTime(v, ci).ToString("yyyy-MM-dd");
+
+int empresa = ctx.erp.OwnedBusinessEntityId;
+int meses = 12;                                                    // cuánto historial se carga (el saldo de cualquier corte posterior es exacto)
+string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_SALDOS_TEST");    // solo para pruebas automáticas (sin ventanas): JSON {"meses":12}
+if (!string.IsNullOrEmpty(modoPrueba))
+{
+    try { var cfg = ser.Deserialize<Dictionary<string, object>>(modoPrueba); if (cfg.ContainsKey("meses")) meses = Math.Max(1, I(cfg["meses"])); } catch { }
+}
+
+// ---------- 1) Qué módulos son de clientes ----------
+// Se pivotean los parámetros por ModuleIDBase y se unen con todos los módulos (clones incluidos). Solo DocRecipient = 1: el otro lado no se carga nunca.
+var modulos = ctx.Query(
+    "SELECT m.ModuleID, m.ModuleName, pv.Rec, pv.Tipo, pv.Af FROM engModule m JOIN (" +
+    "  SELECT ModuleID, MAX(CASE WHEN ParameterKey='DocRecipient' THEN TRY_CONVERT(int, Value) END) AS Rec, " +
+    "         MAX(CASE WHEN ParameterKey='DocumentTypeID' THEN TRY_CONVERT(int, Value) END) AS Tipo, " +
+    "         MAX(CASE WHEN ParameterKey='FinancialAffectation' THEN TRY_CONVERT(int, Value) END) AS Af, " +
+    "         MAX(CASE WHEN ParameterKey='TableName' THEN Value END) AS Tabla " +
+    "  FROM engModuleParameter WHERE ParameterKey IN ('DocRecipient','DocumentTypeID','FinancialAffectation','TableName') GROUP BY ModuleID" +
+    ") pv ON pv.ModuleID = ISNULL(NULLIF(m.ModuleIDBase,0), m.ModuleID) " +
+    "WHERE pv.Tabla = 'docDocument' AND pv.Af IN (1,-1) AND pv.Rec = 1 AND ISNULL(pv.Tipo,0) NOT IN (40,44)");    // 40 = pedido, 44 = carta porte: no son cuentas por cobrar/pagar
+var signo = new Dictionary<int, int>();          // módulo → +1 suma saldo, −1 resta (nota de crédito)
+var nombreMod = new Dictionary<int, string>();
+foreach (var r in modulos)
+{
+    int mid = I(r["ModuleID"]), af = I(r["Af"]);
+    signo[mid] = 1 == 1 ? af : -af;      // cliente: factura (+1) suma, NC (−1) resta · proveedor: factura (−1 → +1) suma, NC (+1 → −1) resta
+    nombreMod[mid] = S(r["ModuleName"]);
+}
+if (signo.Count == 0)
+{
+    ctx.Msg("No se encontraron módulos de clientes con afectación financiera en esta empresa.", "Estado de cuenta de clientes (cuentas por cobrar)");
+    return "SIN MODULOS";
+}
+
+// ---------- 2) Carga: documentos, pagos, partidas y agenda ----------
+DateTime hoy = DateTime.Today;
+DateTime desde = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-meses);
+string fDesde = desde.ToString("yyyy-MM-dd", ci);
+string listaMod = string.Join(",", signo.Keys.Select(x => x.ToString(ci)));
+
+// Documentos de la ventana de tiempo, más los que siguen con saldo o tuvieron pagos dentro de ella (un documento viejo pagado hoy tenía saldo en cortes recientes).
+string filtroDocs =
+    "SELECT d.DocumentID FROM docDocument d WHERE d.ModuleID IN (" + listaMod + ") AND d.OwnedBusinessEntityID = " + empresa +
+    " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND (d.DateDocument >= '" + fDesde + "' OR ISNULL(d.Balance,0) <> 0 OR EXISTS " +
+    "(SELECT 1 FROM docDocumentPayment p WHERE p.DocumentID = d.DocumentID AND p.DeletedOn IS NULL AND p.DateOperation >= '" + fDesde + "'))";
+// El detalle (partidas y agenda) se carga solo de los documentos que hoy tienen saldo: son los que se consultan; el resto muestra solo sus pagos.
+string filtroConSaldo =
+    "SELECT d.DocumentID FROM docDocument d WHERE d.ModuleID IN (" + listaMod + ") AND d.OwnedBusinessEntityID = " + empresa +
+    " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) <> 0";
+
+var docsSql = ctx.Query(
+    "SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.DateDocument, ISNULL(d.Total,0) AS Total, d.BusinessEntityID, " +
+    "ISNULL(be.CommercialName, be.OfficialName) AS Entidad, ISNULL(d.Title,'') AS Titulo, " +
+    "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS Vence " +
+    "FROM docDocument d LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID WHERE d.DocumentID IN (" + filtroDocs + ")");
+var docs = new List<Dictionary<string, object>>();
+var docPorId = new Dictionary<long, Dictionary<string, object>>();
+foreach (var r in docsSql)
+{
+    int mid = I(r["ModuleID"]);
+    string folio = (S(r["FolioPrefix"]) + S(r["Folio"])).Trim();
+    var d = new Dictionary<string, object>
+    {
+        ["id"] = L(r["DocumentID"]), ["mod"] = mid, ["lado"] = "C", ["s"] = signo[mid], ["tipo"] = nombreMod[mid], ["folio"] = folio,
+        ["fecha"] = FechaTxt(r["DateDocument"]), ["venc"] = FechaTxt(r["Vence"]), ["total"] = M(r["Total"]),
+        ["ent"] = L(r["BusinessEntityID"]), ["entNom"] = S(r["Entidad"]), ["titulo"] = S(r["Titulo"])
+    };
+    docs.Add(d); docPorId[(long)d["id"]] = d;
+}
+
+var pagosSql = ctx.Query(
+    "SELECT p.DocumentID, p.DateOperation, ISNULL(p.Amount,0) AS Monto, ISNULL(p.PaymentWithDocumentID,0) AS NC, " +
+    "ISNULL(o.FolioPrefix,'') AS OpPref, ISNULL(o.Folio,'') AS OpFolio, ISNULL(o.ModuleID,0) AS OpMod " +
+    "FROM docDocumentPayment p LEFT JOIN docFinancialOperation o ON o.FinancialOperationID = p.FinancialOperationID " +
+    "WHERE p.DeletedOn IS NULL AND (p.DocumentID IN (" + filtroDocs + ") OR p.PaymentWithDocumentID IN (" + filtroDocs + "))");
+var pagos = new List<Dictionary<string, object>>();
+foreach (var r in pagosSql)
+    pagos.Add(new Dictionary<string, object>
+    {
+        ["doc"] = L(r["DocumentID"]), ["fecha"] = FechaTxt(r["DateOperation"]), ["monto"] = M(r["Monto"]), ["nc"] = L(r["NC"]),
+        ["op"] = (S(r["OpPref"]) + S(r["OpFolio"])).Trim()
+    });
+
+// Partidas y agenda de pago de los documentos con saldo (para «Ver documento»)
+foreach (var r in ctx.Query(
+    "SELECT i.DocumentID, ISNULL(i.LineNumber,0) AS Linea, ISNULL(i.Description,'') AS Concepto, ISNULL(i.Quantity,0) AS Cantidad, ISNULL(i.UnitPrice,0) AS Precio, ISNULL(i.Total,0) AS Total " +
+    "FROM docDocumentItem i WHERE i.DeletedOn IS NULL AND i.DocumentID IN (" + filtroConSaldo + ") ORDER BY i.DocumentID, i.LineNumber"))
+{
+    Dictionary<string, object> d; if (!docPorId.TryGetValue(L(r["DocumentID"]), out d)) continue;
+    if (!d.ContainsKey("p")) d["p"] = new List<object>();
+    ((List<object>)d["p"]).Add(new object[] { I(r["Linea"]), S(r["Concepto"]), M(r["Cantidad"]), M(r["Precio"]), M(r["Total"]) });
+}
+foreach (var r in ctx.Query(
+    "SELECT a.DocumentID, ISNULL(a.PartialityNumber,0) AS Parcialidad, a.DatePayment, ISNULL(a.Amount,0) AS Monto, ISNULL(a.StatusID,0) AS Estatus " +
+    "FROM docDocumentPaymentAgenda a WHERE a.DeletedOn IS NULL AND a.DocumentID IN (" + filtroConSaldo + ") ORDER BY a.DocumentID, a.PartialityNumber"))
+{
+    Dictionary<string, object> d; if (!docPorId.TryGetValue(L(r["DocumentID"]), out d)) continue;
+    if (!d.ContainsKey("a")) d["a"] = new List<object>();
+    ((List<object>)d["a"]).Add(new object[] { I(r["Parcialidad"]), FechaTxt(r["DatePayment"]), M(r["Monto"]), I(r["Estatus"]) });
+}
+
+string nombreEmpresa = "";
+try { nombreEmpresa = S(ctx.Scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + empresa)); } catch { }
+
+var modelo = new Dictionary<string, object>
+{
+    ["docs"] = docs, ["pagos"] = pagos, ["hoy"] = hoy.ToString("yyyy-MM-dd", ci), ["desde"] = fDesde, ["empresa"] = nombreEmpresa, ["meses"] = meses, ["lado"] = "C"
+};
+
+// ---------- 3) Ventana ----------
+string Html(string json) => @"<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Estado de cuenta de clientes (cuentas por cobrar)</title><style>
+:root{--fondo:#f4f6f9;--tarjeta:#fff;--texto:#16263a;--suave:#64748b;--linea:#d5dde8;--azul:#2d6fe0;--rojo:#c82828;--ambar:#b45309;--verde:#16803b;--morado:#7e22ce;--zebra:#f8fafc}
+*{box-sizing:border-box}body{margin:0;font:13px 'Segoe UI',Arial,sans-serif;background:var(--fondo);color:var(--texto)}
+header{padding:14px 22px 6px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:8px}h1{margin:0;font-size:20px}.sub{color:var(--suave);margin-top:2px}
+.ctl{padding:6px 22px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}.ctl label{color:var(--suave);font-size:12px}
+input,select,button{font:inherit;border:1px solid var(--linea);border-radius:6px;padding:5px 9px;background:#fff;color:var(--texto)}button{cursor:pointer}button:hover{background:#f1f5f9}button.p{background:var(--azul);color:#fff;border-color:var(--azul)}button.on{background:var(--azul);color:#fff;border-color:var(--azul)}
+.tabs{padding:4px 22px 0;display:flex;gap:2px;border-bottom:1px solid var(--linea)}.tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:8px 14px;color:var(--texto)}.tabs button.on{border-bottom-color:var(--azul);font-weight:600;color:var(--texto);background:none}
+.cuerpo{padding:12px 22px 28px}.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}.kpi{background:var(--tarjeta);border:1px solid var(--linea);border-left:4px solid var(--linea);border-radius:9px;padding:9px 12px;min-width:0}
+.kpi b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--suave);font-weight:600}.kpi span{font-size:17px;font-variant-numeric:tabular-nums}.kpi small{display:block;color:var(--suave);font-size:11px}
+.kpi.r{border-left-color:var(--rojo)}.kpi.r span{color:var(--rojo)}.kpi.a{border-left-color:var(--ambar)}.kpi.a span{color:var(--ambar)}.kpi.m{border-left-color:var(--morado)}.kpi.m span{color:var(--morado)}.kpi.v{border-left-color:var(--verde)}.kpi.v span{color:var(--verde)}.kpi.t{border-left-color:#0a3d6e}.kpi.t span{color:#0a3d6e}
+.tw{background:var(--tarjeta);border:1px solid var(--linea);border-radius:9px;overflow:auto;max-height:calc(100vh - 330px)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{padding:6px 10px;text-align:right;white-space:nowrap}th:first-child,td:first-child,.l{text-align:left}
+th{position:sticky;top:0;background:#eef2f7;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--suave);border-bottom:1px solid var(--linea);z-index:1}
+tbody tr:nth-child(even){background:var(--zebra)}tbody tr.clic{cursor:pointer}tbody tr.clic:hover{background:#e8f0ff}tfoot td{font-weight:700;border-top:2px solid var(--linea);position:sticky;bottom:0;background:#eef2f7}
+.venc{color:var(--rojo)}.favor{color:var(--verde)}.pill{display:inline-block;border-radius:10px;padding:1px 8px;font-size:11px;background:#e5eaf1;color:var(--suave)}.pill.r{background:#fde4e4;color:var(--rojo)}.pill.a{background:#fdf0dc;color:var(--ambar)}.pill.v{background:#e0f3e6;color:var(--verde)}.pill.m{background:#f3e8ff;color:var(--morado)}
+.btnv{border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;border-radius:6px;padding:2px 8px;font-size:11px}.btnv:hover{background:#dbeafe}
+.vacio{padding:40px;text-align:center;color:var(--suave)}.nota{color:var(--suave);font-size:12px;margin-top:8px}
+.calh{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:10px}.calh .mes{font-weight:700;font-size:17px;min-width:190px;text-align:center;color:#0a3d6e}
+.leyenda{display:flex;gap:16px;justify-content:center;margin-bottom:10px;font-size:11.5px;color:var(--suave)}.leyenda i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+.cg{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}.dow{text-align:center;font-size:11px;font-weight:700;color:var(--suave);text-transform:uppercase;letter-spacing:.04em}
+.cc{background:#fff;border-radius:9px;min-height:84px;padding:7px 8px;border:1px solid transparent;box-shadow:0 1px 3px rgba(0,0,0,.06);text-align:left}.cc.otro{opacity:.45;background:#f8fafc}.cc.hoy{border-color:#0a3d6e}
+.cc.con{cursor:pointer}.cc.con:hover{box-shadow:0 5px 12px rgba(0,0,0,.14)}.cc.pr{background:#fef2f2}.cc.pa{background:#fffbeb}.cc.pv{background:#f0fdf4}
+.cc .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}.cc .n{font-weight:700;color:#475569}.cc .c{color:#fff;border-radius:10px;padding:0 7px;font-size:10.5px;font-weight:700}.cc .c.r{background:var(--rojo)}.cc .c.a{background:var(--ambar)}.cc .c.v{background:var(--verde)}.cc .mo{font-size:11px;font-weight:700;color:#334155}
+.mf{display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:50;align-items:center;justify-content:center}.mf.on{display:flex}
+.mc{background:#fff;border-radius:11px;width:92vw;max-width:940px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.28)}
+.mh{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 20px;border-bottom:1px solid var(--linea);gap:10px}.mt{font-size:17px;font-weight:700;color:#0a3d6e}.ms{font-size:12px;color:var(--suave);margin-top:2px}.mb{padding:14px 20px;overflow:auto}
+.dc{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:14px}.dc div{background:#f8fafc;border-radius:8px;padding:7px 10px}.dc b{display:block;font-size:10.5px;text-transform:uppercase;color:var(--suave);font-weight:600}.dc span{font-size:14px;font-weight:700}
+.sec{margin-bottom:16px}.sec h3{font-size:12.5px;color:#0a3d6e;margin:0 0 6px;text-transform:uppercase;letter-spacing:.03em}.sec table th{position:static}.sec table td,.sec table th{padding:5px 8px;border-bottom:1px solid #eef1f5}
+.comp{border-radius:8px;padding:9px 12px;margin-bottom:8px;border-left:4px solid var(--linea);background:#f8fafc;display:flex;justify-content:space-between;align-items:center;gap:10px}.comp.r{border-left-color:var(--rojo);background:#fef2f2}.comp.a{border-left-color:var(--ambar);background:#fffbeb}.comp.v{border-left-color:var(--verde);background:#f0fdf4}
+</style></head><body>
+<header><div><h1 id='tit'></h1><div class='sub' id='sub'></div></div><div style='display:flex;gap:8px'><button class='p' data-a='xlsx'>Exportar a Excel</button><button data-a='csv'>Exportar a CSV</button></div></header>
+<div class='ctl'>
+ <label>Fecha de corte <input type='date' id='corte' onchange='cambio()'></label>
+ <label>Buscar <input type='text' id='q' placeholder='nombre, folio o título' oninput='cambio()' style='width:210px'></label>
+ <label><input type='checkbox' id='soloV' onchange='cambio()'> Solo vencidos</label>
+ <span><button data-a='rango' data-v='s1' id='bs1'>Vence esta semana</button> <button data-a='rango' data-v='s2' id='bs2'>Vence la semana que sigue</button></span>
+</div>
+<div class='tabs' id='tabs'><button data-a='tab' data-v='aging' class='on'>Antigüedad por cliente</button><button data-a='tab' data-v='docs'>Documentos con saldo</button><button data-a='tab' data-v='cal'>Calendario</button><button data-a='tab' data-v='edo'>Estado de cuenta</button></div>
+<div class='cuerpo' id='cuerpo'></div>
+<div class='mf' id='mf'><div class='mc'><div class='mh'><div><div class='mt' id='mt'></div><div class='ms' id='ms'></div></div><div style='display:flex;gap:6px'><button id='mv' data-a='volver' style='display:none'>← Volver</button><button data-a='cerrar'>Cerrar ✕</button></div></div><div class='mb' id='mb'></div></div></div>
+<script src='https://broslmv.local/dashboard/xlsx.bundle.js'></script>
+<script>
+var D=" + json + @";
+var PC='cliente',TITULO='Cuentas por cobrar',LADO='C';
+function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}
+function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+function f2(n){return (n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function dias(a,b){return Math.round((Date.parse(b)-Date.parse(a))/864e5);}
+function sumaDias(f,n){var d=new Date(Date.parse(f)+n*864e5);return d.toISOString().substr(0,10);}
+function fmtF(s){if(!s)return '—';var p=s.split('-');return p[2]+'/'+p[1]+'/'+p[0];}
+var tab='aging',entSel=0,pdesde='',phasta='',rango='',volverA=null,calMes=null;
+var BUCKETS=['Vigente','1-30 días','31-60 días','61-90 días','Más de 90','A favor (NC)'];
+var MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],DOW=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+var AGENDA=['Pendiente','Aviso enviado','Liquidada','Cancelada'];
+var pp={},nc={};
+D.pagos.forEach(function(p){(pp[p.doc]=pp[p.doc]||[]).push(p);if(p.nc>0)(nc[p.nc]=nc[p.nc]||[]).push(p);});
+var docPorId={};D.docs.forEach(function(d){docPorId[d.id]=d;});
+var corteEl=document.getElementById('corte');corteEl.value=D.hoy;corteEl.min=D.desde;corteEl.max=D.hoy;
+calMes=new Date(Date.parse(D.hoy));calMes.setUTCDate(1);
+// estado de un documento a la fecha de corte: r vencido, a por vencer (próximos 7 días), v vigente, m a favor (nota de crédito)
+function estadoDe(f){if(f.dv===null)return 'm';if(f.dv>0)return 'r';if(f.dv>=-7)return 'a';return 'v';}
+function calc(sinFiltros){
+  var corte=corteEl.value||D.hoy,q=document.getElementById('q').value.toLowerCase(),sv=document.getElementById('soloV').checked,filas=[];
+  D.docs.forEach(function(d){
+    if(d.fecha>corte)return;
+    var ap=0;(pp[d.id]||[]).forEach(function(p){if(p.fecha<=corte)ap+=p.monto;});
+    (nc[d.id]||[]).forEach(function(p){if(p.fecha<=corte)ap+=p.monto;});
+    var saldo=d.total-ap;if(Math.abs(saldo)<0.005)return;
+    var venc=d.venc||d.fecha,dv=d.s<0?null:dias(venc,corte),b=d.s<0?5:(dv<=0?0:dv<=30?1:dv<=60?2:dv<=90?3:4);
+    var fila={d:d,saldo:d.s*saldo,venc:venc,dv:dv,b:b,pagado:ap};
+    if(!sinFiltros){
+      if(sv&&(b===0||b===5))return;
+      if(q&&(d.entNom+' '+d.folio+' '+d.titulo+' '+d.tipo).toLowerCase().indexOf(q)<0)return;
+      if(rango){if(dv===null)return;var ini=rango==='s1'?0:7;if(!(venc>=sumaDias(corte,ini)&&venc<=sumaDias(corte,ini+6)))return;}
+    }
+    filas.push(fila);
+  });
+  return filas;
+}
+function porEntidad(filas){
+  var m={};filas.forEach(function(f){var e=m[f.d.ent]=m[f.d.ent]||{id:f.d.ent,nom:f.d.entNom||('Entidad '+f.d.ent),b:[0,0,0,0,0,0],tot:0,n:0};e.b[f.b]+=f.saldo;e.tot+=f.saldo;e.n++;});
+  return Object.keys(m).map(function(k){return m[k];}).sort(function(a,b){return b.tot-a.tot;});
+}
+var exp={nombre:'saldos',titulo:'',filas:[]};
+function cambio(){
+  var corte=corteEl.value||D.hoy,todas=calc(true),filas=calc(false),ents=porEntidad(filas);
+  var k={r:[0,0],a:[0,0],s:[0,0],v:[0,0],m:[0,0],t:0};
+  todas.forEach(function(f){
+    if(f.dv===null){k.m[0]++;k.m[1]+=f.saldo;return;}
+    k.t+=f.saldo;
+    if(f.dv>0){k.r[0]++;k.r[1]+=f.saldo;}
+    else if(f.dv>=-7){k.a[0]++;k.a[1]+=f.saldo;}
+    else{k.v[0]++;k.v[1]+=f.saldo;}
+    var v=f.venc;if(v>=sumaDias(corte,7)&&v<=sumaDias(corte,13)){k.s[0]++;k.s[1]+=f.saldo;}
+  });
+  document.getElementById('tit').textContent=TITULO+' al '+fmtF(corte);
+  document.getElementById('sub').textContent=(D.empresa||'')+' · '+ents.length+' '+PC+(ents.length===1?'':'s')+' con saldo · '+filas.length+' documentos';
+  document.getElementById('bs1').className=rango==='s1'?'on':'';document.getElementById('bs2').className=rango==='s2'?'on':'';
+  var h='<div class=kpis>'+
+   '<div class=\'kpi r\'><b>Vencido</b><span>'+f2(k.r[1])+'</span><small>'+k.r[0]+' documento(s)</small></div>'+
+   '<div class=\'kpi a\'><b>Vence en 7 días</b><span>'+f2(k.a[1])+'</span><small>'+k.a[0]+' documento(s)</small></div>'+
+   '<div class=\'kpi m\'><b>Vence la semana que sigue</b><span>'+f2(k.s[1])+'</span><small>'+k.s[0]+' documento(s)</small></div>'+
+   '<div class=\'kpi v\'><b>Vigente (más adelante)</b><span>'+f2(k.v[1])+'</span><small>'+k.v[0]+' documento(s)</small></div>'+
+   '<div class=\'kpi m\'><b>Notas de crédito a favor</b><span>'+f2(k.m[1])+'</span><small>'+k.m[0]+' documento(s)</small></div>'+
+   '<div class=\'kpi t\'><b>Saldo total</b><span>'+f2(k.t+k.m[1])+'</span><small>facturas menos notas de crédito</small></div></div>';
+  if(tab==='aging')h+=vistaAging(ents,filas);else if(tab==='docs')h+=vistaDocs(filas);else if(tab==='cal')h+=vistaCal(todas);else h+=vistaEdo();
+  document.getElementById('cuerpo').innerHTML=h;
+  var s=document.getElementById('selEnt');if(s)s.value=entSel;
+}
+function vistaAging(ents,filas){
+  exp={nombre:TITULO.toLowerCase().replace(/ /g,'_')+'_'+(corteEl.value||D.hoy),titulo:TITULO+' al '+fmtF(corteEl.value||D.hoy),filas:[]};
+  var enc=[PC.charAt(0).toUpperCase()+PC.slice(1)].concat(BUCKETS,['Saldo total','Documentos']);exp.filas=[enc];
+  if(!ents.length)return '<div class=vacio>No hay saldos a esta fecha con esos filtros.</div>';
+  var tb=[0,0,0,0,0,0],tt=0,tn=0,h='<div class=tw><table><thead><tr><th>'+enc[0]+'</th>';
+  BUCKETS.forEach(function(b){h+='<th>'+b+'</th>';});h+='<th>Saldo total</th><th>Docs</th></tr></thead><tbody>';
+  ents.forEach(function(e){
+    h+='<tr class=clic data-a=edo data-v='+e.id+' title=\'Ver estado de cuenta\'><td>'+esc(e.nom)+'</td>';
+    e.b.forEach(function(v,i){tb[i]+=v;h+='<td class=\''+(i>=1&&i<=4&&v?'venc':(i===5&&v?'favor':''))+'\'>'+(v?f2(v):'')+'</td>';});
+    tt+=e.tot;tn+=e.n;h+='<td><b>'+f2(e.tot)+'</b></td><td>'+e.n+'</td></tr>';
+    exp.filas.push([e.nom].concat(e.b.map(function(v){return v.toFixed(2);}),[e.tot.toFixed(2),e.n]));
+  });
+  h+='</tbody><tfoot><tr><td>Total</td>';tb.forEach(function(v){h+='<td>'+(v?f2(v):'')+'</td>';});h+='<td>'+f2(tt)+'</td><td>'+tn+'</td></tr></tfoot></table></div>';
+  exp.filas.push(['TOTAL'].concat(tb.map(function(v){return v.toFixed(2);}),[tt.toFixed(2),tn]));
+  return h+'<div class=nota>Antigüedad contada desde el vencimiento (última fecha de la agenda de pago). Clic en una fila para ver su estado de cuenta.</div>';
+}
+function vistaDocs(filas){
+  exp={nombre:'documentos_con_saldo_'+(corteEl.value||D.hoy),titulo:'Documentos con saldo al '+fmtF(corteEl.value||D.hoy),filas:[[PC.charAt(0).toUpperCase()+PC.slice(1),'Tipo','Folio','Fecha','Vencimiento','Días vencido','Total','Saldo','Título']]};
+  filas.sort(function(a,b){return a.d.entNom<b.d.entNom?-1:a.d.entNom>b.d.entNom?1:(a.venc<b.venc?-1:1);});
+  if(!filas.length)return '<div class=vacio>No hay documentos con saldo a esta fecha con esos filtros.</div>';
+  var h='<div class=tw><table><thead><tr><th></th><th>'+exp.filas[0][0]+'</th><th class=l>Tipo</th><th>Folio</th><th>Fecha</th><th>Vence</th><th>Días vencido</th><th>Total</th><th>Saldo</th><th class=l>Título</th></tr></thead><tbody>',t=0;
+  filas.forEach(function(f){
+    var d=f.d,pil=f.dv===null?'<span class=\'pill m\'>A favor</span>':f.dv<=0?'<span class=\'pill '+(f.dv>=-7?'a':'')+'\'>'+(f.dv>=-7?'Por vencer':'Vigente')+'</span>':'<span class=\'pill '+(f.dv>60?'r':'a')+'\'>'+f.dv+' d</span>';t+=f.saldo;
+    h+='<tr class=clic data-a=ver data-v='+d.id+' title=\'Clic: ver el documento · Doble clic: abrirlo en Comercial\'><td><button class=btnv data-a=ver data-v='+d.id+'>🔍 Ver</button></td><td class=l>'+esc(d.entNom)+'</td><td class=l>'+esc(d.tipo)+'</td><td>'+esc(d.folio)+'</td><td>'+d.fecha+'</td><td>'+(f.dv===null?'':f.venc)+'</td><td>'+pil+'</td><td>'+f2(d.s*d.total)+'</td><td><b>'+f2(f.saldo)+'</b></td><td class=l>'+esc(d.titulo)+'</td></tr>';
+    exp.filas.push([d.entNom,d.tipo,d.folio,d.fecha,f.dv===null?'':f.venc,f.dv===null?'':Math.max(0,f.dv),(d.s*d.total).toFixed(2),f.saldo.toFixed(2),d.titulo]);
+  });
+  return h+'</tbody><tfoot><tr><td colspan=8>Total</td><td>'+f2(t)+'</td><td></td></tr></tfoot></table></div><div class=nota>Clic en «Ver» o en una fila: partidas, agenda de pago y pagos aplicados; ahí mismo el botón «Abrir en Comercial» abre el documento y esta ventana sigue abierta.</div>';
+}
+// Calendario de vencimientos: solo documentos que suman (las notas de crédito no vencen)
+function vistaCal(todas){
+  exp={nombre:'calendario_vencimientos',titulo:'',filas:[]};
+  var y=calMes.getUTCFullYear(),m=calMes.getUTCMonth(),porDia={};
+  todas.forEach(function(f){if(f.dv===null)return;(porDia[f.venc]=porDia[f.venc]||[]).push(f);});
+  var primero=new Date(Date.UTC(y,m,1)),ini=new Date(primero.getTime()-primero.getUTCDay()*864e5),hoy=D.hoy;
+  var h='<div class=calh><button data-a=calmes data-v=-1>‹ Anterior</button><div class=mes>'+MESES[m]+' '+y+'</div><button data-a=calmes data-v=1>Siguiente ›</button><button data-a=calmes data-v=0>Hoy</button></div>'+
+   '<div class=leyenda><span><i style=\'background:var(--rojo)\'></i>Vencido</span><span><i style=\'background:var(--ambar)\'></i>Vence en 7 días</span><span><i style=\'background:var(--verde)\'></i>Vigente</span></div><div class=cg>';
+  DOW.forEach(function(x){h+='<div class=dow>'+x+'</div>';});
+  for(var i=0;i<42;i++){
+    var d=new Date(ini.getTime()+i*864e5),iso=d.toISOString().substr(0,10),its=porDia[iso]||[],cls='cc'+(d.getUTCMonth()!==m?' otro':'')+(iso===hoy?' hoy':'');
+    if(its.length){var peor=its.some(function(f){return f.dv>0;})?'r':its.some(function(f){return f.dv>=-7;})?'a':'v';var mo=0;its.forEach(function(f){mo+=f.saldo;});
+      h+='<div class=\''+cls+' con p'+peor+'\' data-a=dia data-v='+iso+'><div class=top><span class=n>'+d.getUTCDate()+'</span><span class=\'c '+peor+'\'>'+its.length+'</span></div><div class=mo>'+f2(mo)+'</div></div>';}
+    else h+='<div class=\''+cls+'\'><div class=top><span class=n>'+d.getUTCDate()+'</span></div></div>';
+  }
+  return h+'</div><div class=nota>Cada día suma el saldo de los documentos que vencen ese día. Clic en un día con vencimientos para ver cuáles son.</div>';
+}
+function vistaEdo(){
+  var corte=corteEl.value||D.hoy,lista={},Pc=PC.charAt(0).toUpperCase()+PC.slice(1);
+  D.docs.forEach(function(d){lista[d.ent]=d.entNom||('Entidad '+d.ent);});
+  var ids=Object.keys(lista).sort(function(a,b){return lista[a]<lista[b]?-1:1;});
+  if(!phasta||phasta>corte)phasta=corte;if(!pdesde)pdesde=sumaDias(phasta,-90);
+  var h='<div class=ctl style=\'padding:0 0 10px\'><label>'+Pc+' <select id=selEnt onchange=\'entSel=+this.value;cambio()\'><option value=0>— elige —</option>';
+  ids.forEach(function(i){h+='<option value='+i+'>'+esc(lista[i])+'</option>';});
+  h+='</select></label><label>Del <input type=date id=pd value='+pdesde+' onchange=\'pdesde=this.value;cambio()\'></label><label>al <input type=date id=ph value='+phasta+' onchange=\'phasta=this.value;cambio()\'></label></div>';
+  if(!entSel){exp={nombre:'estado_de_cuenta',titulo:'',filas:[]};return h+'<div class=vacio>Elige un '+PC+' (o haz clic en una fila de la antigüedad) para ver su estado de cuenta.</div>';}
+  var ev=[];
+  D.docs.forEach(function(d){
+    if(d.ent!==entSel)return;
+    ev.push({f:d.fecha,t:d.tipo,r:d.folio,c:d.s>0?d.total:0,a:d.s<0?d.total:0,id:d.id,mod:d.mod,o:0,x:d.titulo});
+    (pp[d.id]||[]).forEach(function(p){if(p.nc>0)return;var e=-d.s*p.monto;ev.push({f:p.fecha,t:d.s>0?(LADO==='C'?'Cobro':'Pago'):'Devolución',r:p.op+' → '+d.folio,c:e>0?e:0,a:e<0?-e:0,id:d.id,mod:d.mod,o:1,x:''});});
+  });
+  ev.sort(function(a,b){return a.f<b.f?-1:a.f>b.f?1:a.o-b.o;});
+  var ini=0;ev.forEach(function(e){if(e.f<pdesde)ini+=e.c-e.a;});
+  exp={nombre:'estado_de_cuenta_'+(lista[entSel]||'').replace(/[^A-Za-z0-9]+/g,'_')+'_'+phasta,titulo:'Estado de cuenta — '+lista[entSel]+' ('+fmtF(pdesde)+' al '+fmtF(phasta)+')',filas:[['Fecha','Movimiento','Referencia','Cargos','Abonos','Saldo']]};
+  var sal=ini,tc=0,ta=0,rows='';
+  exp.filas.push([pdesde,'Saldo inicial','','','',ini.toFixed(2)]);
+  ev.forEach(function(e){
+    if(e.f<pdesde||e.f>phasta)return;sal+=e.c-e.a;tc+=e.c;ta+=e.a;
+    rows+='<tr class=clic data-a=ver data-v='+e.id+'><td>'+e.f+'</td><td class=l>'+esc(e.t)+'</td><td class=l>'+esc(e.r)+(e.x?' <span class=nota>'+esc(e.x)+'</span>':'')+'</td><td>'+(e.c?f2(e.c):'')+'</td><td>'+(e.a?f2(e.a):'')+'</td><td>'+f2(sal)+'</td></tr>';
+    exp.filas.push([e.f,e.t,e.r,e.c?e.c.toFixed(2):'',e.a?e.a.toFixed(2):'',sal.toFixed(2)]);
+  });
+  exp.filas.push(['','Totales del periodo','',tc.toFixed(2),ta.toFixed(2),sal.toFixed(2)]);
+  return h+'<div class=tw><table><thead><tr><th>Fecha</th><th class=l>Movimiento</th><th class=l>Referencia</th><th>Cargos</th><th>Abonos</th><th>Saldo</th></tr></thead><tbody><tr><td>'+pdesde+'</td><td class=l><b>Saldo inicial</b></td><td></td><td></td><td></td><td><b>'+f2(ini)+'</b></td></tr>'+rows+'</tbody><tfoot><tr><td colspan=3>Totales del periodo</td><td>'+f2(tc)+'</td><td>'+f2(ta)+'</td><td>'+f2(sal)+'</td></tr></tfoot></table></div><div class=nota>Las notas de crédito aplicadas a una factura no se repiten como abono: la nota ya restó como documento. Clic en un movimiento para ver su documento.</div>';
+}
+// ---- ventana de detalle de un documento ----
+function modal(t,s,html,vol){document.getElementById('mt').textContent=t;document.getElementById('ms').textContent=s;document.getElementById('mb').innerHTML=html;volverA=vol||null;document.getElementById('mv').style.display=vol?'inline-block':'none';document.getElementById('mf').className='mf on';}
+function verDoc(id,vol){
+  var d=docPorId[id];if(!d)return;var corte=corteEl.value||D.hoy,ap=0,pg=[];
+  (pp[d.id]||[]).forEach(function(p){if(p.nc>0)return;pg.push(p);});
+  (pp[d.id]||[]).forEach(function(p){if(p.fecha<=corte)ap+=p.monto;});(nc[d.id]||[]).forEach(function(p){if(p.fecha<=corte)ap+=p.monto;});
+  var saldo=d.total-ap,venc=d.venc||d.fecha,dv=d.s<0?null:dias(venc,corte);
+  var est=dv===null?'<span class=\'pill m\'>A favor</span>':Math.abs(saldo)<0.005?'<span class=\'pill v\'>Liquidado</span>':dv>0?'<span class=\'pill r\'>Vencido '+dv+' d</span>':dv>=-7?'<span class=\'pill a\'>Vence en 7 días</span>':'<span class=\'pill v\'>Vigente</span>';
+  var h='<div class=dc><div><b>Total</b><span>'+f2(d.total)+'</span></div><div><b>'+(LADO==='C'?'Cobrado':'Pagado')+'</b><span>'+f2(ap)+'</span></div><div><b>Saldo al corte</b><span>'+f2(saldo)+'</span></div><div><b>Vencimiento</b><span>'+(dv===null?'—':fmtF(venc))+'</span></div><div><b>Estatus</b><span>'+est+'</span></div></div>';
+  h+='<div class=sec><h3>Partidas</h3>'+(d.p&&d.p.length?'<table><thead><tr><th>#</th><th class=l>Concepto</th><th>Cantidad</th><th>Precio</th><th>Total</th></tr></thead><tbody>'+d.p.map(function(p){return '<tr><td>'+p[0]+'</td><td class=l style=\'white-space:normal\'>'+esc(p[1])+'</td><td>'+f2(p[2])+'</td><td>'+f2(p[3])+'</td><td>'+f2(p[4])+'</td></tr>';}).join('')+'</tbody></table>':'<div class=nota>El detalle de partidas se carga solo de los documentos que hoy tienen saldo.</div>')+'</div>';
+  h+='<div class=sec><h3>Agenda de '+(LADO==='C'?'cobro':'pago')+'</h3>'+(d.a&&d.a.length?'<table><thead><tr><th>Parcialidad</th><th>Fecha</th><th>Monto</th><th class=l>Estatus</th></tr></thead><tbody>'+d.a.map(function(a){return '<tr><td>'+a[0]+'</td><td>'+fmtF(a[1])+'</td><td>'+f2(a[2])+'</td><td class=l>'+(AGENDA[a[3]]||a[3])+'</td></tr>';}).join('')+'</tbody></table>':'<div class=nota>Sin agenda de pago capturada.</div>')+'</div>';
+  var ncs=nc[d.id]||[];
+  h+='<div class=sec><h3>Pagos aplicados</h3>'+(pg.length||ncs.length?'<table><thead><tr><th>Fecha</th><th>Monto</th><th class=l>Operación</th></tr></thead><tbody>'+pg.map(function(p){return '<tr><td>'+fmtF(p.fecha)+'</td><td>'+f2(p.monto)+'</td><td class=l>'+esc(p.op)+'</td></tr>';}).join('')+ncs.map(function(p){var n=docPorId[p.doc];return '<tr><td>'+fmtF(p.fecha)+'</td><td>'+f2(p.monto)+'</td><td class=l>Nota de crédito '+esc(n?n.folio:p.doc)+'</td></tr>';}).join('')+'</tbody></table>':'<div class=nota>Sin pagos aplicados todavía.</div>')+'</div>';
+  h+='<div style=\'text-align:right\'><button class=p data-a=abrir data-v='+d.id+'>Abrir en Comercial</button></div>';
+  modal(d.tipo+' '+(d.folio||'(sin folio)')+' — '+(d.entNom||''),'Fecha '+fmtF(d.fecha)+(d.titulo?' · '+d.titulo:''),h,vol);
+}
+function verDia(iso){
+  var its=calc(true).filter(function(f){return f.dv!==null&&f.venc===iso;}),tot=0;its.forEach(function(f){tot+=f.saldo;});
+  var h='<div class=dc style=\'grid-template-columns:1fr\'><div><b>Total que vence este día</b><span>'+f2(tot)+'</span></div></div>'+its.map(function(f){var c=f.dv>0?'r':f.dv>=-7?'a':'v';return '<div class=\'comp '+c+'\'><div><b>'+esc(f.d.folio||'(sin folio)')+'</b> — '+esc(f.d.entNom)+'<br><span class=nota>Saldo '+f2(f.saldo)+'</span></div><button class=btnv data-a=verdia data-v='+f.d.id+' data-i='+iso+'>Ver documento →</button></div>';}).join('');
+  modal('Vencimientos del '+fmtF(iso),its.length+' documento(s)',h,null);
+}
+// ---- acciones (un solo manejador de clics) ----
+var acc={
+  tab:function(v){tab=v;[].forEach.call(document.querySelectorAll('#tabs button'),function(b){b.className=b.getAttribute('data-v')===v?'on':'';});cambio();},
+  edo:function(v){entSel=+v;acc.tab('edo');},
+  rango:function(v){rango=rango===v?'':v;cambio();},
+  ver:function(v){verDoc(+v,null);},
+  verdia:function(v,el){var iso=el.getAttribute('data-i');verDoc(+v,function(){verDia(iso);});},
+  dia:function(v){verDia(v);},
+  calmes:function(v){if(v==='0'){calMes=new Date(Date.parse(D.hoy));calMes.setUTCDate(1);}else{calMes.setUTCMonth(calMes.getUTCMonth()+(+v));}cambio();},
+  volver:function(){if(volverA)volverA();},
+  cerrar:function(){document.getElementById('mf').className='mf';volverA=null;},
+  abrir:function(v){var d=docPorId[+v];if(d)enviar({accion:'abrir',id:d.id,modulo:d.mod});},
+  csv:function(){
+    if(!exp.filas.length)return;
+    var Q=String.fromCharCode(34);
+    var csv=exp.filas.map(function(f){return f.map(function(c){c=String(c==null?'':c);return /[,\n]/.test(c)||c.indexOf(Q)>=0?Q+c.split(Q).join(Q+Q)+Q:c;}).join(',');}).join('\r\n');
+    enviar({accion:'csv',nombre:exp.nombre,contenido:csv});
+  },
+  xlsx:function(){
+    if(!exp.filas.length)return;
+    if(typeof XLSX==='undefined'){acc.csv();return;}
+    var ws=XLSX.utils.aoa_to_sheet([[exp.titulo||TITULO],[(D.empresa||'')+' — generado '+new Date().toLocaleString('es-MX')],[]].concat(exp.filas.map(function(f){return f.map(function(c){return /^-?\d+\.\d\d$/.test(String(c))?+c:c;});})));
+    var ncol=exp.filas[0].length,borde={style:'thin',color:{rgb:'FFE2E8F0'}},bo={top:borde,bottom:borde,left:borde,right:borde};
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:ncol-1}},{s:{r:1,c:0},e:{r:1,c:ncol-1}}];
+    ws['A1'].s={font:{bold:true,sz:16,color:{rgb:'FF0A3D6E'}}};ws['A2'].s={font:{italic:true,sz:10,color:{rgb:'FF64748B'}}};
+    var ult=exp.filas.length+2;
+    for(var r=3;r<=ult;r++)for(var c=0;c<ncol;c++){
+      var a=XLSX.utils.encode_cell({r:r,c:c});if(!ws[a])ws[a]={t:'s',v:''};
+      if(r===3)ws[a].s={font:{bold:true,color:{rgb:'FFFFFFFF'}},fill:{fgColor:{rgb:'FF0A3D6E'}},alignment:{horizontal:'center'},border:bo};
+      else{ws[a].s={border:bo,alignment:typeof ws[a].v==='number'?{horizontal:'right'}:{}};if(typeof ws[a].v==='number'&&String(exp.filas[r-3][c]).indexOf('.')>=0)ws[a].z='#,##0.00';}
+    }
+    var an=[];for(var c2=0;c2<ncol;c2++){var mx=String(exp.filas[0][c2]).length;exp.filas.forEach(function(f){mx=Math.max(mx,String(f[c2]==null?'':f[c2]).length);});an.push({wch:Math.min(46,Math.max(10,mx+2))});}
+    ws['!cols']=an;ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:ult,c:ncol-1}});
+    var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Hoja1');
+    enviar({accion:'xlsx',nombre:exp.nombre,b64:XLSX.write(wb,{bookType:'xlsx',type:'base64'})});
+  }
+};
+document.addEventListener('click',function(e){
+  var t=e.target.closest('[data-a]');
+  if(!t){if(e.target.id==='mf')acc.cerrar();return;}
+  if(e.target.closest('button')&&e.target.closest('button')!==t)return;
+  var a=t.getAttribute('data-a');if(acc[a]){e.stopPropagation();acc[a](t.getAttribute('data-v'),t);}
+});
+cambio();
+</script></body></html>";
+
+// ---------- 4) Pruebas automáticas: escribe el modelo (y el HTML) en archivos, sin ventanas ----------
+if (!string.IsNullOrEmpty(modoPrueba))
+{
+    string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_SALDOS_OUT");
+    string htmlPrueba = Environment.GetEnvironmentVariable("BROSLMV_SALDOS_HTML");
+    string jsonPrueba = ser.Serialize(modelo);
+    if (!string.IsNullOrEmpty(salidaPrueba)) File.WriteAllText(salidaPrueba, jsonPrueba, new UTF8Encoding(false));
+    if (!string.IsNullOrEmpty(htmlPrueba)) File.WriteAllText(htmlPrueba, Html(jsonPrueba), new UTF8Encoding(false));
+    return "OK " + docs.Count + " documentos, " + pagos.Count + " pagos";
+}
+
+// ---------- 5) Ventana: modeless, se queda abierta hasta que la cierren ----------
+// El script termina enseguida y la ventana sigue viva (conserva su pestaña, su corte y su cliente); cada clic llega a este manejador en el hilo de Comercial.
+// Así se puede minimizar, seguir trabajando en Comercial y abrir un documento sin chocar con XEngine («the other application is busy»).
+Func<Dictionary<string, object>, string> alMensaje = r =>
+{
+    string accion = r.ContainsKey("accion") ? S(r["accion"]) : "";
+    if (accion == "abrir")
+    {
+        try { ctx.erp.AbrirDocumento((int)L(r["id"]), I(r["modulo"])); } catch (Exception ex) { ctx.Msg("No se pudo abrir el documento: " + ex.Message, "Estado de cuenta de clientes (cuentas por cobrar)"); }
+        return null;
+    }
+    if (accion == "csv" || accion == "xlsx")
+    {
+        string nombre = new string(S(r["nombre"]).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        bool xl = accion == "xlsx";
+        using (var dlg = new SaveFileDialog { Filter = xl ? "Libro de Excel (*.xlsx)|*.xlsx" : "CSV para Excel (*.csv)|*.csv", FileName = nombre + (xl ? ".xlsx" : ".csv") })
+            if (dlg.ShowDialog() == DialogResult.OK)
+            {
+                if (xl) File.WriteAllBytes(dlg.FileName, Convert.FromBase64String(S(r["b64"]))); else File.WriteAllText(dlg.FileName, S(r["contenido"]), new UTF8Encoding(true));
+                ctx.Msg("Archivo guardado:\n" + dlg.FileName, "Estado de cuenta de clientes (cuentas por cobrar)");
+            }
+        return null;
+    }
+    return null;
+};
+ctx.ShowHtmlModeless(Html(ser.Serialize(modelo)), "Estado de cuenta de clientes (cuentas por cobrar)", 1360, 860, alMensaje);
+return "OK";
