@@ -64,34 +64,57 @@ var modulosLado = new Dictionary<string, List<int>> { ["C"] = new List<int>(), [
 var nombreMod = new Dictionary<int, string>();
 foreach (var r in modulos) { modulosLado[I(r["Rec"]) == 1 ? "C" : "P"].Add(I(r["ModuleID"])); nombreMod[I(r["ModuleID"])] = S(r["ModuleName"]); }
 
+// ---------- Documentos con saldo pendiente de un lado (C = por cobrar, P = por pagar) ----------
+// Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero). La ventana los pide otra vez después de aplicar, para ver los saldos nuevos.
+List<Dictionary<string, object>> DocsConSaldo(string lado)
+{
+    var mods = modulosLado[lado];
+    if (mods.Count == 0) return new List<Dictionary<string, object>>();
+    return ctx.Query(
+        "SELECT TOP 30000 d.DocumentID AS id, d.ModuleID AS modulo, d.BusinessEntityID AS ent, d.FolioPrefix, d.Folio, d.DateDocument AS fecha, ISNULL(d.Total,0) AS total, ISNULL(d.Balance,0) AS saldo, ISNULL(d.Title,'') AS titulo, " +
+        "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS vence " +
+        "FROM docDocument d WHERE d.ModuleID IN (" + string.Join(",", mods) + ") AND d.OwnedBusinessEntityID = " + empresa + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) > 0.004 ORDER BY d.DateDocument")
+        .Select(r => new Dictionary<string, object> { ["id"] = L(r["id"]), ["modulo"] = I(r["modulo"]), ["tipo"] = nombreMod[I(r["modulo"])], ["ent"] = I(r["ent"]), ["folio"] = (S(r["FolioPrefix"]) + S(r["Folio"])).Trim(),
+            ["fecha"] = Nulo(r["fecha"]) ? "" : Convert.ToDateTime(r["fecha"], ci).ToString("yyyy-MM-dd"), ["vence"] = Nulo(r["vence"]) ? "" : Convert.ToDateTime(r["vence"], ci).ToString("yyyy-MM-dd"),
+            ["total"] = D(r["total"]), ["saldo"] = D(r["saldo"]), ["titulo"] = S(r["titulo"]) }).ToList();
+}
+// Los últimos cobros o pagos de esa persona (los 8 más recientes que no estén cancelados), con la cuenta y a cuántos documentos se aplicaron
+List<Dictionary<string, object>> MovimientosDe(long entidad, string clave)
+{
+    if (!tipoPor.ContainsKey(clave) || entidad <= 0) return new List<Dictionary<string, object>>();
+    return ctx.Query("SELECT TOP 8 o.FinancialOperationID AS id, o.FolioPrefix, o.Folio, o.DateOperation, ISNULL(o.Amount,0) AS Monto, ISNULL(f.FinancialEntityName,'') AS Cuenta, " +
+        "(SELECT COUNT(*) FROM docDocumentPayment p WHERE p.FinancialOperationID = o.FinancialOperationID AND p.DeletedOn IS NULL) AS Docs FROM docFinancialOperation o LEFT JOIN orgFinancialEntity f ON f.FinancialEntityID = o.FinancialEntityID " +
+        "WHERE o.BusinessEntityID = " + entidad + " AND o.ModuleID = " + (int)tipoPor[clave]["modOp"] + " AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL ORDER BY o.DateOperation DESC, o.FinancialOperationID DESC")
+        .Select(r => new Dictionary<string, object> { ["id"] = L(r["id"]), ["folio"] = (S(r["FolioPrefix"]) + "-" + S(r["Folio"])).Trim(), ["fecha"] = Nulo(r["DateOperation"]) ? "" : Convert.ToDateTime(r["DateOperation"], ci).ToString("yyyy-MM-dd"),
+            ["monto"] = D(r["Monto"]), ["cuenta"] = S(r["Cuenta"]), ["docs"] = I(r["Docs"]) }).ToList();
+}
+
 // ---------- Catálogos y documentos con saldo para el formulario ----------
 Dictionary<string, object> Catalogos()
 {
     var cat = new Dictionary<string, object>();
+    // Persona con RFC, límite de crédito y su último cobro o pago (fecha e importe), para dar contexto al capturar
     string ent(string tabla) =>
-        "SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc FROM " + tabla + " x " +
-        "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID WHERE be.DeletedOn IS NULL ORDER BY nombre";
+        "SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.CreditLimit,0) AS credito, u.DateOperation AS ultFecha, ISNULL(u.Amount,0) AS ultMonto FROM " + tabla + " x " +
+        "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID " +
+        "OUTER APPLY (SELECT TOP 1 o.DateOperation, o.Amount FROM docFinancialOperation o WHERE o.BusinessEntityID = be.BusinessEntityID AND o.ModuleID IN (247,248) AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL ORDER BY o.DateOperation DESC, o.FinancialOperationID DESC) u " +
+        "WHERE be.DeletedOn IS NULL AND x.DeletedOn IS NULL ORDER BY nombre";
     Func<string, List<Dictionary<string, object>>> lista = tabla => ctx.Query(ent(tabla))
-        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["rfc"] = S(r["rfc"]) }).ToList();
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["rfc"] = S(r["rfc"]), ["credito"] = D(r["credito"]),
+            ["ultFecha"] = Nulo(r["ultFecha"]) ? "" : Convert.ToDateTime(r["ultFecha"], ci).ToString("yyyy-MM-dd"), ["ultMonto"] = D(r["ultMonto"]) }).ToList();
     cat["clientes"] = lista("orgCustomer");
     cat["proveedores"] = lista("orgSupplier");
-    cat["cuentas"] = ctx.Query("SELECT FinancialEntityID AS id, FinancialEntityName AS nombre FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY FinancialEntityName")
-        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
+    cat["cuentas"] = ctx.Query("SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")
+        .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["def"] = I(r["def"]) == 1 }).ToList();
     cat["formas"] = ctx.Query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
-    // Documentos con saldo pendiente de cada lado. Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero).
-    foreach (var lado in new[] { "C", "P" })
-    {
-        var mods = modulosLado[lado];
-        if (mods.Count == 0) { cat["docs" + lado] = new List<Dictionary<string, object>>(); continue; }
-        cat["docs" + lado] = ctx.Query(
-            "SELECT TOP 30000 d.DocumentID AS id, d.ModuleID AS modulo, d.BusinessEntityID AS ent, d.FolioPrefix, d.Folio, d.DateDocument AS fecha, ISNULL(d.Total,0) AS total, ISNULL(d.Balance,0) AS saldo, ISNULL(d.Title,'') AS titulo, " +
-            "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS vence " +
-            "FROM docDocument d WHERE d.ModuleID IN (" + string.Join(",", mods) + ") AND d.OwnedBusinessEntityID = " + empresa + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) > 0.004 ORDER BY d.DateDocument")
-            .Select(r => new Dictionary<string, object> { ["id"] = L(r["id"]), ["modulo"] = I(r["modulo"]), ["tipo"] = nombreMod[I(r["modulo"])], ["ent"] = I(r["ent"]), ["folio"] = (S(r["FolioPrefix"]) + S(r["Folio"])).Trim(),
-                ["fecha"] = Nulo(r["fecha"]) ? "" : Convert.ToDateTime(r["fecha"], ci).ToString("yyyy-MM-dd"), ["vence"] = Nulo(r["vence"]) ? "" : Convert.ToDateTime(r["vence"], ci).ToString("yyyy-MM-dd"),
-                ["total"] = D(r["total"]), ["saldo"] = D(r["saldo"]), ["titulo"] = S(r["titulo"]) }).ToList();
-    }
+    // Folio siguiente de cada tipo (el mismo cálculo que usa Aplicar; con otro cobro simultáneo podría variar)
+    var folios = new Dictionary<string, object>();
+    foreach (var t in TIPOS)
+        folios[(string)t["clave"]] = L(ctx.Scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + (int)t["modOp"] + " AND FolioPrefix = N'" + (string)t["prefijo"] + "'"));
+    cat["folios"] = folios;
+    cat["docsC"] = DocsConSaldo("C");
+    cat["docsP"] = DocsConSaldo("P");
     return cat;
 }
 
@@ -177,158 +200,316 @@ if (!string.IsNullOrEmpty(modoPrueba))
     var spec = ser.Deserialize<Dictionary<string, object>>(modoPrueba);
     string resultado;
     if (spec.ContainsKey("catalogo") && (bool)spec["catalogo"]) resultado = ser.Serialize(Catalogos());
+    else if (spec.ContainsKey("movimientos")) resultado = ser.Serialize(MovimientosDe(L(spec["entidad"]), S(spec["tipo"])));
+    else if (spec.ContainsKey("docs")) resultado = ser.Serialize(DocsConSaldo(S(spec["lado"])));
     else { try { resultado = "OK " + Aplicar(spec); } catch (Exception ex) { resultado = "ERROR " + ex.Message; } }
     string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_OUT");
     if (!string.IsNullOrEmpty(salidaPrueba)) System.IO.File.WriteAllText(salidaPrueba, resultado, new System.Text.UTF8Encoding(false));
     return resultado;
 }
 
-
 // ===================================================================================================================================
-// VENTANA (Windows Forms, modeless). Los manejadores llevan try/catch porque, en modeless, el script «ya terminó» cuando se hace clic.
+// VENTANA (Windows Forms, NO modal: Show, nunca ShowDialog → se puede minimizar y seguir trabajando en Comercial). Estación de cobros y pagos al estilo de Comercial:
+//   cinta (Registrar F5 · Registrar y nuevo F6 · Limpiar · Cancelar Esc) + información (fecha, folio, cuenta), persona con búsqueda (saldo, vencido, antigüedad),
+//   monto con «Distribuir» (más antiguos primero), documentos con saldo marcables y un resumen con avisos y los últimos movimientos de la persona.
+// Los manejadores llevan try/catch porque, en modeless, el script «ya terminó» cuando se hace clic.
 // ===================================================================================================================================
 class Opcion { public int Id { get; set; } public string Nombre { get; set; } public override string ToString() => Nombre; }
 
 var catalogo = Catalogos();
 Func<string, List<Dictionary<string, object>>> cat = k => (List<Dictionary<string, object>>)catalogo[k];
+var folios = (Dictionary<string, object>)catalogo["folios"];
 var seleccion = new Dictionary<long, double>();      // documento → monto a aplicar
-var docsVis = new List<Dictionary<string, object>>();
-long entidadSel = 0;
-bool bloquea = false;
+Dictionary<string, object> entSel = null;
+bool guardando = false; int tipoIdx = 0;
+string quienSoy = "", nombreEmpresa = "";
+try { quienSoy = S(ctx.Scalar("SELECT TOP 1 ISNULL(UserName,'') FROM engUser WHERE UserID = " + ctx.erp.UserId)); } catch { }
+try { nombreEmpresa = S(ctx.Scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + empresa)); } catch { }
 
-var frm = new Form { Text = "Cobro o pago", ClientSize = new Size(1080, 700), StartPosition = FormStartPosition.CenterScreen, BackColor = Color.FromArgb(244, 246, 249), Font = new Font("Segoe UI", 9f), KeyPreview = true };
-Label Et(string t, int x, int y) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = Color.FromArgb(100, 116, 139) }; frm.Controls.Add(l); return l; }
-TC Poner<TC>(TC c, int x, int y, int w, int h = 24) where TC : Control { c.Location = new Point(x, y); c.Size = new Size(w, h); frm.Controls.Add(c); return c; }
-void Seguro(Action a) { try { a(); } catch (Exception ex) { MessageBox.Show(ex.Message, "Cobro o pago", MessageBoxButtons.OK, MessageBoxIcon.Warning); } }
+var C_NAVY = Color.FromArgb(21, 50, 79); var C_NAVY2 = Color.FromArgb(29, 68, 104); var C_BG = Color.FromArgb(238, 242, 247); var C_LINE = Color.FromArgb(216, 224, 235);
+var C_TXT = Color.FromArgb(22, 38, 58); var C_MUTED = Color.FromArgb(100, 116, 139); var C_COBRO = Color.FromArgb(45, 111, 224); var C_PAGO = Color.FromArgb(15, 118, 110);
+var C_ROJO = Color.FromArgb(200, 40, 40); var C_AMBAR = Color.FromArgb(180, 83, 9); var C_VERDE = Color.FromArgb(22, 128, 59); var C_ZEBRA = Color.FromArgb(248, 250, 252);
+var F_BASE = new Font("Segoe UI", 9f); var F_B = new Font("Segoe UI", 9f, FontStyle.Bold); var F_H = new Font("Segoe UI Semibold", 13f); var F_SM = new Font("Segoe UI", 8f);
+var F_EMO = new Font("Segoe UI Emoji", 17f); var F_TOT = new Font("Segoe UI Semibold", 17f); var F_TIT = new Font("Segoe UI Semibold", 8f);
 
-var aviso = Poner(new Label { AutoSize = false, Text = "PLANTILLA AVANZADA, NO NATIVA: escribe directo en las tablas de Tesorería (una transacción por documento) y no genera la póliza contable. Pruébala primero en una base de pruebas.",
-    ForeColor = Color.FromArgb(180, 83, 9), BackColor = Color.FromArgb(253, 240, 220), BorderStyle = BorderStyle.FixedSingle, Padding = new Padding(6, 4, 6, 4) }, 16, 10, 1048, 38);
+var frm = new Form { Text = "Cobros y pagos · BrosLMV", ClientSize = new Size(1240, 840), MinimumSize = new Size(1100, 700), StartPosition = FormStartPosition.CenterScreen, BackColor = C_BG, Font = F_BASE, KeyPreview = true };
+void Seguro(Action a) { try { a(); } catch (Exception ex) { guardando = false; MessageBox.Show(ex.Message, "Cobro o pago", MessageBoxButtons.OK, MessageBoxIcon.Warning); } }
+Dictionary<string, object> TipoActual() => TIPOS[tipoIdx];
+bool EsCobro() => (string)TipoActual()["lado"] == "C";
+Color Acento() => EsCobro() ? C_COBRO : C_PAGO;
+List<Dictionary<string, object>> DocsLado() => cat(EsCobro() ? "docsC" : "docsP");
+Dictionary<string, object> hoyDoc(Dictionary<string, object> d) => d;
+DateTime? Fe(string s) { DateTime v; return DateTime.TryParse(s, ci, DateTimeStyles.None, out v) ? (DateTime?)v : null; }
 
-Et("Qué vas a registrar", 16, 58);
-var cmbTipo = Poner(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }, 16, 78, 220);
-foreach (var t in TIPOS) cmbTipo.Items.Add((string)t["nombre"]);
-cmbTipo.SelectedIndex = 0;
-var lblEnt = Et("Cliente", 256, 58);
-var txtEnt = Poner(new TextBox(), 256, 78, 400);
-var lstEnt = new ListBox { Visible = false, Location = new Point(256, 102), Size = new Size(400, 150) }; frm.Controls.Add(lstEnt);
-var lblCta = Et("Cuenta donde entra el dinero", 676, 58);
-var cmbCta = Poner(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }, 676, 78, 220);
+// ---- cinta ----
+var cinta = new Panel { Size = new Size(1240, 100), Dock = DockStyle.Top, BackColor = C_NAVY };
+cinta.Paint += (s, e) => { using (var b = new System.Drawing.Drawing2D.LinearGradientBrush(cinta.ClientRectangle, C_NAVY2, C_NAVY, 90f)) e.Graphics.FillRectangle(b, cinta.ClientRectangle); };
+cinta.Controls.Add(new Label { Text = "BROSLMV · TESORERÍA", Font = F_TIT, ForeColor = Color.FromArgb(147, 197, 253), BackColor = Color.Transparent, Location = new Point(18, 14), AutoSize = true });
+var lblTitulo = new Label { Text = "Cobro a cliente", Font = F_H, ForeColor = Color.White, BackColor = Color.Transparent, Location = new Point(16, 30), AutoSize = true }; cinta.Controls.Add(lblTitulo);
+var lblSub = new Label { Text = "", Font = F_SM, ForeColor = Color.FromArgb(182, 199, 218), BackColor = Color.Transparent, Location = new Point(18, 68), AutoSize = true }; cinta.Controls.Add(lblSub);
+int bx = 340;
+Label lblBtnG = null;
+Panel Boton(string icono, string texto, string tecla, bool primario, Action alClic, bool guardar = false)
+{
+    var p = new Panel { Location = new Point(bx, 12), Size = new Size(104, 76), Cursor = Cursors.Hand, BackColor = Color.Transparent }; bx += 108;
+    var li = new Label { Text = icono, Font = F_EMO, ForeColor = Color.White, BackColor = Color.Transparent, AutoSize = false, Size = new Size(104, 34), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(0, 2) };
+    var lt = new Label { Text = texto, Font = F_SM, ForeColor = Color.FromArgb(232, 238, 246), BackColor = Color.Transparent, AutoSize = false, Size = new Size(104, 18), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(0, 38) };
+    var lk = new Label { Text = tecla, Font = F_SM, ForeColor = Color.FromArgb(147, 169, 194), BackColor = Color.Transparent, AutoSize = false, Size = new Size(104, 14), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(0, 55) };
+    if (guardar) lblBtnG = lt;
+    p.Controls.AddRange(new Control[] { li, lt, lk });
+    foreach (Control c in new Control[] { p, li, lt, lk }) { c.MouseEnter += (s, e) => p.BackColor = Color.FromArgb(40, 255, 255, 255); c.MouseLeave += (s, e) => p.BackColor = Color.Transparent; c.Click += (s, e) => Seguro(alClic); }
+    p.Paint += (s, e) => { if (primario) using (var b = new SolidBrush(Acento())) e.Graphics.FillRectangle(b, p.ClientRectangle); };
+    cinta.Controls.Add(p); return p;
+}
+Panel btnReg = Boton("✅", "Registrar", "F5", true, () => Registrar(false), true);
+Boton("➕", "Registrar y nuevo", "F6", false, () => Registrar(true));
+bx += 10; Boton("🧹", "Limpiar", " ", false, () => Limpiar());
+Boton("✕", "Cancelar", "Esc", false, () => frm.Close());
+var info = new Panel { Size = new Size(430, 78), Location = new Point(1240 - 450, 11), Anchor = AnchorStyles.Top | AnchorStyles.Right, BackColor = Color.Transparent }; cinta.Controls.Add(info);
+info.Paint += (s, e) => { using (var pen = new Pen(Color.FromArgb(70, 255, 255, 255))) e.Graphics.DrawRectangle(pen, 0, 0, info.Width - 1, info.Height - 1); };
+Label Mini(string t, int x, int y) { var l = new Label { Text = t, Font = F_TIT, ForeColor = Color.FromArgb(159, 180, 204), BackColor = Color.Transparent, Location = new Point(x, y), AutoSize = true }; info.Controls.Add(l); return l; }
+Mini("FECHA", 12, 8); var dtFecha = new DateTimePicker { Format = DateTimePickerFormat.Short, Location = new Point(12, 26), Size = new Size(120, 24) }; info.Controls.Add(dtFecha);
+Mini("FOLIO", 150, 8); var lblFolio = new Label { Text = "—", Font = new Font("Segoe UI Semibold", 12f), ForeColor = Color.White, BackColor = Color.Transparent, Location = new Point(148, 24), AutoSize = true }; info.Controls.Add(lblFolio);
+info.Controls.Add(new Label { Text = "lo asigna el sistema", Font = F_SM, ForeColor = Color.FromArgb(159, 180, 204), BackColor = Color.Transparent, Location = new Point(150, 46), AutoSize = true });
+var lblCtaEt = Mini("CUENTA", 290, 8); var cmbCta = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(290, 26), Size = new Size(128, 24) }; info.Controls.Add(cmbCta);
 foreach (var c in cat("cuentas")) cmbCta.Items.Add(new Opcion { Id = I(c["id"]), Nombre = S(c["nombre"]) });
-if (cmbCta.Items.Count > 0) cmbCta.SelectedIndex = 0;
-Et("Forma de pago", 916, 58);
-var cmbForma = Poner(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList }, 916, 78, 148);
+for (int i = 0; i < cmbCta.Items.Count; i++) if (cat("cuentas")[i].ContainsKey("def") && (bool)cat("cuentas")[i]["def"]) { cmbCta.SelectedIndex = i; break; }
+if (cmbCta.SelectedIndex < 0 && cmbCta.Items.Count > 0) cmbCta.SelectedIndex = 0;
+
+// ---- tipos ----
+var pTipos = new Panel { Dock = DockStyle.Top, Height = 46, BackColor = Color.White, Padding = new Padding(14, 7, 14, 0) };
+pTipos.Paint += (s, e) => e.Graphics.DrawLine(new Pen(C_LINE), 0, pTipos.Height - 1, pTipos.Width, pTipos.Height - 1);
+var flTipos = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = Color.Transparent }; pTipos.Controls.Add(flTipos);
+var btnsTipo = new List<Button>();
+for (int i = 0; i < TIPOS.Count; i++)
+{
+    int idx = i; var b = new Button { Text = (string)TIPOS[i]["nombre"], FlatStyle = FlatStyle.Flat, Height = 30, AutoSize = true, Padding = new Padding(10, 0, 10, 0), Margin = new Padding(3, 0, 3, 0), BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand, Font = F_BASE };
+    b.FlatAppearance.BorderColor = C_LINE; b.Click += (s, e) => Seguro(() => CambiarTipo(idx)); btnsTipo.Add(b); flTipos.Controls.Add(b);
+}
+
+// ---- pie ----
+var pie = new Panel { Dock = DockStyle.Bottom, Height = 26, BackColor = Color.White };
+pie.Paint += (s, e) => e.Graphics.DrawLine(new Pen(C_LINE), 0, 0, pie.Width, 0);
+var lblPie = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = C_MUTED, Font = F_SM, Padding = new Padding(14, 0, 0, 0) }; pie.Controls.Add(lblPie);
+
+// ---- cuerpo ----
+var pCuerpo = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 12, 14, 8), BackColor = C_BG };
+var pDer = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 322, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(12, 0, 0, 0), BackColor = C_BG };
+var tabla = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = C_BG }; pCuerpo.Controls.Add(tabla); pCuerpo.Controls.Add(pDer);
+tabla.RowStyles.Add(new RowStyle(SizeType.Absolute, 168)); tabla.RowStyles.Add(new RowStyle(SizeType.Absolute, 92)); tabla.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+frm.Controls.Add(pCuerpo); frm.Controls.Add(pie); frm.Controls.Add(pTipos); frm.Controls.Add(cinta);       // orden de acople de Windows Forms: el Fill primero, los bordes después (el último agregado queda arriba)
+
+Panel Tarjeta(Func<string> num, Func<string> titulo, Action<Panel> poner, Size? tam = null)
+{
+    var p = new Panel { Size = tam ?? new Size(890, 128), Dock = DockStyle.Fill, BackColor = Color.White, Margin = new Padding(0, 0, 0, 10), Padding = new Padding(12, 34, 12, 10) };
+    p.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1); string n = num(); int x0 = 12;
+        if (n != "") { using (var b = new SolidBrush(Acento())) e.Graphics.FillEllipse(b, 12, 9, 18, 18); using (var b2 = new SolidBrush(Color.White)) e.Graphics.DrawString(n, F_TIT, b2, 17, 11); x0 = 36; }
+        using (var b3 = new SolidBrush(C_MUTED)) e.Graphics.DrawString(titulo().ToUpperInvariant(), F_TIT, b3, x0, 11); };
+    poner(p); return p;
+}
+Label Et(Control padre, string t, int x, int y, Font f = null, Color? c = null) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = c ?? C_MUTED, Font = f ?? F_SM, BackColor = Color.Transparent }; padre.Controls.Add(l); return l; }
+TextBox Cuadro(Control padre, int x, int y, int w) { var t = new TextBox { Location = new Point(x, y), Size = new Size(w, 24), BorderStyle = BorderStyle.FixedSingle }; padre.Controls.Add(t); return t; }
+
+// 1 · persona
+TextBox txtEnt = null; Label lblEntInfo = null;
+var card1 = Tarjeta(() => "1", () => EsCobro() ? "Cliente" : "Proveedor", p => {
+    txtEnt = Cuadro(p, 12, 38, 690); txtEnt.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+    lblEntInfo = new Label { Location = new Point(12, 70), Size = new Size(690, 88), ForeColor = C_TXT, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, BackColor = C_ZEBRA, Padding = new Padding(8, 6, 8, 4), Visible = false }; p.Controls.Add(lblEntInfo); });
+tabla.Controls.Add(card1, 0, 0);
+var lstEnt = new ListBox { Visible = false, Size = new Size(470, 200), BorderStyle = BorderStyle.FixedSingle, Font = F_BASE }; frm.Controls.Add(lstEnt);
+
+// 2 · datos del movimiento
+ComboBox cmbForma = null; TextBox txtRef = null, txtMonto = null; Label lblMontoEt = null;
+var card2 = Tarjeta(() => "2", () => "Datos del movimiento", p => {
+    Et(p, "Forma de pago", 12, 36); cmbForma = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(12, 52), Size = new Size(200, 24) }; p.Controls.Add(cmbForma);
+    Et(p, "Referencia o número de rastreo (opcional)", 232, 36); txtRef = Cuadro(p, 232, 52, 250);
+    lblMontoEt = Et(p, "Monto recibido (opcional)", 502, 36); txtMonto = Cuadro(p, 502, 52, 130); txtMonto.TextAlign = HorizontalAlignment.Right;
+    var bDist = new Button { Text = "Distribuir", Location = new Point(640, 51), Size = new Size(92, 26), FlatStyle = FlatStyle.Flat, BackColor = C_ZEBRA, Cursor = Cursors.Hand }; bDist.FlatAppearance.BorderColor = C_LINE; bDist.Click += (s, e) => Seguro(Distribuir); p.Controls.Add(bDist); });
+tabla.Controls.Add(card2, 0, 1);
 foreach (var f in cat("formas")) cmbForma.Items.Add(new Opcion { Id = I(f["id"]), Nombre = S(f["nombre"]) });
 for (int i = 0; i < cmbForma.Items.Count; i++) if (((Opcion)cmbForma.Items[i]).Id == 3) cmbForma.SelectedIndex = i;
 if (cmbForma.SelectedIndex < 0 && cmbForma.Items.Count > 0) cmbForma.SelectedIndex = 0;
 
-Et("Fecha", 16, 112); var dtFecha = Poner(new DateTimePicker { Format = DateTimePickerFormat.Short }, 16, 132, 130);
-Et("Referencia o número de rastreo (opcional)", 166, 112); var txtRef = Poner(new TextBox { MaxLength = 60 }, 166, 132, 490);
+// 3 · documentos
+DataGridView grid = null; Label lblDocsEst = null;
+var card3 = Tarjeta(() => "3", () => "Documentos con saldo", p => {
+    lblDocsEst = new Label { Location = new Point(300, 10), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = Color.Transparent }; p.Controls.Add(lblDocsEst);
+    int x = 12; foreach (var par in new[] { new KeyValuePair<string, Action>("Marcar todos", () => MarcarTodos()), new KeyValuePair<string, Action>("Marcar vencidos", () => MarcarVencidos()), new KeyValuePair<string, Action>("Quitar marcas", () => { seleccion.Clear(); PintarDocs(); }) })
+    { var accion = par.Value; var b = new Button { Text = par.Key, Location = new Point(x, 36), Size = new Size(116, 26), FlatStyle = FlatStyle.Flat, BackColor = Color.White, Cursor = Cursors.Hand }; b.FlatAppearance.BorderColor = C_LINE; b.Click += (s, e) => Seguro(accion); p.Controls.Add(b); x += 122; }
+    grid = new DataGridView { Location = new Point(12, 70), Size = new Size(690, 300), AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, BackgroundColor = Color.White, BorderStyle = BorderStyle.None,
+        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, EnableHeadersVisualStyles = false, CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal, GridColor = Color.FromArgb(238, 242, 247), RowTemplate = { Height = 30 } };
+    grid.ColumnHeadersDefaultCellStyle.BackColor = C_ZEBRA; grid.ColumnHeadersDefaultCellStyle.ForeColor = C_MUTED; grid.ColumnHeadersDefaultCellStyle.Font = F_TIT; grid.ColumnHeadersHeight = 30; grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
+    grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Marca", HeaderText = "", FillWeight = 5 });
+    foreach (var c in new[] { new[] { "Doc", "DOCUMENTO", "30" }, new[] { "Fecha", "FECHA", "10" }, new[] { "Vence", "VENCE", "10" }, new[] { "Estado", "ESTADO", "13" }, new[] { "Total", "TOTAL", "11" }, new[] { "Saldo", "SALDO", "11" }, new[] { "Aplicar", "APLICAR", "12" } })
+        grid.Columns.Add(new DataGridViewTextBoxColumn { Name = c[0], HeaderText = c[1], FillWeight = float.Parse(c[2]), ReadOnly = c[0] != "Aplicar" });
+    foreach (var c in new[] { "Total", "Saldo", "Aplicar" }) grid.Columns[c].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+    grid.Columns["Saldo"].DefaultCellStyle.Font = F_B;
+    p.Controls.Add(grid); p.Resize += (s, e) => grid.Size = new Size(Math.Max(100, p.Width - 24), Math.Max(60, p.Height - grid.Top - 12)); }, new Size(890, 400));
+tabla.Controls.Add(card3, 0, 2);
 
-Et("Documentos con saldo (marca los que quieras cobrar/pagar y ajusta el monto; por omisión, todo el saldo)", 16, 166);
-var grid = Poner(new DataGridView { AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, BackgroundColor = Color.White,
-    BorderStyle = BorderStyle.FixedSingle, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill }, 16, 186, 1048, 420);
-grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Marca", HeaderText = "", FillWeight = 4 });
-foreach (var c in new[] { ("Tipo", "Tipo", 16f), ("Folio", "Folio", 14f), ("Fecha", "Fecha", 9f), ("Vence", "Vence", 9f), ("Total", "Total", 10f), ("Saldo", "Saldo", 10f) })
-    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = c.Item1, HeaderText = c.Item2, ReadOnly = true, FillWeight = c.Item3 });
-grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Aplicar", HeaderText = "Aplicar", FillWeight = 12 });
-foreach (var c in new[] { "Total", "Saldo", "Aplicar" }) grid.Columns[c].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-var lblTot = Poner(new Label { AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Font = new Font("Segoe UI", 10f, FontStyle.Bold) }, 560, 612, 504, 26);
-var btnAplicar = Poner(new Button { Text = "Registrar", BackColor = Color.FromArgb(45, 111, 224), ForeColor = Color.White, FlatStyle = FlatStyle.Flat }, 826, 656, 150, 32);
-var btnCancelar = Poner(new Button { Text = "Cancelar" }, 986, 656, 78, 32);
+// ---- panel derecho ----
+Label lblN = null, lblSal = null, lblQ = null, lblMon = null, lblTot = null, lblAvisos = null, lblMonEt = null; ListBox lstMov = null;
+var cRes = Tarjeta(() => "", () => "Resumen", p => {
+    int y = 36; Func<string, Label> fila = t => { var et = Et(p, t, 12, y, F_BASE, C_TXT); var v = new Label { Text = "0", AutoSize = false, Size = new Size(120, 18), TextAlign = ContentAlignment.MiddleRight, Location = new Point(164, y - 1), ForeColor = C_TXT, BackColor = Color.Transparent }; p.Controls.Add(v); y += 22; if (t.StartsWith("Monto")) lblMonEt = et; return v; };
+    lblN = fila("Documentos marcados"); lblSal = fila("Saldo de la persona"); lblQ = fila("Quedaría"); lblMon = fila("Monto recibido"); y += 4;
+    Et(p, "A aplicar", 12, y + 6, new Font("Segoe UI Semibold", 11f), C_TXT); lblTot = new Label { Text = "0.00", Font = F_TOT, AutoSize = false, Size = new Size(170, 34), TextAlign = ContentAlignment.MiddleRight, Location = new Point(114, y), BackColor = Color.Transparent }; p.Controls.Add(lblTot); y += 44;
+    lblAvisos = new Label { Location = new Point(12, y), Size = new Size(272, 80), ForeColor = C_AMBAR, Font = F_SM, BackColor = Color.Transparent }; p.Controls.Add(lblAvisos); }, new Size(296, 262));
+cRes.Dock = DockStyle.None; cRes.Size = new Size(296, 262); cRes.Margin = new Padding(0, 0, 0, 10); pDer.Controls.Add(cRes);
+var cMov = Tarjeta(() => "", () => EsCobro() ? "Últimos cobros" : "Últimos pagos", p => { lstMov = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = F_BASE, BackColor = Color.White }; p.Controls.Add(lstMov); }, new Size(296, 190));
+cMov.Dock = DockStyle.None; cMov.Size = new Size(296, 190); cMov.Margin = new Padding(0, 0, 0, 10); cMov.Visible = false; pDer.Controls.Add(cMov);
+pDer.Controls.Add(new Label { Text = "Se registra una operación (folio) por documento, con su aplicación, su espejo, la transferencia bancaria y el reparto de impuestos. Plantilla avanzada, no nativa: no genera la póliza contable. Pruébala primero en una base de pruebas.\n\nAtajos: F2 persona · F5 registrar · F6 registrar y nuevo · Esc cancelar.", Size = new Size(290, 130), ForeColor = C_MUTED, Font = F_SM });
+var lblToast = new Label { AutoSize = false, Height = 32, Visible = false, ForeColor = Color.White, BackColor = C_TXT, TextAlign = ContentAlignment.MiddleCenter, Font = F_B }; frm.Controls.Add(lblToast); lblToast.BringToFront();
+var tToast = new System.Windows.Forms.Timer { Interval = 4500 }; tToast.Tick += (s, e) => { lblToast.Visible = false; tToast.Stop(); };
+void Aviso(string m, bool mal = false) { lblToast.Text = m; lblToast.BackColor = mal ? C_ROJO : C_VERDE; lblToast.Width = Math.Min(frm.ClientSize.Width - 80, 900); lblToast.Location = new Point((frm.ClientSize.Width - lblToast.Width) / 2, frm.ClientSize.Height - 72); lblToast.Visible = true; lblToast.BringToFront(); tToast.Stop(); tToast.Start(); }
 
 // ---------- lógica ----------
-Dictionary<string, object> TipoActual() => TIPOS[cmbTipo.SelectedIndex];
-IEnumerable<Dictionary<string, object>> FuenteEntidad() => cat((string)TipoActual()["lado"] == "C" ? "clientes" : "proveedores");
-void Totales() { lblTot.Text = seleccion.Count + " documento(s) marcado(s)   TOTAL A APLICAR " + seleccion.Values.Sum().ToString("N2"); }
+string Hoy() => dtFecha.Value.ToString("yyyy-MM-dd");
+int DiasVencido(Dictionary<string, object> d) { var v = Fe(S(d["vence"])); return v == null ? int.MinValue : (int)(dtFecha.Value.Date - v.Value.Date).TotalDays; }
+List<Dictionary<string, object>> DocsDeEnt() => entSel == null ? new List<Dictionary<string, object>>() : DocsLado().Where(d => I(d["ent"]) == I(entSel["id"])).ToList();
+Dictionary<int, double[]> Stats()      // por persona: [pendiente, vencido, #docs, v0..v4]
+{
+    var m = new Dictionary<int, double[]>();
+    foreach (var d in DocsLado()) { int e = I(d["ent"]); if (!m.ContainsKey(e)) m[e] = new double[8]; var a = m[e]; double s = D(d["saldo"]); a[0] += s; a[2]++; int dv = DiasVencido(d); if (dv > 0 && dv != int.MinValue) a[1] += s; int b = dv == int.MinValue || dv <= 0 ? 0 : dv <= 30 ? 1 : dv <= 60 ? 2 : dv <= 90 ? 3 : 4; a[3 + b] += s; }
+    return m;
+}
+var ES = Stats();
+void Totales()
+{
+    double t = seleccion.Values.Sum(); t = Math.Round(t, 2); double pend = entSel != null && ES.ContainsKey(I(entSel["id"])) ? ES[I(entSel["id"])][0] : 0; double mon; double.TryParse(txtMonto.Text, NumberStyles.Any, CultureInfo.CurrentCulture, out mon);
+    lblN.Text = seleccion.Count.ToString(); lblSal.Text = pend.ToString("N2"); lblQ.Text = (pend - t).ToString("N2"); lblMon.Text = mon > 0 ? mon.ToString("N2") : "—"; lblTot.Text = t.ToString("N2"); lblTot.ForeColor = Acento();
+    var av = new List<string>();
+    if (mon > 0 && t > 0 && Math.Abs(mon - t) > 0.005) av.Add(mon > t ? "⚠ Sobran " + (mon - t).ToString("N2") + " del monto: no se aplican (los anticipos no se manejan aquí)." : "⚠ Faltan " + (t - mon).ToString("N2") + " para cubrir lo marcado.");
+    if (dtFecha.Value.Date > DateTime.Today) av.Add("⚠ La fecha es posterior a hoy.");
+    lblAvisos.Text = string.Join("\n", av);
+}
+bool pintando = false;
 void PintarDocs()
 {
-    bloquea = true; grid.Rows.Clear(); docsVis.Clear();
-    if (entidadSel != 0)
+    pintando = true; grid.Rows.Clear();
+    var ds = DocsDeEnt();
+    foreach (var d in ds)
     {
-        string hoy = dtFecha.Value.ToString("yyyy-MM-dd");
-        foreach (var d in cat((string)TipoActual()["lado"] == "C" ? "docsC" : "docsP").Where(d => I(d["ent"]) == entidadSel))
-        {
-            docsVis.Add(d); bool on = seleccion.ContainsKey(L(d["id"]));
-            int r = grid.Rows.Add(on, S(d["tipo"]), S(d["folio"]), S(d["fecha"]), S(d["vence"]), D(d["total"]).ToString("N2"), D(d["saldo"]).ToString("N2"), on ? seleccion[L(d["id"])].ToString("0.00") : "");
-            if (S(d["vence"]) != "" && string.CompareOrdinal(S(d["vence"]), hoy) < 0) grid.Rows[r].Cells["Vence"].Style.ForeColor = Color.FromArgb(200, 40, 40);
-        }
+        long id = L(d["id"]); bool on = seleccion.ContainsKey(id); int dv = DiasVencido(d);
+        string estado = dv == int.MinValue ? "sin vencimiento" : dv > 0 ? "vencido " + dv + " d" : dv >= -7 ? "vence en " + (-dv) + " d" : "vigente";
+        int r = grid.Rows.Add(on, S(d["tipo"]) + " " + S(d["folio"]), S(d["fecha"]) == "" ? "" : Fe(S(d["fecha"])).Value.ToString("dd/MM/yyyy"), S(d["vence"]) == "" ? "—" : Fe(S(d["vence"])).Value.ToString("dd/MM/yyyy"), estado, D(d["total"]).ToString("N2"), D(d["saldo"]).ToString("N2"), on ? seleccion[id].ToString("0.00") : "");
+        grid.Rows[r].Tag = id; grid.Rows[r].Cells["Estado"].Style.ForeColor = dv > 0 && dv != int.MinValue ? C_ROJO : dv >= -7 && dv != int.MinValue ? C_AMBAR : C_VERDE;
     }
-    bloquea = false; Totales();
+    lblDocsEst.Text = entSel == null ? "elige primero la persona" : ds.Count + " documento(s)";
+    pintando = false; Totales();
 }
-void CambioTipo()
+void PintarEnt()
 {
-    var t = TipoActual(); lblEnt.Text = (string)t["lado"] == "C" ? "Cliente" : "Proveedor";
-    lblCta.Text = (string)t["lado"] == "C" ? "Cuenta donde entra el dinero" : "Cuenta de donde sale el dinero";
-    entidadSel = 0; txtEnt.Text = ""; seleccion.Clear(); PintarDocs();
+    lblEntInfo.Visible = entSel != null; cMov.Visible = false;
+    if (entSel == null) return;
+    var e = ES.ContainsKey(I(entSel["id"])) ? ES[I(entSel["id"])] : new double[8];
+    lblEntInfo.Text = "RFC  " + (S(entSel["rfc"]) == "" ? "—" : S(entSel["rfc"])) + "        Saldo pendiente  " + e[0].ToString("N2") + "        Vencido  " + e[1].ToString("N2") + "        Documentos  " + e[2] +
+        (D(entSel["credito"]) > 0 ? "        Límite de crédito  " + D(entSel["credito"]).ToString("N2") : "") + "        " + (EsCobro() ? "Último cobro  " : "Último pago  ") + (S(entSel["ultFecha"]) == "" ? "—" : Fe(S(entSel["ultFecha"])).Value.ToString("dd/MM/yyyy") + " · " + D(entSel["ultMonto"]).ToString("N2")) +
+        "\nVigente " + e[3].ToString("N2") + "   ·   1-30 días " + e[4].ToString("N2") + "   ·   31-60 días " + e[5].ToString("N2") + "   ·   61-90 días " + e[6].ToString("N2") + "   ·   Más de 90 " + e[7].ToString("N2");
+    lstMov.Items.Clear(); var mv = MovimientosDe(L(entSel["id"]), (string)TipoActual()["clave"]);
+    foreach (var m in mv) lstMov.Items.Add(S(m["folio"]) + "  ·  " + Fe(S(m["fecha"])).Value.ToString("dd/MM/yyyy") + "  ·  " + D(m["monto"]).ToString("N2") + "  ·  " + I(m["docs"]) + " doc.");
+    cMov.Visible = mv.Count > 0; cMov.Invalidate();
 }
-cmbTipo.SelectedIndexChanged += (_, __) => Seguro(CambioTipo);
-dtFecha.ValueChanged += (_, __) => Seguro(PintarDocs);
+void ElegirEnt(Dictionary<string, object> x) { entSel = x; txtEnt.Text = S(x["nombre"]); lstEnt.Visible = false; seleccion.Clear(); PintarEnt(); PintarDocs(); txtMonto.Focus(); }
+void CambiarTipo(int idx)
+{
+    string antes = (string)TipoActual()["lado"]; tipoIdx = idx; var t = TipoActual();
+    if ((string)t["lado"] != antes) { entSel = null; txtEnt.Text = ""; }
+    seleccion.Clear(); ES = Stats();
+    for (int i = 0; i < btnsTipo.Count; i++) { bool on = i == idx; var col = (string)TIPOS[i]["lado"] == "C" ? C_COBRO : C_PAGO; btnsTipo[i].BackColor = on ? col : Color.White; btnsTipo[i].ForeColor = on ? Color.White : C_TXT; btnsTipo[i].FlatAppearance.BorderColor = on ? col : C_LINE; btnsTipo[i].Font = on ? F_B : F_BASE; }
+    lblTitulo.Text = (string)t["nombre"]; lblSub.Text = EsCobro() ? "Cuentas por cobrar · entra dinero" : "Cuentas por pagar · sale dinero"; lblCtaEt.Text = EsCobro() ? "ENTRA A LA CUENTA" : "SALE DE LA CUENTA";
+    lblMontoEt.Text = EsCobro() ? "Monto recibido (opcional)" : "Monto a pagar (opcional)"; lblMonEt.Text = EsCobro() ? "Monto recibido" : "Monto a pagar"; lblBtnG.Text = EsCobro() ? "Registrar cobro" : "Registrar pago";
+    object fo; lblFolio.Text = folios.TryGetValue((string)t["clave"], out fo) ? (string)t["prefijo"] + "-" + fo : "—";
+    lblPie.Text = "Elaboró: " + (quienSoy == "" ? "—" : quienSoy) + "      Empresa: " + nombreEmpresa + "      Operación " + (int)t["modOp"] + " · folio " + (string)t["prefijo"] + "-n";
+    foreach (Control c in new Control[] { card1, card2, card3, cRes, cMov, btnReg }) c.Invalidate();
+    PintarEnt(); PintarDocs();
+}
+void MarcarTodos() { foreach (var d in DocsDeEnt()) seleccion[L(d["id"])] = D(d["saldo"]); PintarDocs(); }
+void MarcarVencidos() { seleccion.Clear(); foreach (var d in DocsDeEnt()) { int dv = DiasVencido(d); if (dv > 0 && dv != int.MinValue) seleccion[L(d["id"])] = D(d["saldo"]); } PintarDocs(); if (seleccion.Count == 0) Aviso("No hay documentos vencidos."); }
+void Distribuir()
+{
+    if (entSel == null) throw new Exception("Elige primero la persona.");
+    double m; if (!double.TryParse(txtMonto.Text, NumberStyles.Any, CultureInfo.CurrentCulture, out m) || m <= 0) { txtMonto.Focus(); throw new Exception("Captura el monto que se va a repartir."); }
+    seleccion.Clear(); double resto = Math.Round(m, 2);
+    foreach (var d in DocsDeEnt().OrderBy(x => S(x["vence"]) != "" ? S(x["vence"]) : S(x["fecha"])).ThenBy(x => L(x["id"]))) { if (resto <= 0) break; double ap = Math.Min(D(d["saldo"]), resto); seleccion[L(d["id"])] = Math.Round(ap, 2); resto = Math.Round(resto - ap, 2); }
+    PintarDocs();
+}
 
-void Buscar()
+// búsqueda de persona (las que tienen saldo, primero)
+IEnumerable<Dictionary<string, object>> FuenteEnt() => cat(EsCobro() ? "clientes" : "proveedores").OrderByDescending(x => ES.ContainsKey(I(x["id"])) ? ES[I(x["id"])][0] : 0).ThenBy(x => S(x["nombre"]));
+string TextoEnt(Dictionary<string, object> x) => S(x["nombre"]) + (S(x["rfc"]) != "" ? "   [" + S(x["rfc"]) + "]" : "") + (ES.ContainsKey(I(x["id"])) ? "   debe " + ES[I(x["id"])][0].ToString("N2") + " · " + ES[I(x["id"])][2] + " doc." : "   sin saldo");
+void Desplegar()
 {
     var q = txtEnt.Text.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-    var vis = FuenteEntidad().Where(x => { var h = (S(x["nombre"]) + " " + S(x["rfc"])).ToLowerInvariant(); return q.All(w => h.Contains(w)); }).Take(40).ToList();
-    lstEnt.Items.Clear(); foreach (var x in vis) lstEnt.Items.Add(new Opcion { Id = I(x["id"]), Nombre = S(x["nombre"]) + (S(x["rfc"]) != "" ? "  [" + S(x["rfc"]) + "]" : "") });
+    var vis = FuenteEnt().Where(x => { var h = (S(x["nombre"]) + " " + S(x["rfc"]) + " " + S(x["id"])).ToLowerInvariant(); return q.All(w => h.Contains(w)); }).Take(60).ToList();
+    lstEnt.Items.Clear(); foreach (var x in vis) lstEnt.Items.Add(new Opcion { Id = I(x["id"]), Nombre = TextoEnt(x) });
+    lstEnt.Location = frm.PointToClient(txtEnt.Parent.PointToScreen(new Point(txtEnt.Left, txtEnt.Bottom))); lstEnt.Width = Math.Max(txtEnt.Width, 460);
     lstEnt.Visible = lstEnt.Items.Count > 0; if (lstEnt.Visible) { lstEnt.BringToFront(); lstEnt.SelectedIndex = 0; }
 }
-void ElegirEntidad()
-{
-    var o = lstEnt.SelectedItem as Opcion; if (o == null) return;
-    entidadSel = o.Id; bloquea = true; txtEnt.Text = o.Nombre.Split(new[] { "  [" }, StringSplitOptions.None)[0]; bloquea = false; lstEnt.Visible = false; seleccion.Clear(); PintarDocs();
-}
-txtEnt.TextChanged += (_, __) => Seguro(() => { if (!bloquea && txtEnt.Focused) { entidadSel = 0; seleccion.Clear(); PintarDocs(); Buscar(); } });
-txtEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Down && lstEnt.Visible) { lstEnt.Focus(); ev.Handled = true; } if (ev.KeyCode == Keys.Enter) { Seguro(ElegirEntidad); ev.SuppressKeyPress = true; } };
-lstEnt.Click += (_, __) => Seguro(ElegirEntidad);
-lstEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Seguro(ElegirEntidad); ev.SuppressKeyPress = true; } };
+Action ElegirDeLista = () => { var o = lstEnt.SelectedItem as Opcion; if (o == null) return; ElegirEnt(FuenteEnt().First(e => I(e["id"]) == o.Id)); };
+txtEnt.TextChanged += (_, __) => Seguro(() => { if (txtEnt.Focused) { if (entSel != null) { entSel = null; seleccion.Clear(); PintarEnt(); PintarDocs(); } Desplegar(); } });
+txtEnt.Enter += (_, __) => Seguro(() => { txtEnt.SelectAll(); if (entSel == null) Desplegar(); });
+txtEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Down && lstEnt.Visible) { lstEnt.Focus(); ev.Handled = true; } if (ev.KeyCode == Keys.Enter) { Seguro(ElegirDeLista); ev.SuppressKeyPress = true; } if (ev.KeyCode == Keys.Escape && lstEnt.Visible) { lstEnt.Visible = false; ev.SuppressKeyPress = true; ev.Handled = true; } };
+lstEnt.Click += (_, __) => Seguro(ElegirDeLista);
+lstEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Seguro(ElegirDeLista); ev.SuppressKeyPress = true; } };
+txtEnt.Leave += (_, __) => { if (!lstEnt.Focused) lstEnt.Visible = false; };
+txtMonto.TextChanged += (_, __) => Totales();
+dtFecha.ValueChanged += (_, __) => Seguro(() => { ES = Stats(); PintarEnt(); PintarDocs(); });
 
-grid.CurrentCellDirtyStateChanged += (_, __) => { if (grid.IsCurrentCellDirty && grid.CurrentCell is DataGridViewCheckBoxCell) grid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
-grid.CellValueChanged += (_, ev) => Seguro(() =>
+grid.CellContentClick += (_, ev) => Seguro(() =>
 {
-    if (bloquea || ev.RowIndex < 0 || ev.RowIndex >= docsVis.Count) return;
-    var d = docsVis[ev.RowIndex]; long id = L(d["id"]); double saldo = D(d["saldo"]); string col = grid.Columns[ev.ColumnIndex].Name;
-    bloquea = true;
-    if (col == "Marca")
-    {
-        bool on = Convert.ToBoolean(grid.Rows[ev.RowIndex].Cells["Marca"].Value);
-        if (on) { seleccion[id] = saldo; grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = saldo.ToString("0.00"); } else { seleccion.Remove(id); grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = ""; }
-    }
-    else if (col == "Aplicar" && seleccion.ContainsKey(id))
-    {
-        double n; double.TryParse(Convert.ToString(grid.Rows[ev.RowIndex].Cells["Aplicar"].Value, CultureInfo.CurrentCulture), NumberStyles.Any, CultureInfo.CurrentCulture, out n);
-        if (n < 0) n = 0; if (n > saldo) n = saldo; seleccion[id] = n; grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = n.ToString("0.00");
-    }
-    else if (col == "Aplicar") grid.Rows[ev.RowIndex].Cells["Aplicar"].Value = "";
-    bloquea = false; Totales();
+    if (pintando || ev.RowIndex < 0 || grid.Columns[ev.ColumnIndex].Name != "Marca") return;
+    grid.EndEdit(); long id = (long)grid.Rows[ev.RowIndex].Tag; var d = DocsDeEnt().First(x => L(x["id"]) == id); bool on = Convert.ToBoolean(grid.Rows[ev.RowIndex].Cells["Marca"].EditedFormattedValue);
+    if (on) seleccion[id] = D(d["saldo"]); else seleccion.Remove(id);
+    PintarDocs();
+});
+grid.CellEndEdit += (_, ev) => Seguro(() =>
+{
+    if (pintando || ev.RowIndex < 0 || grid.Columns[ev.ColumnIndex].Name != "Aplicar") return;
+    long id = (long)grid.Rows[ev.RowIndex].Tag; var d = DocsDeEnt().First(x => L(x["id"]) == id);
+    double n; double.TryParse(Convert.ToString(grid.Rows[ev.RowIndex].Cells["Aplicar"].Value, CultureInfo.CurrentCulture), NumberStyles.Any, CultureInfo.CurrentCulture, out n); n = Math.Max(0, Math.Min(n, D(d["saldo"])));
+    if (n > 0) seleccion[id] = n; else seleccion.Remove(id); PintarDocs();
 });
 grid.DataError += (_, ev) => ev.ThrowException = false;
 
-void Registrar()
+void Limpiar() { entSel = null; txtEnt.Text = ""; seleccion.Clear(); txtRef.Text = ""; txtMonto.Text = ""; PintarEnt(); PintarDocs(); txtEnt.Focus(); }
+void Registrar(bool otro)
 {
-    var t = TipoActual();
-    if (entidadSel == 0) throw new Exception("Elige el " + ((string)t["lado"] == "C" ? "cliente" : "proveedor") + " de la lista (escribe y selecciona).");
-    if (seleccion.Count == 0 || seleccion.Values.All(v => v <= 0)) throw new Exception("Marca al menos un documento y captura cuánto aplicar.");
-    var spec = new Dictionary<string, object>
-    {
-        ["tipo"] = (string)t["clave"], ["entidad"] = (int)entidadSel, ["cuenta"] = ((Opcion)cmbCta.SelectedItem)?.Id ?? 0, ["forma"] = ((Opcion)cmbForma.SelectedItem)?.Id ?? 0,
-        ["fecha"] = dtFecha.Value.ToString("yyyy-MM-dd"), ["referencia"] = txtRef.Text,
-        ["aplicaciones"] = seleccion.Where(kv => kv.Value > 0).Select(kv => (object)new Dictionary<string, object> { ["doc"] = kv.Key, ["monto"] = kv.Value }).ToList()
-    };
-    btnAplicar.Enabled = false; Cursor.Current = Cursors.WaitCursor;
-    try
-    {
-        string resumen = Aplicar(spec);
-        try { ctx.erp.RefreshGrid(); } catch { }
-        MessageBox.Show(resumen, "Cobro o pago registrado", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        frm.Close();
-    }
-    catch { catalogo = Catalogos(); PintarDocs(); throw; }          // si falló, los saldos pudieron cambiar
-    finally { btnAplicar.Enabled = true; Cursor.Current = Cursors.Default; }
+    if (guardando) return; var t = TipoActual();
+    if (entSel == null) { txtEnt.Focus(); throw new Exception("Elige " + (EsCobro() ? "el cliente" : "el proveedor") + " de la lista (escribe y selecciona)."); }
+    if (cmbCta.SelectedItem == null) throw new Exception("Elige la cuenta.");
+    var aps = seleccion.Where(k => k.Value > 0).Select(k => (object)new Dictionary<string, object> { ["doc"] = k.Key, ["monto"] = k.Value }).ToList();
+    if (aps.Count == 0) throw new Exception("Marca al menos un documento y captura cuánto aplicar.");
+    var spec = new Dictionary<string, object> { ["tipo"] = (string)t["clave"], ["entidad"] = I(entSel["id"]), ["cuenta"] = ((Opcion)cmbCta.SelectedItem).Id, ["forma"] = ((Opcion)cmbForma.SelectedItem)?.Id ?? 0, ["fecha"] = Hoy(), ["referencia"] = txtRef.Text, ["aplicaciones"] = aps };
+    guardando = true; Cursor.Current = Cursors.WaitCursor; string resumen;
+    try { resumen = Aplicar(spec); }
+    finally { guardando = false; Cursor.Current = Cursors.Default; RefrescarDocs(); }
+    try { ctx.erp.RefreshGrid(); } catch { }
+    if (otro) { var titulo = resumen.Split('\n')[0]; Limpiar(); Aviso(titulo); }
+    else { MessageBox.Show(resumen, "Cobro o pago registrado", MessageBoxButtons.OK, MessageBoxIcon.Information); frm.Close(); }
 }
-btnAplicar.Click += (_, __) => Seguro(Registrar);
-btnCancelar.Click += (_, __) => frm.Close();
-frm.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Escape && !lstEnt.Visible) { frm.Close(); ev.Handled = true; } };
+void RefrescarDocs()      // después de aplicar (bien o mal) los saldos cambiaron
+{
+    try { catalogo["docsC"] = DocsConSaldo("C"); catalogo["docsP"] = DocsConSaldo("P"); } catch { }
+    seleccion.Clear(); ES = Stats(); PintarEnt(); PintarDocs();
+}
+frm.KeyDown += (_, ev) =>
+{
+    if (ev.KeyCode == Keys.F5) { Seguro(() => Registrar(false)); ev.Handled = true; }
+    else if (ev.KeyCode == Keys.F6) { Seguro(() => Registrar(true)); ev.Handled = true; }
+    else if (ev.KeyCode == Keys.F2) { txtEnt.Focus(); ev.Handled = true; }
+    else if (ev.KeyCode == Keys.Escape && !lstEnt.Visible) { frm.Close(); ev.Handled = true; }
+};
 
 // ---------- Arranque: modeless ----------
-CambioTipo();
+CambiarTipo(0);
+string capturaPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_SHOT");        // pruebas: guarda una captura de la ventana (con datos de ejemplo) y no la deja abierta
+if (!string.IsNullOrEmpty(capturaPrueba))
+{
+    int tipoShot = int.TryParse(Environment.GetEnvironmentVariable("BROSLMV_PAGO_SHOT_TIPO"), out var ts) ? ts : 0; CambiarTipo(tipoShot);
+    var mas = FuenteEnt().FirstOrDefault(); if (mas != null) { ElegirEnt(mas); txtMonto.Text = "500000"; Distribuir(); }
+    frm.Show(); Application.DoEvents(); frm.PerformLayout(); Application.DoEvents();
+    using (var bmp = new Bitmap(frm.Width, frm.Height)) { frm.DrawToBitmap(bmp, new Rectangle(0, 0, frm.Width, frm.Height)); bmp.Save(capturaPrueba, System.Drawing.Imaging.ImageFormat.Png); }
+    frm.Dispose(); return "CAPTURA";
+}
 frm.Show();
-return "Ventana de cobro/pago abierta.";
+return "Ventana de cobros y pagos abierta.";

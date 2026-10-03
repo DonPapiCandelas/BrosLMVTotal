@@ -12,6 +12,19 @@ Cuatro plantillas de fábrica (Consola → Plantillas → Tesorería), la misma 
 | **… (Python · ventana HTML)** — `COBRO_PAGO_PYTHON_WEBVIEW2.py` | Python | HTML (WebView2) |
 | **… (Python · ventana Windows Forms)** — `COBRO_PAGO_PYTHON_WINFORMS.py` | Python | Windows Forms (pythonnet) |
 
+## La ventana: una estación de tesorería
+
+Las dos versiones de C# (HTML y Windows Forms) y la de Python en HTML comparten el mismo diseño, el mismo de «Crear documento» (ver [`CREAR_DOCUMENTO.md`](CREAR_DOCUMENTO.md)):
+
+- **Cinta de acciones:** **Registrar** (F5; «Registrar cobro» o «Registrar pago»), **Registrar y nuevo** (F6, para capturar varios seguidos), **Limpiar** y **Cancelar** (Esc). Junto a ellas, la **información del movimiento**: fecha, folio probable (`COB-n` / `PAG-n`) y cuenta (la predeterminada ya viene elegida).
+- **1 · Cliente o proveedor** con búsqueda por nombre o RFC (F2); **las personas con saldo salen primero** y cada una muestra cuánto debe y en cuántos documentos. Al elegirla ves su **saldo pendiente, lo vencido, número de documentos, límite y crédito disponible, su último cobro o pago** y su **antigüedad de saldos** (vigente, 1-30, 31-60, 61-90 y más de 90 días).
+- **2 · Datos del movimiento:** forma de pago, referencia o número de rastreo y **monto recibido o a pagar**. **«Distribuir»** reparte ese monto entre los documentos **más antiguos primero**; también puedes **marcar todos**, **marcar vencidos** o ajustar cada documento a mano.
+- **3 · Documentos con saldo** con su estado (vencido N días, vence en N días, vigente), total, saldo y cuánto aplicar.
+- **Resumen:** documentos marcados, saldo de la persona, **cuánto quedaría**, monto recibido y **total a aplicar**, con avisos (sobra o falta monto, fecha posterior a hoy) y los **últimos cobros o pagos** de la persona.
+- **No bloquea Comercial:** se puede minimizar.
+
+La versión **HTML** consulta a Comercial **en vivo** (últimos movimientos de la persona y saldos ya actualizados después de registrar, sin cerrar la ventana) con `ctx.ShowHtmlModeless` y respuestas `__JS__…`; la de **Python en HTML** abre la misma página con lo precargado (sin consultas en vivo ni «Registrar y nuevo»); la de **Windows Forms** de C# trae el mismo diseño con controles nativos. La de **Python en Windows Forms** sigue con la ventana sencilla de antes.
+
 ## Cómo usarlas
 
 1. En la **Consola** abre la plantilla que prefieras, guárdala como botón (nombre sugerido `COBRO_PAGO`) y ponla en el ribbon con *Crear botón…*.
@@ -19,7 +32,8 @@ Cuatro plantillas de fábrica (Consola → Plantillas → Tesorería), la misma 
 3. Escribe el **cliente o proveedor** y elígelo de la lista: aparecen **todos sus documentos con saldo** (los vencidos, en rojo).
 4. Elige la **cuenta** (banco o caja donde entra o de donde sale el dinero), la **forma de pago**, la **fecha** y, si quieres, una **referencia o número de rastreo**.
 5. **Marca** los documentos y ajusta el **monto** de cada uno (por omisión, todo su saldo): puedes liquidar uno, abonar a otro y dejar los demás.
-6. **Registrar.** Un aviso resume los folios creados y lo que quedó pendiente de cada documento; la lista se refresca.
+   También puedes capturar el **monto recibido** y pulsar **Distribuir**: se reparte entre los más antiguos primero. Lo que sobre **no se aplica** (los anticipos no se manejan aquí) y la ventana lo avisa.
+6. **Registrar** (F5). Un aviso resume los folios creados y lo que quedó pendiente de cada documento; los saldos se refrescan. Con **Registrar y nuevo** (F6) la ventana queda lista para el siguiente.
 
 ## Qué escribe (la receta de siete tablas)
 

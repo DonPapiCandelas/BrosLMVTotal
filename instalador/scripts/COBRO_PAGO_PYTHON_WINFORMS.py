@@ -114,18 +114,24 @@ for _r in _modulos:
 def catalogos():
     cat = {}
 
+    # Persona con RFC, límite de crédito y su último cobro o pago (fecha e importe), para dar contexto al capturar
     def ent(tabla):
-        return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc FROM " + tabla + " x "
-                "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID WHERE be.DeletedOn IS NULL ORDER BY nombre")
+        return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.CreditLimit,0) AS credito, "
+                "CONVERT(VARCHAR(10), u.DateOperation, 23) AS ultFecha, ISNULL(u.Amount,0) AS ultMonto FROM " + tabla + " x "
+                "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID "
+                "OUTER APPLY (SELECT TOP 1 o.DateOperation, o.Amount FROM docFinancialOperation o WHERE o.BusinessEntityID = be.BusinessEntityID AND o.ModuleID IN (247,248) AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL ORDER BY o.DateOperation DESC, o.FinancialOperationID DESC) u "
+                "WHERE be.DeletedOn IS NULL AND x.DeletedOn IS NULL ORDER BY nombre")
 
     def lista(tabla):
-        return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"])} for r in ctx.query(ent(tabla))]
+        return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "credito": D(r["credito"]), "ultFecha": S(r["ultFecha"]), "ultMonto": D(r["ultMonto"])} for r in ctx.query(ent(tabla))]
 
     cat["clientes"] = lista("orgCustomer")
     cat["proveedores"] = lista("orgSupplier")
-    cat["cuentas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query(
-        "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY FinancialEntityName")]
+    cat["cuentas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "def": I(r["def"]) == 1} for r in ctx.query(
+        "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")]
     cat["formas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")]
+    # Folio siguiente de cada tipo (el mismo cálculo que usa aplicar)
+    cat["folios"] = {t["clave"]: I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + str(t["modOp"]) + " AND FolioPrefix = N'" + t["prefijo"] + "'")) for t in TIPOS}
     # Documentos con saldo pendiente de cada lado. Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero).
     for lado in ("C", "P"):
         mods = modulos_lado[lado]

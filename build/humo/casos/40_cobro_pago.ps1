@@ -52,6 +52,11 @@ $cat = $ser.DeserializeObject((Pago @{ catalogo = $true }))
 if (@($cat['cuentas']).Count -lt 1) { Fallo "El laboratorio no tiene una cuenta bancaria (orgFinancialEntity); corre build\laboratorio\sembrar_demo_saldos.ps1." }
 if (@($cat['formas']).Count -lt 3) { Fallo "El catalogo de formas de pago viene incompleto." }
 $cuenta = [int]$cat['cuentas'][0]['id']
+# Lo que la ventana nueva usa para dar contexto: credito, ultimo cobro/pago de cada persona, cuenta predeterminada y folio siguiente de cada tipo
+$c0 = @($cat['clientes'] + $cat['proveedores'])[0]
+foreach ($k in 'credito', 'ultFecha', 'ultMonto', 'rfc') { if (-not $c0.ContainsKey($k)) { Fallo "El catalogo de personas debia traer '$k'." } }
+if (-not $cat['cuentas'][0].ContainsKey('def')) { Fallo "Las cuentas debian indicar cual es la predeterminada." }
+if (-not $cat.ContainsKey('folios') -or @($cat['folios'].Keys).Count -ne 2) { Fallo "El catalogo debia traer el folio siguiente de cobro y pago." }
 Write-Host ("  Catalogo: {0} cuentas, {1} formas de pago, {2} documentos por cobrar y {3} por pagar con saldo." -f @($cat['cuentas']).Count, @($cat['formas']).Count, @($cat['docsC']).Count, @($cat['docsP']).Count)
 
 # 2) Cobro parcial por transferencia a una factura de cliente nueva (2 x 300 + IVA = 696.00)
@@ -62,6 +67,12 @@ $r = Pago @{ tipo = 'cobro'; entidad = $cli; cuenta = $cuenta; forma = 3; fecha 
 if ($r -notmatch '^OK ') { Fallo "El cobro parcial fallo: $r" }
 $f = Fila $fc
 if (-not (Cerca $f[1] 496) -or -not (Cerca $f[2] 200) -or $f[3] -ne '2') { Fallo "Tras cobrar 200 debia quedar saldo 496, pagado 200, estatus 2 ($($f -join ' | '))." }
+# Consultas en vivo de la ventana: ultimos cobros de la persona y documentos con saldo ya actualizados
+$mv = @($ser.DeserializeObject((Pago @{ movimientos = $true; entidad = $cli; tipo = 'cobro' })))
+if ($mv.Count -lt 1 -or -not (Cerca $mv[0]['monto'] 200) -or [string]$mv[0]['folio'] -notlike 'COB-*') { Fallo "MovimientosDe: el ultimo cobro del cliente debia ser COB-n por 200." }
+$dc = @($ser.DeserializeObject((Pago @{ docs = $true; lado = 'C' })) | Where-Object { [long]$_['id'] -eq $fc })
+if ($dc.Count -ne 1 -or -not (Cerca $dc[0]['saldo'] 496)) { Fallo "DocsConSaldo: la factura $fc debia salir con saldo 496 despues del cobro." }
+Write-Host ("  Consultas en vivo: ultimo cobro {0} por {1:N2} y saldo actualizado de la factura ({2:N2})." -f $mv[0]['folio'], $mv[0]['monto'], $dc[0]['saldo'])
 $op = Sql "SELECT TOP 1 FinancialOperationID FROM docFinancialOperation WHERE DocumentID=$fc ORDER BY FinancialOperationID DESC"
 $cabOp = (Sql "SELECT CONCAT(ModuleID,'|',DocRecipientID,'|',DocumentTypeID,'|',Amount,'|',PaymentMethodID,'|',FolioPrefix) FROM docFinancialOperation WHERE FinancialOperationID=$op") -split '\|'
 if ($cabOp[0] -ne '248' -or $cabOp[1] -ne '1' -or $cabOp[2] -ne '31' -or -not (Cerca $cabOp[3] 200) -or $cabOp[4] -ne '3' -or $cabOp[5] -ne 'COB') { Fallo "La operacion financiera del cobro no trae los datos esperados ($($cabOp -join ' | '))." }

@@ -2134,7 +2134,7 @@ ctx.ShowHtmlModeless(html, titulo?, ancho?, alto?, alMensaje?) : void
 
 Ventana HTML que no bloquea: el script termina y cada mensaje de la página llega a tu función en el hilo de Comercial.
 
-Úsala cuando la ventana deba seguir abierta mientras se abren documentos o se llama a ctx.erp: ShowHtmlFormulario bloquea el hilo de Comercial y XEngine contesta «the other application is busy». La función alMensaje recibe los campos del mensaje (window.chrome.webview.postMessage(JSON.stringify({...}))) y regresa null (nada), "__CERRAR__" (cerrar la ventana) o un HTML nuevo (repinta). Maneja tus propios errores como en cualquier ventana modeless (MANUAL §10.2). Límite de ~2 MB de HTML.
+Úsala cuando la ventana deba seguir abierta mientras se abren documentos o se llama a ctx.erp: ShowHtmlFormulario bloquea el hilo de Comercial y XEngine contesta «the other application is busy». La función alMensaje recibe los campos del mensaje (window.chrome.webview.postMessage(JSON.stringify({...}))) y regresa null (nada), "__CERRAR__" (cerrar la ventana), un HTML nuevo (repinta) o "__JS__" seguido de código JavaScript (se ejecuta en la página SIN repintarla: sirve para contestar consultas en vivo, por ejemplo "__JS__respuesta(7, {...})" tras buscar datos en la base). Maneja tus propios errores como en cualquier ventana modeless (MANUAL §10.2). Límite de ~2 MB de HTML.
 
 **Devuelve:** Nada: la ventana queda abierta y el script termina.
 
@@ -2144,7 +2144,7 @@ Ejemplo:
 ctx.ShowHtmlModeless(html, "Mi reporte", 1100, 760, m =>
 {
     if ((string)m["accion"] == "abrir") ctx.erp.AbrirDocumento(Convert.ToInt32(m["id"]), Convert.ToInt32(m["modulo"]));
-    return null; // null = no hacer nada; "__CERRAR__" = cerrar; otro texto = HTML nuevo
+    return null; // null = no hacer nada; "__CERRAR__" = cerrar; otro texto = HTML nuevo; "__JS__..." = ejecutar JavaScript en la página
 });
 ```
 
