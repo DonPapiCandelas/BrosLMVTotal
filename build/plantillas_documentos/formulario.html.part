@@ -195,10 +195,14 @@ function reconstruirOrigenes(){
   pintarOrigenes();pintarPartidas();}
 // ---- partidas ----
 function prodPor(id){return CAT.productos.filter(function(p){return p.id===id;})[0];}
-function precioDe(id){var p=prodPor(id);if(!p)return 0;return tipoAct().precio==='venta'?p.venta:p.costo;}
+// Los precios y costos del catálogo están en pesos: en un documento en otra moneda se convierten con el tipo de cambio capturado
+function monAct(){return CAT.monedas.filter(function(x){return x.id===+$('mon').value;})[0];}
+function tcPesos(){var m=monAct();return m&&m.simbolo!=='MXN'?(+$('tc').value||1):1;}
+var TCPREV=1;
+function precioDe(id){var p=prodPor(id);if(!p)return 0;var b=tipoAct().precio==='venta'?p.venta:p.costo;return Math.round(b/tcPesos()*10000)/10000;}
 function existDe(id){var e=(CAT.existencias||{})[id];if(!e)return 0;var a=$('alm').value;return e[a]||0;}
 function agregar(x){var ya=ST.partidas.filter(function(p){return p.id===x.id&&!p.orig;})[0];
-  if(ya){ya.cant+=1;}else{ST.partidas.push({id:x.id,clave:x.clave,nombre:x.nombre,unidad:x.unidad,cant:1,precio:precioDe(x.id),desc:(tipoAct().lado==='C'&&ST.ent&&ST.ent.desc)||0,imp:x.imp,origenItem:0,orig:0});}
+  if(ya){ya.cant+=1;}else{ST.partidas.push({id:x.id,clave:x.clave,nombre:x.nombre,unidad:x.unidad,cant:1,precio:precioDe(x.id),auto:true,desc:(tipoAct().lado==='C'&&ST.ent&&ST.ent.desc)||0,imp:x.imp,origenItem:0,orig:0});}
   pintarPartidas();var f=document.querySelector('#tb tr:last-child input');if(f&&!ya){f.focus();f.select();}}
 function pintarPartidas(){var t=tipoAct(),venta=t.precio==='venta';
   $('tb').innerHTML=ST.partidas.length?ST.partidas.map(function(p,i){var pr=prodPor(p.id)||{},ex=existDe(p.id),falta=venta&&!pr.servicio&&!p.orig&&p.cant>ex;
@@ -211,23 +215,27 @@ function pintarPartidas(){var t=tipoAct(),venta=t.precio==='venta';
    +'<td id=imp'+i+' style=\'font-weight:600\'></td><td class=x><button onclick=\'quita('+i+')\' title=\'Quitar\'>✕</button></td></tr>';}).join('')
    :'<tr><td colspan=8><div class=vacioP><b>Aún no hay partidas</b>Busca un producto arriba (nombre, clave o código de barras) y presiona Enter.</div></td></tr>';
   totales();}
-function edita(i,c,v){var p=ST.partidas[i];v=+v;if(c==='imp')p.imp=v;else{if(isNaN(v)||v<0)v=0;if(c==='desc'&&v>100)v=100;if(c==='cant'&&p.max&&v>p.max)v=p.max;p[c]=v;}totales();}
+function edita(i,c,v){var p=ST.partidas[i];v=+v;if(c==='imp')p.imp=v;else{if(c==='precio')p.auto=false;if(isNaN(v)||v<0)v=0;if(c==='desc'&&v>100)v=100;if(c==='cant'&&p.max&&v>p.max)v=p.max;p[c]=v;}totales();}
 function quita(i){ST.partidas.splice(i,1);pintarPartidas();}
 function totales(){var s=0,d=0,im=0,pz=0;ST.partidas.forEach(function(p,i){var bruto=p.cant*p.precio,desc=bruto*p.desc/100,base=bruto-desc,tax=base*(percImp[p.imp]||0);s+=bruto;d+=desc;im+=tax;pz+=p.cant;var c=$('imp'+i);if(c)c.textContent=f2(base);});
   var tot=s-d+im;$('tN').textContent=ST.partidas.length;$('tP').textContent=f0(pz);$('tSub').textContent=f2(s);$('tDes').textContent=f2(d);$('tImp').textContent=f2(im);$('tTot').textContent=f2(tot);$('nPart').textContent=tipoAct().origen?'3':'2';
   var av='';var t=tipoAct();if(t.lado==='C'&&ST.ent&&ST.ent.credito>0&&ST.ent.saldo+tot>ST.ent.credito)av+='<div class=\'aviso r\'>Con este documento el saldo ('+f2(ST.ent.saldo+tot)+') excede el límite de crédito ('+f2(ST.ent.credito)+').</div>';
   if(t.precio==='venta'){var faltan=ST.partidas.filter(function(p){var pr=prodPor(p.id)||{};return !pr.servicio&&!p.orig&&p.cant>existDe(p.id);}).length;if(faltan)av+='<div class=\'aviso a\'>'+faltan+' partida(s) piden más de la existencia del almacén (se puede guardar; Comercial decide si permite vender en negativo).</div>';}
   if(ST.partidas.some(function(p){return p.precio<=0;}))av+='<div class=\'aviso a\'>Hay partidas con precio en cero.</div>';
+  var mo2=monAct();if(mo2&&mo2.simbolo!=='MXN'&&tot>0)av+='<div class=\'aviso v\'>Documento en '+esc(mo2.simbolo)+' a tipo de cambio '+(+$('tc').value||0)+': equivale a ≈ '+f2(tot*(+$('tc').value||0))+' MXN.</div>';
   $('avisosRes').innerHTML=av;}
 // ---- guardar ----
 function validar(){var t=tipoAct();document.querySelectorAll('.mal').forEach(function(e){e.classList.remove('mal');});
   if(!ST.ent){$('ent').classList.add('mal');$('ent').focus();aviso('Elige el '+(t.lado==='C'?'cliente':'proveedor')+' de la lista (escribe y selecciona).','mal');return false;}
   if(!ST.partidas.length){$('prod').focus();aviso('Agrega al menos una partida.','mal');return false;}
   if(ST.partidas.some(function(p){return !(p.cant>0);})){aviso('Todas las partidas deben tener cantidad mayor a cero.','mal');return false;}
+  var mo=monAct();if(mo&&mo.simbolo!=='MXN'&&!(+$('tc').value>0)){$('tc').classList.add('mal');$('tc').focus();aviso('Captura el tipo de cambio de '+mo.simbolo+'.','mal');return false;}
+  if(!$('fecha').value){$('fecha').classList.add('mal');aviso('Captura la fecha del documento.','mal');return false;}
+  if(t.entrega&&$('entrega').value&&$('entrega').value<$('fecha').value){$('entrega').classList.add('mal');aviso('La fecha de entrega no puede ser anterior a la del documento.','mal');return false;}
   if(tipoAct().clave==='factura_cliente'&&!($('uso').value&&$('forma').value&&$('metodo').value)){aviso('Completa los datos fiscales: uso del CFDI, forma de pago y método de pago.','mal');return false;}
   return true;}
 function crear(otro){if(ST.guardando||!validar())return;var t=tipoAct();ST.guardando=true;$('bGuardar').disabled=true;$('bNuevo').disabled=true;$('bGuardar').querySelector('span').textContent='Creando…';
-  enviar({accion:'crear',nuevo:!!otro&&VIVO,spec:JSON.stringify({tipo:ST.tipo,almacen:+$('alm').value,entidad:ST.ent.id,condicion:t.condicion?+$('cond').value:0,fecha:$('fecha').value,entrega:t.entrega?$('entrega').value:'',titulo:$('titulo').value,comentarios:$('coment').value,moneda:+$('mon').value,tc:+$('tc').value||1,centro:+$('cc').value||0,uso:$('uso').value,forma:$('forma').value,metodo:$('metodo').value,
+  enviar({accion:'crear',nuevo:!!otro&&VIVO,spec:JSON.stringify({tipo:ST.tipo,almacen:+$('alm').value,entidad:ST.ent.id,condicion:t.condicion?+$('cond').value:0,fecha:$('fecha').value,entrega:t.entrega?$('entrega').value:'',titulo:$('titulo').value,comentarios:$('coment').value,moneda:+$('mon').value,tc:tcPesos(),centro:+$('cc').value||0,uso:$('uso').value,forma:$('forma').value,metodo:$('metodo').value,
     origenes:ST.origenes,partidas:ST.partidas.map(function(p){return {id:p.id,nombre:p.nombre,cant:p.cant,precio:p.precio,desc:p.desc,imp:p.imp,origenItem:p.origenItem||0};})})});}
 function liberar(){ST.guardando=false;$('bGuardar').disabled=false;$('bNuevo').disabled=false;$('bGuardar').querySelector('span').textContent='Guardar y abrir';}
 function falloCrear(m){liberar();aviso(m,'mal');var a=document.createElement('div');a.className='aviso r';a.textContent=m;$('avisosRes').insertBefore(a,$('avisosRes').firstChild);}
@@ -243,7 +251,11 @@ $('mon').innerHTML=opcs(CAT.monedas,'id',function(x){return x.simbolo+' · '+x.n
 $('cc').innerHTML='<option value=0>(ninguno)</option>'+opcs(CAT.centros,'id',function(x){return x.nombre;});
 $('uso').innerHTML=opcs(CAT.usos,'clave',function(x){return x.clave+' · '+x.nombre;});$('forma').innerHTML=opcs(CAT.formas,'clave',function(x){return x.clave+' · '+x.nombre;});$('metodo').innerHTML=opcs(CAT.metodos,'clave',function(x){return x.clave+' · '+x.nombre;});
 $('uso').value='G03';
-function cambiaMon(){var m=CAT.monedas.filter(function(x){return x.id===+$('mon').value;})[0];if(m){$('tc').value=m.tc;$('tc').disabled=m.simbolo==='MXN';}pintarPartidas();}
+// Al cambiar de moneda: los precios tomados del catálogo (automáticos) se recalculan desde su precio en pesos; los que la persona escribió se convierten proporcionalmente; los de un documento de origen se respetan.
+// Al ajustar solo el tipo de cambio: se recalculan los automáticos.
+function repreciar(cambioMoneda,antes,ahora){ST.partidas.forEach(function(p){if(p.orig)return;if(p.auto)p.precio=precioDe(p.id);else if(cambioMoneda&&ahora!==antes)p.precio=Math.round(p.precio*antes/ahora*10000)/10000;});}
+function cambiaMon(){var m=monAct();if(m){$('tc').value=m.simbolo==='MXN'?1:m.tc;$('tc').disabled=m.simbolo==='MXN';}var ahora=tcPesos(),antes=TCPREV;TCPREV=ahora;repreciar(true,antes,ahora);pintarPartidas();}
+$('tc').addEventListener('change',function(){var ahora=tcPesos(),antes=TCPREV;TCPREV=ahora;repreciar(false,antes,ahora);pintarPartidas();});
 function autoMetodo(){if(ST.manual||tipoAct().clave!=='factura_cliente')return;var c=$('cond').selectedOptions[0],contado=c&&/contado/i.test(c.textContent);$('metodo').value=contado?'PUE':'PPD';$('forma').value=contado?'01':'99';}
 $('mon').addEventListener('change',cambiaMon);$('cond').addEventListener('change',autoMetodo);
 $('metodo').addEventListener('change',function(){ST.manual=true;if($('metodo').value==='PPD')$('forma').value='99';});$('forma').addEventListener('change',function(){ST.manual=true;});

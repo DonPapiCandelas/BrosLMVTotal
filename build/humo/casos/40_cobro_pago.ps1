@@ -13,7 +13,7 @@ $scripts = Join-Path $PSScriptRoot "..\..\..\instalador\scripts"
 # Las plantillas de fabrica estan SEPARADAS (COBRO_CLIENTE_* y PAGO_PROVEEDOR_*); la prueba de la receta necesita las dos mitades juntas: se arma una version combinada en una carpeta temporal
 $combinado = Join-Path $env:TEMP "humo_pago_combinado"
 & python (Join-Path $PSScriptRoot "..\..\plantillas_documentos\generar.py") --combinado $combinado | Out-Null
-$plantillas = @{ HUMO_COBRO_DOC = (Join-Path $scripts "CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx"); HUMO_COBRO_PAGO = (Join-Path $combinado "COBRO_PAGO_CSHARP_WEBVIEW2.ctx");
+$plantillas = @{ HUMO_COBRO_DOC = (Join-Path $combinado "CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx"); HUMO_COBRO_PAGO = (Join-Path $combinado "COBRO_PAGO_CSHARP_WEBVIEW2.ctx");
                  HUMO_COBRO_SOLO = (Join-Path $scripts "COBRO_CLIENTE_CSHARP_WEBVIEW2.ctx"); HUMO_PAGO_SOLO = (Join-Path $scripts "PAGO_PROVEEDOR_CSHARP_WEBVIEW2.ctx") }
 if (-not (Test-Path $RunnerExe)) { Write-Host "  [ERROR] No existe $RunnerExe -- compila el Runner primero." -ForegroundColor Red; exit 1 }
 foreach ($p in $plantillas.Values) { if (-not (Test-Path $p)) { Write-Host "  [ERROR] No existe $p" -ForegroundColor Red; exit 1 } }
@@ -49,7 +49,7 @@ function Pago($spec) { return Correr 'HUMO_COBRO_PAGO' 'BROSLMV_PAGO_TEST' 'BROS
 function Cerca($a, $b, $tol = 0.011) { return ([math]::Abs([double]$a - [double]$b) -le $tol) }
 function Fila($doc) { return ((Sql "SELECT CONCAT(Total,'|',Balance,'|',TotalPaid,'|',StatusPaidID) FROM docDocument WHERE DocumentID=$doc") -split '\|') }
 
-$hoy = (Get-Date).ToString('yyyy-MM-dd'); $cli = 2; $prov = 10020; $alm = 1
+$hoy = (Get-Date).ToString('yyyy-MM-dd'); $cli = 20025; $prov = 10020; $alm = 1
 
 # Separacion: la plantilla de cobros no carga NADA del lado de proveedores (ni personas ni documentos por pagar), y la de pagos nada del lado de clientes
 $sc = $ser.DeserializeObject((Correr 'HUMO_COBRO_SOLO' 'BROSLMV_PAGO_TEST' 'BROSLMV_PAGO_OUT' @{ catalogo = $true }))

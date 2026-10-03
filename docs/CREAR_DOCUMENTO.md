@@ -1,15 +1,21 @@
 # Crear documento (plantillas de ejemplo)
 
-Cuatro plantillas de fábrica, **la misma ventana y la misma lógica** en cuatro sabores, para que tomes la que más se parezca a lo que sabes programar:
+**Dos familias separadas a propósito** — **ventas** (clientes) y **compras** (proveedores) —, cada una en cuatro sabores (**la misma ventana y la misma lógica**), para que tomes el que más se parezca a lo que sabes programar y para poder darle a cada usuario solo lo que le toca: quien captura ventas no ve compras, y al revés (cada plantilla ni siquiera carga las personas del otro lado). Son ocho plantillas (Consola → Plantillas → Documentos):
 
-| Plantilla (Consola → Plantillas → Documentos) | Lenguaje | Ventana |
-|---|---|---|
-| **Crear documento (C# · ventana HTML)** — `CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx` | C# | HTML (WebView2) |
-| **Crear documento (C# · ventana Windows Forms)** — `CREAR_DOCUMENTO_CSHARP_WINFORMS.ctx` | C# | Windows Forms |
-| **Crear documento (Python · ventana HTML)** — `CREAR_DOCUMENTO_PYTHON_WEBVIEW2.py` | Python | HTML (WebView2) |
-| **Crear documento (Python · ventana Windows Forms)** — `CREAR_DOCUMENTO_PYTHON_WINFORMS.py` | Python | Windows Forms (pythonnet) |
+| Plantilla | Documentos | Lenguaje | Ventana |
+|---|---|---|---|
+| **Crear documento de venta (C# · ventana HTML)** — `CREAR_VENTA_CSHARP_WEBVIEW2.ctx` | factura de cliente, pedido, remisión | C# | HTML (WebView2) |
+| **Crear documento de venta (C# · Windows Forms)** — `CREAR_VENTA_CSHARP_WINFORMS.ctx` | ídem | C# | Windows Forms |
+| **Crear documento de venta (Python · ventana HTML)** — `CREAR_VENTA_PYTHON_WEBVIEW2.py` | ídem | Python | HTML (WebView2) |
+| **Crear documento de venta (Python · Windows Forms)** — `CREAR_VENTA_PYTHON_WINFORMS.py` | ídem | Python | Windows Forms (pythonnet) |
+| **Crear documento de compra (C# · ventana HTML)** — `CREAR_COMPRA_CSHARP_WEBVIEW2.ctx` | factura de compra, orden de compra, recepción | C# | HTML (WebView2) |
+| **Crear documento de compra (C# · Windows Forms)** — `CREAR_COMPRA_CSHARP_WINFORMS.ctx` | ídem | C# | Windows Forms |
+| **Crear documento de compra (Python · ventana HTML)** — `CREAR_COMPRA_PYTHON_WEBVIEW2.py` | ídem | Python | HTML (WebView2) |
+| **Crear documento de compra (Python · Windows Forms)** — `CREAR_COMPRA_PYTHON_WINFORMS.py` | ídem | Python | Windows Forms (pythonnet) |
 
-Crean los seis documentos más comunes: **factura de cliente, pedido, remisión, factura de compra, orden de compra y recepción de compra**.
+Entre las dos crean los seis documentos más comunes: **factura de cliente, pedido, remisión, factura de compra, orden de compra y recepción de compra**.
+
+**Controles antes de escribir** (el documento no se crea si falla alguno): el almacén existe en la empresa; el cliente o proveedor existe y no está eliminado; los productos existen; la condición de pago aplica a ventas o a compras; las fechas son válidas y la entrega no es anterior al documento; con **moneda extranjera** hay tipo de cambio mayor a cero (en pesos siempre es 1). **Dólares y pesos:** los precios y costos del catálogo están en pesos; en un documento en otra moneda se convierten con el tipo de cambio y, al cambiar de moneda, se reconvierten las partidas (las que vienen de un documento de origen se respetan); la ventana muestra el equivalente en pesos.
 Son ejemplos **funcionales**: sirven tal cual, y sirven para copiar. Nada va escrito a mano por empresa (almacenes, clientes, proveedores, condiciones, impuestos y productos salen de tu base).
 
 ## La ventana: una estación de captura

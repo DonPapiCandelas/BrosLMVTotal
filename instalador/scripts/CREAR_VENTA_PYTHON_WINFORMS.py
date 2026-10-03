@@ -1,3 +1,557 @@
+# lang: python
+# timeout: 1800
+# AppKey recomendado: CREAR_VENTA_PYTHON_WINFORMS
+# Plantilla: Crear documento de venta (Python · ventana Windows Forms)
+# Categoria: Documentos
+# Documentacion: CREAR_DOCUMENTO.html
+# Crea un documento de Comercial desde una ventana de Windows Forms (pythonnet): factura de cliente, pedido o remisión (ventas). Plantilla separada a propósito: solo VENTAS (clientes), para que quien la use no vea el otro lado.
+# Es una plantilla de EJEMPLO funcional: ábrela, pruébala, y copia lo que necesites. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+#
+# Qué enseña:
+#   · El patrón completo de creación: NuevoDocumento → perfil del módulo → AgregarArticulo × N → RecalcCompleto → AffectStockNEW (solo si el módulo lo pide) → Save → agenda de pago.
+#   · Documentos DERIVADOS: selecciona antes una o varias órdenes de compra (o un pedido) en la lista y la ventana ofrece partir de ellas con lo que aún falta por surtir.
+#   · Windows Forms desde Python (pythonnet). Python corre en su propio proceso: la ventana es automáticamente independiente y un error nunca tumba Comercial.
+# Para un botón de un solo tipo (por ejemplo solo «Orden de compra») deja esa fila en la tabla TIPOS y borra las demás.
+
+import pythonnet
+pythonnet.load("netfx")
+
+import clr
+clr.AddReference("System.Windows.Forms")
+clr.AddReference("System.Drawing")
+
+import System
+import System.Threading
+from System import DateTime, Convert
+from System.Drawing import Point, Size, Color, Font, FontStyle, ContentAlignment, Pen, SolidBrush, StringFormat, StringTrimming, StringFormatFlags, RectangleF
+from System.Windows.Forms import (
+    Form, FormStartPosition, Label, TextBox, ComboBox, ComboBoxStyle, Button, FlatStyle, DataGridView, Panel, FlowLayoutPanel, NumericUpDown, HorizontalAlignment, DockStyle, Padding,
+    AutoSizeMode, DrawMode, DrawItemState, DataGridViewTextBoxColumn, DataGridViewComboBoxColumn, DataGridViewContentAlignment, DataGridViewAutoSizeColumnsMode,
+    DataGridViewSelectionMode, DataGridViewCellBorderStyle, DataGridViewHeaderBorderStyle, DataGridViewDataErrorContexts, DateTimePicker, DateTimePickerFormat,
+    ListBox, CheckedListBox, CheckState, BorderStyle, Cursors, Keys, MessageBox, MessageBoxButtons, MessageBoxIcon,
+)
+from System.Windows.Forms import Timer as FormsTimer
+
+System.Threading.Thread.CurrentThread.SetApartmentState(System.Threading.ApartmentState.STA)
+
+import json
+import datetime
+import os
+import math
+
+from broslmv import ctx
+
+
+def S(v):
+    return "" if v is None else str(v)
+
+
+def I(v):
+    try:
+        return int(float(v))
+    except Exception:
+        return 0
+
+
+def D(v):
+    try:
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def Sq(s):
+    """Texto para un literal SQL."""
+    return S(s).replace("'", "''")
+
+
+def Num(x):
+    """Número para un literal SQL (siempre con punto)."""
+    t = ("%.8f" % float(x)).rstrip("0").rstrip(".")
+    return t if t not in ("", "-") else "0"
+
+
+def fecha_txt(v):
+    if v is None:
+        return ""
+    return v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else S(v)[:10]
+
+
+empresa = I(ctx.erp.OwnedBusinessEntityId())      # en Python ctx.erp.X siempre es una función (relevo al addon): se llama, aunque en C# sea una propiedad
+
+
+def L(v):
+    return I(v)
+
+
+# ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
+# El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
+def carpeta_local():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    d = os.path.join(base, "BrosLMV", "borradores")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def archivo_borrador(que):
+    try:
+        uid = int(ctx.user_id)
+    except Exception:
+        uid = 0
+    return os.path.join(carpeta_local(), que + "_" + str(empresa) + "_" + str(uid) + ".json")
+
+
+def leer_borrador(que, vence=True):
+    try:
+        a = archivo_borrador(que)
+        if not os.path.exists(a):
+            return None
+        if vence and (datetime.datetime.now().timestamp() - os.path.getmtime(a)) > 7 * 86400:
+            return None
+        with open(a, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def guardar_borrador(que, obj):
+    try:
+        with open(archivo_borrador(que), "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def borrar_borrador(que):
+    try:
+        a = archivo_borrador(que)
+        if os.path.exists(a):
+            os.remove(a)
+    except Exception:
+        pass
+
+# ===================================================================================================================================
+# TIPOS DE DOCUMENTO. Cada fila es el «perfil» que Comercial espera de ese módulo (confirmado contra capturas del documento nativo).
+# Para quitar un tipo del formulario borra su fila; para agregar otro, copia una fila y ajusta sus datos. Nada más depende de esta tabla.
+#   clave · nombre · módulo · lado (C = cliente, P = proveedor) · de dónde sale el precio (venta/compra) · perfil SQL de encabezado ·
+#   ¿lleva condición de pago? · ¿lleva fecha de entrega? · cómo se liga al origen (""/cabecera/partida/entrega) · módulo de origen
+# ===================================================================================================================================
+def T(clave, nombre, modulo, lado, precio, perfil, condicion, entrega, vinculo, origen):
+    return {"clave": clave, "nombre": nombre, "modulo": modulo, "lado": lado, "precio": precio, "perfil": perfil,
+            "condicion": condicion, "entrega": entrega, "vinculo": vinculo, "origen": origen}
+
+
+TIPOS = [
+    T("factura_cliente", "Factura de cliente",  21,  "C", "venta",  "DepotIDFrom=0, StatusDeliveryID=0",                            True,  False, "",         0),
+    T("pedido",          "Pedido de cliente",   967, "C", "venta",  "DepotIDFrom=0, StatusDeliveryID=3, StatusPaidID=0",            True,  True,  "",         0),
+    T("remision",        "Remisión (entrega)",  157, "C", "venta",  "DepotIDFrom=0, PaymentTermID=0, StatusDeliveryID=0",           False, True,  "cabecera", 967),
+]
+TIPO_POR = {t["clave"]: t for t in TIPOS}
+CLAVES = [t["clave"] for t in TIPOS]
+
+
+# ---------- Catálogos para el formulario ----------
+def catalogos(claves):
+    cat = {}
+    cat["almacenes"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query(
+        "SELECT DepotID AS id, DepotName AS nombre FROM orgDepot WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = " + str(empresa) + " ORDER BY DepotName")]
+
+    # Persona con lo que ayuda a decidir al capturar: RFC, condición de pago y descuento habituales, límite de crédito, saldo abierto y fecha de su último documento.
+    # Saldo = facturas, notas de cargo, recibos y gastos con saldo menos notas de crédito con saldo (docDocument.Balance; es la foto de hoy).
+    def ent(tabla):
+        return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.PaymentTermID,0) AS cond, ISNULL(x.Discount,0) AS descto, "
+                "ISNULL(x.CreditLimit,0) AS credito, ISNULL(sd.Saldo,0) AS saldo, sd.Ultimo AS ultimo, ISNULL(x.CurrencyID,0) AS moneda, " + ("ISNULL(x.ReceptorUsoCFDI,'')" if tabla == "orgCustomer" else "''") + " AS uso FROM " + tabla + " x "
+                "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID "
+                "LEFT JOIN (SELECT d.BusinessEntityID, SUM(CASE WHEN d.DocumentTypeID = 6 THEN -ISNULL(d.Balance,0) ELSE ISNULL(d.Balance,0) END) AS Saldo, CONVERT(VARCHAR(10), MAX(d.DateDocument), 23) AS Ultimo FROM docDocument d "
+                "  WHERE d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.DocumentTypeID IN (5,6,7,8,9,13) GROUP BY d.BusinessEntityID) sd ON sd.BusinessEntityID = be.BusinessEntityID "
+                "WHERE be.DeletedOn IS NULL AND x.DeletedOn IS NULL ORDER BY nombre")
+
+    def lista(tabla):
+        return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "cond": I(r["cond"]), "desc": D(r["descto"]), "credito": D(r["credito"]),
+                 "saldo": D(r["saldo"]), "ultimo": S(r["ultimo"]), "moneda": I(r["moneda"]), "uso": S(r["uso"])} for r in ctx.query(ent(tabla))]
+
+    lados = set(t["lado"] for t in TIPOS if t["clave"] in claves)
+    cat["clientes"] = lista("orgCustomer") if "C" in lados else []
+    cat["proveedores"] = lista("orgSupplier") if "P" in lados else []
+    cat["condiciones"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "venta": I(r["v"]) == 1, "compra": I(r["c"]) == 1} for r in ctx.query(
+        "SELECT PaymentTermID AS id, PaymentTermName AS nombre, Sales AS v, Buys AS c FROM engPaymentTerm WHERE DeletedOn IS NULL ORDER BY PaymentTermID")]
+    # Moneda con su tipo de cambio; catálogos del SAT (forma de pago, método de pago, uso del CFDI) tal como los guarda Comercial; centros de costo
+    cat["monedas"] = [{"id": I(r["id"]), "simbolo": S(r["simbolo"]), "nombre": S(r["nombre"]), "tc": D(r["tc"])} for r in ctx.query(
+        "SELECT CurrencyID AS id, IntlSymbol AS simbolo, Currency AS nombre, Rate AS tc FROM vwLBSCurrencyList ORDER BY CurrencyID")]
+
+    def sat(g1, g2=None):
+        sql = "SELECT ISNULL(Custom1,'') AS clave, ItemValue AS nombre FROM engRefCombo WHERE DeletedOn IS NULL AND CboGroupName = N'%s' AND ISNULL(Custom1,'') <> '' ORDER BY CboOrder, ItemData"
+        l = ctx.query(sql % g1)
+        if len(l) == 0 and g2:
+            l = ctx.query(sql % g2)
+        return [{"clave": S(r["clave"]), "nombre": S(r["nombre"])} for r in l]
+    cat["formas"] = sat("Anexo20v33_FormaPago")
+    cat["metodos"] = sat("Anexo20v33_MetodoDePago")
+    cat["usos"] = sat("Anexo20v40_UsoCFDI", "Anexo20v33_UsoCFDI")
+    cat["centros"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query(
+        "SELECT CostCenterID AS id, CostCenterName AS nombre FROM orgCostCenter WHERE DeletedOn IS NULL AND OwnedBusinessEntityID IN (0, " + str(empresa) + ") ORDER BY CostCenterName")]
+    cat["impuestos"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "perc": D(r["perc"])} for r in ctx.query(
+        "SELECT t.TaxTypeID AS id, t.TaxTypeName AS nombre, ISNULL(tp.IVA_Perc,0) AS perc FROM vwLBSTaxType t LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = t.TaxTypeID ORDER BY t.TaxTypeName")]
+    # Productos: lo mínimo para buscar y poner precio. Tope de seguridad de 30,000.
+    cat["productos"] = [{"id": I(r["id"]), "clave": S(r["clave"]), "nombre": S(r["nombre"]), "unidad": S(r["unidad"]), "imp": I(r["imp"]),
+                         "venta": D(r["venta"]), "costo": D(r["costo"]), "barras": S(r["barras"]), "lote": I(r["lote"]) == 1, "serie": I(r["serie"]) == 1, "servicio": I(r["servicio"]) == 1} for r in ctx.query(
+        "SELECT TOP 30000 ProductID AS id, ISNULL(ProductKey,'') AS clave, ProductName AS nombre, ISNULL(Unit,'') AS unidad, ISNULL(TaxTypeID,0) AS imp, "
+        "ISNULL(PriceList,0) AS venta, ISNULL(CostPrice,0) AS costo, ISNULL(BarCode,'') AS barras, ISNULL(UseLot,0) AS lote, ISNULL(UseSerialNumber,0) AS serie, ISNULL(ProductIsService,0) AS servicio "
+        "FROM orgProduct WHERE DeletedOn IS NULL ORDER BY ProductName")]
+    # Existencias por almacén (suma del kardex): {productoId: {almacenId: cantidad}}
+    exist = {}
+    try:
+        for r in ctx.query("SELECT ProductID, DepotID, SUM(Quantity) AS Q FROM orgProductKardex WHERE ISNULL(Cancelled,0) = 0 GROUP BY ProductID, DepotID HAVING ABS(SUM(Quantity)) > 0.00001"):
+            exist.setdefault(S(r["ProductID"]), {})[S(r["DepotID"])] = round(D(r["Q"]), 4)
+    except Exception:
+        pass
+    cat["existencias"] = exist
+    # Siguiente folio probable de cada tipo (lo asigna Comercial al guardar; aquí solo se muestra)
+    folios = {}
+    for t in TIPOS:
+        if t["clave"] in claves:
+            folios[t["clave"]] = I(ctx.scalar("SELECT ISNULL((SELECT TOP 1 ISNULL(TRY_CONVERT(int, Folio),0) + 1 FROM docDocument WHERE ModuleID = " + str(t["modulo"]) + " AND OwnedBusinessEntityID = " + str(empresa) + " AND DeletedOn IS NULL ORDER BY DocumentID DESC), 1)"))
+    cat["folios"] = folios
+    return cat
+
+
+# ---------- Documentos de origen (los que estaban seleccionados al lanzar el botón) ----------
+# Para cada documento seleccionado cuyo módulo sirve de origen de algún tipo: sus partidas con lo que AÚN falta por surtir PARA CADA TIPO DERIVADO
+# (una orden de compra puede estar toda recibida y aún sin facturar). «Lo ya surtido» se cuenta por la columna de vínculo propia de cada tipo:
+#   Recepción → DeliverDocumentItemID · Factura de compra → SourceDocumentItemID · Remisión → por producto, dentro de las remisiones que apuntan al pedido (SourceDocumentID).
+def origenes_de(ids):
+    res = []
+    if not ids:
+        return res
+    docs = ctx.query(
+        "SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.BusinessEntityID, d.DepotID, d.DateDocument, ISNULL(d.Total,0) AS Total, ISNULL(be.CommercialName, be.OfficialName) AS Entidad FROM docDocument d "
+        "LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID WHERE d.DocumentID IN (" + ",".join(str(int(x)) for x in ids) + ") "
+        "AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND d.OwnedBusinessEntityID = " + str(empresa))
+    for d in docs:
+        mod = I(d["ModuleID"])
+        did = I(d["DocumentID"])
+        derivados = [t for t in TIPOS if t["origen"] == mod]
+        if not derivados:
+            continue
+        por_tipo = {}
+        for t in derivados:
+            v = t["vinculo"]
+            m_der = t["modulo"]
+            if v == "cabecera":
+                sql = ("SELECT MIN(i.DocumentItemID) AS Item, i.ProductID, ISNULL(MAX(p.ProductKey),'') AS Clave, MAX(i.Description) AS Descr, ISNULL(MAX(i.Unit),'') AS Unidad, "
+                       "SUM(i.Quantity) - ISNULL((SELECT SUM(x.Quantity) FROM docDocumentItem x JOIN docDocument xd ON xd.DocumentID = x.DocumentID WHERE x.DeletedOn IS NULL AND xd.DeletedOn IS NULL AND xd.CancelledOn IS NULL "
+                       "  AND xd.SourceDocumentID = " + str(did) + " AND xd.ModuleID = " + str(m_der) + " AND x.ProductID = i.ProductID), 0) AS Pend, MAX(ISNULL(i.UnitPrice,0)) AS Precio, MAX(ISNULL(i.DiscountPerc,0)) AS Descuento, MAX(ISNULL(i.TaxTypeID,0)) AS Imp "
+                       "FROM docDocumentItem i LEFT JOIN orgProduct p ON p.ProductID = i.ProductID WHERE i.DocumentID = " + str(did) + " AND i.DeletedOn IS NULL AND i.ProductID > 0 GROUP BY i.ProductID ORDER BY MIN(i.DocumentItemID)")
+            else:
+                col = "x.DeliverDocumentItemID" if v == "entrega" else "x.SourceDocumentItemID"
+                sql = ("SELECT i.DocumentItemID AS Item, i.ProductID, ISNULL(p.ProductKey,'') AS Clave, i.Description AS Descr, ISNULL(i.Unit,'') AS Unidad, "
+                       "i.Quantity - ISNULL((SELECT SUM(x.Quantity) FROM docDocumentItem x JOIN docDocument xd ON xd.DocumentID = x.DocumentID WHERE x.DeletedOn IS NULL AND xd.DeletedOn IS NULL AND xd.CancelledOn IS NULL "
+                       "  AND " + col + " = i.DocumentItemID AND xd.ModuleID = " + str(m_der) + "), 0) AS Pend, ISNULL(i.UnitPrice,0) AS Precio, ISNULL(i.DiscountPerc,0) AS Descuento, ISNULL(i.TaxTypeID,0) AS Imp "
+                       "FROM docDocumentItem i LEFT JOIN orgProduct p ON p.ProductID = i.ProductID WHERE i.DocumentID = " + str(did) + " AND i.DeletedOn IS NULL AND i.ProductID > 0 ORDER BY i.DocumentItemID")
+            items = []
+            for p in ctx.query(sql):
+                pend = D(p["Pend"])
+                if pend <= 0.00001:
+                    continue
+                items.append({"origenItem": I(p["Item"]), "id": I(p["ProductID"]), "clave": S(p["Clave"]), "nombre": S(p["Descr"]), "unidad": S(p["Unidad"]),
+                              "cant": pend, "precio": D(p["Precio"]), "desc": round(D(p["Descuento"]) * 100.0, 4), "imp": I(p["Imp"])})
+            por_tipo[t["clave"]] = items
+        res.append({"id": did, "modulo": mod, "folio": (S(d["FolioPrefix"]) + S(d["Folio"])).strip(), "entidad": I(d["BusinessEntityID"]),
+                    "entidadNombre": S(d["Entidad"]), "almacen": I(d["DepotID"]), "fecha": fecha_txt(d["DateDocument"]), "total": D(d["Total"]), "partidasPor": por_tipo})
+    return res
+
+
+# ---------- Consultas en vivo (las pide la ventana mientras se captura) ----------
+# Documentos que sirven de origen para el tipo elegido y que pertenecen a esa persona: los 40 más recientes del módulo de origen con partidas que aún faltan por surtir.
+def pendientes_de(entidad, clave_tipo):
+    if clave_tipo not in TIPO_POR or entidad <= 0:
+        return []
+    m_origen = TIPO_POR[clave_tipo]["origen"]
+    if not m_origen:
+        return []
+    ids = [I(r["DocumentID"]) for r in ctx.query("SELECT TOP 40 DocumentID FROM docDocument WHERE ModuleID = " + str(m_origen) + " AND BusinessEntityID = " + str(entidad) + " AND OwnedBusinessEntityID = " + str(empresa) +
+                                                 " AND DeletedOn IS NULL AND CancelledOn IS NULL ORDER BY DateDocument DESC, DocumentID DESC")]
+    return [o for o in origenes_de(ids) if len(o["partidasPor"].get(clave_tipo, [])) > 0]
+
+
+# Los últimos documentos de esa persona (cualquier módulo), para tener contexto antes de capturar
+def ultimos_de(entidad):
+    return [{"id": I(r["DocumentID"]), "modulo": I(r["ModuleID"]), "tipo": S(r["Modulo"]), "folio": (S(r["FolioPrefix"]) + S(r["Folio"])).strip(), "fecha": fecha_txt(r["DateDocument"]),
+             "total": D(r["Total"]), "saldo": D(r["Saldo"])} for r in ctx.query(
+        "SELECT TOP 6 d.DocumentID, d.ModuleID, ISNULL(m.ModuleName,'') AS Modulo, d.FolioPrefix, d.Folio, d.DateDocument, ISNULL(d.Total,0) AS Total, ISNULL(d.Balance,0) AS Saldo FROM docDocument d "
+        "LEFT JOIN engModule m ON m.ModuleID = d.ModuleID WHERE d.BusinessEntityID = " + str(entidad) + " AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL ORDER BY d.DateDocument DESC, d.DocumentID DESC")]
+
+
+# Inteligencia de una persona: facturado (o comprado) por mes en los últimos 12 meses, los productos que más maneja con su último precio, los días promedio que tarda en pagar y el
+# último documento de ese tipo con sus partidas (para «Repetir último»). Todo sale de Comercial en ese momento; nada se guarda.
+def inteligencia_de(entidad, clave_tipo):
+    res = {}
+    if clave_tipo not in TIPO_POR or entidad <= 0:
+        return res
+    t = TIPO_POR[clave_tipo]
+    lado = t["lado"]
+    mod_fact = [x for x in TIPOS if x["lado"] == lado and x["clave"] in ("factura_cliente", "factura_compra")][0]["modulo"]
+    quien = " d.BusinessEntityID = " + str(entidad) + " AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL"
+    por_mes = {}
+    for r in ctx.query("SELECT CONVERT(CHAR(7), d.DateDocument, 120) AS mes, SUM(ISNULL(d.Total,0)) AS total, COUNT(*) AS n FROM docDocument d WHERE" + quien + " AND d.ModuleID = " + str(mod_fact) +
+                       " AND d.DateDocument >= DATEADD(MONTH, -11, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)) GROUP BY CONVERT(CHAR(7), d.DateDocument, 120)"):
+        por_mes[S(r["mes"])] = (D(r["total"]), D(r["n"]))
+    meses = []
+    total12 = 0.0
+    docs12 = 0
+    hoy = datetime.date.today()
+    for i in range(11, -1, -1):
+        y, m = hoy.year, hoy.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        k = "%04d-%02d" % (y, m)
+        v = por_mes.get(k, (0.0, 0.0))
+        meses.append({"mes": k, "total": round(v[0], 2), "n": int(v[1])})
+        total12 += v[0]
+        docs12 += int(v[1])
+    res["meses"] = meses
+    res["total12"] = round(total12, 2)
+    res["docs12"] = docs12
+    res["ticket"] = round(total12 / docs12, 2) if docs12 > 0 else 0.0
+    ultimo = ("SELECT TOP 1 i2.%s FROM docDocumentItem i2 JOIN docDocument d2 ON d2.DocumentID = i2.DocumentID WHERE d2.BusinessEntityID = " + str(entidad) + " AND d2.ModuleID = " + str(mod_fact) +
+              " AND i2.ProductID = i.ProductID AND i2.DeletedOn IS NULL AND d2.DeletedOn IS NULL AND d2.CancelledOn IS NULL ORDER BY d2.DateDocument DESC, i2.DocumentItemID DESC")
+    top = ctx.query("SELECT TOP 10 i.ProductID AS id, MAX(ISNULL(p.ProductKey,'')) AS clave, MAX(ISNULL(p.ProductName, i.Description)) AS nombre, COUNT(DISTINCT d.DocumentID) AS veces, SUM(i.Quantity) AS cant, MAX(d.DateDocument) AS ult, ("
+                    + (ultimo % "UnitPrice") + ") AS precio, (" + (ultimo % "DiscountPerc") + ") AS descto FROM docDocumentItem i JOIN docDocument d ON d.DocumentID = i.DocumentID LEFT JOIN orgProduct p ON p.ProductID = i.ProductID WHERE" + quien +
+                    " AND d.ModuleID = " + str(mod_fact) + " AND i.DeletedOn IS NULL AND i.ProductID > 0 GROUP BY i.ProductID ORDER BY COUNT(DISTINCT d.DocumentID) DESC, MAX(d.DateDocument) DESC")
+    res["top"] = [{"id": I(r["id"]), "clave": S(r["clave"]), "nombre": S(r["nombre"]), "veces": I(r["veces"]), "cant": D(r["cant"]), "ult": fecha_txt(r["ult"]),
+                   "precio": D(r["precio"]), "desc": round(D(r["descto"]) * 100.0, 4)} for r in top]
+    dias = ctx.scalar("SELECT AVG(CAST(DATEDIFF(DAY, d.DateDocument, p.DateOperation) AS float)) FROM docDocumentPayment p JOIN docDocument d ON d.DocumentID = p.DocumentID WHERE" + quien + " AND d.ModuleID = " + str(mod_fact) + " AND p.DeletedOn IS NULL")
+    res["diasPago"] = round(D(dias), 1) if dias is not None else None
+    ud = ctx.query("SELECT TOP 1 d.DocumentID, d.FolioPrefix, d.Folio, d.DateDocument FROM docDocument d WHERE" + quien + " AND d.ModuleID = " + str(t["modulo"]) + " ORDER BY d.DateDocument DESC, d.DocumentID DESC")
+    if ud:
+        idd = I(ud[0]["DocumentID"])
+        ps = [{"id": I(r["ProductID"]), "cant": D(r["Quantity"]), "precio": D(r["UnitPrice"]), "desc": round(D(r["DiscountPerc"]) * 100.0, 4), "imp": I(r["TaxTypeID"])} for r in ctx.query(
+            "SELECT ProductID, Quantity, UnitPrice, DiscountPerc, TaxTypeID FROM docDocumentItem WHERE DocumentID = " + str(idd) + " AND DeletedOn IS NULL AND ProductID > 0 ORDER BY LineNumber")]
+        res["ultimo"] = {"id": idd, "folio": (S(ud[0]["FolioPrefix"]) + S(ud[0]["Folio"])).strip(), "fecha": fecha_txt(ud[0]["DateDocument"]), "partidas": ps}
+    else:
+        res["ultimo"] = None
+    return res
+
+
+# ---------- Agenda de pago ----------
+# NuevoDocumento deja una parcialidad «de relleno» con importe 0; después de guardar hay que rehacerla con el total real y la condición de pago elegida.
+# Cada renglón de engPaymentTermDetail vence en (fecha + PaymentUnit × días del periodo) y lleva su porcentaje; el último absorbe el redondeo.
+def armar_agenda(doc, condicion, fecha):
+    total = D(ctx.scalar("SELECT Total FROM docDocument WHERE DocumentID=" + str(doc)))
+    det = ctx.query("SELECT d.PaymentPerc, d.PaymentUnit, ISNULL(p.Dias,1) AS Dias, ISNULL(d.ForceEndOfMonth,0) AS FinMes FROM engPaymentTermDetail d "
+                    "LEFT JOIN vwcboPaymentTermDays p ON p.PaymentPeriodID = d.PaymentPeriodID WHERE d.PaymentTermID = " + str(condicion) + " ORDER BY d.PaymentTermDetailID")
+    if not det:
+        return
+    uid = str(ctx.user_id)
+    ctx.execute("UPDATE docDocumentPaymentAgenda SET DeletedOn=GETDATE(), DeletedBy=" + uid + " WHERE DeletedOn IS NULL AND DocumentID=" + str(doc))
+    acumulado = 0.0
+    n = 0
+    for d in det:
+        n += 1
+        vence = fecha + datetime.timedelta(days=D(d["PaymentUnit"]) * D(d["Dias"]))
+        if I(d["FinMes"]) == 1:
+            siguiente = (vence.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
+            vence = siguiente - datetime.timedelta(days=1)
+        perc = D(d["PaymentPerc"])
+        monto = round(total - acumulado, 2) if n == len(det) else round(total * perc / 100.0, 2)
+        acumulado += monto
+        ctx.execute("INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" + str(doc) + ", '"
+                    + vence.strftime("%Y%m%d") + "', " + Num(perc) + ", " + Num(monto) + ", " + str(n) + ", GETDATE(), " + uid + ")")
+
+
+def _error_erp():
+    try:
+        return ctx.erp.LastError()
+    except Exception:
+        return ""
+
+
+# ---------- Crear el documento ----------
+# «spec»: tipo, almacen, entidad, condicion, fecha (yyyy-MM-dd), entrega (yyyy-MM-dd), titulo, comentarios, origenes [ids], partidas [{id, cant, precio, desc (0-100), imp, origenItem}]
+# Regresa el DocumentID. Si algo no es válido lanza una excepción con un mensaje que se le puede mostrar a la persona.
+def crear_documento(spec):
+    clave = S(spec.get("tipo"))
+    if clave not in TIPO_POR:
+        raise Exception("Tipo de documento desconocido: " + clave)
+    t = TIPO_POR[clave]
+    modulo = t["modulo"]
+    vinculo = t["vinculo"]
+    venta = t["precio"] == "venta"
+    almacen = I(spec.get("almacen"))
+    entidad = I(spec.get("entidad"))
+    if almacen <= 0:
+        raise Exception("Elige el almacén.")
+    if entidad <= 0:
+        raise Exception("Elige el " + ("cliente" if t["lado"] == "C" else "proveedor") + ".")
+    partidas = spec.get("partidas") or []
+    if len(partidas) == 0:
+        raise Exception("Agrega al menos una partida.")
+    for n, p in enumerate(partidas, 1):
+        if I(p.get("id")) <= 0:
+            raise Exception("La partida " + str(n) + " no tiene producto.")
+        if D(p.get("cant")) <= 0:
+            raise Exception("La partida " + str(n) + " debe tener cantidad mayor a cero.")
+        if D(p.get("precio")) < 0:
+            raise Exception("La partida " + str(n) + " tiene precio negativo.")
+        if D(p.get("desc")) < 0 or D(p.get("desc")) > 100:
+            raise Exception("El descuento de la partida " + str(n) + " debe estar entre 0 y 100.")
+    # Controles previos: nada se escribe en Comercial hasta que todo esto pasa (un documento a medias es peor que un error claro)
+    lado = t["lado"]
+    if I(ctx.scalar("SELECT COUNT(*) AS n FROM orgDepot WHERE DepotID = " + str(almacen) + " AND DeletedOn IS NULL AND OwnedBusinessEntityID = " + str(empresa))) == 0:
+        raise Exception("El almacén elegido no existe en esta empresa.")
+    if I(ctx.scalar("SELECT COUNT(*) AS n FROM " + ("orgCustomer" if lado == "C" else "orgSupplier") + " x JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID WHERE x.BusinessEntityID = " + str(entidad) + " AND x.DeletedOn IS NULL AND be.DeletedOn IS NULL")) == 0:
+        raise Exception("El " + ("cliente" if lado == "C" else "proveedor") + " elegido no existe o está eliminado.")
+    ids_prod = sorted(set(I(p.get("id")) for p in partidas))
+    if I(ctx.scalar("SELECT COUNT(*) AS n FROM orgProduct WHERE DeletedOn IS NULL AND ProductID IN (" + ",".join(str(i) for i in ids_prod) + ")")) != len(ids_prod):
+        raise Exception("Hay partidas con un producto que ya no existe o fue eliminado.")
+    f_txt = S(spec.get("fecha"))
+    try:
+        f_doc = datetime.datetime.strptime(f_txt[:10], "%Y-%m-%d") if len(f_txt) >= 10 else datetime.datetime.now()
+    except Exception:
+        raise Exception("La fecha del documento no es válida.")
+    e_txt = S(spec.get("entrega"))
+    if t["entrega"] and len(e_txt) >= 10:
+        try:
+            f_ent = datetime.datetime.strptime(e_txt[:10], "%Y-%m-%d")
+        except Exception:
+            raise Exception("La fecha de entrega no es válida.")
+        if f_ent.date() < f_doc.date():
+            raise Exception("La fecha de entrega no puede ser anterior a la fecha del documento.")
+    if t["condicion"] and I(ctx.scalar("SELECT COUNT(*) AS n FROM engPaymentTerm WHERE DeletedOn IS NULL AND PaymentTermID = " + str(I(spec.get("condicion"))) + " AND " + ("Sales" if lado == "C" else "Buys") + " = 1")) == 0:
+        raise Exception("Elige una condición de pago válida para " + ("ventas" if lado == "C" else "compras") + ".")
+    moneda_sel = I(spec.get("moneda"))
+    tc_sel = D(spec.get("tc"))
+    simbolo_mon = "MXN"
+    if moneda_sel > 0:
+        simbolo_mon = S(ctx.scalar("SELECT IntlSymbol FROM vwLBSCurrencyList WHERE CurrencyID = " + str(moneda_sel)))
+        if simbolo_mon == "":
+            raise Exception("La moneda elegida no existe.")
+        if simbolo_mon != "MXN" and not tc_sel > 0:
+            raise Exception("Captura el tipo de cambio de " + simbolo_mon + " (mayor a cero).")
+    origenes = [I(x) for x in (spec.get("origenes") or []) if I(x) > 0]
+    if vinculo == "":
+        origenes = []
+
+    doc = ctx.erp.NuevoDocumento(modulo, almacen, entidad)
+    if not doc or doc <= 0 or _error_erp():
+        raise Exception("No se pudo crear el documento: " + S(_error_erp()))
+
+    try:
+        # Encabezado: perfil del módulo + lo que capturó la persona
+        centro = I(spec.get("centro"))
+        sets = [t["perfil"], "CampaignID=NULL", "CostCenterID=" + (str(centro) if centro > 0 else "NULL"), "ProjectID=NULL"]
+        moneda = I(spec.get("moneda"))
+        tc = D(spec.get("tc"))
+        if moneda > 0:
+            sets.append("CurrencyID=" + str(moneda) + ", Rate=" + Num(1 if simbolo_mon == "MXN" else tc))          # en pesos el tipo de cambio siempre es 1
+        if t["condicion"]:
+            sets.append("PaymentTermID=" + str(I(spec.get("condicion"))))
+        fecha = S(spec.get("fecha"))
+        if len(fecha) >= 10:
+            sets.append("DateDocument='" + Sq(fecha[:10].replace("-", "")) + "'")
+        entrega = S(spec.get("entrega"))
+        if t["entrega"] and len(entrega) >= 10:
+            e8 = Sq(entrega[:10].replace("-", ""))
+            sets.append("DateDelivery='" + e8 + "', DateDocDelivery='" + e8 + "'")
+        titulo = S(spec.get("titulo"))
+        if titulo:
+            sets.append("Title=N'" + Sq(titulo) + "'")
+        coment = S(spec.get("comentarios"))
+        if coment:
+            sets.append("Comments=N'" + Sq(coment) + "'")
+        if origenes:
+            sets.append("SourceDocumentID=" + str(origenes[0]))   # el sistema solo guarda UN origen en el encabezado; cada partida liga el suyo
+        ctx.execute("UPDATE docDocument SET " + ", ".join(sets) + " WHERE DocumentID=" + str(doc))
+
+        for p in partidas:
+            pid = I(p.get("id"))
+            cant = D(p.get("cant"))
+            precio = D(p.get("precio"))
+            imp = I(p.get("imp"))
+            origen_item = I(p.get("origenItem"))
+            # Costo: compra → el precio pactado; remisión → costo promedio del producto; el resto de ventas no lleva costo
+            costo = -1
+            if not venta:
+                costo = precio
+            elif modulo == 157:
+                costo = D(ctx.scalar("SELECT ISNULL(MAX(TOT_Cost),0) FROM orgProductCostComercial WHERE ProductID=" + str(pid) + " AND DepotID=" + str(almacen)))
+            item = ctx.erp.AgregarArticulo(doc, pid, cant, precio, costo, imp if imp > 0 else -1, D(p.get("desc")) / 100.0, origen_item if vinculo == "entrega" else 0)
+            if _error_erp():
+                raise Exception("No se pudo agregar la partida de «" + S(p.get("nombre") or pid) + "»: " + S(_error_erp()))
+            if vinculo == "partida" and origen_item > 0:
+                ctx.execute("UPDATE docDocumentItem SET SourceDocumentItemID=" + str(origen_item) + " WHERE DocumentItemID=" + str(item))
+
+        ctx.erp.RecalcCompleto(doc)
+        # ¿Mueve o compromete inventario? Lo decide el módulo (StockAffectation ≠ 0), no el tipo de documento
+        if I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(int, Value)),0) FROM engModuleParameter WHERE ParameterKey='StockAffectation' AND ModuleID=" + str(modulo))) != 0:
+            ctx.erp.AffectStockNEW(doc)
+            if _error_erp():
+                raise Exception("AffectStockNEW: " + S(_error_erp()))
+        ctx.erp.Save(doc)
+        if _error_erp():
+            raise Exception("Save: " + S(_error_erp()))
+        if clave == "factura_cliente":                     # datos del comprobante: el motor deja la fila de docDocumentCFD con valores por omisión (G03 / PPD / 99)
+            cf = []
+            for col, llave in (("ReceptorUsoCFDI", "uso"), ("FormaPago", "forma"), ("MetodoPago", "metodo")):
+                if S(spec.get(llave)) != "":
+                    cf.append(col + "=N'" + Sq(S(spec.get(llave))) + "'")
+            if cf:
+                ctx.execute("UPDATE docDocumentCFD SET " + ", ".join(cf) + " WHERE DocumentID=" + str(doc))
+        if t["condicion"]:
+            try:
+                base = datetime.datetime.strptime(fecha[:10], "%Y-%m-%d") if len(fecha) >= 10 else datetime.datetime.today()
+            except Exception:
+                base = datetime.datetime.today()
+            armar_agenda(doc, I(spec.get("condicion")), base)   # agenda de pago con los montos reales
+            try:
+                ctx.erp.UpdateDocumentPaidInfo(doc)              # saldo y balance
+            except Exception:
+                pass
+        if vinculo != "":
+            try:
+                ctx.erp.UpdateStatusDelivery(doc)                # estado de entrega del documento de origen
+            except Exception:
+                pass
+        return doc
+    except Exception as ex:
+        # El documento ya existe como borrador: se avisa su número para que no quede perdido
+        raise Exception(S(ex) + "\n\nQuedó un documento incompleto (id " + str(doc) + "): elimínalo o cancélalo desde Comercial.")
+
+
+# ---------- Qué documentos seleccionados sirven de origen ----------
+try:
+    seleccion = [int(x) for x in (ctx.get_selected_ids() or [])]
+except Exception:
+    seleccion = []
+
+# ---------- Pruebas automáticas (sin ventanas): variable de entorno BROSLMV_DOC_TEST (JSON con el «spec»), resultado en BROSLMV_DOC_OUT ----------
+_modo_prueba = os.environ.get("BROSLMV_DOC_TEST")
+if _modo_prueba:
+    _spec = json.loads(_modo_prueba)
+    if "seleccion" in _spec:
+        seleccion = [int(x) for x in _spec["seleccion"]]
+    if _spec.get("pendientes"):
+        _res = json.dumps(origenes_de(seleccion), ensure_ascii=False, default=str)
+    elif _spec.get("catalogo"):
+        _res = json.dumps(catalogos(CLAVES), ensure_ascii=False, default=str)
+    elif _spec.get("pendientesDe"):
+        _res = json.dumps(pendientes_de(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
+    elif _spec.get("ultimos"):
+        _res = json.dumps(ultimos_de(I(_spec["entidad"])), ensure_ascii=False, default=str)
+    elif _spec.get("inteligencia"):
+        _res = json.dumps(inteligencia_de(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
+    else:
+        try:
+            _res = "DOC " + str(crear_documento(_spec))
+        except Exception as _ex:
+            _res = "ERROR " + S(_ex)
+    _salida = os.environ.get("BROSLMV_DOC_OUT")
+    if _salida:
+        with open(_salida, "w", encoding="utf-8") as _f:
+            _f.write(_res)
+    result = _res
+
 # ===================================================================================================================================
 # VENTANA (Windows Forms desde Python con pythonnet). Es el MISMO diseño que la versión de C# (ui_winforms.cs.part), con las mismas posiciones, colores y reglas:
 # cinta oscura con las acciones y la información del documento (fecha, serie, folio, entrega), grupos numerados con la etiqueta arriba de cada campo (nada se encima),

@@ -267,6 +267,39 @@ def crear_documento(spec):
             raise Exception("La partida " + str(n) + " tiene precio negativo.")
         if D(p.get("desc")) < 0 or D(p.get("desc")) > 100:
             raise Exception("El descuento de la partida " + str(n) + " debe estar entre 0 y 100.")
+    # Controles previos: nada se escribe en Comercial hasta que todo esto pasa (un documento a medias es peor que un error claro)
+    lado = t["lado"]
+    if I(ctx.scalar("SELECT COUNT(*) AS n FROM orgDepot WHERE DepotID = " + str(almacen) + " AND DeletedOn IS NULL AND OwnedBusinessEntityID = " + str(empresa))) == 0:
+        raise Exception("El almacén elegido no existe en esta empresa.")
+    if I(ctx.scalar("SELECT COUNT(*) AS n FROM " + ("orgCustomer" if lado == "C" else "orgSupplier") + " x JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID WHERE x.BusinessEntityID = " + str(entidad) + " AND x.DeletedOn IS NULL AND be.DeletedOn IS NULL")) == 0:
+        raise Exception("El " + ("cliente" if lado == "C" else "proveedor") + " elegido no existe o está eliminado.")
+    ids_prod = sorted(set(I(p.get("id")) for p in partidas))
+    if I(ctx.scalar("SELECT COUNT(*) AS n FROM orgProduct WHERE DeletedOn IS NULL AND ProductID IN (" + ",".join(str(i) for i in ids_prod) + ")")) != len(ids_prod):
+        raise Exception("Hay partidas con un producto que ya no existe o fue eliminado.")
+    f_txt = S(spec.get("fecha"))
+    try:
+        f_doc = datetime.datetime.strptime(f_txt[:10], "%Y-%m-%d") if len(f_txt) >= 10 else datetime.datetime.now()
+    except Exception:
+        raise Exception("La fecha del documento no es válida.")
+    e_txt = S(spec.get("entrega"))
+    if t["entrega"] and len(e_txt) >= 10:
+        try:
+            f_ent = datetime.datetime.strptime(e_txt[:10], "%Y-%m-%d")
+        except Exception:
+            raise Exception("La fecha de entrega no es válida.")
+        if f_ent.date() < f_doc.date():
+            raise Exception("La fecha de entrega no puede ser anterior a la fecha del documento.")
+    if t["condicion"] and I(ctx.scalar("SELECT COUNT(*) AS n FROM engPaymentTerm WHERE DeletedOn IS NULL AND PaymentTermID = " + str(I(spec.get("condicion"))) + " AND " + ("Sales" if lado == "C" else "Buys") + " = 1")) == 0:
+        raise Exception("Elige una condición de pago válida para " + ("ventas" if lado == "C" else "compras") + ".")
+    moneda_sel = I(spec.get("moneda"))
+    tc_sel = D(spec.get("tc"))
+    simbolo_mon = "MXN"
+    if moneda_sel > 0:
+        simbolo_mon = S(ctx.scalar("SELECT IntlSymbol FROM vwLBSCurrencyList WHERE CurrencyID = " + str(moneda_sel)))
+        if simbolo_mon == "":
+            raise Exception("La moneda elegida no existe.")
+        if simbolo_mon != "MXN" and not tc_sel > 0:
+            raise Exception("Captura el tipo de cambio de " + simbolo_mon + " (mayor a cero).")
     origenes = [I(x) for x in (spec.get("origenes") or []) if I(x) > 0]
     if vinculo == "":
         origenes = []
@@ -282,7 +315,7 @@ def crear_documento(spec):
         moneda = I(spec.get("moneda"))
         tc = D(spec.get("tc"))
         if moneda > 0:
-            sets.append("CurrencyID=" + str(moneda) + ", Rate=" + Num(tc if tc > 0 else 1))
+            sets.append("CurrencyID=" + str(moneda) + ", Rate=" + Num(1 if simbolo_mon == "MXN" else tc))          # en pesos el tipo de cambio siempre es 1
         if t["condicion"]:
             sets.append("PaymentTermID=" + str(I(spec.get("condicion"))))
         fecha = S(spec.get("fecha"))

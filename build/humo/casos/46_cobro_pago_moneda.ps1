@@ -14,7 +14,7 @@ if ($Database -ne "BROSLMV_DESARROLLO") { Write-Host "  Esta prueba solo corre c
 $scripts = Join-Path $PSScriptRoot "..\..\..\instalador\scripts"
 $combinado = Join-Path $env:TEMP "humo_pago_combinado46"
 & python (Join-Path $PSScriptRoot "..\..\plantillas_documentos\generar.py") --combinado $combinado | Out-Null
-$plantillas = @{ HUMO_FX_DOC = (Join-Path $scripts "CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx"); HUMO_FX_PAGO = (Join-Path $combinado "COBRO_PAGO_CSHARP_WEBVIEW2.ctx") }
+$plantillas = @{ HUMO_FX_DOC = (Join-Path $combinado "CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx"); HUMO_FX_PAGO = (Join-Path $combinado "COBRO_PAGO_CSHARP_WEBVIEW2.ctx") }
 if (-not (Test-Path $RunnerExe)) { Write-Host "  [ERROR] No existe $RunnerExe -- compila el Runner primero." -ForegroundColor Red; exit 1 }
 function Sql([string]$q) { (sqlcmd -S $Server -E -d $Database -h -1 -W -s"|" -Q "SET NOCOUNT ON; $q" 2>&1 | Where-Object { $_ -ne '' } | Select-Object -First 1) }
 function Limpiar { foreach ($k in $plantillas.Keys) { sqlcmd -S $Server -E -d $Database -Q "DELETE FROM zzBrosScript WHERE AppKey='$k'" | Out-Null } }
@@ -47,7 +47,7 @@ function Lineas($op) { $res = New-Object System.Collections.ArrayList; foreach (
 function Op($op) { return ((Sql "SELECT CONCAT(DebitCreditCoef,'|',Amount,'|',CurrencyID,'|',FinancialEntityAmount,'|',Rate,'|',AmountRate,'|',PartialityNumber,'|',DocumentID,'|',Folio) FROM docFinancialOperation WHERE FinancialOperationID=$op") -split '\|') }
 function OpDe($texto) { if ($texto -notmatch '(COB|PAG)-(\d+)') { Fallo "El resumen no trae el folio: $texto" }; $folio = $Matches[2]; $pref = $Matches[1]; return [long](Sql "SELECT TOP 1 FinancialOperationID FROM docFinancialOperation WHERE FolioPrefix=N'$pref' AND Folio=N'$folio' ORDER BY FinancialOperationID DESC") }
 
-$hoy = (Get-Date).ToString('yyyy-MM-dd'); $cli = 2; $alm = 1
+$hoy = (Get-Date).ToString('yyyy-MM-dd'); $cli = 20025; $alm = 1
 $ctaPesos = [int](Sql "SELECT TOP 1 FinancialEntityID FROM orgFinancialEntity WHERE DeletedOn IS NULL AND ISNULL(CurrencyID,0) IN (0,3) ORDER BY FinancialEntityID")
 $ctaUsd = [int](Sql "SELECT TOP 1 FinancialEntityID FROM orgFinancialEntity WHERE DeletedOn IS NULL AND CurrencyID = 2 ORDER BY FinancialEntityID")
 if ($ctaPesos -le 0 -or $ctaUsd -le 0) { Fallo "El laboratorio necesita una cuenta en pesos y una en dolares (orgFinancialEntity.CurrencyID = 2)." }

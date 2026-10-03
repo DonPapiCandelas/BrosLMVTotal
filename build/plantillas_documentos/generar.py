@@ -18,7 +18,10 @@ def armar(cabecera, nucleo, ui, html, destino, helpers=None, intermedio=None, la
     helpers = helpers or ('helpers.cs.part' if nucleo.endswith('.cs.part') else 'helpers.py.part')
     t = leer(cabecera) + '\n' + leer(helpers) + '\n' + leer(nucleo) + '\n' + (leer(intermedio) + '\n' if intermedio else '') + leer(ui)
     t = t.replace('__HTML_CS__', cs_verbatim(html)).replace('__HTML_PY__', py_raw(html))
-    if lado:
+    if lado and destino.startswith('CREAR_DOCUMENTO_'):
+        t = solo_lado_doc(t, lado)
+        destino = destino.replace('CREAR_DOCUMENTO_', 'CREAR_VENTA_' if lado == 'C' else 'CREAR_COMPRA_')
+    elif lado:
         t = solo_lado(t, lado)
     escribir(destino, t)
 
@@ -37,6 +40,19 @@ def solo_lado(t, lado):
     aviso = ('Plantilla separada a propósito: ' + ('solo CUENTAS POR COBRAR (clientes)' if cobro else 'solo CUENTAS POR PAGAR (proveedores)') + ' para que quien la use no vea el otro lado. ')
     return t.replace(marca, aviso + marca, 1)
 
+def solo_lado_doc(t, lado):
+    """«Crear documento» de un solo lado: ventas (cliente) o compras (proveedor). Quien captura ventas no debe ver compras, ni al revés: se quitan las filas del otro lado de TIPOS
+    (el catálogo solo carga las personas de los lados que hay en TIPOS), y se renombran el AppKey y la plantilla."""
+    venta = lado == 'C'
+    otro = '"P"' if venta else '"C"'
+    t = SALTO.join(l for l in t.split(SALTO) if not (l.lstrip().startswith('T("') and l.split(',')[3].strip() == otro))
+    t = t.replace('CREAR_DOCUMENTO_', 'CREAR_VENTA_' if venta else 'CREAR_COMPRA_')
+    t = t.replace('Plantilla: Crear documento (', 'Plantilla: ' + ('Crear documento de venta' if venta else 'Crear documento de compra') + ' (')
+    t = t.replace('factura de cliente, pedido, remisión, factura de compra, orden de compra o recepción.',
+                  ('factura de cliente, pedido o remisión (ventas).' if venta else 'factura de compra, orden de compra o recepción (compras).') +
+                  ' Plantilla separada a propósito: ' + ('solo VENTAS (clientes)' if venta else 'solo COMPRAS (proveedores)') + ', para que quien la use no vea el otro lado.')
+    return t
+
 def extras(nombre):
     partes, actual = {}, None
     for linea in leer(nombre).split(SALTO):
@@ -51,13 +67,21 @@ def inyectar(html, ex):
     return html
 html_doc = inyectar(leer('formulario.html.part'), extras('extras_documento.html.part'))
 print('Documentos:')
-armar('cabecera_doc_cs_webview2.part', 'nucleo.cs.part', 'ui_webview2.cs.part', html_doc, 'CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx')
-if os.path.exists(os.path.join(AQUI, 'ui_winforms.cs.part')):
-    armar('cabecera_doc_cs_winforms.part', 'nucleo.cs.part', 'ui_winforms.cs.part', html_doc, 'CREAR_DOCUMENTO_CSHARP_WINFORMS.ctx')
-if os.path.exists(os.path.join(AQUI, 'ui_webview2.py.part')):
-    armar('cabecera_doc_py_webview2.part', 'nucleo.py.part', 'ui_webview2.py.part', html_doc, 'CREAR_DOCUMENTO_PYTHON_WEBVIEW2.py', intermedio='servidor_local.py.part')
-if os.path.exists(os.path.join(AQUI, 'ui_winforms.py.part')):
-    armar('cabecera_doc_py_winforms.part', 'nucleo.py.part', 'ui_winforms.py.part', html_doc, 'CREAR_DOCUMENTO_PYTHON_WINFORMS.py')
+DOCS = [('cabecera_doc_cs_webview2.part', 'nucleo.cs.part', 'ui_webview2.cs.part', 'CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx', None),
+        ('cabecera_doc_cs_winforms.part', 'nucleo.cs.part', 'ui_winforms.cs.part', 'CREAR_DOCUMENTO_CSHARP_WINFORMS.ctx', None),
+        ('cabecera_doc_py_webview2.part', 'nucleo.py.part', 'ui_webview2.py.part', 'CREAR_DOCUMENTO_PYTHON_WEBVIEW2.py', 'servidor_local.py.part'),
+        ('cabecera_doc_py_winforms.part', 'nucleo.py.part', 'ui_winforms.py.part', 'CREAR_DOCUMENTO_PYTHON_WINFORMS.py', None)]
+if '--combinado' in sys.argv:           # solo para pruebas: ventas y compras juntas, en otra carpeta (nunca en instalador/scripts)
+    SALIDA = os.path.abspath(sys.argv[sys.argv.index('--combinado') + 1])
+    os.makedirs(SALIDA, exist_ok=True)
+    for cab, nuc, ui, destino, inter in DOCS:
+        if os.path.exists(os.path.join(AQUI, ui)):
+            armar(cab, nuc, ui, html_doc, destino, intermedio=inter)
+else:
+    for cab, nuc, ui, destino, inter in DOCS:
+        if os.path.exists(os.path.join(AQUI, ui)):
+            for lado in ('C', 'P'):
+                armar(cab, nuc, ui, html_doc, destino, intermedio=inter, lado=lado)
 
 print('Cobros y pagos:')
 ex_doc, ex_pago = extras('extras_documento.html.part'), extras('extras_pago.html.part')

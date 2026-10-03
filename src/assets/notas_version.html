@@ -47,6 +47,16 @@
   </header>
 
   <div class="ver">
+    <h2>3.0.3</h2>
+    <div class="date">2026-10-03 — Crear documento de venta y de compra; cobros y pagos con moneda</div>
+    <div class="grp chg"><div class="h">Cambiado</div>
+      <ul><li>«Crear documento» se separa en <b>Crear documento de venta</b> (factura de cliente, pedido, remisión) y <b>Crear documento de compra</b> (factura de compra, orden de compra, recepción), en C# y Python, HTML y Windows Forms: quien captura ventas no ve compras, y al revés. El instalador mueve las plantillas anteriores a <code>scripts\_archivo</code>.</li>
+      <li>Más control al crear documentos: se valida el almacén, la persona, los productos, la condición de pago, las fechas y, en moneda extranjera, el tipo de cambio; los precios del catálogo (en pesos) se convierten a la moneda del documento.</li>
+      <li>Cobros y pagos con moneda extranjera, parcialidades, historial por documento y una sola operación por movimiento (solo scripts).</li></ul>
+    </div>
+  </div>
+
+  <div class="ver">
     <h2>3.0.2</h2>
     <div class="date">2026-10-03 — Cobros y pagos separados</div>
     <div class="grp chg"><div class="h">Cambiado</div>

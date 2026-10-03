@@ -8,6 +8,13 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.0.3] — 2026-10-03 — Crear documento separado en ventas y compras (requiere instalar)
+
+### Cambiado
+- **«Crear documento» ahora son plantillas separadas por lado** (`CREAR_VENTA_*` y `CREAR_COMPRA_*`, en C# y Python, HTML y Windows Forms): ventas (factura de cliente, pedido, remisión) y compras (factura de compra, orden de compra, recepción). Cada una ni siquiera carga las personas del otro lado. El instalador mueve las anteriores `CREAR_DOCUMENTO_*` a `scripts\_archivo`.
+- **Más control al crear documentos** (núcleo C# y Python): antes de escribir nada se valida que el almacén exista en la empresa, que el cliente/proveedor exista y no esté eliminado, que los productos existan, que la condición de pago aplique a ventas o compras, que las fechas sean válidas (la entrega no puede ser anterior al documento) y que, en moneda extranjera, haya tipo de cambio mayor a cero (en pesos siempre es 1).
+- **Dólares y pesos:** los precios y costos del catálogo están en pesos; en un documento en otra moneda se convierten con el tipo de cambio capturado y, al cambiar de moneda, se reconvierten las partidas (las de un documento de origen se respetan). La ventana muestra el equivalente en pesos.
+
 ## [Sin versión] — 2026-10-03 — Cobros y pagos con moneda, parcialidades e historial (solo scripts)
 
 No cambia el addon: **no requiere instalar**, basta publicar las plantillas actualizadas (`build\laboratorio\publicar_scripts_lab.ps1`). Los botones ya creados guardan su propia copia del código: hay que volver a crearlos desde la plantilla nueva.

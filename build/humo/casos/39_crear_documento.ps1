@@ -1,4 +1,4 @@
-# Caso de humo #39: la plantilla de fabrica CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx (el nucleo que comparten las cuatro variantes C#/Python x WebView2/WinForms)
+﻿# Caso de humo #39: la plantilla de fabrica CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx (el nucleo que comparten las cuatro variantes C#/Python x WebView2/WinForms)
 # corriendo headless (BrosLMV.Runner) contra el laboratorio. Crea de verdad los seis tipos de documento y los derivados, y comprueba en la base:
 # totales (descuento + IVA), perfil del modulo, vinculos por partida, pendientes por surtir de cada tipo derivado, agenda de pago y vinculo del encabezado.
 # Los documentos quedan en BROSLMV_DESARROLLO con titulo «DEMO CREAR DOC ...» (el laboratorio los conserva para verlos en Comercial).
@@ -11,7 +11,9 @@ param(
 $ErrorActionPreference = "Continue"
 if ($Database -ne "BROSLMV_DESARROLLO") { Write-Host "  Esta prueba solo corre contra BROSLMV_DESARROLLO." -ForegroundColor Red; exit 1 }
 $AppKey = "HUMO_CREAR_DOC"
-$plantilla = Join-Path $PSScriptRoot "..\..\..\instalador\scripts\CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx"
+$combinado = Join-Path $env:TEMP "humo_doc_combinado"
+& python (Join-Path $PSScriptRoot "..\..\plantillas_documentos\generar.py") --combinado $combinado | Out-Null          # ventas y compras juntas (las plantillas de fabrica van separadas)
+$plantilla = Join-Path $combinado "CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx"
 if (-not (Test-Path $RunnerExe)) { Write-Host "  [ERROR] No existe $RunnerExe -- compila el Runner primero." -ForegroundColor Red; exit 1 }
 if (-not (Test-Path $plantilla)) { Write-Host "  [ERROR] No existe la plantilla $plantilla" -ForegroundColor Red; exit 1 }
 
@@ -42,7 +44,7 @@ function Doc($spec) { $t = Correr $spec; if ($t -notmatch '^DOC (\d+)$') { Fallo
 function Pendientes($sel) { $t = Correr @{ pendientes = $true; seleccion = @($sel) }; return $ser.DeserializeObject($t) }
 function Cerca($a, $b, $tol = 0.02) { return ([math]::Abs([double]$a - [double]$b) -le $tol) }
 
-$prov = 10020; $cli = 2; $alm = 1
+$prov = 10020; $cli = 20025; $alm = 1
 $hoy = (Get-Date).ToString('yyyy-MM-dd')
 
 # 1) Catalogos
@@ -139,6 +141,14 @@ Write-Host "  Remision $rem : ligada al pedido por encabezado, pedido completame
 # 7) Validaciones: un documento sin partidas o con cantidad cero no se crea
 $t = Correr @{ tipo = 'orden_compra'; almacen = $alm; entidad = $prov; partidas = @() }
 if ($t -notmatch 'Agrega al menos una partida') { Write-Host "  (salida: $t)"; Fallo "Un documento sin partidas debia rechazarse con un mensaje claro." }
+$hoy2 = (Get-Date).ToString('yyyy-MM-dd'); $ayer = (Get-Date).AddDays(-1).ToString('yyyy-MM-dd'); $parte = @(@{ id = 3; cant = 1; precio = 10; desc = 0; imp = 5 })
+$casos = @(
+  @{ spec = @{ tipo = 'factura_cliente'; almacen = $alm; entidad = $cli; condicion = 1; fecha = $hoy2; moneda = 2; tc = 0; partidas = $parte }; texto = 'tipo de cambio' },
+  @{ spec = @{ tipo = 'pedido'; almacen = $alm; entidad = $cli; condicion = 1; fecha = $hoy2; entrega = $ayer; partidas = $parte }; texto = 'entrega no puede ser anterior' },
+  @{ spec = @{ tipo = 'factura_cliente'; almacen = $alm; entidad = 987654; condicion = 1; fecha = $hoy2; partidas = $parte }; texto = 'cliente elegido no existe' },
+  @{ spec = @{ tipo = 'orden_compra'; almacen = 9999; entidad = $prov; condicion = 1; fecha = $hoy2; partidas = $parte }; texto = 'almac' },
+  @{ spec = @{ tipo = 'orden_compra'; almacen = $alm; entidad = $prov; condicion = 1; fecha = $hoy2; partidas = @(@{ id = 99999999; cant = 1; precio = 10; desc = 0; imp = 5 }) }; texto = 'producto' })
+foreach ($c in $casos) { $t = Correr $c.spec; if ($t -notmatch $c.texto) { Write-Host "  (salida: $t)"; Fallo "Debia rechazarse con un mensaje que incluya '$($c.texto)'." } }
 sqlcmd -S $Server -E -d $Database -Q "DELETE FROM zzBrosScript WHERE AppKey='$AppKey'" | Out-Null
-Write-Host "  Validacion de partidas vacias: rechazada con mensaje."
+Write-Host "  Validaciones de partidas vacias, moneda sin tipo de cambio, entrega anterior, persona, almacen y producto inexistentes: rechazadas con mensaje."
 exit 0

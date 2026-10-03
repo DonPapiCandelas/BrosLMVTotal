@@ -1,10 +1,10 @@
 # lang: python
 # timeout: 1800
-# AppKey recomendado: CREAR_DOCUMENTO_PYTHON_WINFORMS
-# Plantilla: Crear documento (Python · ventana Windows Forms)
+# AppKey recomendado: CREAR_COMPRA_PYTHON_WINFORMS
+# Plantilla: Crear documento de compra (Python · ventana Windows Forms)
 # Categoria: Documentos
 # Documentacion: CREAR_DOCUMENTO.html
-# Crea un documento de Comercial desde una ventana de Windows Forms (pythonnet): factura de cliente, pedido, remisión, factura de compra, orden de compra o recepción.
+# Crea un documento de Comercial desde una ventana de Windows Forms (pythonnet): factura de compra, orden de compra o recepción (compras). Plantilla separada a propósito: solo COMPRAS (proveedores), para que quien la use no vea el otro lado.
 # Es una plantilla de EJEMPLO funcional: ábrela, pruébala, y copia lo que necesites. Documentación: clic secundario sobre la plantilla → «Ver documentación».
 #
 # Qué enseña:
@@ -142,9 +142,6 @@ def T(clave, nombre, modulo, lado, precio, perfil, condicion, entrega, vinculo, 
 
 
 TIPOS = [
-    T("factura_cliente", "Factura de cliente",  21,  "C", "venta",  "DepotIDFrom=0, StatusDeliveryID=0",                            True,  False, "",         0),
-    T("pedido",          "Pedido de cliente",   967, "C", "venta",  "DepotIDFrom=0, StatusDeliveryID=3, StatusPaidID=0",            True,  True,  "",         0),
-    T("remision",        "Remisión (entrega)",  157, "C", "venta",  "DepotIDFrom=0, PaymentTermID=0, StatusDeliveryID=0",           False, True,  "cabecera", 967),
     T("factura_compra",  "Factura de compra",   152, "P", "compra", "DepotIDFrom=0, StatusPaidID=3",                                True,  False, "partida",  183),
     T("orden_compra",    "Orden de compra",     183, "P", "compra", "DepotIDFrom=0, UserID=0",                                      True,  True,  "",         0),
     T("recepcion",       "Recepción de compra", 184, "P", "compra", "DepotIDFrom=0, UserID=0, PaymentTermID=0, StatusDeliveryID=0", False, True,  "entrega",  183),
@@ -399,6 +396,39 @@ def crear_documento(spec):
             raise Exception("La partida " + str(n) + " tiene precio negativo.")
         if D(p.get("desc")) < 0 or D(p.get("desc")) > 100:
             raise Exception("El descuento de la partida " + str(n) + " debe estar entre 0 y 100.")
+    # Controles previos: nada se escribe en Comercial hasta que todo esto pasa (un documento a medias es peor que un error claro)
+    lado = t["lado"]
+    if I(ctx.scalar("SELECT COUNT(*) AS n FROM orgDepot WHERE DepotID = " + str(almacen) + " AND DeletedOn IS NULL AND OwnedBusinessEntityID = " + str(empresa))) == 0:
+        raise Exception("El almacén elegido no existe en esta empresa.")
+    if I(ctx.scalar("SELECT COUNT(*) AS n FROM " + ("orgCustomer" if lado == "C" else "orgSupplier") + " x JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID WHERE x.BusinessEntityID = " + str(entidad) + " AND x.DeletedOn IS NULL AND be.DeletedOn IS NULL")) == 0:
+        raise Exception("El " + ("cliente" if lado == "C" else "proveedor") + " elegido no existe o está eliminado.")
+    ids_prod = sorted(set(I(p.get("id")) for p in partidas))
+    if I(ctx.scalar("SELECT COUNT(*) AS n FROM orgProduct WHERE DeletedOn IS NULL AND ProductID IN (" + ",".join(str(i) for i in ids_prod) + ")")) != len(ids_prod):
+        raise Exception("Hay partidas con un producto que ya no existe o fue eliminado.")
+    f_txt = S(spec.get("fecha"))
+    try:
+        f_doc = datetime.datetime.strptime(f_txt[:10], "%Y-%m-%d") if len(f_txt) >= 10 else datetime.datetime.now()
+    except Exception:
+        raise Exception("La fecha del documento no es válida.")
+    e_txt = S(spec.get("entrega"))
+    if t["entrega"] and len(e_txt) >= 10:
+        try:
+            f_ent = datetime.datetime.strptime(e_txt[:10], "%Y-%m-%d")
+        except Exception:
+            raise Exception("La fecha de entrega no es válida.")
+        if f_ent.date() < f_doc.date():
+            raise Exception("La fecha de entrega no puede ser anterior a la fecha del documento.")
+    if t["condicion"] and I(ctx.scalar("SELECT COUNT(*) AS n FROM engPaymentTerm WHERE DeletedOn IS NULL AND PaymentTermID = " + str(I(spec.get("condicion"))) + " AND " + ("Sales" if lado == "C" else "Buys") + " = 1")) == 0:
+        raise Exception("Elige una condición de pago válida para " + ("ventas" if lado == "C" else "compras") + ".")
+    moneda_sel = I(spec.get("moneda"))
+    tc_sel = D(spec.get("tc"))
+    simbolo_mon = "MXN"
+    if moneda_sel > 0:
+        simbolo_mon = S(ctx.scalar("SELECT IntlSymbol FROM vwLBSCurrencyList WHERE CurrencyID = " + str(moneda_sel)))
+        if simbolo_mon == "":
+            raise Exception("La moneda elegida no existe.")
+        if simbolo_mon != "MXN" and not tc_sel > 0:
+            raise Exception("Captura el tipo de cambio de " + simbolo_mon + " (mayor a cero).")
     origenes = [I(x) for x in (spec.get("origenes") or []) if I(x) > 0]
     if vinculo == "":
         origenes = []
@@ -414,7 +444,7 @@ def crear_documento(spec):
         moneda = I(spec.get("moneda"))
         tc = D(spec.get("tc"))
         if moneda > 0:
-            sets.append("CurrencyID=" + str(moneda) + ", Rate=" + Num(tc if tc > 0 else 1))
+            sets.append("CurrencyID=" + str(moneda) + ", Rate=" + Num(1 if simbolo_mon == "MXN" else tc))          # en pesos el tipo de cambio siempre es 1
         if t["condicion"]:
             sets.append("PaymentTermID=" + str(I(spec.get("condicion"))))
         fecha = S(spec.get("fecha"))
@@ -573,7 +603,7 @@ F_TOT = Font("Segoe UI Semibold", 18.0)
 F_VAL = Font("Segoe UI Semibold", 11.0)
 F_ITAL = Font("Segoe UI", 9.0, FontStyle.Italic)
 
-E = {"ent": None, "prod": None, "guardando": False, "suspender": False, "metodo_manual": False, "ver_g3": True, "ver_g4": False, "tipo": 0, "resultado": "CANCELADO"}
+E = {"ent": None, "prod": None, "guardando": False, "suspender": False, "metodo_manual": False, "ver_g3": True, "ver_g4": False, "tipo": 0, "resultado": "CANCELADO", "tc_prev": 1.0, "en_cambio_mon": False}
 
 # ---------- importe en letra (el mismo que en C#) ----------
 UNI = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE"]
@@ -1393,7 +1423,13 @@ def principal():
         p = prod_por(id_)
         if p is None:
             return 0.0
-        return p["costo"] if not es_venta() else p["venta"]
+        # Los precios y costos del catálogo están en pesos: en un documento en otra moneda se convierten con el tipo de cambio capturado
+        return round((p["costo"] if not es_venta() else p["venta"]) / tc_pesos(), 4)
+
+    def tc_pesos():
+        m = moneda_sel()
+        v = Convert.ToDouble(nud_tc.Value)
+        return v if m and m["simbolo"] != "MXN" and v > 0 else 1.0
 
     def exist_de(id_):
         e = existencias.get(str(id_))
@@ -1581,6 +1617,7 @@ def principal():
         auto_metodo()
         for f in filas:
             f["precio"] = precio_de(f["id"])
+            f["auto"] = True
         lbl_pie.Text = "Elaboró: " + (quien_soy or "—") + "      Empresa: " + nombre_empresa + "      Módulo " + str(t["modulo"]) + " · " + t["nombre"]
         fo = folios.get(t["clave"])
         txt_folio.Text = ("≈ " + str(fo)) if fo is not None else ""
@@ -1701,10 +1738,11 @@ def principal():
             ya["cant"] += cant
             if precio > 0:
                 ya["precio"] = precio
+                ya["auto"] = abs(precio - precio_de(id_)) < 1e-4
             ya["desc"] = desc
             ya["imp"] = imp
         else:
-            filas.append({"id": id_, "clave": p["clave"], "nombre": p["nombre"], "unidad": p["unidad"], "cant": cant, "max": 0.0, "precio": precio, "desc": desc, "imp": imp, "origenItem": 0, "origen": 0})
+            filas.append({"id": id_, "clave": p["clave"], "nombre": p["nombre"], "unidad": p["unidad"], "cant": cant, "max": 0.0, "precio": precio, "auto": abs(precio - precio_de(id_)) < 1e-4, "desc": desc, "imp": imp, "origenItem": 0, "origen": 0})
         lst_prod.Visible = False
         limpiar_captura()
         pintar_grid()
@@ -1814,6 +1852,7 @@ def principal():
                     grid.Rows[ev.RowIndex].Cells["Cant"].Value = str(f["cant"])
                 elif col == "Precio":
                     f["precio"] = n
+                    f["auto"] = False
                 elif col == "DescPerc":
                     f["desc"] = min(100.0, n)
                     grid.Rows[ev.RowIndex].Cells["DescPerc"].Value = str(f["desc"])
@@ -1839,11 +1878,30 @@ def principal():
 
     def cambio_mon():
         m = moneda_sel()
+        E["en_cambio_mon"] = True
         if m:
-            nud_tc.Value = Convert.ToDecimal(max(0.0001, m["tc"]))
+            nud_tc.Value = Convert.ToDecimal(max(0.0001, 1.0 if m["simbolo"] == "MXN" else m["tc"]))
             nud_tc.Enabled = m["simbolo"] != "MXN"
+        E["en_cambio_mon"] = False
+        repreciar(True)
+
+    # Al cambiar de moneda: los precios del catálogo (automáticos) se recalculan desde su precio en pesos; los que la persona escribió se convierten proporcionalmente;
+    # los de un documento de origen se respetan. Al ajustar solo el tipo de cambio: se recalculan los automáticos.
+    def repreciar(cambio_moneda):
+        ahora = tc_pesos()
+        antes = E["tc_prev"]
+        E["tc_prev"] = ahora
+        for f in filas:
+            if f["origen"] != 0:
+                continue
+            if f.get("auto"):
+                f["precio"] = precio_de(f["id"])
+            elif cambio_moneda and abs(ahora - antes) > 1e-9:
+                f["precio"] = round(f["precio"] * antes / ahora, 4)
+        pintar_grid()
         totales()
     cmb_mon.SelectedIndexChanged += seguro(cambio_mon)
+    nud_tc.ValueChanged += seguro(lambda: None if E["en_cambio_mon"] else repreciar(False))
     cmb_cond.SelectedIndexChanged += seguro(auto_metodo)
 
     def cambio_metodo():

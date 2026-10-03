@@ -1,4 +1,4 @@
-// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+﻿// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
 // Copyright (C) 2026 Cristofer Candelas Garcia
 //
 // This program is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("3.0.2.0")]
+[assembly: AssemblyVersion("3.0.3.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV

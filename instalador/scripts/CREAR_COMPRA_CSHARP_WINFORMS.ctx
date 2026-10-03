@@ -1,10 +1,10 @@
 // lang: csharp
-// AppKey recomendado: CREAR_DOCUMENTO_WINFORMS
-// Plantilla: Crear documento (C# · ventana Windows Forms)
+// AppKey recomendado: CREAR_COMPRA_WINFORMS
+// Plantilla: Crear documento de compra (C# · ventana Windows Forms)
 // Categoria: Documentos
 // Documentacion: CREAR_DOCUMENTO.html
 // job: safe-offline
-// Crea un documento de Comercial desde una ventana de Windows Forms: factura de cliente, pedido, remisión, factura de compra, orden de compra o recepción.
+// Crea un documento de Comercial desde una ventana de Windows Forms: factura de compra, orden de compra o recepción (compras). Plantilla separada a propósito: solo COMPRAS (proveedores), para que quien la use no vea el otro lado.
 // Es una plantilla de EJEMPLO funcional: ábrela, pruébala, y copia lo que necesites. Documentación: clic secundario sobre la plantilla → «Ver documentación».
 //
 // Qué enseña:
@@ -53,9 +53,6 @@ Dictionary<string, object> T(string clave, string nombre, int modulo, string lad
         ["condicion"] = condicion, ["entrega"] = entrega, ["vinculo"] = vinculo, ["origen"] = origen };
 var TIPOS = new List<Dictionary<string, object>>
 {
-    T("factura_cliente", "Factura de cliente",   21,  "C", "venta",  "DepotIDFrom=0, StatusDeliveryID=0",                                  true,  false, "",         0),
-    T("pedido",          "Pedido de cliente",    967, "C", "venta",  "DepotIDFrom=0, StatusDeliveryID=3, StatusPaidID=0",                  true,  true,  "",         0),
-    T("remision",        "Remisión (entrega)",   157, "C", "venta",  "DepotIDFrom=0, PaymentTermID=0, StatusDeliveryID=0",                 false, true,  "cabecera", 967),
     T("factura_compra",  "Factura de compra",    152, "P", "compra", "DepotIDFrom=0, StatusPaidID=3",                                      true,  false, "partida",  183),
     T("orden_compra",    "Orden de compra",      183, "P", "compra", "DepotIDFrom=0, UserID=0",                                            true,  true,  "",         0),
     T("recepcion",       "Recepción de compra",  184, "P", "compra", "DepotIDFrom=0, UserID=0, PaymentTermID=0, StatusDeliveryID=0",        false, true,  "entrega",  183),
@@ -288,6 +285,26 @@ long CrearDocumento(Dictionary<string, object> spec)
         if (D(p["precio"]) < 0) throw new Exception("La partida " + n + " tiene precio negativo.");
         double dsc = D(p["desc"]); if (dsc < 0 || dsc > 100) throw new Exception("El descuento de la partida " + n + " debe estar entre 0 y 100.");
     }
+    // Controles previos: nada se escribe en Comercial hasta que todo esto pasa (un documento a medias es peor que un error claro)
+    string lado = (string)t["lado"];
+    if (I(ctx.Scalar("SELECT COUNT(*) AS n FROM orgDepot WHERE DepotID = " + almacen + " AND DeletedOn IS NULL AND OwnedBusinessEntityID = " + empresa)) == 0) throw new Exception("El almacén elegido no existe en esta empresa.");
+    if (I(ctx.Scalar("SELECT COUNT(*) AS n FROM " + (lado == "C" ? "orgCustomer" : "orgSupplier") + " x JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID WHERE x.BusinessEntityID = " + entidad + " AND x.DeletedOn IS NULL AND be.DeletedOn IS NULL")) == 0)
+        throw new Exception("El " + (lado == "C" ? "cliente" : "proveedor") + " elegido no existe o está eliminado.");
+    var idsProd = partidas.Select(p => I(p["id"])).Distinct().ToList();
+    if (I(ctx.Scalar("SELECT COUNT(*) AS n FROM orgProduct WHERE DeletedOn IS NULL AND ProductID IN (" + string.Join(",", idsProd) + ")")) != idsProd.Count) throw new Exception("Hay partidas con un producto que ya no existe o fue eliminado.");
+    DateTime fDoc = DateTime.Today; string fTxt = S(spec.ContainsKey("fecha") ? spec["fecha"] : "");
+    if (fTxt.Length >= 10 && !DateTime.TryParse(fTxt.Substring(0, 10), ci, DateTimeStyles.None, out fDoc)) throw new Exception("La fecha del documento no es válida.");
+    string eTxt = S(spec.ContainsKey("entrega") ? spec["entrega"] : "");
+    if ((bool)t["entrega"] && eTxt.Length >= 10) { DateTime fEnt; if (!DateTime.TryParse(eTxt.Substring(0, 10), ci, DateTimeStyles.None, out fEnt)) throw new Exception("La fecha de entrega no es válida."); if (fEnt.Date < fDoc.Date) throw new Exception("La fecha de entrega no puede ser anterior a la fecha del documento."); }
+    if ((bool)t["condicion"] && I(ctx.Scalar("SELECT COUNT(*) AS n FROM engPaymentTerm WHERE DeletedOn IS NULL AND PaymentTermID = " + I(spec["condicion"]) + " AND " + (lado == "C" ? "Sales" : "Buys") + " = 1")) == 0)
+        throw new Exception("Elige una condición de pago válida para " + (lado == "C" ? "ventas" : "compras") + ".");
+    int monedaSel = spec.ContainsKey("moneda") ? I(spec["moneda"]) : 0; double tcSel = spec.ContainsKey("tc") ? D(spec["tc"]) : 0; string simboloMon = "MXN";
+    if (monedaSel > 0)
+    {
+        simboloMon = S(ctx.Scalar("SELECT IntlSymbol FROM vwLBSCurrencyList WHERE CurrencyID = " + monedaSel));
+        if (simboloMon == "") throw new Exception("La moneda elegida no existe.");
+        if (simboloMon != "MXN" && !(tcSel > 0)) throw new Exception("Captura el tipo de cambio de " + simboloMon + " (mayor a cero).");
+    }
     var origenes = spec.ContainsKey("origenes") && spec["origenes"] != null ? ((System.Collections.IEnumerable)spec["origenes"]).Cast<object>().Select(o => L(o)).Where(x => x > 0).ToList() : new List<long>();
     if (vinculo == "" && origenes.Count > 0) origenes.Clear();
 
@@ -300,7 +317,7 @@ long CrearDocumento(Dictionary<string, object> spec)
     int centro = spec.ContainsKey("centro") ? I(spec["centro"]) : 0;
     var set = new List<string> { (string)t["perfil"], "CampaignID=NULL", "CostCenterID=" + (centro > 0 ? centro.ToString(ci) : "NULL"), "ProjectID=NULL" };
     int moneda = spec.ContainsKey("moneda") ? I(spec["moneda"]) : 0; double tc = spec.ContainsKey("tc") ? D(spec["tc"]) : 0;
-    if (moneda > 0) set.Add("CurrencyID=" + moneda + ", Rate=" + Num(tc > 0 ? tc : 1));
+    if (moneda > 0) set.Add("CurrencyID=" + moneda + ", Rate=" + Num(simboloMon == "MXN" ? 1 : tc));          // en pesos el tipo de cambio siempre es 1
     if ((bool)t["condicion"]) set.Add("PaymentTermID=" + I(spec["condicion"]));
     string fecha = S(spec.ContainsKey("fecha") ? spec["fecha"] : ""); if (fecha.Length >= 10) set.Add("DateDocument='" + Sq(fecha.Substring(0, 10).Replace("-", "")) + "'");
     string entrega = S(spec.ContainsKey("entrega") ? spec["entrega"] : ""); if ((bool)t["entrega"] && entrega.Length >= 10) set.Add("DateDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "', DateDocDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "'");
@@ -391,7 +408,7 @@ if (!string.IsNullOrEmpty(modoPrueba))
 // Los manejadores llevan try/catch porque, en modeless, el script «ya terminó» cuando se hace clic. Al guardar SIEMPRE se abre el documento nativo de Comercial.
 // ===================================================================================================================================
 class Opcion { public int Id { get; set; } public string Nombre { get; set; } public string Extra { get; set; } public override string ToString() => Nombre; }
-class Fila { public int Id; public string Clave = "", Nombre = "", Unidad = ""; public double Cant = 1, Max = 0, Precio, Desc; public int Imp; public long OrigenItem; public long Origen; }
+class Fila { public int Id; public string Clave = "", Nombre = "", Unidad = ""; public double Cant = 1, Max = 0, Precio, Desc; public int Imp; public long OrigenItem; public long Origen; public bool Auto; }
 class Pastilla { public string Titulo, Valor; public Color Color; }
 
 var catalogo = Catalogos(CLAVES);
@@ -658,7 +675,10 @@ frm.Resize += (s, e) => Distribuir();
 
 // ---------- lógica ----------
 Dictionary<string, object> ProdPor(int id) => productos.FirstOrDefault(x => I(x["id"]) == id);
-double PrecioDe(int id) { var p = ProdPor(id); return p == null ? 0 : !EsVenta() ? D(p["costo"]) : D(p["venta"]); }
+// Los precios y costos del catálogo están en pesos: en un documento en otra moneda se convierten con el tipo de cambio capturado
+double TcPesos() { var m = MonedaSel(); return m != null && S(m["simbolo"]) != "MXN" && nudTC.Value > 0 ? (double)nudTC.Value : 1.0; }
+double tcPrev = 1.0; bool enCambioMon = false;
+double PrecioDe(int id) { var p = ProdPor(id); return p == null ? 0 : Math.Round((!EsVenta() ? D(p["costo"]) : D(p["venta"])) / TcPesos(), 4); }
 double ExistDe(int id) { object e; if (!existencias.TryGetValue(id.ToString(), out e)) return 0; var mm = (Dictionary<string, object>)e; object q; var a = cmbAlm.SelectedItem as Opcion; return a != null && mm.TryGetValue(a.Id.ToString(), out q) ? D(q) : 0; }
 Dictionary<string, object> MonedaSel() { var o = cmbMon.SelectedItem as Opcion; return o == null ? null : monedas.FirstOrDefault(x => I(x["id"]) == o.Id); }
 
@@ -782,7 +802,7 @@ void CambiarTipo(int idx)
     foreach (var c in cat("condiciones").Where(c => (string)t["lado"] == "C" ? (bool)c["venta"] : (bool)c["compra"])) cmbCond.Items.Add(new Opcion { Id = I(c["id"]), Nombre = S(c["nombre"]) });
     if (cmbCond.Items.Count > 0) cmbCond.SelectedIndex = 0;
     verG3 = ConCfdi(); metodoManual = false; AutoMetodo();
-    foreach (var f in filas) f.Precio = PrecioDe(f.Id);
+    foreach (var f in filas) { f.Precio = PrecioDe(f.Id); f.Auto = true; }
     lblPie.Text = "Elaboró: " + (quienSoy == "" ? "—" : quienSoy) + "      Empresa: " + nombreEmpresa + "      Módulo " + (int)t["modulo"] + " · " + (string)t["nombre"];
     object fo; txtFolio.Text = folios.TryGetValue((string)t["clave"], out fo) ? "≈ " + fo : ""; txtSerie.Text = "";
     try { var a = cmbAlm.SelectedItem as Opcion; string pre = a == null ? "" : ctx.erp.GetFolioPrefix((int)t["modulo"], a.Id); txtSerie.Text = pre ?? ""; } catch { }
@@ -816,8 +836,8 @@ void AgregarCaptura()
     int id = I(prodSel["id"]); double cant = (double)nudCant.Value, precio = (double)nudPrecio.Value, desc = (double)nudDesc.Value; int imp = (cmbImp.SelectedItem as Opcion)?.Id ?? 0;
     if (cant <= 0) { nudCant.Focus(); throw new Exception("La cantidad debe ser mayor a cero."); }
     var ya = filas.FirstOrDefault(f => f.Id == id && f.Origen == 0);
-    if (ya != null) { ya.Cant += cant; if (precio > 0) ya.Precio = precio; ya.Desc = desc; ya.Imp = imp; }
-    else filas.Add(new Fila { Id = id, Clave = S(prodSel["clave"]), Nombre = S(prodSel["nombre"]), Unidad = S(prodSel["unidad"]), Cant = cant, Precio = precio, Desc = desc, Imp = imp });
+    if (ya != null) { ya.Cant += cant; if (precio > 0) { ya.Precio = precio; ya.Auto = Math.Abs(precio - PrecioDe(id)) < 1e-4; } ya.Desc = desc; ya.Imp = imp; }
+    else filas.Add(new Fila { Id = id, Clave = S(prodSel["clave"]), Nombre = S(prodSel["nombre"]), Unidad = S(prodSel["unidad"]), Cant = cant, Precio = precio, Auto = Math.Abs(precio - PrecioDe(id)) < 1e-4, Desc = desc, Imp = imp });
     lstProd.Visible = false; LimpiarCaptura(); PintarGrid(); txtProd.Focus();
 }
 void ElegirProducto(Dictionary<string, object> p)
@@ -852,7 +872,7 @@ grid.CellEndEdit += (_, ev) => Seguro(() =>
     var f = filas[ev.RowIndex]; string col = grid.Columns[ev.ColumnIndex].Name; var v = grid.Rows[ev.RowIndex].Cells[col].Value;
     double n; double.TryParse(Convert.ToString(v, CultureInfo.CurrentCulture), NumberStyles.Any, CultureInfo.CurrentCulture, out n); if (n < 0) n = 0;
     if (col == "Cant") { f.Cant = f.Max > 0 && n > f.Max ? f.Max : n; grid.Rows[ev.RowIndex].Cells["Cant"].Value = f.Cant; }
-    else if (col == "Precio") f.Precio = n;
+    else if (col == "Precio") { f.Precio = n; f.Auto = false; }
     else if (col == "DescPerc") { f.Desc = Math.Min(100, n); grid.Rows[ev.RowIndex].Cells["DescPerc"].Value = f.Desc; }
     else if (col == "Imp" && v != null) f.Imp = Convert.ToInt32(v);
     Totales();
@@ -861,7 +881,20 @@ grid.CurrentCellDirtyStateChanged += (_, __) => { if (grid.IsCurrentCellDirty &&
 grid.DataError += (_, ev) => ev.ThrowException = false;
 grid.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Delete && !grid.IsCurrentCellInEditMode) Seguro(() => { if (grid.CurrentRow != null && grid.CurrentRow.Index < filas.Count) { filas.RemoveAt(grid.CurrentRow.Index); PintarGrid(); } }); };
 cmbAlm.SelectedIndexChanged += (_, __) => Seguro(() => { PintarGrid(); try { var a = cmbAlm.SelectedItem as Opcion; txtSerie.Text = a == null ? "" : ctx.erp.GetFolioPrefix((int)TipoActual()["modulo"], a.Id) ?? ""; } catch { } });
-cmbMon.SelectedIndexChanged += (_, __) => Seguro(() => { var m = MonedaSel(); if (m != null) { nudTC.Value = (decimal)Math.Max(0.0001, D(m["tc"])); nudTC.Enabled = S(m["simbolo"]) != "MXN"; } Totales(); });
+cmbMon.SelectedIndexChanged += (_, __) => Seguro(() =>
+{
+    var m = MonedaSel(); enCambioMon = true; if (m != null) { nudTC.Value = (decimal)Math.Max(0.0001, S(m["simbolo"]) == "MXN" ? 1.0 : D(m["tc"])); nudTC.Enabled = S(m["simbolo"]) != "MXN"; } enCambioMon = false;
+    Repreciar(true);
+});
+// Al cambiar de moneda: los precios del catálogo (automáticos) se recalculan desde su precio en pesos; los que la persona escribió se convierten proporcionalmente; los de un documento de origen se respetan.
+// Al ajustar solo el tipo de cambio: se recalculan los automáticos.
+void Repreciar(bool cambioMoneda)
+{
+    double ahora = TcPesos(), antes = tcPrev; tcPrev = ahora;
+    foreach (var f in filas) { if (f.Origen != 0) continue; if (f.Auto) f.Precio = PrecioDe(f.Id); else if (cambioMoneda && Math.Abs(ahora - antes) > 1e-9) f.Precio = Math.Round(f.Precio * antes / ahora, 4); }
+    PintarGrid(); Totales();
+}
+nudTC.ValueChanged += (_, __) => Seguro(() => { if (!enCambioMon) Repreciar(false); });
 cmbCond.SelectedIndexChanged += (_, __) => Seguro(AutoMetodo);
 cmbMetodo.SelectionChangeCommitted += (_, __) => Seguro(() => { metodoManual = true; if (ClaveDe(cmbMetodo) == "PPD") { suspender = true; PonerPorClave(cmbForma, "99"); suspender = false; } Totales(); });
 cmbForma.SelectionChangeCommitted += (_, __) => Seguro(() => { metodoManual = true; Totales(); });

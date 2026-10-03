@@ -244,6 +244,26 @@ long CrearDocumento(Dictionary<string, object> spec)
         if (D(p["precio"]) < 0) throw new Exception("La partida " + n + " tiene precio negativo.");
         double dsc = D(p["desc"]); if (dsc < 0 || dsc > 100) throw new Exception("El descuento de la partida " + n + " debe estar entre 0 y 100.");
     }
+    // Controles previos: nada se escribe en Comercial hasta que todo esto pasa (un documento a medias es peor que un error claro)
+    string lado = (string)t["lado"];
+    if (I(ctx.Scalar("SELECT COUNT(*) AS n FROM orgDepot WHERE DepotID = " + almacen + " AND DeletedOn IS NULL AND OwnedBusinessEntityID = " + empresa)) == 0) throw new Exception("El almacén elegido no existe en esta empresa.");
+    if (I(ctx.Scalar("SELECT COUNT(*) AS n FROM " + (lado == "C" ? "orgCustomer" : "orgSupplier") + " x JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID WHERE x.BusinessEntityID = " + entidad + " AND x.DeletedOn IS NULL AND be.DeletedOn IS NULL")) == 0)
+        throw new Exception("El " + (lado == "C" ? "cliente" : "proveedor") + " elegido no existe o está eliminado.");
+    var idsProd = partidas.Select(p => I(p["id"])).Distinct().ToList();
+    if (I(ctx.Scalar("SELECT COUNT(*) AS n FROM orgProduct WHERE DeletedOn IS NULL AND ProductID IN (" + string.Join(",", idsProd) + ")")) != idsProd.Count) throw new Exception("Hay partidas con un producto que ya no existe o fue eliminado.");
+    DateTime fDoc = DateTime.Today; string fTxt = S(spec.ContainsKey("fecha") ? spec["fecha"] : "");
+    if (fTxt.Length >= 10 && !DateTime.TryParse(fTxt.Substring(0, 10), ci, DateTimeStyles.None, out fDoc)) throw new Exception("La fecha del documento no es válida.");
+    string eTxt = S(spec.ContainsKey("entrega") ? spec["entrega"] : "");
+    if ((bool)t["entrega"] && eTxt.Length >= 10) { DateTime fEnt; if (!DateTime.TryParse(eTxt.Substring(0, 10), ci, DateTimeStyles.None, out fEnt)) throw new Exception("La fecha de entrega no es válida."); if (fEnt.Date < fDoc.Date) throw new Exception("La fecha de entrega no puede ser anterior a la fecha del documento."); }
+    if ((bool)t["condicion"] && I(ctx.Scalar("SELECT COUNT(*) AS n FROM engPaymentTerm WHERE DeletedOn IS NULL AND PaymentTermID = " + I(spec["condicion"]) + " AND " + (lado == "C" ? "Sales" : "Buys") + " = 1")) == 0)
+        throw new Exception("Elige una condición de pago válida para " + (lado == "C" ? "ventas" : "compras") + ".");
+    int monedaSel = spec.ContainsKey("moneda") ? I(spec["moneda"]) : 0; double tcSel = spec.ContainsKey("tc") ? D(spec["tc"]) : 0; string simboloMon = "MXN";
+    if (monedaSel > 0)
+    {
+        simboloMon = S(ctx.Scalar("SELECT IntlSymbol FROM vwLBSCurrencyList WHERE CurrencyID = " + monedaSel));
+        if (simboloMon == "") throw new Exception("La moneda elegida no existe.");
+        if (simboloMon != "MXN" && !(tcSel > 0)) throw new Exception("Captura el tipo de cambio de " + simboloMon + " (mayor a cero).");
+    }
     var origenes = spec.ContainsKey("origenes") && spec["origenes"] != null ? ((System.Collections.IEnumerable)spec["origenes"]).Cast<object>().Select(o => L(o)).Where(x => x > 0).ToList() : new List<long>();
     if (vinculo == "" && origenes.Count > 0) origenes.Clear();
 
@@ -256,7 +276,7 @@ long CrearDocumento(Dictionary<string, object> spec)
     int centro = spec.ContainsKey("centro") ? I(spec["centro"]) : 0;
     var set = new List<string> { (string)t["perfil"], "CampaignID=NULL", "CostCenterID=" + (centro > 0 ? centro.ToString(ci) : "NULL"), "ProjectID=NULL" };
     int moneda = spec.ContainsKey("moneda") ? I(spec["moneda"]) : 0; double tc = spec.ContainsKey("tc") ? D(spec["tc"]) : 0;
-    if (moneda > 0) set.Add("CurrencyID=" + moneda + ", Rate=" + Num(tc > 0 ? tc : 1));
+    if (moneda > 0) set.Add("CurrencyID=" + moneda + ", Rate=" + Num(simboloMon == "MXN" ? 1 : tc));          // en pesos el tipo de cambio siempre es 1
     if ((bool)t["condicion"]) set.Add("PaymentTermID=" + I(spec["condicion"]));
     string fecha = S(spec.ContainsKey("fecha") ? spec["fecha"] : ""); if (fecha.Length >= 10) set.Add("DateDocument='" + Sq(fecha.Substring(0, 10).Replace("-", "")) + "'");
     string entrega = S(spec.ContainsKey("entrega") ? spec["entrega"] : ""); if ((bool)t["entrega"] && entrega.Length >= 10) set.Add("DateDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "', DateDocDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "'");

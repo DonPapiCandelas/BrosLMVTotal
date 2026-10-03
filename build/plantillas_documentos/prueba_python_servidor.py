@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # Prueba DE EXTREMO A EXTREMO del servidor «en vivo» de las plantillas Python con WebView2 (Crear documento y Cobro/Pago) SIN Comercial ni ventana:
 # se simula ctx.show_html y, en su lugar, un hilo hace lo mismo que haría la página (fetch con el token) contra el servidor HTTP que levanta el script.
 # Comprueba: que rechaza peticiones sin token, que contesta consultas en vivo con JavaScript («respuesta(id, …)»), que guarda y borra el borrador y las preferencias,
@@ -91,7 +91,7 @@ def escenario_documento(url, token, res):
     assert os.path.exists(os.path.join(os.environ["LOCALAPPDATA"], "BrosLMV", "borradores", [f for f in os.listdir(os.path.join(os.environ["LOCALAPPDATA"], "BrosLMV", "borradores")) if f.startswith("pref_ui_")][0]))
     # crear un documento: «Guardar y nuevo» (la ventana sigue) y después «Guardar y abrir» (la ventana se cierra)
     prod = sqlcmd("SELECT TOP 1 ProductID FROM orgProduct WHERE DeletedOn IS NULL AND TaxTypeID IS NOT NULL")[0]["ProductID"]
-    alm = sqlcmd("SELECT TOP 1 DepotID FROM orgDepot WHERE DeletedOn IS NULL")[0]["DepotID"]
+    alm = sqlcmd("SELECT TOP 1 DepotID FROM orgDepot WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = 1")[0]["DepotID"]
     spec = {"tipo": "orden_compra", "almacen": int(alm), "entidad": int(cli), "condicion": 1, "fecha": "2026-10-03", "entrega": "2026-10-10", "moneda": 3, "tc": 1,
             "partidas": [{"id": int(prod), "nombre": "x", "cant": 2, "precio": 10, "desc": 0, "imp": 5, "origenItem": 0}]}
     _, c, _ = post(url, token, {"accion": "crear", "nuevo": True, "spec": json.dumps(spec)})
@@ -135,7 +135,7 @@ def escenario_pago(url, token, res):
     res["fin"] = True
 
 
-r1 = correr("CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx" if False else "CREAR_DOCUMENTO_PYTHON_WEBVIEW2.py", escenario_documento)
+r1 = correr(m.ruta_combinada("CREAR_DOCUMENTO_PYTHON_WEBVIEW2.py"), escenario_documento)
 print("  Crear documento (Python en vivo): token, latido, entidad, pendientes, inteligencia (%s), borrador, tema, crear y nuevo, validación y cierre." % r1["inteligencia"])
 r2 = correr(m.ruta_combinada("COBRO_PAGO_PYTHON_WEBVIEW2.py"), escenario_pago)
 print("  Cobro/Pago (Python en vivo): movimientos, documentos con método de pago, comportamiento de pago, borrador, aplicar, rechazo de sobrepago y cierre.")

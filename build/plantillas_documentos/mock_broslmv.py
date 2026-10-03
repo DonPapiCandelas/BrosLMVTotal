@@ -21,6 +21,10 @@ def ruta_combinada(nombre):
     return os.path.join(d, nombre)
 
 
+if len(sys.argv) <= 1:           # sin argumento: la plantilla de documentos con ventas y compras juntas (las de fábrica van separadas)
+    PLANTILLA = ruta_combinada("CREAR_DOCUMENTO_PYTHON_WEBVIEW2.py")
+
+
 def sqlcmd(sql):
     r = subprocess.run(["sqlcmd", "-S", SERVIDOR, "-E", "-d", BASE, "-W", "-s", "\x1f", "-Q", "SET NOCOUNT ON; " + sql],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
