@@ -41,7 +41,7 @@ for pieza in ("sp_getapplock", "BrosCobroFolio_247_PAG", "INSERT INTO docFinanci
         fallo("La receta de pago no contiene: " + pieza)
 if ("Balance=" + ("%g" % nuevo)) not in sql.replace(" ", ""):
     fallo("El nuevo saldo debía ser %s." % nuevo)
-if "Pago a proveedor registrado: 100.00" not in resumen or "PAG-" not in resumen:
+if "registrado: 100.00 MXN" not in resumen or "PAG-" not in resumen:
     fallo("El resumen no trae el monto o el folio: " + resumen)
 print("  Receta de pago a proveedor: operación 247, aplicación, espejo, transferencia con referencia, candado de folio, saldo nuevo %s y estatus parcial." % nuevo)
 

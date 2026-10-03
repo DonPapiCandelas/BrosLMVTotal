@@ -8,6 +8,19 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Sin versión] — 2026-10-03 — Cobros y pagos con moneda, parcialidades e historial (solo scripts)
+
+No cambia el addon: **no requiere instalar**, basta publicar las plantillas actualizadas (`build\laboratorio\publicar_scripts_lab.ps1`). Los botones ya creados guardan su propia copia del código: hay que volver a crearlos desde la plantilla nueva.
+
+### Agregado
+- **Cobros y pagos en moneda extranjera** (las 8 plantillas): la cuenta tiene su moneda y el documento la suya; lo que se captura en «Aplicar» va en la moneda de la cuenta, la ventana pide el **tipo de cambio solo cuando hace falta** (sugiere el del catálogo) y muestra, por documento, cuánto baja su saldo **en su propia moneda**. Combinaciones validadas contra el modelo nativo de Comercial; las no soportadas se rechazan con un mensaje.
+- **Parcialidades:** cada documento muestra sus parcialidades (vencimiento, importe, pagado, saldo); se aplica en orden o a la parcialidad elegida.
+- **Estado de pago por documento y detalle:** fichas «pagado N %», «N cobros / pagos», «N notas de crédito», y un detalle por documento con cada aplicación (cobro, pago o nota de crédito) con folio, fecha, parcialidad y tipo de cambio.
+
+### Cambiado
+- **Una sola operación (un folio) por movimiento**, con un renglón por documento y parcialidad, como la pantalla nativa de Tesorería (antes: una operación por documento). La operación guarda ahora los campos que Comercial llena: signo, moneda, tipo de cambio, importe en letra, descripción y fecha de afectación.
+- La cartera, antigüedad, pronóstico y saldos de la persona se muestran en pesos.
+
 ## [3.0.2] — 2026-10-03 — Cobros y pagos separados
 
 ### Cambiado (requiere instalar: el instalador retira las plantillas anteriores)

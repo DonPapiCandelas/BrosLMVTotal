@@ -32,23 +32,110 @@ for _r in _modulos:
     nombre_mod[I(_r["ModuleID"])] = S(_r["ModuleName"])
 
 
+# ---------- Monedas ----------
+# La cuenta tiene su moneda y cada documento la suya (0 = sin moneda = pesos). El tipo de cambio de cada moneda sale del catálogo de monedas de Comercial.
+monedas = [{"id": I(r["id"]), "simbolo": S(r["simbolo"]), "nombre": S(r["nombre"]), "letra": S(r["letra"]), "tc": D(r["tc"]) or 1.0} for r in ctx.query(
+    "SELECT CurrencyID AS id, IntlSymbol AS simbolo, Currency AS nombre, ISNULL(MoneyLetter,'') AS letra, ISNULL(Rate,1) AS tc FROM vwLBSCurrencyList ORDER BY CurrencyID")]
+moneda_por = {m["id"]: m for m in monedas}
+
+
+def moneda_de(v):
+    m = I(v)
+    return 3 if m <= 0 else m
+
+
+def simbolo_de(id_):
+    return moneda_por[id_]["simbolo"] if id_ in moneda_por else "MXN"
+
+
 # ---------- Documentos con saldo pendiente de un lado (C = por cobrar, P = por pagar) ----------
 # Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero). La ventana los pide otra vez después de aplicar, para ver los saldos nuevos.
+# Además del saldo trae lo necesario para decidir: moneda y tipo de cambio del documento, cuántas parcialidades tiene, cuántos cobros/pagos y cuántas notas de crédito ya se le aplicaron.
 def docs_con_saldo(lado):
     mods = modulos_lado[lado]
     if not mods:
         return []
     filas = ctx.query(
-        "SELECT TOP 30000 d.DocumentID AS id, d.ModuleID AS modulo, d.BusinessEntityID AS ent, d.FolioPrefix, d.Folio, d.DateDocument AS fecha, ISNULL(d.Total,0) AS total, ISNULL(d.Balance,0) AS saldo, ISNULL(d.Title,'') AS titulo, "
+        "SELECT TOP 30000 d.DocumentID AS id, d.ModuleID AS modulo, d.BusinessEntityID AS ent, d.FolioPrefix, d.Folio, d.DateDocument AS fecha, ISNULL(d.Total,0) AS total, ISNULL(d.Balance,0) AS saldo, ISNULL(d.TotalPaid,0) AS pagado, ISNULL(d.Title,'') AS titulo, "
         "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS vence, "
-        "ISNULL((SELECT TOP 1 c.MetodoPago FROM docDocumentCFD c WHERE c.DocumentID = d.DocumentID), '') AS metodo "
+        "ISNULL((SELECT TOP 1 c.MetodoPago FROM docDocumentCFD c WHERE c.DocumentID = d.DocumentID), '') AS metodo, "
+        "ISNULL(d.CurrencyID,0) AS moneda, ISNULL(d.Rate,1) AS tcDoc, "
+        "(SELECT COUNT(DISTINCT a.PartialityNumber) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS nParc, "
+        "(SELECT COUNT(*) FROM docDocumentPayment p WHERE p.DocumentID = d.DocumentID AND p.DeletedOn IS NULL AND ISNULL(p.PaymentWithDocumentID,0) = 0) AS nAplic, "
+        "(SELECT COUNT(*) FROM docDocumentPayment p WHERE p.DocumentID = d.DocumentID AND p.DeletedOn IS NULL AND ISNULL(p.PaymentWithDocumentID,0) > 0) AS nNotas "
         "FROM docDocument d WHERE d.ModuleID IN (" + ",".join(str(m) for m in mods) + ") AND d.OwnedBusinessEntityID = " + str(empresa) +
         " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) > 0.004 ORDER BY d.DateDocument")
-    return [{"id": I(r["id"]), "modulo": I(r["modulo"]), "tipo": nombre_mod.get(I(r["modulo"]), ""), "ent": I(r["ent"]), "folio": (S(r["FolioPrefix"]) + S(r["Folio"])).strip(),
-             "fecha": fecha_txt(r["fecha"]), "vence": fecha_txt(r["vence"]), "total": D(r["total"]), "saldo": D(r["saldo"]), "titulo": S(r["titulo"]), "metodo": S(r["metodo"])} for r in filas]
+    res = []
+    for r in filas:
+        mon = moneda_de(r["moneda"])
+        saldo = D(r["saldo"])
+        tcd = D(r["tcDoc"]) if D(r["tcDoc"]) > 0 else 1.0
+        res.append({"id": I(r["id"]), "modulo": I(r["modulo"]), "tipo": nombre_mod.get(I(r["modulo"]), ""), "ent": I(r["ent"]), "folio": (S(r["FolioPrefix"]) + S(r["Folio"])).strip(),
+                    "fecha": fecha_txt(r["fecha"]), "vence": fecha_txt(r["vence"]), "total": D(r["total"]), "saldo": saldo, "pagado": D(r["pagado"]), "titulo": S(r["titulo"]), "metodo": S(r["metodo"]),
+                    "moneda": mon, "simbolo": simbolo_de(mon), "tcDoc": tcd, "saldoMx": saldo if mon == 3 else round(saldo * tcd, 2),
+                    "nParc": I(r["nParc"]), "nAplic": I(r["nAplic"]), "nNotas": I(r["nNotas"])})
+    return res
 
 
-# Los últimos cobros o pagos de esa persona (los 8 más recientes que no estén cancelados), con la cuenta y a cuántos documentos se aplicaron
+# Parcialidades de un documento: la agenda de pago (número, vencimiento, importe) menos lo ya aplicado a cada una (los renglones sin número cuentan como la 1).
+# Si la suma de lo pendiente no cuadra con el saldo del documento (intereses, redondeo) la diferencia se carga a la última parcialidad con saldo; sin agenda hay una sola parcialidad con todo el saldo.
+def parcialidades_de(doc, saldo):
+    agenda = ctx.query("SELECT PartialityNumber AS n, MIN(DatePayment) AS vence, SUM(ISNULL(Amount,0)) AS importe FROM docDocumentPaymentAgenda WHERE DocumentID = " + str(doc) + " AND DeletedOn IS NULL GROUP BY PartialityNumber ORDER BY PartialityNumber")
+    pagos = {}
+    for r in ctx.query("SELECT CASE WHEN ISNULL(PartialityNumber,0) = 0 THEN 1 ELSE PartialityNumber END AS n, SUM(ISNULL(Amount,0)) AS pagado FROM docDocumentPayment WHERE DocumentID = " + str(doc) +
+                       " AND DeletedOn IS NULL GROUP BY CASE WHEN ISNULL(PartialityNumber,0) = 0 THEN 1 ELSE PartialityNumber END"):
+        pagos[I(r["n"])] = D(r["pagado"])
+    if not agenda:
+        pg = sum(pagos.values())
+        return [{"n": 1, "vence": "", "importe": round(saldo + pg, 2), "pagado": round(pg, 2), "saldo": round(saldo, 2)}]
+    res = []
+    for a in agenda:
+        n = I(a["n"])
+        imp = D(a["importe"])
+        pg = pagos.get(n, 0.0)
+        res.append({"n": n, "vence": fecha_txt(a["vence"]), "importe": round(imp, 2), "pagado": round(pg, 2), "saldo": round(max(0.0, imp - pg), 2)})
+    pend = sum(x["saldo"] for x in res)
+    dif = round(saldo - pend, 2)
+    if abs(dif) > 0.004:
+        if dif > 0:
+            res[-1]["saldo"] = round(res[-1]["saldo"] + dif, 2)
+            res[-1]["importe"] = round(res[-1]["importe"] + dif, 2)
+        else:
+            sobra = -dif
+            for x in reversed(res):
+                if sobra <= 0.004:
+                    break
+                q = min(x["saldo"], sobra)
+                x["saldo"] = round(x["saldo"] - q, 2)
+                sobra = round(sobra - q, 2)
+    return res
+
+
+# Todo lo que le ha pasado a un documento: sus parcialidades y cada aplicación (cobro, pago o nota de crédito) con folio, fecha, moneda, tipo de cambio y parcialidad. La ventana lo pide al seleccionar el documento.
+def detalle_doc(doc):
+    d = ctx.query("SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, ISNULL(d.Total,0) AS Total, ISNULL(d.Balance,0) AS Saldo, ISNULL(d.TotalPaid,0) AS Pagado, ISNULL(d.CurrencyID,0) AS Moneda, ISNULL(d.Rate,1) AS TC FROM docDocument d "
+                  "WHERE d.DocumentID = " + str(doc) + " AND d.OwnedBusinessEntityID = " + str(empresa))
+    if not d:
+        return {}
+    mon = moneda_de(d[0]["Moneda"])
+    saldo = D(d[0]["Saldo"])
+    res = {"id": doc, "folio": (S(d[0]["FolioPrefix"]) + S(d[0]["Folio"])).strip(), "moneda": mon, "simbolo": simbolo_de(mon), "total": D(d[0]["Total"]), "saldo": saldo, "pagado": D(d[0]["Pagado"]), "tcDoc": D(d[0]["TC"]),
+           "parc": parcialidades_de(doc, saldo)}
+    aplic = []
+    for r in ctx.query("SELECT p.DocumentPaymentID AS id, p.DateOperation, ISNULL(p.Amount,0) AS Amount, ISNULL(p.Rate,1) AS Rate, ISNULL(p.PartialityNumber,0) AS Parc, ISNULL(p.FinancialOperationID,0) AS Op, ISNULL(p.PaymentWithDocumentID,0) AS ConDoc, "
+                       "o.ModuleID AS OpMod, o.FolioPrefix AS OpPre, o.Folio AS OpFol, ISNULL(o.CurrencyID,0) AS OpMon, ISNULL(o.Amount,0) AS OpAmt, nc.ModuleID AS NcMod, nc.FolioPrefix AS NcPre, nc.Folio AS NcFol, ISNULL(m.ModuleName,'') AS NcNombre "
+                       "FROM docDocumentPayment p LEFT JOIN docFinancialOperation o ON o.FinancialOperationID = p.FinancialOperationID LEFT JOIN docDocument nc ON nc.DocumentID = p.PaymentWithDocumentID LEFT JOIN engModule m ON m.ModuleID = nc.ModuleID "
+                       "WHERE p.DocumentID = " + str(doc) + " AND p.DeletedOn IS NULL ORDER BY p.DateOperation, p.DocumentPaymentID"):
+        nota = I(r["ConDoc"]) > 0
+        op_mod = I(r["OpMod"]) if r["OpMod"] is not None else 0
+        tipo = "nota" if nota else "cobro" if op_mod == 248 else "pago" if op_mod == 247 else "otro"
+        folio = (S(r["NcNombre"]) + " " + (S(r["NcPre"]) + S(r["NcFol"])).strip()).strip() if nota else (S(r["OpPre"]) + "-" + S(r["OpFol"])).strip("- ")
+        aplic.append({"fecha": fecha_txt(r["DateOperation"]), "tipo": tipo, "folio": folio, "monto": round(D(r["Amount"]), 2), "tc": D(r["Rate"]), "parc": I(r["Parc"]) or 1,
+                      "monedaOp": mon if r["OpMod"] is None else moneda_de(r["OpMon"]), "montoOp": 0.0 if r["OpMod"] is None else round(D(r["OpAmt"]), 2)})
+    res["aplic"] = aplic
+    return res
+
+
 def movimientos_de(entidad, clave):
     if clave not in TIPO_POR or entidad <= 0:
         return []
@@ -120,8 +207,9 @@ def catalogos():
     ver_p = any(t["lado"] == "P" for t in TIPOS)
     cat["clientes"] = lista("orgCustomer") if ver_c else []
     cat["proveedores"] = lista("orgSupplier") if ver_p else []
-    cat["cuentas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "def": I(r["def"]) == 1} for r in ctx.query(
-        "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")]
+    cat["cuentas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "def": I(r["def"]) == 1, "moneda": moneda_de(r["moneda"])} for r in ctx.query(
+        "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def, ISNULL(CurrencyID,0) AS moneda FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")]
+    cat["monedas"] = monedas
     cat["formas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")]
     # Folio siguiente de cada tipo (el mismo cálculo que usa aplicar)
     cat["folios"] = {t["clave"]: I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + str(t["modOp"]) + " AND FolioPrefix = N'" + t["prefijo"] + "'")) for t in TIPOS}
@@ -131,10 +219,77 @@ def catalogos():
     return cat
 
 
+# ---------- Importe en letra (el mismo estilo del comprobante mexicano) ----------
+LUNI = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE"]
+LDEC = ["", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"]
+LVEI = ["VEINTIUNO", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO", "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE"]
+LCEN = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
+
+
+def letra_centenas(n):
+    if n == 0:
+        return ""
+    if n == 100:
+        return "CIEN"
+    r = ""
+    c, d = n // 100, n % 100
+    if c > 0:
+        r += LCEN[c] + " "
+    if d > 0:
+        if d <= 20:
+            r += LUNI[d]
+        else:
+            a, u = d // 10, d % 10
+            if a == 2 and u > 0:
+                r += LVEI[u - 1]
+            else:
+                r += LDEC[a]
+                if u > 0:
+                    r += " Y " + LUNI[u]
+    return r.strip()
+
+
+def letra_en(n):
+    if n == 0:
+        return "CERO"
+    r = ""
+    mill = n // 1000000
+    n %= 1000000
+    mil = n // 1000
+    n %= 1000
+    if mill > 0:
+        r += "UN MILLÓN " if mill == 1 else letra_centenas(mill) + " MILLONES "
+    if mil > 0:
+        r += "MIL " if mil == 1 else letra_centenas(mil) + " MIL "
+    if n > 0:
+        r += letra_centenas(n)
+    r = r.strip()
+    if r.endswith("UNO"):
+        r = r[:-3] + "UN"
+    return r
+
+
+def letra_importe(v, moneda):
+    v = max(0.0, v)
+    e = int(v)
+    c = int(round((v - e) * 100))
+    if c == 100:
+        e += 1
+        c = 0
+    pal = moneda_por[moneda]["letra"].upper() if moneda in moneda_por and moneda_por[moneda]["letra"] else "PESOS"
+    return letra_en(e) + " " + pal + " " + ("%02d" % c) + "/100" + (" M.N." if moneda == 3 else "")
+
+
 # ---------- Aplicar ----------
-# «spec»: tipo, entidad, cuenta, forma (c_FormaPago), fecha (yyyy-MM-dd), referencia, aplicaciones [{doc, monto}]
-# Una operación financiera por documento (así lo hace Tesorería). Cada documento va en su propia transacción: si uno falla, los anteriores ya quedaron aplicados y el mensaje lo dice.
-# Regresa un resumen legible con los folios.
+# «spec»: tipo, entidad, cuenta, forma (c_FormaPago), fecha (yyyy-MM-dd), referencia, tc (tipo de cambio, solo si hay moneda extranjera), aplicaciones [{doc, monto, parcialidad}].
+#   «monto» va SIEMPRE en la moneda de la CUENTA (lo que entra o sale del banco); «parcialidad» 0 = automática (en orden), n = esa parcialidad.
+# Igual que Tesorería: UNA operación (un folio) con un renglón por documento (y por parcialidad), todo en una sola transacción: o queda todo o no queda nada.
+# Moneda (verificado contra miles de aplicaciones de una empresa con dólares): el renglón se guarda en la moneda del DOCUMENTO, con su tipo de cambio en Rate y AmountPaidCurrency = Amount × Rate (valor en pesos):
+#   · cuenta y documento en la misma moneda → importe tal cual (Rate = 1 en pesos, o el tipo de cambio en moneda extranjera);
+#   · cuenta en pesos y documento en moneda extranjera → importe del documento = pesos ÷ tipo de cambio (Rate = tipo de cambio);
+#   · cuenta en moneda extranjera y documento en pesos → importe del documento = moneda extranjera × tipo de cambio (Rate = 1; la operación guarda el tipo de cambio).
+#   Cualquier otra combinación (p. ej. cuenta en euros y documento en dólares) se rechaza: usa la pantalla nativa de Tesorería.
+# Regresa un resumen legible con el folio y, por documento, lo aplicado, su equivalente en la moneda del documento y lo que queda.
 def aplicar(spec):
     clave = S(spec.get("tipo"))
     if clave not in TIPO_POR:
@@ -153,73 +308,162 @@ def aplicar(spec):
     aps = [a for a in (spec.get("aplicaciones") or []) if D(a.get("monto")) > 0]
     if not aps:
         raise Exception("Marca al menos un documento y captura cuánto aplicar.")
+    if len(set(I(a.get("doc")) for a in aps)) != len(aps):
+        raise Exception("Un documento no puede aparecer dos veces en el mismo movimiento.")
     fecha = S(spec.get("fecha"))
     if len(fecha) < 10:
         raise Exception("Captura la fecha.")
     f8 = Sq(fecha[:10].replace("-", ""))
     tracking = S(spec.get("referencia"))
+    tc = D(spec.get("tc"))
     mod_op, recip, tipo_op, pref = t["modOp"], t["recip"], t["tipoOp"], t["prefijo"]
+    coef = 1 if lado == "C" else -1
+    cu = ctx.query("SELECT ISNULL(CurrencyID,0) AS Moneda FROM orgFinancialEntity WHERE FinancialEntityID = " + str(cuenta) + " AND DeletedOn IS NULL")
+    if not cu:
+        raise Exception("La cuenta elegida no existe.")
+    m_cuenta = moneda_de(cu[0]["Moneda"])
+    persona = S(ctx.scalar("SELECT ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + str(entidad)))
     uid = str(ctx.user_id)
-    resumen = []
-    total_aplicado = 0.0
 
+    # 1) Cada documento: validación, conversión a su moneda y reparto por parcialidades (todo en memoria; no se escribe nada todavía)
+    lineas = []
+    por_doc = []
+    total_cuenta = 0.0
+    foraneas = set()
     for a in aps:
         doc = I(a.get("doc"))
         monto = round(D(a.get("monto")), 2)
+        parc_pedida = I(a.get("parcialidad"))
+        d = ctx.query("SELECT Total, Balance, TotalPaid, BusinessEntityID, ISNULL(CurrencyID,0) AS Moneda, ModuleID, FolioPrefix, Folio FROM docDocument WHERE DocumentID=" + str(doc) +
+                      " AND DeletedOn IS NULL AND CancelledOn IS NULL AND OwnedBusinessEntityID = " + str(empresa))
         etiqueta = "documento " + str(doc)
-        try:
-            d = ctx.query("SELECT Total, Balance, TotalPaid, BusinessEntityID, OwnedBusinessEntityID, CurrencyID, ModuleID, FolioPrefix, Folio FROM docDocument WHERE DocumentID=" + str(doc) + " AND DeletedOn IS NULL AND CancelledOn IS NULL")
-            if not d:
-                raise Exception("el documento no existe o está cancelado.")
-            x = d[0]
-            if I(x["ModuleID"]) in nombre_mod:
-                etiqueta = nombre_mod[I(x["ModuleID"])] + " " + (S(x["FolioPrefix"]) + S(x["Folio"])).strip()
-            if I(x["ModuleID"]) not in modulos_lado[lado]:
-                raise Exception("no es un documento que se " + ("cobre" if lado == "C" else "pague") + ".")
-            if I(x["BusinessEntityID"]) != entidad:
-                raise Exception("pertenece a otro " + ("cliente" if lado == "C" else "proveedor") + ".")
-            total, saldo, pagado = D(x["Total"]), D(x["Balance"]), D(x["TotalPaid"])
-            if monto > saldo + 0.005:
-                raise Exception("el monto (" + "{:,.2f}".format(monto) + ") es mayor que su saldo (" + "{:,.2f}".format(saldo) + ").")
-            if total <= 0:
-                raise Exception("tiene total cero.")
-            aplicado = min(monto, saldo)
-            nuevo = round(saldo - aplicado, 2)
-            prop = aplicado / total
-            owned, moneda = I(x["OwnedBusinessEntityID"]), I(x["CurrencyID"])
-            sb = []
-            sb.append("DECLARE @out TABLE(FinancialOperationID BIGINT); DECLARE @outPay TABLE(DocumentPaymentID BIGINT);\nBEGIN TRY BEGIN TRAN;\n")
-            # Folio serializado: el candado se toma dentro de la transacción y se libera solo al terminar, así dos cobros simultáneos nunca calculan el mismo folio
-            sb.append("DECLARE @lk INT; EXEC @lk = sp_getapplock @Resource = 'BrosCobroFolio_" + str(mod_op) + "_" + pref + "', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000;\n")
-            sb.append("IF @lk < 0 THROW 50001, 'No se pudo obtener el candado del folio (otro cobro/pago en curso).', 1;\n")
-            # El saldo se vuelve a comprobar DENTRO de la transacción: si alguien más aplicó algo mientras tanto, no se aplica de más
-            sb.append("IF (SELECT ISNULL(Balance,0) FROM docDocument WHERE DocumentID=" + str(doc) + ") < " + Num(aplicado - 0.005) + " THROW 50002, 'El saldo del documento cambió mientras se capturaba.', 1;\n")
-            sb.append("DECLARE @folio BIGINT = ISNULL((SELECT MAX(TRY_CONVERT(BIGINT, Folio)) FROM docFinancialOperation WHERE ModuleID=" + str(mod_op) + " AND FolioPrefix=N'" + pref + "'),0)+1;\n")
-            sb.append("DECLARE @f DATETIME = '" + f8 + "'; DECLARE @opId BIGINT, @payId BIGINT;\n")
-            sb.append("INSERT INTO docFinancialOperation (ModuleID, DocRecipientID, DocumentTypeID, OwnedBusinessEntityID, BusinessEntityID, DateOperation, FinancialEntityID, Amount, CurrencyID, PaymentMethodID, PartialityNumber, PartialityTotal, DocumentID, FolioPrefix, Folio, CreatedOn, CreatedBy) OUTPUT INSERTED.FinancialOperationID INTO @out ")
-            sb.append("VALUES (" + str(mod_op) + "," + str(recip) + "," + str(tipo_op) + "," + str(owned) + "," + str(entidad) + ",@f," + str(cuenta) + "," + Num(aplicado) + "," + str(moneda) + "," + str(forma) + ",1,1," + str(doc) + ",N'" + pref + "',CONVERT(NVARCHAR(50),@folio),GETDATE()," + uid + ");\n")
-            sb.append("SELECT @opId = FinancialOperationID FROM @out;\n")
-            sb.append("INSERT INTO docDocumentPayment (DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber, SaldoAnterior, SaldoInsoluto) OUTPUT INSERTED.DocumentPaymentID INTO @outPay VALUES (" +
-                      str(doc) + ",@opId,@f," + Num(aplicado) + ",1," + Num(aplicado) + ",1," + Num(saldo) + "," + Num(nuevo) + ");\nSELECT @payId = DocumentPaymentID FROM @outPay;\n")
-            # docDocumentPaymentEspejo.DocumentPaymentID NO es identity: espeja el mismo id recién generado
-            sb.append("INSERT INTO docDocumentPaymentEspejo (DocumentPaymentID, DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber) VALUES (@payId," + str(doc) + ",@opId,@f," + Num(aplicado) + ",1," + Num(aplicado) + ",1);\n")
-            if forma != 1:        # efectivo no lleva transferencia; cualquier otra forma deja su registro bancario
-                sb.append("INSERT INTO docBankTransfer (FinancialOperationID, FinancialEntityID, TrackingNumber, CreatedOn, CreatedBy) VALUES (@opId," + str(cuenta) + "," + ("NULL" if tracking == "" else "N'" + Sq(tracking) + "'") + ",GETDATE()," + uid + ");\n")
-            # Reparto proporcional de impuestos: lo aplicado de esta operación entre el total del documento
-            for tx in ctx.query("SELECT DocumentTaxDetailID, DocumentItemID, TaxTypeID, Amount, TaxBase, TaxPerc, TaxName, TaxTypeName FROM docDocumentTaxDetail WHERE DocumentID=" + str(doc)):
-                item = "NULL" if tx["DocumentItemID"] is None else str(I(tx["DocumentItemID"]))
-                sb.append("INSERT INTO docFinancialOperationTaxDetail (DocumentTaxDetailID, FinancialOperationID, DocumentID, DocumentItemID, Proporcion, Amount, TaxTypeID, TaxName, TaxTypeName, TaxBase, TaxPerc) VALUES (" +
-                          str(I(tx["DocumentTaxDetailID"])) + ",@opId," + str(doc) + "," + item + "," + Num(prop) + "," + Num(D(tx["Amount"]) * prop) + "," + str(I(tx["TaxTypeID"])) +
-                          ",N'" + Sq(tx["TaxName"]) + "',N'" + Sq(tx["TaxTypeName"]) + "'," + Num(D(tx["TaxBase"]) * prop) + "," + Num(D(tx["TaxPerc"])) + ");\n")
-            sb.append("UPDATE docDocument SET TotalPaid=" + Num(pagado + aplicado) + ", Balance=" + Num(nuevo) + ", StatusPaidID=" + ("1" if nuevo <= 0.0049 else "2") + " WHERE DocumentID=" + str(doc) + ";\n")
-            sb.append("COMMIT TRAN;\nEND TRY BEGIN CATCH IF @@TRANCOUNT>0 ROLLBACK TRAN; THROW; END CATCH;")
-            ctx.execute("".join(sb))
-            folio = ctx.scalar("SELECT TOP 1 Folio FROM docFinancialOperation WHERE DocumentID=" + str(doc) + " AND ModuleID=" + str(mod_op) + " ORDER BY FinancialOperationID DESC")
-            total_aplicado += aplicado
-            resumen.append(pref + "-" + S(folio) + " · " + etiqueta + " · " + "{:,.2f}".format(aplicado) + (" (liquidado)" if nuevo <= 0.0049 else " (queda " + "{:,.2f}".format(nuevo) + ")"))
-        except Exception as ex:
-            raise Exception("No se pudo aplicar a " + etiqueta + ": " + S(ex) + ("\n\nYa quedaron aplicados antes:\n" + "\n".join(resumen) if resumen else ""))
-    return t["nombre"] + " registrado: " + "{:,.2f}".format(total_aplicado) + "\n" + "\n".join(resumen)
+        if not d:
+            raise Exception("No se pudo aplicar a " + etiqueta + ": el documento no existe o está cancelado.")
+        x = d[0]
+        if I(x["ModuleID"]) in nombre_mod:
+            etiqueta = nombre_mod[I(x["ModuleID"])] + " " + (S(x["FolioPrefix"]) + S(x["Folio"])).strip()
+        if I(x["ModuleID"]) not in modulos_lado[lado]:
+            raise Exception("No se pudo aplicar a " + etiqueta + ": no es un documento que se " + ("cobre" if lado == "C" else "pague") + ".")
+        if I(x["BusinessEntityID"]) != entidad:
+            raise Exception("No se pudo aplicar a " + etiqueta + ": pertenece a otro " + ("cliente" if lado == "C" else "proveedor") + ".")
+        total, saldo, pagado = D(x["Total"]), D(x["Balance"]), D(x["TotalPaid"])
+        m_doc = moneda_de(x["Moneda"])
+        if total <= 0:
+            raise Exception("No se pudo aplicar a " + etiqueta + ": tiene total cero.")
+        if m_cuenta == m_doc:
+            modo = "igual"
+        elif m_cuenta == 3:
+            modo = "cuentaPesos"
+        elif m_doc == 3:
+            modo = "cuentaExtranjera"
+        else:
+            raise Exception("No se pudo aplicar a " + etiqueta + ": la cuenta está en " + simbolo_de(m_cuenta) + " y el documento en " + simbolo_de(m_doc) + ". Esa combinación solo se puede registrar en la pantalla nativa de Tesorería.")
+        if m_cuenta != 3:
+            foraneas.add(m_cuenta)
+        if m_doc != 3:
+            foraneas.add(m_doc)
+        # Importe en la moneda del documento y tipo de cambio del renglón
+        if modo == "igual":
+            doc_amt = monto
+            rate_linea = 1.0 if m_doc == 3 else tc
+            if m_doc != 3 and not tc > 0:
+                raise Exception("Captura el tipo de cambio de " + simbolo_de(m_doc) + ".")
+        elif modo == "cuentaPesos":
+            if not tc > 0:
+                raise Exception("Captura el tipo de cambio: " + etiqueta + " está en " + simbolo_de(m_doc) + " y la cuenta en pesos.")
+            doc_amt = monto / tc
+            rate_linea = tc
+        else:
+            if not tc > 0:
+                raise Exception("Captura el tipo de cambio: la cuenta está en " + simbolo_de(m_cuenta) + " y " + etiqueta + " en pesos.")
+            doc_amt = monto * tc
+            rate_linea = 1.0
+        doc_amt = round(doc_amt, 2)
+        if abs(doc_amt - saldo) <= 0.011:
+            doc_amt = saldo                                               # un residuo de redondeo de la conversión no deja el documento «casi liquidado»
+        if doc_amt > saldo + 0.005:
+            raise Exception("No se pudo aplicar a " + etiqueta + ": el importe (" + "{:,.2f}".format(doc_amt) + " " + simbolo_de(m_doc) + ") es mayor que su saldo (" + "{:,.2f}".format(saldo) + " " + simbolo_de(m_doc) + ").")
+        # Reparto por parcialidades: la pedida o, en automático, en orden
+        parc = parcialidades_de(doc, saldo)
+        reparto = []
+        resto = doc_amt
+        if parc_pedida > 0:
+            pp = next((p for p in parc if p["n"] == parc_pedida), None)
+            if pp is None:
+                raise Exception("No se pudo aplicar a " + etiqueta + ": no tiene la parcialidad " + str(parc_pedida) + ".")
+            if doc_amt > pp["saldo"] + 0.011:
+                raise Exception("No se pudo aplicar a " + etiqueta + ": la parcialidad " + str(parc_pedida) + " solo tiene pendiente " + "{:,.2f}".format(pp["saldo"]) + " " + simbolo_de(m_doc) + ".")
+            reparto.append((parc_pedida, doc_amt))
+        else:
+            for p in parc:
+                if resto <= 0.0049:
+                    break
+                s = p["saldo"]
+                if s <= 0.0049:
+                    continue
+                q = min(s, resto)
+                reparto.append((p["n"], round(q, 2)))
+                resto = round(resto - q, 2)
+            if resto > 0.0049:
+                if reparto:
+                    reparto[-1] = (reparto[-1][0], round(reparto[-1][1] + resto, 2))
+                else:
+                    reparto.append((1, resto))
+        corriente = saldo
+        for n_parc, m_linea in reparto:
+            sa = corriente
+            si = round(corriente - m_linea, 2)
+            corriente = si
+            lineas.append({"doc": doc, "parc": n_parc, "monto": m_linea, "rate": rate_linea, "sa": sa, "si": si})
+        total_cuenta += monto
+        por_doc.append({"doc": doc, "etiqueta": etiqueta, "total": total, "saldo": saldo, "pagado": pagado, "doc_amt": doc_amt, "nuevo": round(saldo - doc_amt, 2), "monto": monto, "m_doc": m_doc, "reparto": reparto})
+    if len(foraneas) > 1:
+        raise Exception("Los documentos están en monedas extranjeras distintas (" + ", ".join(simbolo_de(m) for m in sorted(foraneas)) + "): regístralos por separado.")
+    rate_op = 1.0 if m_cuenta == 3 else tc
+    total_cuenta = round(total_cuenta, 2)
+
+    # 2) Una sola transacción: la operación, sus renglones, los espejos, la transferencia, el reparto de impuestos y los saldos
+    sb = []
+    sb.append("DECLARE @out TABLE(FinancialOperationID BIGINT); DECLARE @outPay TABLE(DocumentPaymentID BIGINT);\nBEGIN TRY BEGIN TRAN;\n")
+    sb.append("DECLARE @lk INT; EXEC @lk = sp_getapplock @Resource = 'BrosCobroFolio_" + str(mod_op) + "_" + pref + "', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000;\n")
+    sb.append("IF @lk < 0 THROW 50001, 'No se pudo obtener el candado del folio (otro cobro/pago en curso).', 1;\n")
+    for pd in por_doc:      # el saldo se vuelve a comprobar DENTRO de la transacción: si alguien más aplicó algo mientras tanto, no se aplica de más
+        sb.append("IF (SELECT ISNULL(Balance,0) FROM docDocument WHERE DocumentID=" + str(pd["doc"]) + ") < " + Num(pd["doc_amt"] - 0.011) + " THROW 50002, 'El saldo de un documento cambió mientras se capturaba.', 1;\n")
+    sb.append("DECLARE @folio BIGINT = ISNULL((SELECT MAX(TRY_CONVERT(BIGINT, Folio)) FROM docFinancialOperation WHERE ModuleID=" + str(mod_op) + " AND FolioPrefix=N'" + pref + "'),0)+1;\n")
+    sb.append("DECLARE @f DATETIME = '" + f8 + " 12:00:00'; DECLARE @opId BIGINT, @payId BIGINT;\n")
+    sb.append("INSERT INTO docFinancialOperation (ModuleID, DocRecipientID, DocumentTypeID, OwnedBusinessEntityID, BusinessEntityID, DateOperation, DateAffectation, FinancialEntityID, DebitCreditCoef, Amount, CurrencyID, FinancialEntityAmount, Rate, AmountRate, PaymentMethodID, "
+              "Description, PartialityNumber, PartialityTotal, DocumentID, Reference, TotalLetter, RecipientName, ExportID, VersionComplemento, FolioPrefix, Folio, CreatedOn, CreatedBy) OUTPUT INSERTED.FinancialOperationID INTO @out ")
+    sb.append("VALUES (" + str(mod_op) + "," + str(recip) + "," + str(tipo_op) + "," + str(empresa) + "," + str(entidad) + ",@f,@f," + str(cuenta) + "," + str(coef) + "," + Num(total_cuenta) + "," + str(m_cuenta) + "," + Num(coef * total_cuenta) + "," + Num(rate_op) + "," +
+              Num(total_cuenta * rate_op) + "," + str(forma) + "," + "N'" + Sq(("Cobro Cliente " if lado == "C" else "Pago Proveedor ") + persona) + "',0,0,0," + ("NULL" if tracking == "" else "N'" + Sq(tracking) + "'") + ",N'" + Sq(letra_importe(total_cuenta, m_cuenta)) + "',N'" + Sq(persona) + "'," +
+              ("1" if lado == "C" else "0") + ",N'2.0',N'" + pref + "',CONVERT(NVARCHAR(50),@folio),GETDATE()," + uid + ");\n")
+    sb.append("SELECT @opId = FinancialOperationID FROM @out;\n")
+    for ln in lineas:
+        m, r = ln["monto"], ln["rate"]
+        sb.append("INSERT INTO docDocumentPayment (DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber, SaldoAnterior, SaldoInsoluto) OUTPUT INSERTED.DocumentPaymentID INTO @outPay VALUES (" +
+                  str(ln["doc"]) + ",@opId,@f," + Num(m) + "," + Num(r) + "," + Num(m * r) + "," + str(ln["parc"]) + "," + Num(ln["sa"]) + "," + Num(ln["si"]) + ");\nSELECT @payId = DocumentPaymentID FROM @outPay; DELETE FROM @outPay;\n")
+        # docDocumentPaymentEspejo.DocumentPaymentID NO es identity: espeja el mismo id recién generado
+        sb.append("INSERT INTO docDocumentPaymentEspejo (DocumentPaymentID, DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber) VALUES (@payId," + str(ln["doc"]) + ",@opId,@f," + Num(m) + "," + Num(r) + "," + Num(m * r) + "," + str(ln["parc"]) + ");\n")
+    if forma != 1:          # efectivo no lleva transferencia; cualquier otra forma deja su registro bancario
+        sb.append("INSERT INTO docBankTransfer (FinancialOperationID, FinancialEntityID, TrackingNumber, CreatedOn, CreatedBy) VALUES (@opId," + str(cuenta) + "," + ("NULL" if tracking == "" else "N'" + Sq(tracking) + "'") + ",GETDATE()," + uid + ");\n")
+    for pd in por_doc:
+        doc = pd["doc"]
+        prop = pd["doc_amt"] / pd["total"]
+        # Reparto proporcional de impuestos: lo aplicado al documento (en su moneda) entre su total
+        for tx in ctx.query("SELECT DocumentTaxDetailID, DocumentItemID, TaxTypeID, Amount, TaxBase, TaxPerc, TaxName, TaxTypeName FROM docDocumentTaxDetail WHERE DocumentID=" + str(doc)):
+            item = "NULL" if tx["DocumentItemID"] is None else str(I(tx["DocumentItemID"]))
+            sb.append("INSERT INTO docFinancialOperationTaxDetail (DocumentTaxDetailID, FinancialOperationID, DocumentID, DocumentItemID, Proporcion, Amount, TaxTypeID, TaxName, TaxTypeName, TaxBase, TaxPerc) VALUES (" +
+                      str(I(tx["DocumentTaxDetailID"])) + ",@opId," + str(doc) + "," + item + "," + Num(prop) + "," + Num(D(tx["Amount"]) * prop) + "," + str(I(tx["TaxTypeID"])) +
+                      ",N'" + Sq(tx["TaxName"]) + "',N'" + Sq(tx["TaxTypeName"]) + "'," + Num(D(tx["TaxBase"]) * prop) + "," + Num(D(tx["TaxPerc"])) + ");\n")
+        sb.append("UPDATE docDocument SET TotalPaid=" + Num(pd["pagado"] + pd["doc_amt"]) + ", Balance=" + Num(pd["nuevo"]) + ", StatusPaidID=" + ("1" if pd["nuevo"] <= 0.0049 else "2") + " WHERE DocumentID=" + str(doc) + ";\n")
+    sb.append("COMMIT TRAN;\nEND TRY BEGIN CATCH IF @@TRANCOUNT>0 ROLLBACK TRAN; THROW; END CATCH;")
+    ctx.execute("".join(sb))
+    folio = ctx.scalar("SELECT TOP 1 Folio FROM docFinancialOperation WHERE ModuleID=" + str(mod_op) + " AND FolioPrefix=N'" + pref + "' AND BusinessEntityID=" + str(entidad) + " ORDER BY FinancialOperationID DESC")
+    resumen = []
+    for pd in por_doc:
+        reparto = " + ".join("parc. " + str(k) for k, _v in pd["reparto"])
+        conv = " (" + "{:,.2f}".format(pd["doc_amt"]) + " " + simbolo_de(pd["m_doc"]) + ")" if pd["m_doc"] != m_cuenta else ""
+        resumen.append(pd["etiqueta"] + " · " + "{:,.2f}".format(pd["monto"]) + " " + simbolo_de(m_cuenta) + conv + " · " + reparto + (" · liquidado" if pd["nuevo"] <= 0.0049 else " · queda " + "{:,.2f}".format(pd["nuevo"]) + " " + simbolo_de(pd["m_doc"])))
+    return t["nombre"] + " " + pref + "-" + S(folio) + " registrado: " + "{:,.2f}".format(total_cuenta) + " " + simbolo_de(m_cuenta) + ((" a tipo de cambio " + ("%g" % tc)) if foraneas else "") + "\n" + "\n".join(resumen)
 
 
 # ---------- Pruebas automáticas (sin ventanas): variable de entorno BROSLMV_PAGO_TEST (JSON con el «spec»), resultado en BROSLMV_PAGO_OUT ----------
@@ -232,6 +476,8 @@ if _modo_prueba:
         _res = json.dumps(movimientos_de(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
     elif _spec.get("docs"):
         _res = json.dumps(docs_con_saldo(S(_spec["lado"])), ensure_ascii=False, default=str)
+    elif _spec.get("detalle"):
+        _res = json.dumps(detalle_doc(I(_spec["doc"])), ensure_ascii=False, default=str)
     elif _spec.get("inteligencia"):
         _res = json.dumps(inteligencia_pago(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
     else:

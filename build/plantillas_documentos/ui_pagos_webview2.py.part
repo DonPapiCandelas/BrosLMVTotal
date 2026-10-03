@@ -1,8 +1,8 @@
 # ===================================================================================================================================
 # VENTANA (WebView2) EN VIVO, sin bloquear Comercial. La página es la estación completa de cobros y pagos (cartera, pronóstico, comportamiento de pago,
 # revisión previa, recibo imprimible…); este script se queda atendiendo lo que la página pide (ver ventana_en_vivo arriba) y contesta con JavaScript:
-#   aplicar     → registra el cobro o pago (una operación por documento) y devuelve el resumen con los folios; los saldos se vuelven a pedir
-#   movimientos → los últimos cobros o pagos de la persona      docs → documentos con saldo actualizados      inteligencia → su comportamiento de pago
+#   aplicar     → registra el cobro o pago (una sola operación, un renglón por documento y parcialidad) y devuelve el resumen con el folio; los saldos se vuelven a pedir
+#   movimientos → los últimos cobros o pagos de la persona      docs → documentos con saldo actualizados      inteligencia → su comportamiento de pago      detalle → parcialidades y aplicaciones de un documento
 #   borrador / pref → guarda lo capturado y el tema en disco
 # Si algo falla, la página muestra el mensaje y no se pierde nada de lo capturado.
 # ===================================================================================================================================
@@ -48,6 +48,8 @@ def principal():
             return "respuesta(" + req + "," + js_json(movimientos_de(I(r["entidad"]), S(r["tipo"]))) + ")"
         if accion == "docs":
             return "respuesta(" + req + "," + js_json(docs_con_saldo(S(r["lado"]))) + ")"
+        if accion == "detalle":
+            return "respuesta(" + req + "," + js_json(detalle_doc(I(r["doc"]))) + ")"
         if accion == "inteligencia":
             return "respuesta(" + req + "," + js_json(inteligencia_pago(I(r["entidad"]), S(r["tipo"]))) + ")"
         if accion == "borrador":

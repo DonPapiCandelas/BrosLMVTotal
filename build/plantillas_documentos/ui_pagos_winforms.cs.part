@@ -6,13 +6,15 @@
 //   3 · Antigüedad de saldos de la persona · 4 · Documentos con saldo (marcables, con lo que se aplica a cada uno) · Resumen con lo que quedaría.
 // Los manejadores llevan try/catch porque, en modeless, el script «ya terminó» cuando se hace clic.
 // ===================================================================================================================================
-class Opcion { public int Id { get; set; } public string Nombre { get; set; } public string Extra { get; set; } public override string ToString() => Nombre; }
+class Opcion { public int Id { get; set; } public int Moneda { get; set; } public string Nombre { get; set; } public string Extra { get; set; } public override string ToString() => Nombre; }
 class Pastilla { public string Titulo, Valor; public Color Color; }
 
 var catalogo = Catalogos();
 Func<string, List<Dictionary<string, object>>> cat = k => (List<Dictionary<string, object>>)catalogo[k];
 var folios = (Dictionary<string, object>)catalogo["folios"];
-var seleccion = new Dictionary<long, double>();      // documento → monto a aplicar
+var seleccion = new Dictionary<long, double>();      // documento → monto a aplicar, SIEMPRE en la moneda de la cuenta (lo que entra o sale del banco)
+var parcSel = new Dictionary<long, int>();            // documento → parcialidad elegida (sin entrada = automática, en orden)
+int tcMon = -1, mcPrev = -1, mcPrevDocs = -1; bool ajustandoTc = false;
 var pastillas = new List<Pastilla>();
 Dictionary<string, object> entSel = null;
 bool guardando = false, pintando = false; int tipoIdx = 0;
@@ -39,7 +41,7 @@ DateTime? Fe(string s) { DateTime v; return DateTime.TryParse(s, ci, DateTimeSty
 Panel ribbon = null, info = null, pTipos = null, pPie = null, g1 = null, g2 = null, g3 = null, g4 = null, g5 = null, pChips = null, pEdad = null;
 Label lblRibTitulo = null, lblMontoEt = null, lblDocsEst = null, lblN = null, lblSal = null, lblQ = null, lblMon = null, lblTot = null, lblTotEt = null, lblPie = null, lblAvisos = null, lblToast = null, lblBtnReg = null;
 DateTimePicker dtFecha = null; TextBox txtFolio = null, txtEnt = null, txtRfc = null, txtRef = null; ComboBox cmbCta = null, cmbForma = null; NumericUpDown nudMonto = null;
-DataGridView grid = null; ListBox lstEnt = null; Button btnMov = null;
+DataGridView grid = null; ListBox lstEnt = null; Button btnMov = null; NumericUpDown nudTc = null; Label lblTcEt = null, lblInfoPie = null;
 var btnsTipo = new List<Button>();
 
 // ---------- piezas de construcción ----------
@@ -103,14 +105,15 @@ Boton("❌", "Cancelar", "Esc", Color.FromArgb(248, 113, 113), () => frm.Close()
 ribbon.Controls.Add(new Panel { Location = new Point(bx, 30), Size = new Size(1, 60), BackColor = C_RIB_MU }); bx += 12;
 Boton("🧹", "Limpiar", "", null, () => Limpiar());
 
-info = new Panel { Size = new Size(330, 92), BackColor = C_RIB }; ribbon.Controls.Add(info);
+info = new Panel { Size = new Size(450, 92), BackColor = C_RIB }; ribbon.Controls.Add(info);
 info.Paint += (s, e) => { using (var pen = new Pen(C_RIB_MU)) e.Graphics.DrawRectangle(pen, 0, 7, info.Width - 1, info.Height - 11); };
 new Label { Text = "Información del movimiento", Font = F_SM, ForeColor = C_RIB_MU, BackColor = C_RIB, Location = new Point(10, 0), AutoSize = true }.Parent = info;
 Label EtR(string t, int x, int y) { var l = new Label { Text = t, Font = F_SM, ForeColor = C_RIB_TX, BackColor = C_RIB, Location = new Point(x, y), AutoSize = true }; info.Controls.Add(l); return l; }
 TextBox CajaInfo(int x, int y, int w) { var marco = new Panel { Location = new Point(x, y), Size = new Size(w, 26), BackColor = Color.White }; marco.Paint += (s, e) => { using (var pen = new Pen(C_RIB_MU)) e.Graphics.DrawRectangle(pen, 0, 0, marco.Width - 1, marco.Height - 1); }; var t = new TextBox { BorderStyle = BorderStyle.None, ReadOnly = true, BackColor = Color.White, ForeColor = C_TXT, Width = w - 12 }; t.Location = new Point(6, Math.Max(0, (26 - t.Height) / 2)); marco.Controls.Add(t); info.Controls.Add(marco); return t; }
 EtR("Fecha", 14, 20); dtFecha = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 118 }; dtFecha.Location = new Point(14, 38 + Math.Max(0, (26 - dtFecha.Height) / 2)); info.Controls.Add(dtFecha);
 EtR("Folio", 146, 20); txtFolio = CajaInfo(146, 38, 110);
-EtR("(lo asigna el sistema al registrar)", 14, 70).ForeColor = C_RIB_MU;
+lblInfoPie = EtR("(lo asigna el sistema al registrar)", 14, 70); lblInfoPie.ForeColor = C_RIB_MU;
+lblTcEt = EtR("Tipo de cambio", 270, 20); lblTcEt.Visible = false; nudTc = new NumericUpDown { Width = 120, DecimalPlaces = 4, Maximum = 99999M, Minimum = 0, TextAlign = HorizontalAlignment.Right, Visible = false }; nudTc.Location = new Point(270, 38 + Math.Max(0, (26 - nudTc.Height) / 2)); info.Controls.Add(nudTc);
 
 // ---------- tipos ----------
 pTipos = new Panel { BackColor = Color.White, Size = new Size(1176, 40) };
@@ -146,7 +149,7 @@ cmbCta = Lista(g2, "Cuenta o caja", 14, 34, 240); cmbForma = Lista(g2, "Forma de
 txtRef = Cuadro(g2, "Referencia o número de rastreo (opcional)", 14, 84, 240); txtRef.MaxLength = 60;
 lblMontoEt = Et(g2, "Monto recibido (opcional)", 266, 84); nudMonto = new NumericUpDown { Width = 130, DecimalPlaces = 2, Maximum = 9999999999M, Minimum = 0, ThousandsSeparator = true, TextAlign = HorizontalAlignment.Right }; nudMonto.Location = new Point(266, 102 + Math.Max(0, (26 - nudMonto.Height) / 2)); g2.Controls.Add(nudMonto);
 var btnDist = new Button { Text = "Distribuir", Location = new Point(404, 102), Size = new Size(92, 26), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnDist.FlatAppearance.BorderColor = C_LINE; g2.Controls.Add(btnDist);
-foreach (var c in cat("cuentas")) cmbCta.Items.Add(new Opcion { Id = I(c["id"]), Nombre = S(c["nombre"]) });
+foreach (var c in cat("cuentas")) cmbCta.Items.Add(new Opcion { Id = I(c["id"]), Nombre = S(c["nombre"]), Moneda = I(c["moneda"]) });
 for (int i = 0; i < cmbCta.Items.Count; i++) if (cat("cuentas")[i].ContainsKey("def") && (bool)cat("cuentas")[i]["def"]) { cmbCta.SelectedIndex = i; break; }
 if (cmbCta.SelectedIndex < 0 && cmbCta.Items.Count > 0) cmbCta.SelectedIndex = 0;
 foreach (var f in cat("formas")) cmbForma.Items.Add(new Opcion { Id = I(f["id"]), Nombre = S(f["nombre"]) });
@@ -173,7 +176,7 @@ pEdad.Paint += (s, e) =>
 g4 = Grupo(() => "4. Documentos con saldo");
 lblDocsEst = new Label { Location = new Point(230, 7), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = C_HEAD }; g4.Controls.Add(lblDocsEst);
 {
-    int x = 14; foreach (var par in new[] { new KeyValuePair<string, Action>("Marcar todos", () => MarcarTodos()), new KeyValuePair<string, Action>("Marcar vencidos", () => MarcarVencidos()), new KeyValuePair<string, Action>("Quitar marcas", () => { seleccion.Clear(); PintarDocs(); }) })
+    int x = 14; foreach (var par in new[] { new KeyValuePair<string, Action>("Marcar todos", () => MarcarTodos()), new KeyValuePair<string, Action>("Marcar vencidos", () => MarcarVencidos()), new KeyValuePair<string, Action>("Quitar marcas", () => { seleccion.Clear(); parcSel.Clear(); PintarDocs(); }), new KeyValuePair<string, Action>("Ver detalle…", () => DetalleSel()) })
     { var accion = par.Value; var b = new Button { Text = par.Key, Location = new Point(x, 34), Size = new Size(120, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; b.FlatAppearance.BorderColor = C_LINE; b.Click += (s, e) => Seguro(accion); g4.Controls.Add(b); x += 126; }
 }
 grid = new DataGridView
@@ -184,18 +187,19 @@ grid = new DataGridView
 grid.ColumnHeadersDefaultCellStyle.BackColor = C_HEAD; grid.ColumnHeadersDefaultCellStyle.ForeColor = C_TXT; grid.ColumnHeadersDefaultCellStyle.Font = F_B; grid.ColumnHeadersHeight = 30; grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = C_HEAD; grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = C_TXT;
 grid.DefaultCellStyle.SelectionBackColor = C_SEL; grid.DefaultCellStyle.SelectionForeColor = C_TXT; grid.DefaultCellStyle.Padding = new Padding(4, 0, 4, 0);
 grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Marca", HeaderText = "", FillWeight = 4 });
-foreach (var c in new[] { new[] { "Doc", "DOCUMENTO", "28" }, new[] { "Fecha", "FECHA", "10" }, new[] { "Vence", "VENCE", "10" }, new[] { "Estado", "ESTADO", "14" }, new[] { "Total", "TOTAL", "11" }, new[] { "Saldo", "SALDO", "11" }, new[] { "Aplicar", "APLICAR", "12" } })
-    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = c[0], HeaderText = c[1], FillWeight = float.Parse(c[2]), ReadOnly = c[0] != "Aplicar" });
+foreach (var c in new[] { new[] { "Doc", "DOCUMENTO", "17" }, new[] { "Fecha", "FECHA", "7" }, new[] { "Vence", "VENCE", "7" }, new[] { "Estado", "ESTADO", "9" }, new[] { "Pagos", "PAGOS APLICADOS", "17" }, new[] { "Total", "TOTAL", "8" }, new[] { "Saldo", "SALDO", "9" }, new[] { "Parc", "PARC.", "6" }, new[] { "Aplicar", "APLICAR", "10" }, new[] { "Queda", "RESULTADO", "12" } })
+    grid.Columns.Add(new DataGridViewTextBoxColumn { Name = c[0], HeaderText = c[1], FillWeight = float.Parse(c[2]), ReadOnly = c[0] != "Aplicar" && c[0] != "Parc" });
 foreach (var c in new[] { "Total", "Saldo", "Aplicar" }) { grid.Columns[c].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight; grid.Columns[c].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight; }
-grid.Columns["Saldo"].DefaultCellStyle.Font = F_B; grid.Columns["Aplicar"].DefaultCellStyle.BackColor = Color.FromArgb(255, 251, 235);
+grid.Columns["Saldo"].DefaultCellStyle.Font = F_B; grid.Columns["Aplicar"].DefaultCellStyle.BackColor = Color.FromArgb(255, 251, 235); grid.Columns["Parc"].DefaultCellStyle.BackColor = Color.FromArgb(255, 251, 235); grid.Columns["Parc"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter; grid.Columns["Parc"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
+grid.Columns["Pagos"].DefaultCellStyle.ForeColor = C_MUTED; grid.Columns["Queda"].DefaultCellStyle.ForeColor = C_MUTED; grid.Columns["Queda"].DefaultCellStyle.Font = F_SM;
 g4.Controls.Add(grid);
 
 // ---------- resumen ----------
 g5 = Grupo(() => "Resumen");
-lblN = Dato(g5, "Documentos marcados", 14, 34); lblSal = Dato(g5, "Saldo de la persona", 174, 34); lblQ = Dato(g5, "Quedaría", 334, 34); lblMon = Dato(g5, "Monto capturado", 494, 34);
+lblN = Dato(g5, "Documentos marcados", 14, 34); lblSal = Dato(g5, "Saldo (MXN)", 174, 34); lblQ = Dato(g5, "Quedaría", 334, 34); lblMon = Dato(g5, "Monto capturado", 494, 34);
 lblTotEt = new Label { Text = "A APLICAR", Font = F_SM, ForeColor = C_MUTED, AutoSize = false, Size = new Size(240, 16), TextAlign = ContentAlignment.MiddleRight, Location = new Point(560, 32) }; g5.Controls.Add(lblTotEt);
 lblTot = new Label { Text = "0.00", Font = F_TOT, AutoSize = false, Size = new Size(240, 36), TextAlign = ContentAlignment.MiddleRight, Location = new Point(560, 46) }; g5.Controls.Add(lblTot);
-Et(g5, "Se registra una operación (folio) por documento, con su aplicación, espejo, transferencia bancaria y reparto de impuestos. No genera la póliza contable; pruébalo primero en una base de pruebas.", 14, 82);
+Et(g5, "Se registra una sola operación (un folio) con un renglón por documento y parcialidad. Lo que captures en «Aplicar» va en la moneda de la cuenta. No genera la póliza contable; pruébalo primero en una base de pruebas.", 14, 82);
 
 // ---------- pie ----------
 pPie = new Panel { BackColor = Color.White, Size = new Size(1200, 40) };
@@ -240,32 +244,89 @@ frm.Resize += (s, e) => Acomodar();
 string Hoy() => dtFecha.Value.ToString("yyyy-MM-dd");
 int DiasVencido(Dictionary<string, object> d) { var v = Fe(S(d["vence"])); return v == null ? int.MinValue : (int)(dtFecha.Value.Date - v.Value.Date).TotalDays; }
 List<Dictionary<string, object>> DocsDeEnt() => entSel == null ? new List<Dictionary<string, object>>() : DocsLado().Where(d => I(d["ent"]) == I(entSel["id"])).ToList();
-Dictionary<int, double[]> Stats()      // por persona: [pendiente, vencido, #docs, v0..v4]
+// ---------- moneda, tipo de cambio y parcialidades (lo mismo que la página de WebView2) ----------
+int MCta() { var o = cmbCta.SelectedItem as Opcion; return o == null ? 3 : o.Moneda; }
+double Tc() => (double)nudTc.Value;
+bool Compat(Dictionary<string, object> d) { int mc = MCta(), md = I(d["moneda"]); return md == mc || mc == 3 || md == 3; }
+double ADoc(Dictionary<string, object> d, double m) { int mc = MCta(), md = I(d["moneda"]); if (md == mc) return m; if (mc == 3) return Tc() > 0 ? m / Tc() : 0; return m * Tc(); }
+double A2(Dictionary<string, object> d, double sa) { int mc = MCta(), md = I(d["moneda"]); if (md == mc) return Math.Round(sa, 2); if (mc == 3) return Math.Round(sa * Tc(), 2); double v = Tc() > 0 ? sa / Tc() : 0; return Math.Floor(v * 100 + 1e-9) / 100; }
+double Sc(Dictionary<string, object> d) => A2(d, D(d["saldo"]));
+double ValMx(Dictionary<string, object> d, double da) => I(d["moneda"]) == 3 ? da : da * D(d["tcDoc"]);
+int MonedaFx()      // moneda extranjera que interviene (0 = todo en pesos: no se pide tipo de cambio)
+{
+    int mc = MCta(); if (mc != 3) return mc;
+    var ds = DocsDeEnt(); foreach (var k in seleccion.Keys) { var d = ds.FirstOrDefault(x => L(x["id"]) == k); if (d != null && I(d["moneda"]) != 3) return I(d["moneda"]); }
+    var l = ds.FirstOrDefault(x => I(x["moneda"]) != 3); return l == null ? 0 : I(l["moneda"]);
+}
+void PintarMon()
+{
+    int mc = MCta(), fx = MonedaFx(); string sy = SimboloDe(mc); bool ver = fx != 0;
+    lblTcEt.Visible = ver; nudTc.Visible = ver;
+    lblMontoEt.Text = (EsCobro() ? "Monto recibido" : "Monto a pagar") + (mc != 3 ? " (" + sy + ")" : "") + " (opcional)";
+    grid.Columns["Aplicar"].HeaderText = "APLICAR " + sy;
+    lblInfoPie.Text = mc != 3 && monedaPor.ContainsKey(mc) ? "Cuenta en " + sy + " · " + S(monedaPor[mc]["nombre"]) : "(lo asigna el sistema al registrar)";
+    if (ver)
+    {
+        lblTcEt.Text = "Tipo de cambio " + SimboloDe(fx) + " → MXN";
+        if (tcMon != fx) { tcMon = fx; ajustandoTc = true; nudTc.Value = monedaPor.ContainsKey(fx) ? (decimal)Math.Round(D(monedaPor[fx]["tc"]), 4) : 1M; ajustandoTc = false; }
+    }
+}
+string Leyenda(Dictionary<string, object> d)      // resultado en la moneda del documento
+{
+    long id = L(d["id"]); double m = seleccion.ContainsKey(id) ? seleccion[id] : 0, sal = D(d["saldo"]), da = Math.Round(ADoc(d, m), 2); if (Math.Abs(da - sal) <= 0.011) da = sal;
+    double q = Math.Round(sal - da, 2); string sy = S(d["simbolo"]);
+    return (I(d["moneda"]) != MCta() ? "= " + da.ToString("N2") + " " + sy + " · " : "") + (q <= 0.004 ? "liquida" : "queda " + q.ToString("N2") + " " + sy);
+}
+string PagoTexto(Dictionary<string, object> d)
+{
+    int na = I(d["nAplic"]), nn = I(d["nNotas"]); double pg = D(d["pagado"]), tot = D(d["total"]);
+    if (na + nn == 0 && pg <= 0.004) return "sin pagos aplicados";
+    var p = new List<string> { "pagado " + pg.ToString("N2") + " (" + Math.Round(pg / (tot == 0 ? 1 : tot) * 100) + " %)" };
+    if (na > 0) p.Add(na + (EsCobro() ? " cobro" : " pago") + (na > 1 ? "s" : "")); if (nn > 0) p.Add(nn + " nota" + (nn > 1 ? "s" : "") + " de crédito");
+    return string.Join(" · ", p);
+}
+void CambioCuenta()
+{
+    int mc = MCta(); if (mc != mcPrev) { mcPrev = mc; tcMon = -1; }
+    PintarMon(); var ds = DocsDeEnt();
+    foreach (var k in seleccion.Keys.ToList())
+    {
+        var d = ds.FirstOrDefault(x => L(x["id"]) == k);
+        if (d == null || !Compat(d)) { seleccion.Remove(k); parcSel.Remove(k); } else if (seleccion[k] > Sc(d) || mc != mcPrevDocs) seleccion[k] = Sc(d);
+    }
+    mcPrevDocs = mc; PintarDocs();
+}
+Dictionary<int, double[]> Stats()      // por persona (en pesos): [pendiente, vencido, #docs, v0..v4]
 {
     var m = new Dictionary<int, double[]>();
-    foreach (var d in DocsLado()) { int e = I(d["ent"]); if (!m.ContainsKey(e)) m[e] = new double[8]; var a = m[e]; double s = D(d["saldo"]); a[0] += s; a[2]++; int dv = DiasVencido(d); if (dv > 0 && dv != int.MinValue) a[1] += s; int b = dv == int.MinValue || dv <= 0 ? 0 : dv <= 30 ? 1 : dv <= 60 ? 2 : dv <= 90 ? 3 : 4; a[3 + b] += s; }
+    foreach (var d in DocsLado()) { int e = I(d["ent"]); if (!m.ContainsKey(e)) m[e] = new double[8]; var a = m[e]; double s = D(d["saldoMx"]); a[0] += s; a[2]++; int dv = DiasVencido(d); if (dv > 0 && dv != int.MinValue) a[1] += s; int b = dv == int.MinValue || dv <= 0 ? 0 : dv <= 30 ? 1 : dv <= 60 ? 2 : dv <= 90 ? 3 : 4; a[3 + b] += s; }
     return m;
 }
 var ES = Stats();
 void Totales()
 {
-    double t = Math.Round(seleccion.Values.Sum(), 2); double pend = entSel != null && ES.ContainsKey(I(entSel["id"])) ? ES[I(entSel["id"])][0] : 0; double mon = (double)nudMonto.Value;
-    lblN.Text = seleccion.Count.ToString(); lblSal.Text = pend.ToString("N2"); lblQ.Text = (pend - t).ToString("N2"); lblMon.Text = mon > 0 ? mon.ToString("N2") : "—"; lblTot.Text = t.ToString("N2"); lblTot.ForeColor = Acento();
+    double t = Math.Round(seleccion.Values.Sum(), 2); double pend = entSel != null && ES.ContainsKey(I(entSel["id"])) ? ES[I(entSel["id"])][0] : 0; double mon = (double)nudMonto.Value; int mc = MCta(); string sy = SimboloDe(mc);
+    double pm = 0; var dsel = DocsDeEnt(); foreach (var kv in seleccion) { var d = dsel.FirstOrDefault(x => L(x["id"]) == kv.Key); if (d == null) continue; double da = ADoc(d, kv.Value); if (Math.Abs(da - D(d["saldo"])) <= 0.011) da = D(d["saldo"]); pm += ValMx(d, da); }
+    lblN.Text = seleccion.Count.ToString(); lblSal.Text = pend.ToString("N2"); lblQ.Text = Math.Max(0, pend - Math.Round(pm, 2)).ToString("N2"); lblMon.Text = mon > 0 ? mon.ToString("N2") + " " + sy : "—"; lblTot.Text = t.ToString("N2") + " " + sy; lblTot.ForeColor = Acento();
+    lblTotEt.Text = mc != 3 ? "A APLICAR  ·  ≈ " + (t * Tc()).ToString("N2") + " MXN" : "A APLICAR";
     var av = new List<string>();
-    if (mon > 0 && t > 0 && Math.Abs(mon - t) > 0.005) av.Add(mon > t ? "⚠ Sobran " + (mon - t).ToString("N2") + " del monto: no se aplican (los anticipos no se manejan aquí)" : "⚠ Faltan " + (t - mon).ToString("N2") + " para cubrir lo marcado");
+    if (mon > 0 && t > 0 && Math.Abs(mon - t) > 0.005) av.Add(mon > t ? "⚠ Sobran " + (mon - t).ToString("N2") + " " + sy + " del monto: no se aplican (los anticipos no se manejan aquí)" : "⚠ Faltan " + (t - mon).ToString("N2") + " " + sy + " para cubrir lo marcado");
     if (dtFecha.Value.Date > DateTime.Today) av.Add("⚠ La fecha es posterior a hoy");
     lblAvisos.Text = string.Join("     ", av);
 }
 void PintarDocs()
 {
-    pintando = true; grid.Rows.Clear();
+    pintando = true; PintarMon(); grid.Rows.Clear();
     var ds = DocsDeEnt();
     foreach (var d in ds)
     {
-        long id = L(d["id"]); bool on = seleccion.ContainsKey(id); int dv = DiasVencido(d);
+        long id = L(d["id"]); bool on = seleccion.ContainsKey(id), ok = Compat(d); int dv = DiasVencido(d); bool ext = I(d["moneda"]) != 3; int np = I(d["nParc"]);
         string estado = dv == int.MinValue ? "sin vencimiento" : dv > 0 ? "vencido " + dv + " d" : dv >= -7 ? "vence en " + (-dv) + " d" : "vigente";
-        int r = grid.Rows.Add(on, S(d["tipo"]) + " " + S(d["folio"]), S(d["fecha"]) == "" ? "" : Fe(S(d["fecha"])).Value.ToString("dd/MM/yyyy"), S(d["vence"]) == "" ? "—" : Fe(S(d["vence"])).Value.ToString("dd/MM/yyyy"), estado, D(d["total"]).ToString("N2"), D(d["saldo"]).ToString("N2"), on ? seleccion[id].ToString("0.00") : "");
+        int r = grid.Rows.Add(on, S(d["tipo"]) + " " + S(d["folio"]) + (ext ? "  [" + S(d["simbolo"]) + "]" : ""), S(d["fecha"]) == "" ? "" : Fe(S(d["fecha"])).Value.ToString("dd/MM/yyyy"), S(d["vence"]) == "" ? "—" : Fe(S(d["vence"])).Value.ToString("dd/MM/yyyy"), estado, PagoTexto(d), D(d["total"]).ToString("N2"), D(d["saldo"]).ToString("N2") + (ext ? " " + S(d["simbolo"]) : ""),
+            np < 2 ? (np == 1 ? "1 de 1" : "—") : parcSel.ContainsKey(id) ? parcSel[id].ToString() : "auto", ok ? (on ? seleccion[id].ToString("0.00") : "") : "—", ok ? (on ? Leyenda(d) : "") : "no aplica con una cuenta en " + SimboloDe(MCta()));
         grid.Rows[r].Tag = id; grid.Rows[r].Cells["Estado"].Style.ForeColor = dv > 0 && dv != int.MinValue ? C_ROJO : dv >= -7 && dv != int.MinValue ? C_AMBAR : C_VERDE;
+        grid.Rows[r].Cells["Parc"].ReadOnly = np < 2 || !on; grid.Rows[r].Cells["Aplicar"].ReadOnly = !ok || !on;
+        if (!ok) grid.Rows[r].DefaultCellStyle.ForeColor = C_MUTED; if (I(d["nAplic"]) + I(d["nNotas"]) > 0) grid.Rows[r].Cells["Pagos"].Style.ForeColor = C_VERDE;
     }
     lblDocsEst.Text = entSel == null ? "elige primero la persona" : ds.Count + " documento(s) con saldo · captura el monto y usa «Distribuir», o marca y ajusta «Aplicar»";
     pintando = false; Totales();
@@ -276,7 +337,7 @@ void PintarEnt()
     if (entSel != null)
     {
         var e = ES.ContainsKey(I(entSel["id"])) ? ES[I(entSel["id"])] : new double[8];
-        pastillas.Add(new Pastilla { Titulo = "Saldo pendiente", Valor = e[0].ToString("N2"), Color = e[0] > 0 ? C_AMBAR : C_TXT });
+        pastillas.Add(new Pastilla { Titulo = "Saldo pendiente (MXN)", Valor = e[0].ToString("N2"), Color = e[0] > 0 ? C_AMBAR : C_TXT });
         pastillas.Add(new Pastilla { Titulo = "Vencido", Valor = e[1].ToString("N2"), Color = e[1] > 0 ? C_ROJO : C_TXT });
         pastillas.Add(new Pastilla { Titulo = "Documentos", Valor = e[2].ToString("0"), Color = C_TXT });
         if (D(entSel["credito"]) > 0) pastillas.Add(new Pastilla { Titulo = "Límite de crédito", Valor = D(entSel["credito"]).ToString("N2"), Color = C_TXT });
@@ -284,12 +345,12 @@ void PintarEnt()
     }
     pChips.Invalidate(); pEdad.Invalidate();
 }
-void ElegirEnt(Dictionary<string, object> x) { entSel = x; txtEnt.Text = S(x["nombre"]); lstEnt.Visible = false; seleccion.Clear(); PintarEnt(); PintarDocs(); nudMonto.Focus(); }
+void ElegirEnt(Dictionary<string, object> x) { entSel = x; txtEnt.Text = S(x["nombre"]); lstEnt.Visible = false; seleccion.Clear(); parcSel.Clear(); PintarEnt(); PintarDocs(); nudMonto.Focus(); }
 void CambiarTipo(int idx)
 {
     string antes = (string)TipoActual()["lado"]; tipoIdx = idx; var t = TipoActual();
     if ((string)t["lado"] != antes) { entSel = null; txtEnt.Text = ""; }
-    seleccion.Clear(); ES = Stats();
+    seleccion.Clear(); parcSel.Clear(); ES = Stats();
     for (int i = 0; i < btnsTipo.Count; i++) { bool on = i == idx; var col = (string)TIPOS[i]["lado"] == "C" ? C_COBRO : C_PAGO; btnsTipo[i].BackColor = on ? col : Color.White; btnsTipo[i].ForeColor = on ? Color.White : C_TXT; btnsTipo[i].FlatAppearance.BorderColor = on ? col : C_LINE; btnsTipo[i].Font = on ? F_B : F_BASE; }
     lblRibTitulo.Text = (string)t["nombre"] + (EsCobro() ? "  ·  cuentas por cobrar, entra dinero" : "  ·  cuentas por pagar, sale dinero");
     lblMontoEt.Text = EsCobro() ? "Monto recibido (opcional)" : "Monto a pagar (opcional)"; lblBtnReg.Text = EsCobro() ? "Registrar cobro" : "Registrar pago"; btnMov.Text = "Movimientos";
@@ -297,14 +358,14 @@ void CambiarTipo(int idx)
     lblPie.Text = "Elaboró: " + (quienSoy == "" ? "—" : quienSoy) + "      Empresa: " + nombreEmpresa + "      Operación " + (int)t["modOp"] + " · folio " + (string)t["prefijo"] + "-n";
     PintarEnt(); PintarDocs(); Acomodar();
 }
-void MarcarTodos() { foreach (var d in DocsDeEnt()) seleccion[L(d["id"])] = D(d["saldo"]); PintarDocs(); }
-void MarcarVencidos() { seleccion.Clear(); foreach (var d in DocsDeEnt()) { int dv = DiasVencido(d); if (dv > 0 && dv != int.MinValue) seleccion[L(d["id"])] = D(d["saldo"]); } PintarDocs(); if (seleccion.Count == 0) Aviso("No hay documentos vencidos."); }
+void MarcarTodos() { foreach (var d in DocsDeEnt().Where(Compat)) seleccion[L(d["id"])] = Sc(d); PintarDocs(); }
+void MarcarVencidos() { seleccion.Clear(); parcSel.Clear(); foreach (var d in DocsDeEnt().Where(Compat)) { int dv = DiasVencido(d); if (dv > 0 && dv != int.MinValue) seleccion[L(d["id"])] = Sc(d); } PintarDocs(); if (seleccion.Count == 0) Aviso("No hay documentos vencidos."); }
 void Repartir()
 {
     if (entSel == null) throw new Exception("Elige primero la persona.");
     double m = (double)nudMonto.Value; if (m <= 0) { nudMonto.Focus(); throw new Exception("Captura el monto que se va a repartir."); }
-    seleccion.Clear(); double resto = Math.Round(m, 2);
-    foreach (var d in DocsDeEnt().OrderBy(x => S(x["vence"]) != "" ? S(x["vence"]) : S(x["fecha"])).ThenBy(x => L(x["id"]))) { if (resto <= 0) break; double ap = Math.Min(D(d["saldo"]), resto); seleccion[L(d["id"])] = Math.Round(ap, 2); resto = Math.Round(resto - ap, 2); }
+    seleccion.Clear(); parcSel.Clear(); double resto = Math.Round(m, 2);
+    foreach (var d in DocsDeEnt().Where(Compat).OrderBy(x => S(x["vence"]) != "" ? S(x["vence"]) : S(x["fecha"])).ThenBy(x => L(x["id"]))) { if (resto <= 0) break; double ap = Math.Min(Sc(d), resto); if (ap <= 0) continue; seleccion[L(d["id"])] = Math.Round(ap, 2); resto = Math.Round(resto - ap, 2); }
     PintarDocs();
 }
 
@@ -320,7 +381,7 @@ void Desplegar()
     lstEnt.Visible = lstEnt.Items.Count > 0; if (lstEnt.Visible) { lstEnt.BringToFront(); lstEnt.SelectedIndex = 0; }
 }
 Action ElegirDeLista = () => { var o = lstEnt.SelectedItem as Opcion; if (o == null) return; ElegirEnt(FuenteEnt().First(e => I(e["id"]) == o.Id)); };
-txtEnt.TextChanged += (_, __) => Seguro(() => { if (txtEnt.Focused) { if (entSel != null) { entSel = null; seleccion.Clear(); PintarEnt(); PintarDocs(); } Desplegar(); } });
+txtEnt.TextChanged += (_, __) => Seguro(() => { if (txtEnt.Focused) { if (entSel != null) { entSel = null; seleccion.Clear(); parcSel.Clear(); PintarEnt(); PintarDocs(); } Desplegar(); } });
 txtEnt.Enter += (_, __) => Seguro(() => { txtEnt.SelectAll(); if (entSel == null) Desplegar(); });
 txtEnt.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Down && lstEnt.Visible) { lstEnt.Focus(); ev.Handled = true; } if (ev.KeyCode == Keys.Enter) { Seguro(ElegirDeLista); ev.SuppressKeyPress = true; } if (ev.KeyCode == Keys.Escape && lstEnt.Visible) { lstEnt.Visible = false; ev.SuppressKeyPress = true; ev.Handled = true; } };
 lstEnt.Click += (_, __) => Seguro(ElegirDeLista);
@@ -330,23 +391,68 @@ nudMonto.ValueChanged += (_, __) => Totales();
 nudMonto.KeyDown += (_, ev) => { if (ev.KeyCode == Keys.Enter) { Seguro(Repartir); ev.SuppressKeyPress = true; } };
 btnDist.Click += (_, __) => Seguro(Repartir);
 dtFecha.ValueChanged += (_, __) => Seguro(() => { ES = Stats(); PintarEnt(); PintarDocs(); });
+cmbCta.SelectedIndexChanged += (_, __) => Seguro(() => { if (cmbCta.Focused || mcPrev != MCta()) CambioCuenta(); });
+nudTc.ValueChanged += (_, __) => Seguro(() => { if (!ajustandoTc) PintarDocs(); });
 pEdad.Resize += (_, __) => pEdad.Invalidate();
 
 grid.CellContentClick += (_, ev) => Seguro(() =>
 {
     if (pintando || ev.RowIndex < 0 || grid.Columns[ev.ColumnIndex].Name != "Marca") return;
     grid.EndEdit(); long id = (long)grid.Rows[ev.RowIndex].Tag; var d = DocsDeEnt().First(x => L(x["id"]) == id); bool on = Convert.ToBoolean(grid.Rows[ev.RowIndex].Cells["Marca"].EditedFormattedValue);
-    if (on) seleccion[id] = D(d["saldo"]); else seleccion.Remove(id);
+    if (on && !Compat(d)) { PintarDocs(); Aviso("Ese documento está en " + S(d["simbolo"]) + " y la cuenta en " + SimboloDe(MCta()) + ": no se puede aplicar aquí.", true); return; }
+    if (on && !(Sc(d) > 0)) Aviso("Captura primero el tipo de cambio.", true);
+    if (on) seleccion[id] = Sc(d); else { seleccion.Remove(id); parcSel.Remove(id); }
     PintarDocs();
 });
 grid.CellEndEdit += (_, ev) => Seguro(() =>
 {
-    if (pintando || ev.RowIndex < 0 || grid.Columns[ev.ColumnIndex].Name != "Aplicar") return;
+    string col = ev.ColumnIndex < 0 ? "" : grid.Columns[ev.ColumnIndex].Name;
+    if (pintando || ev.RowIndex < 0 || (col != "Aplicar" && col != "Parc")) return;
     long id = (long)grid.Rows[ev.RowIndex].Tag; var d = DocsDeEnt().First(x => L(x["id"]) == id);
-    double n; double.TryParse(Convert.ToString(grid.Rows[ev.RowIndex].Cells["Aplicar"].Value, CultureInfo.CurrentCulture), NumberStyles.Any, CultureInfo.CurrentCulture, out n); n = Math.Max(0, Math.Min(n, D(d["saldo"])));
-    if (n > 0) seleccion[id] = n; else seleccion.Remove(id); PintarDocs();
+    if (col == "Parc")      // parcialidad: número, o vacío / «auto» para ir en orden; al elegirla se propone el saldo de esa parcialidad
+    {
+        int pn; int.TryParse(Convert.ToString(grid.Rows[ev.RowIndex].Cells["Parc"].Value), out pn);
+        if (pn < 1 || pn > I(d["nParc"])) parcSel.Remove(id);
+        else { parcSel[id] = pn; var p = ParcialidadesDe(id, D(d["saldo"])).FirstOrDefault(x => I(x["n"]) == pn); if (p != null && seleccion.ContainsKey(id)) seleccion[id] = Math.Min(Sc(d), A2(d, D(p["saldo"]))); }
+        PintarDocs(); return;
+    }
+    double n; double.TryParse(Convert.ToString(grid.Rows[ev.RowIndex].Cells["Aplicar"].Value, CultureInfo.CurrentCulture), NumberStyles.Any, CultureInfo.CurrentCulture, out n); double tope = Sc(d); if (n > tope) { n = tope; Aviso("El importe se ajustó al saldo del documento."); } n = Math.Max(0, n);
+    if (n > 0) seleccion[id] = n; else { seleccion.Remove(id); parcSel.Remove(id); } PintarDocs();
 });
 grid.DataError += (_, ev) => ev.ThrowException = false;
+grid.CellDoubleClick += (_, ev) => Seguro(() => { if (ev.RowIndex >= 0 && grid.Columns[ev.ColumnIndex].Name != "Marca" && grid.Columns[ev.ColumnIndex].Name != "Aplicar" && grid.Columns[ev.ColumnIndex].Name != "Parc") AbrirDetalle((long)grid.Rows[ev.RowIndex].Tag); });
+void DetalleSel() { if (grid.CurrentRow == null || grid.CurrentRow.Tag == null) { Aviso("Elige un documento de la lista (clic en su renglón).", true); return; } AbrirDetalle((long)grid.CurrentRow.Tag); }
+// parcialidades y pagos aplicados de un documento (cobros, pagos y notas de crédito): ventana aparte, también sin bloquear
+void AbrirDetalle(long id)
+{
+    var d = DocsDeEnt().FirstOrDefault(x => L(x["id"]) == id); if (d == null) return; var r = DetalleDoc(id); string sy = S(r["simbolo"]); bool ext = I(r["moneda"]) != 3;
+    var h = new Form { Text = "Detalle · " + S(d["tipo"]) + " " + S(d["folio"]), Size = new Size(780, 540), StartPosition = FormStartPosition.CenterParent, BackColor = Color.White, Font = F_BASE, MinimumSize = new Size(640, 420) };
+    var lt = new Label { Dock = DockStyle.Top, Height = 56, Padding = new Padding(12, 8, 12, 0), ForeColor = C_TXT, Font = F_B, Text = "Total " + D(r["total"]).ToString("N2") + " " + sy + "     Pagado " + D(r["pagado"]).ToString("N2") + "     Saldo " + D(r["saldo"]).ToString("N2") + (ext ? "\nDocumento en " + sy + " · tipo de cambio del documento " + D(r["tcDoc"]).ToString("0.####") + " · saldo ≈ " + D(d["saldoMx"]).ToString("N2") + " MXN" : "") };
+    Func<string[][], DockStyle, int, DataGridView> Rejilla = (cols, dock, alto) =>
+    {
+        var g = new DataGridView { Dock = dock, Height = alto, AllowUserToAddRows = false, AllowUserToDeleteRows = false, ReadOnly = true, RowHeadersVisible = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, BackgroundColor = Color.White, BorderStyle = BorderStyle.None, EnableHeadersVisualStyles = false, CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal, GridColor = Color.FromArgb(230, 235, 242), AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, RowTemplate = { Height = 26 } };
+        g.ColumnHeadersDefaultCellStyle.BackColor = C_HEAD; g.ColumnHeadersDefaultCellStyle.ForeColor = C_TXT; g.ColumnHeadersDefaultCellStyle.Font = F_B; g.ColumnHeadersDefaultCellStyle.SelectionBackColor = C_HEAD; g.ColumnHeadersDefaultCellStyle.SelectionForeColor = C_TXT; g.DefaultCellStyle.SelectionBackColor = C_SEL; g.DefaultCellStyle.SelectionForeColor = C_TXT;
+        foreach (var c in cols) g.Columns.Add(new DataGridViewTextBoxColumn { Name = c[0], HeaderText = c[1], FillWeight = float.Parse(c[2]) });
+        return g;
+    };
+    var gAp = Rejilla(new[] { new[] { "Fecha", "FECHA", "12" }, new[] { "Tipo", "TIPO", "14" }, new[] { "Folio", "FOLIO", "28" }, new[] { "Parc", "PARC.", "8" }, new[] { "TC", "TIPO DE CAMBIO", "14" }, new[] { "Monto", "MONTO (" + sy + ")", "16" } }, DockStyle.Fill, 100);
+    foreach (var a in (List<Dictionary<string, object>>)r["aplic"])
+    {
+        string tp = S(a["tipo"]) == "cobro" ? "Cobro" : S(a["tipo"]) == "pago" ? "Pago" : S(a["tipo"]) == "nota" ? "Nota de crédito" : "Otro";
+        int fila = gAp.Rows.Add(S(a["fecha"]) == "" ? "" : Fe(S(a["fecha"])).Value.ToString("dd/MM/yyyy"), tp, S(a["folio"]), I(a["parc"]).ToString(), ext && D(a["tc"]) > 0 && S(a["tipo"]) != "nota" ? D(a["tc"]).ToString("0.####") : "", D(a["monto"]).ToString("N2"));
+        gAp.Rows[fila].Cells["Tipo"].Style.ForeColor = S(a["tipo"]) == "nota" ? C_AMBAR : C_VERDE;
+    }
+    if (gAp.Rows.Count == 0) gAp.Rows.Add("", "Sin cobros, pagos ni notas de crédito aplicados todavía", "", "", "", "");
+    var gPa = Rejilla(new[] { new[] { "N", "N.º", "8" }, new[] { "Vence", "VENCE", "18" }, new[] { "Importe", "IMPORTE", "18" }, new[] { "Pagado", "PAGADO", "18" }, new[] { "Saldo", "SALDO", "18" } }, DockStyle.Top, 30 + 26 * Math.Max(1, ((List<Dictionary<string, object>>)r["parc"]).Count));
+    foreach (var p in (List<Dictionary<string, object>>)r["parc"])
+    {
+        int fila = gPa.Rows.Add(I(p["n"]).ToString(), S(p["vence"]) == "" ? "—" : Fe(S(p["vence"])).Value.ToString("dd/MM/yyyy"), D(p["importe"]).ToString("N2"), D(p["pagado"]).ToString("N2"), D(p["saldo"]) <= 0.004 ? "liquidada" : D(p["saldo"]).ToString("N2"));
+        gPa.Rows[fila].Cells["Saldo"].Style.ForeColor = D(p["saldo"]) <= 0.004 ? C_VERDE : S(p["vence"]) != "" && string.CompareOrdinal(S(p["vence"]), Hoy()) < 0 ? C_ROJO : C_TXT;
+    }
+    foreach (var gx in new[] { gPa, gAp }) foreach (DataGridViewColumn c in gx.Columns) if (c.Name != "Tipo" && c.Name != "Folio" && c.Name != "Fecha") { c.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight; c.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight; }
+    var lp = new Label { Text = "Parcialidades", Dock = DockStyle.Top, Height = 24, Padding = new Padding(12, 4, 0, 0), ForeColor = C_MUTED, Font = F_B }; var la = new Label { Text = "Aplicaciones: cobros, pagos y notas de crédito", Dock = DockStyle.Top, Height = 28, Padding = new Padding(12, 10, 0, 0), ForeColor = C_MUTED, Font = F_B };
+    h.Controls.Add(gAp); h.Controls.Add(la); h.Controls.Add(gPa); h.Controls.Add(lp); h.Controls.Add(lt); h.Show(frm);
+}
 
 // últimos movimientos de la persona: ventana aparte, también sin bloquear
 btnMov.Click += (_, __) => Seguro(() =>
@@ -360,15 +466,18 @@ btnMov.Click += (_, __) => Seguro(() =>
     h.Controls.Add(l); h.Show(frm);
 });
 
-void Limpiar() { entSel = null; txtEnt.Text = ""; seleccion.Clear(); txtRef.Text = ""; nudMonto.Value = 0; PintarEnt(); PintarDocs(); txtEnt.Focus(); }
+void Limpiar() { entSel = null; txtEnt.Text = ""; seleccion.Clear(); parcSel.Clear(); txtRef.Text = ""; nudMonto.Value = 0; PintarEnt(); PintarDocs(); txtEnt.Focus(); }
 void Registrar(bool otro)
 {
     if (guardando) return; var t = TipoActual();
     if (entSel == null) { txtEnt.Focus(); throw new Exception("Elige " + (EsCobro() ? "el cliente" : "el proveedor") + " de la lista (escribe y selecciona)."); }
     if (cmbCta.SelectedItem == null) throw new Exception("Elige la cuenta.");
-    var aps = seleccion.Where(k => k.Value > 0).Select(k => (object)new Dictionary<string, object> { ["doc"] = k.Key, ["monto"] = k.Value }).ToList();
+    var aps = seleccion.Where(k => k.Value > 0).Select(k => (object)new Dictionary<string, object> { ["doc"] = k.Key, ["monto"] = k.Value, ["parcialidad"] = parcSel.ContainsKey(k.Key) ? parcSel[k.Key] : 0 }).ToList();
     if (aps.Count == 0) throw new Exception("Marca al menos un documento y captura cuánto aplicar.");
-    var spec = new Dictionary<string, object> { ["tipo"] = (string)t["clave"], ["entidad"] = I(entSel["id"]), ["cuenta"] = ((Opcion)cmbCta.SelectedItem).Id, ["forma"] = ((Opcion)cmbForma.SelectedItem)?.Id ?? 0, ["fecha"] = Hoy(), ["referencia"] = txtRef.Text, ["aplicaciones"] = aps };
+    int mcR = MCta(), fxR = MonedaFx(); var dsR = DocsDeEnt(); var fxs = new HashSet<int>(); foreach (var k in seleccion.Keys) { var dd = dsR.FirstOrDefault(x => L(x["id"]) == k); if (dd != null && I(dd["moneda"]) != 3 && I(dd["moneda"]) != mcR) fxs.Add(I(dd["moneda"])); }
+    if (fxs.Count > 1) throw new Exception("Hay documentos en monedas extranjeras distintas: regístralos por separado.");
+    if (fxR != 0 && !(Tc() > 0)) throw new Exception("Captura el tipo de cambio.");
+    var spec = new Dictionary<string, object> { ["tipo"] = (string)t["clave"], ["entidad"] = I(entSel["id"]), ["cuenta"] = ((Opcion)cmbCta.SelectedItem).Id, ["forma"] = ((Opcion)cmbForma.SelectedItem)?.Id ?? 0, ["fecha"] = Hoy(), ["referencia"] = txtRef.Text, ["tc"] = fxR != 0 ? Tc() : 0.0, ["aplicaciones"] = aps };
     guardando = true; Cursor.Current = Cursors.WaitCursor; string resumen;
     try { resumen = Aplicar(spec); }
     finally { guardando = false; Cursor.Current = Cursors.Default; RefrescarDocs(); }
@@ -379,7 +488,7 @@ void Registrar(bool otro)
 void RefrescarDocs()      // después de aplicar (bien o mal) los saldos cambiaron
 {
     try { catalogo["docsC"] = DocsConSaldo("C"); catalogo["docsP"] = DocsConSaldo("P"); } catch { }
-    seleccion.Clear(); ES = Stats(); PintarEnt(); PintarDocs();
+    seleccion.Clear(); parcSel.Clear(); ES = Stats(); PintarEnt(); PintarDocs();
 }
 frm.KeyDown += (_, ev) =>
 {
@@ -390,6 +499,7 @@ frm.KeyDown += (_, ev) =>
 };
 
 // ---------- Arranque: modeless ----------
+mcPrev = MCta(); mcPrevDocs = mcPrev;
 CambiarTipo(0);
 Acomodar();
 string capturaPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_SHOT");        // pruebas: guarda una captura de la ventana (con datos de ejemplo) y no la deja abierta

@@ -119,11 +119,14 @@ def escenario_pago(url, token, res):
     assert len(d["meses"]) == 12 and "puntual" in d, "inteligencia de pago: " + c[:120]
     post(url, token, {"accion": "borrador", "spec": json.dumps({"tipo": "pago", "entidad": int(prov), "sel": {}})})
     assert [f for f in os.listdir(os.path.join(os.environ["LOCALAPPDATA"], "BrosLMV", "borradores")) if f.startswith("cobropago_")], "El borrador debía quedar en disco."
-    doc = next(x for x in docs if x["ent"] == int(prov) and x["saldo"] > 200)
-    cta = sqlcmd("SELECT TOP 1 FinancialEntityID FROM orgFinancialEntity WHERE DeletedOn IS NULL")[0]["FinancialEntityID"]
+    doc = next(x for x in docs if x["ent"] == int(prov) and x["saldo"] > 200 and x["moneda"] == 3)
+    cta = sqlcmd("SELECT TOP 1 FinancialEntityID FROM orgFinancialEntity WHERE DeletedOn IS NULL AND ISNULL(CurrencyID,0) IN (0,3)")[0]["FinancialEntityID"]
+    _, c, _ = post(url, token, {"accion": "detalle", "req": 6, "doc": doc["id"]})
+    dd = json.loads(c[len("respuesta(6,"):-1])
+    assert dd.get("parc") and "aplic" in dd, "detalle: " + c[:120]
     spec = {"tipo": "pago", "entidad": doc["ent"], "cuenta": int(cta), "forma": 3, "fecha": "2026-10-03", "referencia": "SPEI-SERV", "aplicaciones": [{"doc": doc["id"], "monto": 100}]}
     _, c, _ = post(url, token, {"accion": "aplicar", "nuevo": True, "spec": json.dumps(spec)})
-    assert c.startswith("aplicado(") and "Pago a proveedor registrado: 100.00" in c, "aplicar: " + c[:160]
+    assert c.startswith("aplicado(") and "registrado: 100.00 MXN" in c, "aplicar: " + c[:160]
     assert not [f for f in os.listdir(os.path.join(os.environ["LOCALAPPDATA"], "BrosLMV", "borradores")) if f.startswith("cobropago_")], "Al aplicar debía borrarse el borrador."
     _, c, _ = post(url, token, {"accion": "aplicar", "spec": json.dumps(dict(spec, aplicaciones=[{"doc": doc["id"], "monto": doc["saldo"] + 5}]))})
     assert c.startswith("falloAplicar(") and "mayor que su saldo" in c, "sobrepago: " + c[:160]

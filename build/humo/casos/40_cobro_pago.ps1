@@ -1,4 +1,4 @@
-# Caso de humo #40: la plantilla de fabrica COBRO_PAGO_CSHARP_WEBVIEW2.ctx (nucleo compartido por las cuatro variantes) corriendo headless (BrosLMV.Runner) contra el laboratorio.
+﻿# Caso de humo #40: la plantilla de fabrica COBRO_PAGO_CSHARP_WEBVIEW2.ctx (nucleo compartido por las cuatro variantes) corriendo headless (BrosLMV.Runner) contra el laboratorio.
 # Crea con la plantilla CREAR_DOCUMENTO documentos nuevos («DEMO COBRO ...») y les aplica cobros y pagos de verdad: parcial por transferencia, liquidacion en efectivo, un pago
 # a dos documentos a la vez y un sobrepago que debe rechazarse. Comprueba en la base las siete tablas de la receta, el saldo y el estatus del documento.
 # Los documentos y operaciones quedan en BROSLMV_DESARROLLO. Devuelve 0 si paso, 1 si fallo.
@@ -91,7 +91,7 @@ $ip = $ser.DeserializeObject((Pago @{ inteligencia = $true; entidad = $cli; tipo
 if (@($ip['meses']).Count -ne 12 -or -not $ip.ContainsKey('puntual') -or -not $ip.ContainsKey('atraso') -or -not $ip.ContainsKey('dias')) { Fallo "La inteligencia de pago debia traer 12 meses, dias, atraso y puntualidad." }
 if (-not $dc[0].ContainsKey('metodo')) { Fallo "Los documentos con saldo debian traer el metodo de pago (PUE/PPD)." }
 Write-Host ("  Inteligencia de pago del cliente: {0} cobro(s) en 12 meses por {1:N2}." -f $ip['mov12'], $ip['total12'])
-$op = Sql "SELECT TOP 1 FinancialOperationID FROM docFinancialOperation WHERE DocumentID=$fc ORDER BY FinancialOperationID DESC"
+$op = Sql "SELECT TOP 1 FinancialOperationID FROM docDocumentPayment WHERE DocumentID=$fc AND DeletedOn IS NULL ORDER BY FinancialOperationID DESC"
 $cabOp = (Sql "SELECT CONCAT(ModuleID,'|',DocRecipientID,'|',DocumentTypeID,'|',Amount,'|',PaymentMethodID,'|',FolioPrefix) FROM docFinancialOperation WHERE FinancialOperationID=$op") -split '\|'
 if ($cabOp[0] -ne '248' -or $cabOp[1] -ne '1' -or $cabOp[2] -ne '31' -or -not (Cerca $cabOp[3] 200) -or $cabOp[4] -ne '3' -or $cabOp[5] -ne 'COB') { Fallo "La operacion financiera del cobro no trae los datos esperados ($($cabOp -join ' | '))." }
 if ((Sql "SELECT CONCAT(Amount,'|',SaldoAnterior,'|',SaldoInsoluto) FROM docDocumentPayment WHERE FinancialOperationID=$op") -notmatch '^200(\.0+)?\|696(\.0+)?\|496(\.0+)?$') { Fallo "La aplicacion al documento debia ser 200 sobre 696 dejando 496." }
@@ -106,9 +106,9 @@ $r = Pago @{ tipo = 'cobro'; entidad = $cli; cuenta = $cuenta; forma = 1; fecha 
 if ($r -notmatch '^OK ') { Fallo "La liquidacion en efectivo fallo: $r" }
 $f = Fila $fc
 if (-not (Cerca $f[1] 0) -or -not (Cerca $f[2] 696) -or $f[3] -ne '1') { Fallo "Tras liquidar debia quedar saldo 0, pagado 696, estatus 1 ($($f -join ' | '))." }
-$op2 = Sql "SELECT TOP 1 FinancialOperationID FROM docFinancialOperation WHERE DocumentID=$fc ORDER BY FinancialOperationID DESC"
+$op2 = Sql "SELECT TOP 1 FinancialOperationID FROM docDocumentPayment WHERE DocumentID=$fc AND DeletedOn IS NULL ORDER BY FinancialOperationID DESC"
 if ([int](Sql "SELECT COUNT(*) FROM docBankTransfer WHERE FinancialOperationID=$op2") -ne 0) { Fallo "El efectivo no debia dejar transferencia bancaria." }
-if ([int](Sql "SELECT COUNT(DISTINCT Folio) FROM docFinancialOperation WHERE DocumentID=$fc") -ne 2) { Fallo "Las dos operaciones debian tener folios distintos." }
+if ([int](Sql "SELECT COUNT(DISTINCT o.Folio) FROM docFinancialOperation o JOIN docDocumentPayment p ON p.FinancialOperationID=o.FinancialOperationID WHERE p.DocumentID=$fc") -ne 2) { Fallo "Las dos operaciones debian tener folios distintos." }
 Write-Host "  Liquidacion en efectivo: saldo 0, estatus pagado, sin transferencia, folios distintos."
 
 # 4) Sobrepago: se rechaza y no cambia nada
@@ -129,10 +129,10 @@ if ($r -notmatch '^OK ') { Fallo "El pago a dos documentos fallo: $r" }
 $fa = Fila $pa; $fb = Fila $pb
 if (-not (Cerca $fa[1] 0) -or $fa[3] -ne '1') { Fallo "La factura A debia quedar liquidada ($($fa -join ' | '))." }
 if (-not (Cerca $fb[1] ($tb - 100)) -or $fb[3] -ne '2') { Fallo "La factura B debia quedar con saldo $($tb - 100) y estatus parcial ($($fb -join ' | '))." }
-$cabP = (Sql "SELECT CONCAT(ModuleID,'|',DocRecipientID,'|',DocumentTypeID,'|',FolioPrefix) FROM docFinancialOperation WHERE DocumentID=$pa") -split '\|'
+$cabP = (Sql "SELECT CONCAT(ModuleID,'|',DocRecipientID,'|',DocumentTypeID,'|',FolioPrefix) FROM docFinancialOperation WHERE FinancialOperationID=(SELECT TOP 1 FinancialOperationID FROM docDocumentPayment WHERE DocumentID=$pa)") -split '\|'
 if ($cabP[0] -ne '247' -or $cabP[1] -ne '2' -or $cabP[2] -ne '32' -or $cabP[3] -ne 'PAG') { Fallo "La operacion del pago debia ser modulo 247 / proveedor / tipo 32 / PAG ($($cabP -join ' | '))." }
-if ([int](Sql "SELECT COUNT(DISTINCT FinancialOperationID) FROM docFinancialOperation WHERE DocumentID IN ($pa,$pb)") -ne 2) { Fallo "Debian crearse dos operaciones (una por documento)." }
-Write-Host "  Pago a proveedor a dos facturas ($pa liquidada, $pb parcial): operaciones 247 / PAG, una por documento."
+if ([int](Sql "SELECT COUNT(DISTINCT FinancialOperationID) FROM docDocumentPayment WHERE DocumentID IN ($pa,$pb)") -ne 1) { Fallo "Debia crearse una sola operacion con un renglon por documento." }
+Write-Host "  Pago a proveedor a dos facturas ($pa liquidada, $pb parcial): una operacion 247 / PAG con un renglon por documento."
 
 # 6) Validaciones
 foreach ($caso in @(@{ spec = @{ tipo = 'pago'; entidad = $prov; cuenta = 0; forma = 3; fecha = $hoy; aplicaciones = @(@{ doc = $pb; monto = 1 }) }; texto = 'cuenta' },

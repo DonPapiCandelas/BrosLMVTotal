@@ -23,11 +23,27 @@ La versión **HTML** (C# y Python) y la de **Windows Forms** de C# capturan lo m
 - **Cinta de acciones:** **Registrar** (F5; «Registrar cobro» o «Registrar pago»), **Registrar y nuevo** (F6, para capturar varios seguidos), **Limpiar** y **Cancelar** (Esc). Junto a ellas, la **información del movimiento**: fecha, folio probable (`COB-n` / `PAG-n`) y cuenta (la predeterminada ya viene elegida).
 - **1 · Cliente o proveedor** con búsqueda por nombre o RFC (F2); **las personas con saldo salen primero** y cada una muestra cuánto debe y en cuántos documentos. Al elegirla ves su **saldo pendiente, lo vencido, número de documentos, límite y crédito disponible, su último cobro o pago** y su **antigüedad de saldos** (vigente, 1-30, 31-60, 61-90 y más de 90 días).
 - **2 · Datos del movimiento:** forma de pago, referencia o número de rastreo y **monto recibido o a pagar**. **«Distribuir»** reparte ese monto entre los documentos **más antiguos primero**; también puedes **marcar todos**, **marcar vencidos** o ajustar cada documento a mano.
-- **3 · Documentos con saldo** con su estado (vencido N días, vence en N días, vigente), total, saldo y cuánto aplicar.
+- **3 · Documentos con saldo** con su estado (vencido N días, vence en N días, vigente), **cuánto llevan pagado y con qué** (cobros o pagos y notas de crédito), total, saldo, **parcialidad** y cuánto aplicar, con el resultado en la moneda del documento. Un clic en el folio (HTML) o «Ver detalle…» / doble clic (Windows Forms) abre el **detalle del documento**: sus parcialidades con vencimiento, importe, pagado y saldo, y cada **aplicación** (cobro, pago o nota de crédito) con folio, fecha, parcialidad y tipo de cambio.
 - **Resumen:** documentos marcados, saldo de la persona, **cuánto quedaría**, monto recibido y **total a aplicar**, con avisos (sobra o falta monto, fecha posterior a hoy) y los **últimos cobros o pagos** de la persona.
 - **No bloquea Comercial:** se puede minimizar.
 
 La versión **HTML** consulta a Comercial **en vivo** (últimos movimientos de la persona y saldos ya actualizados después de registrar, sin cerrar la ventana) con `ctx.ShowHtmlModeless` y respuestas `__JS__…`; la de **Python en HTML** hace lo mismo con un servidor local (ver [`UI_VENTANAS.md`](UI_VENTANAS.md) §5). **Regla de la casa: las versiones de C# y de Python son idénticas.** La de WebView2 de C# y la de WebView2 de Python usan **la misma página** (solo cambia el lenguaje que atiende la ventana), y la de Windows Forms de C# y la de Windows Forms de Python tienen **el mismo diseño, con las mismas posiciones, colores y reglas** (la de Python es un espejo línea por línea de la de C#, con pythonnet). Si se cambia una, se cambia la otra.
+
+## Moneda extranjera y parcialidades
+
+**Moneda.** Cada cuenta bancaria tiene su moneda y cada documento la suya. Lo que escribes en **«Aplicar» va siempre en la moneda de la cuenta** (lo que entra o sale del banco); la ventana **solo pide el tipo de cambio cuando interviene una moneda extranjera** y te dice, por documento, **cuánto baja su saldo en su propia moneda** («= 50.00 USD · queda 66.00 USD»). El tipo de cambio sugerido es el del catálogo de monedas de Comercial.
+
+| Cuenta | Documento | Qué pasa |
+|---|---|---|
+| Pesos | Pesos | Sin tipo de cambio. |
+| Pesos | Dólares | Pesos ÷ tipo de cambio = dólares que baja el saldo (925 MXN a 18.50 = 50 USD). |
+| Dólares | Dólares | 1 a 1; el tipo de cambio fija el valor en pesos (para la contabilidad). |
+| Dólares | Pesos | Dólares × tipo de cambio = pesos que baja el saldo (10 USD a 18 = 180 MXN). |
+| Otras (p. ej. euros ↔ dólares) | | Se rechazan con un mensaje: se registran en la pantalla nativa de Tesorería. |
+
+Una sola operación no mezcla documentos en dos monedas extranjeras distintas. La cartera, la antigüedad, el pronóstico y el saldo de la persona se muestran **en pesos** (a su tipo de cambio).
+
+**Parcialidades.** Si el documento tiene una agenda de pagos (condición de pago a parcialidades) cada renglón se aplica a **una parcialidad**: por omisión en orden («Automático», se llena la más antigua con saldo) o la que elijas, y la ventana propone el saldo de esa parcialidad. Si una parcialidad no alcanza, el resto pasa a la siguiente (en automático) o se rechaza (si la elegiste). Los documentos con parcialidades llevan en cada renglón de `docDocumentPayment` el número de parcialidad, como la pantalla nativa.
 
 ## Lo que solo una ventana web puede dar (WebView2)
 
@@ -52,12 +68,12 @@ Las plantillas **WebView2** (C# y Python) consultan a Comercial en vivo y suman:
 
 ## Qué escribe (la receta de siete tablas)
 
-Por **cada documento** marcado se crea **una operación** (con su propio folio) en **una sola transacción**:
+Se crea **una sola operación** (un folio) con **un renglón por documento y parcialidad**, todo en **una sola transacción** (igual que la pantalla nativa de Tesorería):
 
 | Tabla | Qué guarda |
 |---|---|
-| `docFinancialOperation` | La operación: módulo **248** (cobro) o **247** (pago), cliente o proveedor, cuenta, forma de pago, fecha, importe y folio (`COB-n` / `PAG-n`). |
-| `docDocumentPayment` | La aplicación al documento: importe, **saldo anterior** y **saldo insoluto**. |
+| `docFinancialOperation` | La operación: módulo **248** (cobro) o **247** (pago), cliente o proveedor, cuenta, forma de pago, fecha, importe total y folio (`COB-n` / `PAG-n`), con su **moneda, tipo de cambio** (`Rate`, `AmountRate`), el **signo** (`DebitCreditCoef`: +1 cobro, −1 pago), el importe en la moneda de la cuenta (`FinancialEntityAmount`), la descripción, el importe en letra y el nombre de la persona. Como en lo nativo, `DocumentID`, `PartialityNumber` y `PartialityTotal` van en 0. |
+| `docDocumentPayment` | **Un renglón por documento y parcialidad:** importe **en la moneda del documento**, su tipo de cambio (`Rate`), el valor en pesos (`AmountPaidCurrency` = importe × tipo de cambio), el número de **parcialidad**, **saldo anterior** y **saldo insoluto**. |
 | `docDocumentPaymentEspejo` | El espejo de la aplicación (mismo id; la columna no es identity). |
 | `docBankTransfer` | La transferencia bancaria con la referencia (**solo** si la forma de pago no es efectivo). |
 | `docFinancialOperationTaxDetail` | El **reparto proporcional de impuestos**: lo aplicado entre el total del documento, aplicado a cada renglón de impuesto. |
@@ -70,17 +86,17 @@ Por **cada documento** marcado se crea **una operación** (con su propio folio) 
 
 ## Qué garantiza
 
-- Atómico por documento: o se escriben las siete tablas o ninguna.
-- Si hay varios documentos y falla uno, el mensaje dice **cuáles ya quedaron aplicados** (los anteriores) y cuál falló; no se aplica nada al fallido.
+- Atómico: o se escribe todo (la operación y todos sus renglones) o no se escribe nada; si un documento no se puede aplicar, **ninguno** se aplica y el mensaje dice cuál falló y por qué.
 - Validado con la plantilla [«Estado de cuenta de clientes»](ESTADO_CUENTA_CLIENTES.md) y [«de proveedores»](ESTADO_CUENTA_PROVEEDORES.md): el saldo que reconstruye desde los pagos coincide con `Balance` después de aplicar.
 
 ## Límites
 
 - **No genera póliza contable.** La póliza del cobro/pago la genera el Motor de Asientos al contabilizar (véase `MOTOR_ASIENTOS_CONTABLES.md`); revisa con tu contador cómo contabilizas esos movimientos.
-- **Sin multimoneda:** la aplicación usa tipo de cambio 1. Para documentos en moneda extranjera usa la pantalla nativa.
+- **Monedas:** solo pesos con una moneda extranjera por operación (cuenta en dólares con documentos en dólares o en pesos, etc.). Euros contra dólares y otras combinaciones se hacen en la pantalla nativa. No registra utilidad ni pérdida cambiaria: eso lo calcula la contabilidad.
+- **Notas de crédito:** se muestran en el detalle y en las fichas del documento, pero **aplicarlas** (cruzar una nota con una factura) no se hace aquí.
 - **Sin anticipos, sin cobros por remesa, sin complemento de pago (CFDI de pagos), sin pagos con cambio.** Solo aplica importes a documentos concretos.
 - **Sin deshacer.** Para revertir un cobro o pago usa la pantalla nativa de Tesorería (cancelar la operación); no borres filas a mano.
-- **Una operación por documento:** si cobras 3 facturas de golpe verás 3 folios.
+- **Una operación por movimiento:** si cobras 3 facturas de golpe verás un solo folio con 3 renglones (como en Tesorería).
 - Lista hasta **30,000** documentos con saldo por lado (los más antiguos primero).
 
 ## Si algo no sale
@@ -91,6 +107,8 @@ Por **cada documento** marcado se crea **una operación** (con su propio folio) 
 | El cliente o proveedor no aparece | No está dado de alta como cliente/proveedor, o está eliminado. |
 | No aparece un documento | Está cancelado/eliminado, ya no tiene saldo, o su módulo no suma saldo (`FinancialAffectation` ≠ ±1). |
 | «El saldo del documento cambió mientras se capturaba» | Otra persona o proceso aplicó un cobro/pago al mismo documento; vuelve a capturar con el saldo actualizado. |
+| «Captura el tipo de cambio» | La cuenta o un documento está en moneda extranjera: escribe el tipo de cambio del día. |
+| «Esa combinación solo se puede registrar en la pantalla nativa» | La cuenta y el documento están en monedas extranjeras distintas (euros contra dólares). |
 | «No se pudo obtener el candado del folio» | Otro cobro/pago se está registrando en este momento; espera unos segundos y reintenta. |
 
 ## Para desarrolladores

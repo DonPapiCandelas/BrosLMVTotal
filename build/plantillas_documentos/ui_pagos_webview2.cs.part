@@ -1,7 +1,7 @@
 // ===================================================================================================================================
 // VENTANA (WebView2, NO modal). La página es la estación completa de cobros y pagos; esta parte la abre y contesta lo que la página pide:
-//   aplicar     → registra el cobro o pago (una operación por documento) y devuelve el resumen con los folios; los saldos se vuelven a pedir
-//   movimientos → los últimos cobros o pagos de la persona        docs → documentos con saldo actualizados (después de aplicar)
+//   aplicar     → registra el cobro o pago (una sola operación, un renglón por documento y parcialidad) y devuelve el resumen con el folio; los saldos se vuelven a pedir
+//   movimientos → los últimos cobros o pagos de la persona        docs → documentos con saldo actualizados (después de aplicar)   detalle → parcialidades y aplicaciones de un documento
 // Las respuestas viajan como «__JS__código»: la página recibe datos sin repintarse (conserva lo capturado). Si algo falla, la página muestra el mensaje y no se pierde nada.
 // ===================================================================================================================================
 string PAGINA = @"__HTML_CS__";
@@ -31,6 +31,7 @@ Func<Dictionary<string, object>, string> alMensaje = (r) =>
     {
         if (accion == "cancelar") return "__CERRAR__";
         if (accion == "movimientos") return "__JS__respuesta(" + req + "," + JsJson(MovimientosDe(L(r["entidad"]), S(r["tipo"]))) + ")";
+        if (accion == "detalle") return "__JS__respuesta(" + req + "," + JsJson(DetalleDoc(L(r["doc"]))) + ")";
         if (accion == "inteligencia") return "__JS__respuesta(" + req + "," + JsJson(InteligenciaPago(L(r["entidad"]), S(r["tipo"]))) + ")";
         if (accion == "borrador") { GuardarBorrador("cobropago", ser.Serialize(new Dictionary<string, object> { ["cuando"] = DateTime.Now.ToString("o"), ["spec"] = S(r["spec"]) })); return null; }
         if (accion == "borradorBorrar") { BorrarBorrador("cobropago"); return null; }

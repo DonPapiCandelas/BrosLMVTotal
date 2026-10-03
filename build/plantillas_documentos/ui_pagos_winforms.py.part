@@ -45,7 +45,7 @@ F_ICON = Font("Segoe UI Emoji", 20.0)
 F_TOT = Font("Segoe UI Semibold", 18.0)
 F_VAL = Font("Segoe UI Semibold", 11.0)
 
-E = {"ent": None, "guardando": False, "pintando": False, "tipo": 0, "resultado": "CANCELADO"}
+E = {"ent": None, "guardando": False, "pintando": False, "tipo": 0, "resultado": "CANCELADO", "tc_mon": -1, "mc_prev": -1, "mc_prev_docs": -1, "ajustando": False}
 
 
 def fe(s):
@@ -59,7 +59,8 @@ def principal():
     global result
     catalogo = catalogos()
     folios = catalogo["folios"]
-    seleccion = {}        # documento → monto a aplicar
+    seleccion = {}        # documento → monto a aplicar, SIEMPRE en la moneda de la cuenta (lo que entra o sale del banco)
+    parc_sel = {}         # documento → parcialidad elegida (sin entrada = automática, en orden)
     pastillas = []
     vis = {"ent": []}
     quien_soy = ""
@@ -289,7 +290,7 @@ def principal():
     boton_cinta("🧹", "Limpiar", "", None, lambda: limpiar())
 
     info = Panel()
-    info.Size = Size(330, 92)
+    info.Size = Size(450, 92)
     info.BackColor = C_RIB
     ribbon.Controls.Add(info)
 
@@ -350,6 +351,17 @@ def principal():
     txt_folio = caja_info(146, 38, 110)
     nota = et_r("(lo asigna el sistema al registrar)", 14, 70)
     nota.ForeColor = C_RIB_MU
+    lbl_tc_et = et_r("Tipo de cambio", 270, 20)
+    lbl_tc_et.Visible = False
+    nud_tc = NumericUpDown()
+    nud_tc.Width = 120
+    nud_tc.DecimalPlaces = 4
+    nud_tc.Maximum = Convert.ToDecimal(99999)
+    nud_tc.Minimum = Convert.ToDecimal(0)
+    nud_tc.TextAlign = HorizontalAlignment.Right
+    nud_tc.Location = Point(270, 38 + max(0, (26 - nud_tc.Height) // 2))
+    nud_tc.Visible = False
+    info.Controls.Add(nud_tc)
 
     # ---------- tipos ----------
     p_tipos = Panel()
@@ -440,7 +452,7 @@ def principal():
     g2.Controls.Add(nud_monto)
     btn_dist = boton_plano("Distribuir", 404, 102, 92, 26)
     g2.Controls.Add(btn_dist)
-    cta_items = [{"id": c["id"], "nombre": c["nombre"], "def": c.get("def", False)} for c in catalogo["cuentas"]]
+    cta_items = [{"id": c["id"], "nombre": c["nombre"], "def": c.get("def", False), "moneda": c["moneda"]} for c in catalogo["cuentas"]]
     for c in cta_items:
         cmb_cta.Items.Add(c["nombre"])
     for i, c in enumerate(cta_items):
@@ -502,7 +514,7 @@ def principal():
     lbl_docs_est.BackColor = C_HEAD
     g4.Controls.Add(lbl_docs_est)
     xb = 14
-    for texto, accion in (("Marcar todos", lambda: marcar_todos()), ("Marcar vencidos", lambda: marcar_vencidos()), ("Quitar marcas", lambda: quitar_marcas())):
+    for texto, accion in (("Marcar todos", lambda: marcar_todos()), ("Marcar vencidos", lambda: marcar_vencidos()), ("Quitar marcas", lambda: quitar_marcas()), ("Ver detalle…", lambda: detalle_sel())):
         b = boton_plano(texto, xb, 34, 120, 28)
         b.Click += seguro(accion)
         g4.Controls.Add(b)
@@ -537,24 +549,30 @@ def principal():
     c_marca.HeaderText = ""
     c_marca.FillWeight = 4
     grid.Columns.Add(c_marca)
-    for nombre, titulo, peso in (("Doc", "DOCUMENTO", 28), ("Fecha", "FECHA", 10), ("Vence", "VENCE", 10), ("Estado", "ESTADO", 14), ("Total", "TOTAL", 11), ("Saldo", "SALDO", 11), ("Aplicar", "APLICAR", 12)):
+    for nombre, titulo, peso in (("Doc", "DOCUMENTO", 17), ("Fecha", "FECHA", 7), ("Vence", "VENCE", 7), ("Estado", "ESTADO", 9), ("Pagos", "PAGOS APLICADOS", 17), ("Total", "TOTAL", 8), ("Saldo", "SALDO", 9), ("Parc", "PARC.", 6), ("Aplicar", "APLICAR", 10), ("Queda", "RESULTADO", 12)):
         c = DataGridViewTextBoxColumn()
         c.Name = nombre
         c.HeaderText = titulo
         c.FillWeight = peso
-        c.ReadOnly = nombre != "Aplicar"
+        c.ReadOnly = nombre != "Aplicar" and nombre != "Parc"
         grid.Columns.Add(c)
     for nombre in ("Total", "Saldo", "Aplicar"):
         grid.Columns[nombre].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight
         grid.Columns[nombre].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight
     grid.Columns["Saldo"].DefaultCellStyle.Font = F_B
     grid.Columns["Aplicar"].DefaultCellStyle.BackColor = rgb(255, 251, 235)
+    grid.Columns["Parc"].DefaultCellStyle.BackColor = rgb(255, 251, 235)
+    grid.Columns["Parc"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter
+    grid.Columns["Parc"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter
+    grid.Columns["Pagos"].DefaultCellStyle.ForeColor = C_MUTED
+    grid.Columns["Queda"].DefaultCellStyle.ForeColor = C_MUTED
+    grid.Columns["Queda"].DefaultCellStyle.Font = F_SM
     g4.Controls.Add(grid)
 
     # ---------- resumen ----------
     g5 = grupo(lambda: "Resumen")
     lbl_n = dato(g5, "Documentos marcados", 14, 34)
-    lbl_sal = dato(g5, "Saldo de la persona", 174, 34)
+    lbl_sal = dato(g5, "Saldo (MXN)", 174, 34)
     lbl_q = dato(g5, "Quedaría", 334, 34)
     lbl_mon = dato(g5, "Monto capturado", 494, 34)
     lbl_tot_et = Label()
@@ -574,7 +592,7 @@ def principal():
     lbl_tot.TextAlign = ContentAlignment.MiddleRight
     lbl_tot.Location = Point(560, 46)
     g5.Controls.Add(lbl_tot)
-    et(g5, "Se registra una operación (folio) por documento, con su aplicación, espejo, transferencia bancaria y reparto de impuestos. No genera la póliza contable; pruébalo primero en una base de pruebas.", 14, 82)
+    et(g5, "Se registra una sola operación (un folio) con un renglón por documento y parcialidad. Lo que captures en «Aplicar» va en la moneda de la cuenta. No genera la póliza contable; pruébalo primero en una base de pruebas.", 14, 82)
 
     # ---------- pie ----------
     p_pie = Panel()
@@ -711,11 +729,118 @@ def principal():
             return []
         return [d for d in docs_lado() if d["ent"] == E["ent"]["id"]]
 
-    def stats():           # por persona: [pendiente, vencido, #docs, v0..v4]
+    # ---------- moneda, tipo de cambio y parcialidades (lo mismo que la página de WebView2) ----------
+    def m_cta():
+        i = cmb_cta.SelectedIndex
+        return cta_items[i]["moneda"] if 0 <= i < len(cta_items) else 3
+
+    def tc():
+        return Convert.ToDouble(nud_tc.Value)
+
+    def compat(d):
+        mc = m_cta()
+        return d["moneda"] == mc or mc == 3 or d["moneda"] == 3
+
+    def a_doc(d, m):
+        mc = m_cta()
+        if d["moneda"] == mc:
+            return m
+        if mc == 3:
+            return m / tc() if tc() > 0 else 0.0
+        return m * tc()
+
+    def a2(d, sa):
+        mc = m_cta()
+        if d["moneda"] == mc:
+            return round(sa, 2)
+        if mc == 3:
+            return round(sa * tc(), 2)
+        v = sa / tc() if tc() > 0 else 0.0
+        return math.floor(v * 100 + 1e-9) / 100
+
+    def sc(d):
+        return a2(d, d["saldo"])
+
+    def val_mx(d, da):
+        return da if d["moneda"] == 3 else da * d["tcDoc"]
+
+    def moneda_fx():       # moneda extranjera que interviene (0 = todo en pesos: no se pide tipo de cambio)
+        mc = m_cta()
+        if mc != 3:
+            return mc
+        ds = docs_de_ent()
+        for k in seleccion:
+            d = next((x for x in ds if x["id"] == k), None)
+            if d is not None and d["moneda"] != 3:
+                return d["moneda"]
+        l = next((x for x in ds if x["moneda"] != 3), None)
+        return l["moneda"] if l is not None else 0
+
+    def pintar_mon():
+        mc = m_cta()
+        fx = moneda_fx()
+        sy = simbolo_de(mc)
+        ver = fx != 0
+        lbl_tc_et.Visible = ver
+        nud_tc.Visible = ver
+        lbl_monto_et.Text = ("Monto recibido" if es_cobro() else "Monto a pagar") + (" (" + sy + ")" if mc != 3 else "") + " (opcional)"
+        grid.Columns["Aplicar"].HeaderText = "APLICAR " + sy
+        nota.Text = ("Cuenta en " + sy + " · " + moneda_por[mc]["nombre"]) if mc != 3 and mc in moneda_por else "(lo asigna el sistema al registrar)"
+        if ver:
+            lbl_tc_et.Text = "Tipo de cambio " + simbolo_de(fx) + " → MXN"
+            if E["tc_mon"] != fx:
+                E["tc_mon"] = fx
+                E["ajustando"] = True
+                nud_tc.Value = Convert.ToDecimal(round(moneda_por[fx]["tc"], 4)) if fx in moneda_por else Convert.ToDecimal(1)
+                E["ajustando"] = False
+
+    def leyenda(d):        # resultado en la moneda del documento
+        id_ = d["id"]
+        m = seleccion.get(id_, 0.0)
+        sal = d["saldo"]
+        da = round(a_doc(d, m), 2)
+        if abs(da - sal) <= 0.011:
+            da = sal
+        q = round(sal - da, 2)
+        sy = d["simbolo"]
+        return ("= " + "{:,.2f}".format(da) + " " + sy + " · " if d["moneda"] != m_cta() else "") + ("liquida" if q <= 0.004 else "queda " + "{:,.2f}".format(q) + " " + sy)
+
+    def pago_texto(d):
+        na = d["nAplic"]
+        nn = d["nNotas"]
+        pg = d["pagado"]
+        tot = d["total"]
+        if na + nn == 0 and pg <= 0.004:
+            return "sin pagos aplicados"
+        p = ["pagado " + "{:,.2f}".format(pg) + " (%d %%)" % int(round(pg / (tot if tot else 1) * 100))]
+        if na > 0:
+            p.append(str(na) + (" cobro" if es_cobro() else " pago") + ("s" if na > 1 else ""))
+        if nn > 0:
+            p.append(str(nn) + " nota" + ("s" if nn > 1 else "") + " de crédito")
+        return " · ".join(p)
+
+    def cambio_cuenta():
+        mc = m_cta()
+        if mc != E["mc_prev"]:
+            E["mc_prev"] = mc
+            E["tc_mon"] = -1
+        pintar_mon()
+        ds = docs_de_ent()
+        for k in list(seleccion.keys()):
+            d = next((x for x in ds if x["id"] == k), None)
+            if d is None or not compat(d):
+                seleccion.pop(k, None)
+                parc_sel.pop(k, None)
+            elif seleccion[k] > sc(d) or mc != E["mc_prev_docs"]:
+                seleccion[k] = sc(d)
+        E["mc_prev_docs"] = mc
+        pintar_docs()
+
+    def stats():           # por persona (en pesos): [pendiente, vencido, #docs, v0..v4]
         m = {}
         for d in docs_lado():
             a = m.setdefault(d["ent"], [0.0] * 8)
-            s = d["saldo"]
+            s = d["saldoMx"]
             a[0] += s
             a[2] += 1
             dv = dias_vencido(d)
@@ -732,34 +857,59 @@ def principal():
         ent = E["ent"]
         pend = ES[ent["id"]][0] if ent is not None and ent["id"] in ES else 0.0
         mon = Convert.ToDouble(nud_monto.Value)
+        mc = m_cta()
+        sy = simbolo_de(mc)
+        pm = 0.0
+        dsel = docs_de_ent()
+        for k, v in seleccion.items():
+            d = next((x for x in dsel if x["id"] == k), None)
+            if d is None:
+                continue
+            da = a_doc(d, v)
+            if abs(da - d["saldo"]) <= 0.011:
+                da = d["saldo"]
+            pm += val_mx(d, da)
         lbl_n.Text = str(len(seleccion))
         lbl_sal.Text = "{:,.2f}".format(pend)
-        lbl_q.Text = "{:,.2f}".format(pend - t)
-        lbl_mon.Text = "{:,.2f}".format(mon) if mon > 0 else "—"
-        lbl_tot.Text = "{:,.2f}".format(t)
+        lbl_q.Text = "{:,.2f}".format(max(0.0, pend - round(pm, 2)))
+        lbl_mon.Text = ("{:,.2f}".format(mon) + " " + sy) if mon > 0 else "—"
+        lbl_tot.Text = "{:,.2f}".format(t) + " " + sy
         lbl_tot.ForeColor = acento()
+        lbl_tot_et.Text = ("A APLICAR  ·  ≈ " + "{:,.2f}".format(t * tc()) + " MXN") if mc != 3 else "A APLICAR"
         av = []
         if mon > 0 and t > 0 and abs(mon - t) > 0.005:
-            av.append(("⚠ Sobran " + "{:,.2f}".format(mon - t) + " del monto: no se aplican (los anticipos no se manejan aquí)") if mon > t else ("⚠ Faltan " + "{:,.2f}".format(t - mon) + " para cubrir lo marcado"))
+            av.append(("⚠ Sobran " + "{:,.2f}".format(mon - t) + " " + sy + " del monto: no se aplican (los anticipos no se manejan aquí)") if mon > t else ("⚠ Faltan " + "{:,.2f}".format(t - mon) + " " + sy + " para cubrir lo marcado"))
         if dt_fecha.Value.Date.CompareTo(DateTime.Today) > 0:
             av.append("⚠ La fecha es posterior a hoy")
         lbl_avisos.Text = "     ".join(av)
 
     def pintar_docs():
         E["pintando"] = True
+        pintar_mon()
         grid.Rows.Clear()
         ds = docs_de_ent()
         for d in ds:
             id_ = d["id"]
             on = id_ in seleccion
+            ok = compat(d)
+            ext = d["moneda"] != 3
+            np_ = d["nParc"]
             dv = dias_vencido(d)
             estado = "sin vencimiento" if dv is None else ("vencido %d d" % dv) if dv > 0 else ("vence en %d d" % (-dv)) if dv >= -7 else "vigente"
             fecha = fe(d["fecha"])
             vence = fe(d["vence"]) if d["vence"] else None
-            r = grid.Rows.Add(on, d["tipo"] + " " + d["folio"], fecha.strftime("%d/%m/%Y") if fecha else "", vence.strftime("%d/%m/%Y") if vence else "—", estado,
-                              "{:,.2f}".format(d["total"]), "{:,.2f}".format(d["saldo"]), ("%.2f" % seleccion[id_]) if on else "")
+            r = grid.Rows.Add(on, d["tipo"] + " " + d["folio"] + ("  [" + d["simbolo"] + "]" if ext else ""), fecha.strftime("%d/%m/%Y") if fecha else "", vence.strftime("%d/%m/%Y") if vence else "—", estado, pago_texto(d),
+                              "{:,.2f}".format(d["total"]), "{:,.2f}".format(d["saldo"]) + (" " + d["simbolo"] if ext else ""),
+                              ("1 de 1" if np_ == 1 else "—") if np_ < 2 else (str(parc_sel[id_]) if id_ in parc_sel else "auto"),
+                              (("%.2f" % seleccion[id_]) if on else "") if ok else "—", (leyenda(d) if on else "") if ok else "no aplica con una cuenta en " + simbolo_de(m_cta()))
             grid.Rows[r].Tag = id_
             grid.Rows[r].Cells["Estado"].Style.ForeColor = C_ROJO if dv is not None and dv > 0 else C_AMBAR if dv is not None and dv >= -7 else C_VERDE
+            grid.Rows[r].Cells["Parc"].ReadOnly = np_ < 2 or not on
+            grid.Rows[r].Cells["Aplicar"].ReadOnly = (not ok) or (not on)
+            if not ok:
+                grid.Rows[r].DefaultCellStyle.ForeColor = C_MUTED
+            if d["nAplic"] + d["nNotas"] > 0:
+                grid.Rows[r].Cells["Pagos"].Style.ForeColor = C_VERDE
         lbl_docs_est.Text = "elige primero la persona" if E["ent"] is None else "%d documento(s) con saldo · captura el monto y usa «Distribuir», o marca y ajusta «Aplicar»" % len(ds)
         E["pintando"] = False
         totales()
@@ -771,7 +921,7 @@ def principal():
         btn_mov.Enabled = ent is not None
         if ent is not None:
             e = ES.get(ent["id"], [0.0] * 8)
-            pastillas.append(("Saldo pendiente", "{:,.2f}".format(e[0]), C_AMBAR if e[0] > 0 else C_TXT))
+            pastillas.append(("Saldo pendiente (MXN)", "{:,.2f}".format(e[0]), C_AMBAR if e[0] > 0 else C_TXT))
             pastillas.append(("Vencido", "{:,.2f}".format(e[1]), C_ROJO if e[1] > 0 else C_TXT))
             pastillas.append(("Documentos", "%d" % e[2], C_TXT))
             if ent["credito"] > 0:
@@ -786,6 +936,7 @@ def principal():
         txt_ent.Text = x["nombre"]
         lst_ent.Visible = False
         seleccion.clear()
+        parc_sel.clear()
         pintar_ent()
         pintar_docs()
         nud_monto.Focus()
@@ -798,6 +949,7 @@ def principal():
             E["ent"] = None
             txt_ent.Text = ""
         seleccion.clear()
+        parc_sel.clear()
         ES.clear()
         ES.update(stats())
         for i, b in enumerate(btns_tipo):
@@ -820,21 +972,24 @@ def principal():
 
     def marcar_todos():
         for d in docs_de_ent():
-            seleccion[d["id"]] = d["saldo"]
+            if compat(d):
+                seleccion[d["id"]] = sc(d)
         pintar_docs()
 
     def marcar_vencidos():
         seleccion.clear()
+        parc_sel.clear()
         for d in docs_de_ent():
             dv = dias_vencido(d)
-            if dv is not None and dv > 0:
-                seleccion[d["id"]] = d["saldo"]
+            if compat(d) and dv is not None and dv > 0:
+                seleccion[d["id"]] = sc(d)
         pintar_docs()
         if not seleccion:
             aviso("No hay documentos vencidos.")
 
     def quitar_marcas():
         seleccion.clear()
+        parc_sel.clear()
         pintar_docs()
 
     def repartir():
@@ -845,11 +1000,14 @@ def principal():
             nud_monto.Focus()
             raise Exception("Captura el monto que se va a repartir.")
         seleccion.clear()
+        parc_sel.clear()
         resto = round(m, 2)
-        for d in sorted(docs_de_ent(), key=lambda x: ((x["vence"] or x["fecha"]), x["id"])):
+        for d in sorted([x for x in docs_de_ent() if compat(x)], key=lambda x: ((x["vence"] or x["fecha"]), x["id"])):
             if resto <= 0:
                 break
-            ap = min(d["saldo"], resto)
+            ap = min(sc(d), resto)
+            if ap <= 0:
+                continue
             seleccion[d["id"]] = round(ap, 2)
             resto = round(resto - ap, 2)
         pintar_docs()
@@ -893,6 +1051,7 @@ def principal():
         if E["ent"] is not None:
             E["ent"] = None
             seleccion.clear()
+            parc_sel.clear()
             pintar_ent()
             pintar_docs()
         desplegar()
@@ -938,6 +1097,8 @@ def principal():
         pintar_ent()
         pintar_docs()
     dt_fecha.ValueChanged += seguro(cambio_fecha)
+    cmb_cta.SelectedIndexChanged += seguro(lambda: cambio_cuenta() if (cmb_cta.Focused or E["mc_prev"] != m_cta()) else None)
+    nud_tc.ValueChanged += seguro(lambda: pintar_docs() if not E["ajustando"] else None)
 
     def clic_celda(sender, ev):
         if E["pintando"] or ev.RowIndex < 0 or grid.Columns[ev.ColumnIndex].Name != "Marca":
@@ -947,35 +1108,170 @@ def principal():
             id_ = grid.Rows[ev.RowIndex].Tag
             d = next(x for x in docs_de_ent() if x["id"] == id_)
             on = bool(grid.Rows[ev.RowIndex].Cells["Marca"].EditedFormattedValue)
+            if on and not compat(d):
+                pintar_docs()
+                aviso("Ese documento está en " + d["simbolo"] + " y la cuenta en " + simbolo_de(m_cta()) + ": no se puede aplicar aquí.", True)
+                return
+            if on and not sc(d) > 0:
+                aviso("Captura primero el tipo de cambio.", True)
             if on:
-                seleccion[id_] = d["saldo"]
+                seleccion[id_] = sc(d)
             else:
                 seleccion.pop(id_, None)
+                parc_sel.pop(id_, None)
             pintar_docs()
         except Exception as ex:
             msg(str(ex))
     grid.CellContentClick += clic_celda
 
     def fin_edicion(sender, ev):
-        if E["pintando"] or ev.RowIndex < 0 or grid.Columns[ev.ColumnIndex].Name != "Aplicar":
+        col = grid.Columns[ev.ColumnIndex].Name if ev.ColumnIndex >= 0 else ""
+        if E["pintando"] or ev.RowIndex < 0 or col not in ("Aplicar", "Parc"):
             return
         try:
             id_ = grid.Rows[ev.RowIndex].Tag
             d = next(x for x in docs_de_ent() if x["id"] == id_)
+            if col == "Parc":        # parcialidad: número, o vacío / «auto» para ir en orden; al elegirla se propone el saldo de esa parcialidad
+                try:
+                    pn = int(str(grid.Rows[ev.RowIndex].Cells["Parc"].Value))
+                except Exception:
+                    pn = 0
+                if pn < 1 or pn > d["nParc"]:
+                    parc_sel.pop(id_, None)
+                else:
+                    parc_sel[id_] = pn
+                    p = next((x for x in parcialidades_de(id_, d["saldo"]) if x["n"] == pn), None)
+                    if p is not None and id_ in seleccion:
+                        seleccion[id_] = min(sc(d), a2(d, p["saldo"]))
+                pintar_docs()
+                return
             try:
                 n = float(str(grid.Rows[ev.RowIndex].Cells["Aplicar"].Value).replace(",", ""))
             except Exception:
                 n = 0.0
-            n = max(0.0, min(n, d["saldo"]))
+            tope = sc(d)
+            if n > tope:
+                n = tope
+                aviso("El importe se ajustó al saldo del documento.")
+            n = max(0.0, n)
             if n > 0:
                 seleccion[id_] = n
             else:
                 seleccion.pop(id_, None)
+                parc_sel.pop(id_, None)
             pintar_docs()
         except Exception as ex:
             msg(str(ex))
     grid.CellEndEdit += fin_edicion
     grid.DataError += lambda s, ev: setattr(ev, "ThrowException", False)
+
+    def doble_clic(sender, ev):
+        if ev.RowIndex >= 0 and grid.Columns[ev.ColumnIndex].Name not in ("Marca", "Aplicar", "Parc"):
+            try:
+                abrir_detalle(grid.Rows[ev.RowIndex].Tag)
+            except Exception as ex:
+                msg(str(ex))
+    grid.CellDoubleClick += doble_clic
+
+    def detalle_sel():
+        if grid.CurrentRow is None or grid.CurrentRow.Tag is None:
+            aviso("Elige un documento de la lista (clic en su renglón).", True)
+            return
+        abrir_detalle(grid.CurrentRow.Tag)
+
+    # parcialidades y pagos aplicados de un documento (cobros, pagos y notas de crédito): ventana aparte, también sin bloquear
+    def abrir_detalle(id_):
+        d = next((x for x in docs_de_ent() if x["id"] == id_), None)
+        if d is None:
+            return
+        r = detalle_doc(id_)
+        sy = r["simbolo"]
+        ext = r["moneda"] != 3
+        h = Form()
+        h.Text = "Detalle · " + d["tipo"] + " " + d["folio"]
+        h.Size = Size(780, 540)
+        h.StartPosition = FormStartPosition.CenterParent
+        h.BackColor = Color.White
+        h.Font = F_BASE
+        h.MinimumSize = Size(640, 420)
+        lt = Label()
+        lt.Dock = DockStyle.Top
+        lt.Height = 56
+        lt.Padding = Padding(12, 8, 12, 0)
+        lt.ForeColor = C_TXT
+        lt.Font = F_B
+        lt.Text = "Total " + "{:,.2f}".format(r["total"]) + " " + sy + "     Pagado " + "{:,.2f}".format(r["pagado"]) + "     Saldo " + "{:,.2f}".format(r["saldo"]) + (
+            "\nDocumento en " + sy + " · tipo de cambio del documento " + ("%g" % round(r["tcDoc"], 4)) + " · saldo ≈ " + "{:,.2f}".format(d["saldoMx"]) + " MXN" if ext else "")
+
+        def rejilla(cols, dock, alto):
+            g = DataGridView()
+            g.Dock = dock
+            g.Height = alto
+            g.AllowUserToAddRows = False
+            g.AllowUserToDeleteRows = False
+            g.ReadOnly = True
+            g.RowHeadersVisible = False
+            g.SelectionMode = DataGridViewSelectionMode.FullRowSelect
+            g.BackgroundColor = Color.White
+            g.BorderStyle = getattr(BorderStyle, "None")
+            g.EnableHeadersVisualStyles = False
+            g.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal
+            g.GridColor = rgb(230, 235, 242)
+            g.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+            g.RowTemplate.Height = 26
+            g.ColumnHeadersDefaultCellStyle.BackColor = C_HEAD
+            g.ColumnHeadersDefaultCellStyle.ForeColor = C_TXT
+            g.ColumnHeadersDefaultCellStyle.Font = F_B
+            g.ColumnHeadersDefaultCellStyle.SelectionBackColor = C_HEAD
+            g.ColumnHeadersDefaultCellStyle.SelectionForeColor = C_TXT
+            g.DefaultCellStyle.SelectionBackColor = C_SEL
+            g.DefaultCellStyle.SelectionForeColor = C_TXT
+            for nombre, titulo, peso in cols:
+                c = DataGridViewTextBoxColumn()
+                c.Name = nombre
+                c.HeaderText = titulo
+                c.FillWeight = peso
+                g.Columns.Add(c)
+            return g
+
+        g_ap = rejilla((("Fecha", "FECHA", 12), ("Tipo", "TIPO", 14), ("Folio", "FOLIO", 28), ("Parc", "PARC.", 8), ("TC", "TIPO DE CAMBIO", 14), ("Monto", "MONTO (" + sy + ")", 16)), DockStyle.Fill, 100)
+        for a in r["aplic"]:
+            tp = {"cobro": "Cobro", "pago": "Pago", "nota": "Nota de crédito"}.get(a["tipo"], "Otro")
+            f_ = fe(a["fecha"]) if a["fecha"] else None
+            fila = g_ap.Rows.Add(f_.strftime("%d/%m/%Y") if f_ else "", tp, a["folio"], str(a["parc"]), ("%g" % round(a["tc"], 4)) if ext and a["tc"] > 0 and a["tipo"] != "nota" else "", "{:,.2f}".format(a["monto"]))
+            g_ap.Rows[fila].Cells["Tipo"].Style.ForeColor = C_AMBAR if a["tipo"] == "nota" else C_VERDE
+        if g_ap.Rows.Count == 0:
+            g_ap.Rows.Add("", "Sin cobros, pagos ni notas de crédito aplicados todavía", "", "", "", "")
+        g_pa = rejilla((("N", "N.º", 8), ("Vence", "VENCE", 18), ("Importe", "IMPORTE", 18), ("Pagado", "PAGADO", 18), ("Saldo", "SALDO", 18)), DockStyle.Top, 30 + 26 * max(1, len(r["parc"])))
+        for p in r["parc"]:
+            v_ = fe(p["vence"]) if p["vence"] else None
+            fila = g_pa.Rows.Add(str(p["n"]), v_.strftime("%d/%m/%Y") if v_ else "—", "{:,.2f}".format(p["importe"]), "{:,.2f}".format(p["pagado"]), "liquidada" if p["saldo"] <= 0.004 else "{:,.2f}".format(p["saldo"]))
+            g_pa.Rows[fila].Cells["Saldo"].Style.ForeColor = C_VERDE if p["saldo"] <= 0.004 else C_ROJO if p["vence"] and p["vence"] < hoy() else C_TXT
+        for gx in (g_pa, g_ap):
+            for c in gx.Columns:
+                if c.Name not in ("Tipo", "Folio", "Fecha"):
+                    c.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight
+                    c.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight
+        lp = Label()
+        lp.Text = "Parcialidades"
+        lp.Dock = DockStyle.Top
+        lp.Height = 24
+        lp.Padding = Padding(12, 4, 0, 0)
+        lp.ForeColor = C_MUTED
+        lp.Font = F_B
+        la = Label()
+        la.Text = "Aplicaciones: cobros, pagos y notas de crédito"
+        la.Dock = DockStyle.Top
+        la.Height = 28
+        la.Padding = Padding(12, 10, 0, 0)
+        la.ForeColor = C_MUTED
+        la.Font = F_B
+        h.Controls.Add(g_ap)
+        h.Controls.Add(la)
+        h.Controls.Add(g_pa)
+        h.Controls.Add(lp)
+        h.Controls.Add(lt)
+        h.Show(frm)
 
     # últimos movimientos de la persona: ventana aparte
     def ver_movimientos():
@@ -1009,6 +1305,7 @@ def principal():
         E["ent"] = None
         txt_ent.Text = ""
         seleccion.clear()
+        parc_sel.clear()
         txt_ref.Text = ""
         nud_monto.Value = Convert.ToDecimal(0)
         pintar_ent()
@@ -1022,6 +1319,7 @@ def principal():
         except Exception:
             pass
         seleccion.clear()
+        parc_sel.clear()
         ES.clear()
         ES.update(stats())
         pintar_ent()
@@ -1037,11 +1335,23 @@ def principal():
         cta = seleccionado(cmb_cta, cta_items)
         if cta is None:
             raise Exception("Elige la cuenta.")
-        aps = [{"doc": k, "monto": v} for k, v in seleccion.items() if v > 0]
+        aps = [{"doc": k, "monto": v, "parcialidad": parc_sel.get(k, 0)} for k, v in seleccion.items() if v > 0]
         if not aps:
             raise Exception("Marca al menos un documento y captura cuánto aplicar.")
+        mc_r = m_cta()
+        fx_r = moneda_fx()
+        ds_r = docs_de_ent()
+        fxs = set()
+        for k in seleccion:
+            dd = next((x for x in ds_r if x["id"] == k), None)
+            if dd is not None and dd["moneda"] != 3 and dd["moneda"] != mc_r:
+                fxs.add(dd["moneda"])
+        if len(fxs) > 1:
+            raise Exception("Hay documentos en monedas extranjeras distintas: regístralos por separado.")
+        if fx_r != 0 and not tc() > 0:
+            raise Exception("Captura el tipo de cambio.")
         forma = seleccionado(cmb_forma, forma_items)
-        spec = {"tipo": t["clave"], "entidad": E["ent"]["id"], "cuenta": cta["id"], "forma": forma["id"] if forma else 0, "fecha": hoy(), "referencia": txt_ref.Text, "aplicaciones": aps}
+        spec = {"tipo": t["clave"], "entidad": E["ent"]["id"], "cuenta": cta["id"], "forma": forma["id"] if forma else 0, "fecha": hoy(), "referencia": txt_ref.Text, "tc": tc() if fx_r != 0 else 0.0, "aplicaciones": aps}
         E["guardando"] = True
         frm.Cursor = Cursors.WaitCursor
         try:
@@ -1079,6 +1389,8 @@ def principal():
     frm.KeyDown += tecla_forma
 
     # ---------- Arranque ----------
+    E["mc_prev"] = m_cta()
+    E["mc_prev_docs"] = E["mc_prev"]
     cambiar_tipo(0)
     acomodar()
     frm.ShowDialog()
