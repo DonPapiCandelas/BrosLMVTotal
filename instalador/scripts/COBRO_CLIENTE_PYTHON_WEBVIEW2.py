@@ -1,12 +1,12 @@
 # lang: python
 # timeout: 1800
-# AppKey recomendado: COBRO_PAGO_PYTHON_WEBVIEW2
-# Plantilla: Cobro a cliente / Pago a proveedor (Python · ventana HTML)
+# AppKey recomendado: COBRO_CLIENTE_PYTHON_WEBVIEW2
+# Plantilla: Cobro a cliente (Python · ventana HTML)
 # Categoria: Tesorería
 # Documentacion: COBRO_PAGO.html
-# ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un cobro a cliente o un pago a proveedor y lo aplica a uno o varios documentos con saldo.
+# ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un cobro a cliente y lo aplica a uno o varios documentos con saldo.
 # Comercial no ofrece una función para esto: la plantilla escribe directo en las tablas de Tesorería (una transacción por documento) y NO genera la póliza contable.
-# Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+# Plantilla separada a propósito: solo CUENTAS POR COBRAR (clientes) para que quien la use no vea el otro lado. Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
 #
 # Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
 # el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
@@ -123,7 +123,6 @@ def TP(clave, nombre, lado, mod_op, recip, tipo_op, prefijo):
 
 TIPOS = [
     TP("cobro", "Cobro a cliente",  "C", 248, 1, 31, "COB"),
-    TP("pago",  "Pago a proveedor", "P", 247, 2, 32, "PAG"),
 ]
 TIPO_POR = {t["clave"]: t for t in TIPOS}
 
@@ -226,16 +225,19 @@ def catalogos():
     def lista(tabla):
         return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "credito": D(r["credito"]), "ultFecha": S(r["ultFecha"]), "ultMonto": D(r["ultMonto"])} for r in ctx.query(ent(tabla))]
 
-    cat["clientes"] = lista("orgCustomer")
-    cat["proveedores"] = lista("orgSupplier")
+    # Solo el lado de esta plantilla: la persona que lleva cuentas por cobrar no ve nada de las cuentas por pagar (y al revés); ni siquiera se cargan sus datos.
+    ver_c = any(t["lado"] == "C" for t in TIPOS)
+    ver_p = any(t["lado"] == "P" for t in TIPOS)
+    cat["clientes"] = lista("orgCustomer") if ver_c else []
+    cat["proveedores"] = lista("orgSupplier") if ver_p else []
     cat["cuentas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "def": I(r["def"]) == 1} for r in ctx.query(
         "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")]
     cat["formas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")]
     # Folio siguiente de cada tipo (el mismo cálculo que usa aplicar)
     cat["folios"] = {t["clave"]: I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + str(t["modOp"]) + " AND FolioPrefix = N'" + t["prefijo"] + "'")) for t in TIPOS}
     # Documentos con saldo pendiente de cada lado (los más antiguos primero)
-    cat["docsC"] = docs_con_saldo("C")
-    cat["docsP"] = docs_con_saldo("P")
+    cat["docsC"] = docs_con_saldo("C") if ver_c else []
+    cat["docsP"] = docs_con_saldo("P") if ver_p else []
     return cat
 
 
@@ -618,7 +620,7 @@ combo($('ent'),$('lstEnt'),function(){return ENT().slice().sort(function(a,b){re
   function(x){var e=ES[x.id];return {a:x.nombre,b:x.rfc,c:e?'debe '+f2(e.pend)+' · '+e.n+' doc.':'sin saldo',buscar:x.nombre+' '+x.rfc+' '+x.id};},elegirEnt,60,true);
 $('ent').addEventListener('input',function(){if(ST.ent){ST.ent=null;ST.sel={};pintarEnt();pintarDocs();}});
 // ---- tipo ----
-function pintarTipos(){$('tipos').innerHTML=TIPOS.map(function(t){return '<button class=\'tipo '+(t.lado==='C'?'c':'p')+(t.clave===ST.tipo?' on':'')+'\' onclick=\'setTipo(&quot;'+t.clave+'&quot;)\'><i style=font-style:normal>'+(t.lado==='C'?'💰':'💸')+'</i>'+esc(t.nombre)+'</button>';}).join('');}
+function pintarTipos(){$('tipos').style.display=TIPOS.length>1?'':'none';$('tipos').innerHTML=TIPOS.map(function(t){return '<button class=\'tipo '+(t.lado==='C'?'c':'p')+(t.clave===ST.tipo?' on':'')+'\' onclick=\'setTipo(&quot;'+t.clave+'&quot;)\'><i style=font-style:normal>'+(t.lado==='C'?'💰':'💸')+'</i>'+esc(t.nombre)+'</button>';}).join('');}
 function setTipo(c){var antes=tipoAct().lado;ST.tipo=c;var t=tipoAct();if(t.lado!==antes){ST.ent=null;$('ent').value='';}ST.sel={};
   document.body.classList.remove('cobro','pago');document.body.classList.add(t.lado==='C'?'cobro':'pago');$('ttl').textContent=t.nombre;$('sub').textContent=t.lado==='C'?'Cuentas por cobrar · entra dinero':'Cuentas por pagar · sale dinero';
   $('lblEnt').textContent=t.lado==='C'?'Cliente':'Proveedor';$('lblCta').textContent=t.lado==='C'?'Entra a la cuenta':'Sale de la cuenta';$('lblMonto').textContent=t.lado==='C'?'Monto recibido (opcional)':'Monto a pagar (opcional)';$('lblMon2').textContent=t.lado==='C'?'Monto recibido':'Monto a pagar';

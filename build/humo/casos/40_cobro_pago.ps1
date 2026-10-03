@@ -10,7 +10,11 @@ param(
 $ErrorActionPreference = "Continue"
 if ($Database -ne "BROSLMV_DESARROLLO") { Write-Host "  Esta prueba solo corre contra BROSLMV_DESARROLLO." -ForegroundColor Red; exit 1 }
 $scripts = Join-Path $PSScriptRoot "..\..\..\instalador\scripts"
-$plantillas = @{ HUMO_COBRO_DOC = (Join-Path $scripts "CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx"); HUMO_COBRO_PAGO = (Join-Path $scripts "COBRO_PAGO_CSHARP_WEBVIEW2.ctx") }
+# Las plantillas de fabrica estan SEPARADAS (COBRO_CLIENTE_* y PAGO_PROVEEDOR_*); la prueba de la receta necesita las dos mitades juntas: se arma una version combinada en una carpeta temporal
+$combinado = Join-Path $env:TEMP "humo_pago_combinado"
+& python (Join-Path $PSScriptRoot "..\..\plantillas_documentos\generar.py") --combinado $combinado | Out-Null
+$plantillas = @{ HUMO_COBRO_DOC = (Join-Path $scripts "CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx"); HUMO_COBRO_PAGO = (Join-Path $combinado "COBRO_PAGO_CSHARP_WEBVIEW2.ctx");
+                 HUMO_COBRO_SOLO = (Join-Path $scripts "COBRO_CLIENTE_CSHARP_WEBVIEW2.ctx"); HUMO_PAGO_SOLO = (Join-Path $scripts "PAGO_PROVEEDOR_CSHARP_WEBVIEW2.ctx") }
 if (-not (Test-Path $RunnerExe)) { Write-Host "  [ERROR] No existe $RunnerExe -- compila el Runner primero." -ForegroundColor Red; exit 1 }
 foreach ($p in $plantillas.Values) { if (-not (Test-Path $p)) { Write-Host "  [ERROR] No existe $p" -ForegroundColor Red; exit 1 } }
 
@@ -46,6 +50,15 @@ function Cerca($a, $b, $tol = 0.011) { return ([math]::Abs([double]$a - [double]
 function Fila($doc) { return ((Sql "SELECT CONCAT(Total,'|',Balance,'|',TotalPaid,'|',StatusPaidID) FROM docDocument WHERE DocumentID=$doc") -split '\|') }
 
 $hoy = (Get-Date).ToString('yyyy-MM-dd'); $cli = 2; $prov = 10020; $alm = 1
+
+# Separacion: la plantilla de cobros no carga NADA del lado de proveedores (ni personas ni documentos por pagar), y la de pagos nada del lado de clientes
+$sc = $ser.DeserializeObject((Correr 'HUMO_COBRO_SOLO' 'BROSLMV_PAGO_TEST' 'BROSLMV_PAGO_OUT' @{ catalogo = $true }))
+if (@($sc['proveedores']).Count -ne 0 -or @($sc['docsP']).Count -ne 0 -or @($sc['clientes']).Count -lt 1) { Fallo "La plantilla de COBRO a cliente no debia traer proveedores ni documentos por pagar." }
+$sp = $ser.DeserializeObject((Correr 'HUMO_PAGO_SOLO' 'BROSLMV_PAGO_TEST' 'BROSLMV_PAGO_OUT' @{ catalogo = $true }))
+if (@($sp['clientes']).Count -ne 0 -or @($sp['docsC']).Count -ne 0 -or @($sp['proveedores']).Count -lt 1) { Fallo "La plantilla de PAGO a proveedor no debia traer clientes ni documentos por cobrar." }
+$rc = Correr 'HUMO_COBRO_SOLO' 'BROSLMV_PAGO_TEST' 'BROSLMV_PAGO_OUT' @{ tipo = 'pago'; entidad = $prov; cuenta = 1; forma = 3; fecha = $hoy; aplicaciones = @(@{ doc = 1; monto = 1 }) }
+if ($rc -notmatch 'Tipo desconocido') { Fallo "La plantilla de cobros no debia aceptar un pago a proveedor: $rc" }
+Write-Host ("  Separacion: cobros ({0} clientes, 0 proveedores, 0 por pagar) y pagos ({1} proveedores, 0 clientes, 0 por cobrar)." -f @($sc['clientes']).Count, @($sp['proveedores']).Count)
 
 # 1) Catalogo de la plantilla: cuentas, formas de pago y documentos con saldo
 $cat = $ser.DeserializeObject((Pago @{ catalogo = $true }))

@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mock_broslmv as m
 from mock_broslmv import registro, sqlcmd
 
-PLANTILLA = sys.argv[1] if len(sys.argv) > 1 else os.path.join(m.AQUI, "..", "..", "instalador", "scripts", "COBRO_PAGO_PYTHON_WEBVIEW2.py")
+PLANTILLA = sys.argv[1] if len(sys.argv) > 1 else m.ruta_combinada("COBRO_PAGO_PYTHON_WEBVIEW2.py")
 os.environ["BROSLMV_PAGO_TEST"] = '{"catalogo": true}'
 os.environ["BROSLMV_PAGO_OUT"] = os.path.join(os.environ.get("TEMP", "."), "prueba_py_pago.txt")
 codigo = open(PLANTILLA, encoding="utf-8").read()

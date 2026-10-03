@@ -3,14 +3,18 @@
 > ⚠ **Plantilla avanzada.** Comercial **no ofrece ninguna función** para aplicar un cobro o un pago (se buscó en el SDK y en el motor; véase MANUAL §10.5). Estas plantillas escriben **directo en las tablas de Tesorería**.
 > Funcionan y se validaron contra el laboratorio, pero **no generan la póliza contable** del cobro/pago y no sustituyen a la pantalla nativa de Tesorería. **Pruébalas primero en una base de pruebas**, no en producción.
 
-Cuatro plantillas de fábrica (Consola → Plantillas → Tesorería), la misma ventana y la misma lógica:
+**Dos plantillas por cada lenguaje y ventana, separadas a propósito:** **Cobro a cliente** (cuentas por cobrar) y **Pago a proveedor** (cuentas por pagar). La persona que lleva las cuentas por cobrar **no ve nada** de las cuentas por pagar, y al revés: cada plantilla ni siquiera carga las personas ni los documentos del otro lado (y rechaza un movimiento del otro tipo). Así se le puede dar a cada usuario solo la que le toca. Son ocho plantillas de fábrica (Consola → Plantillas → Tesorería), con la misma ventana y la misma lógica por lado:
 
 | Plantilla | Lenguaje | Ventana |
 |---|---|---|
-| **Cobro a cliente / Pago a proveedor (C# · ventana HTML)** — `COBRO_PAGO_CSHARP_WEBVIEW2.ctx` | C# | HTML (WebView2) |
-| **… (C# · ventana Windows Forms)** — `COBRO_PAGO_CSHARP_WINFORMS.ctx` | C# | Windows Forms |
-| **… (Python · ventana HTML)** — `COBRO_PAGO_PYTHON_WEBVIEW2.py` | Python | HTML (WebView2) |
-| **… (Python · ventana Windows Forms)** — `COBRO_PAGO_PYTHON_WINFORMS.py` | Python | Windows Forms (pythonnet) |
+| **Cobro a cliente (C# · ventana HTML)** — `COBRO_CLIENTE_CSHARP_WEBVIEW2.ctx` | C# | HTML (WebView2) |
+| **Cobro a cliente (C# · ventana Windows Forms)** — `COBRO_CLIENTE_CSHARP_WINFORMS.ctx` | C# | Windows Forms |
+| **Cobro a cliente (Python · ventana HTML)** — `COBRO_CLIENTE_PYTHON_WEBVIEW2.py` | Python | HTML (WebView2) |
+| **Cobro a cliente (Python · ventana Windows Forms)** — `COBRO_CLIENTE_PYTHON_WINFORMS.py` | Python | Windows Forms (pythonnet) |
+| **Pago a proveedor (C# · ventana HTML)** — `PAGO_PROVEEDOR_CSHARP_WEBVIEW2.ctx` | C# | HTML (WebView2) |
+| **Pago a proveedor (C# · ventana Windows Forms)** — `PAGO_PROVEEDOR_CSHARP_WINFORMS.ctx` | C# | Windows Forms |
+| **Pago a proveedor (Python · ventana HTML)** — `PAGO_PROVEEDOR_PYTHON_WEBVIEW2.py` | Python | HTML (WebView2) |
+| **Pago a proveedor (Python · ventana Windows Forms)** — `PAGO_PROVEEDOR_PYTHON_WINFORMS.py` | Python | Windows Forms (pythonnet) |
 
 ## La ventana: una estación de tesorería
 
@@ -38,7 +42,7 @@ Las plantillas **WebView2** (C# y Python) consultan a Comercial en vivo y suman:
 
 ## Cómo usarlas
 
-1. En la **Consola** abre la plantilla que prefieras, guárdala como botón (nombre sugerido `COBRO_PAGO`) y ponla en el ribbon con *Crear botón…*.
+1. En la **Consola** abre la plantilla que prefieras, guárdala como botón (nombre sugerido `COBRO_CLIENTE` o `PAGO_PROVEEDOR`) y ponla en el ribbon con *Crear botón…*.
 2. Pulsa el botón. Elige **Cobro a cliente** o **Pago a proveedor**.
 3. Escribe el **cliente o proveedor** y elígelo de la lista: aparecen **todos sus documentos con saldo** (los vencidos, en rojo).
 4. Elige la **cuenta** (banco o caja donde entra o de donde sale el dinero), la **forma de pago**, la **fecha** y, si quieres, una **referencia o número de rastreo**.

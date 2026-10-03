@@ -60,7 +60,7 @@ def correr(plantilla, escenario):
         threading.Thread(target=hilo, daemon=True).start()
 
     m.Ctx.show_html = show_html
-    codigo = open(os.path.join(RAIZ, plantilla), encoding="utf-8").read()
+    codigo = open(plantilla if os.path.isabs(plantilla) else os.path.join(RAIZ, plantilla), encoding="utf-8").read()
     registro.clear()
     exec(compile(codigo, plantilla, "exec"), {"__name__": "plantilla"})
     if "error" in resultado:
@@ -134,6 +134,6 @@ def escenario_pago(url, token, res):
 
 r1 = correr("CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx" if False else "CREAR_DOCUMENTO_PYTHON_WEBVIEW2.py", escenario_documento)
 print("  Crear documento (Python en vivo): token, latido, entidad, pendientes, inteligencia (%s), borrador, tema, crear y nuevo, validación y cierre." % r1["inteligencia"])
-r2 = correr("COBRO_PAGO_PYTHON_WEBVIEW2.py", escenario_pago)
+r2 = correr(m.ruta_combinada("COBRO_PAGO_PYTHON_WEBVIEW2.py"), escenario_pago)
 print("  Cobro/Pago (Python en vivo): movimientos, documentos con método de pago, comportamiento de pago, borrador, aplicar, rechazo de sobrepago y cierre.")
 sys.exit(0)

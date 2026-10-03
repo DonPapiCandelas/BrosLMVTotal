@@ -99,8 +99,10 @@ Dictionary<string, object> Catalogos()
     Func<string, List<Dictionary<string, object>>> lista = tabla => ctx.Query(ent(tabla))
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["rfc"] = S(r["rfc"]), ["credito"] = D(r["credito"]),
             ["ultFecha"] = Nulo(r["ultFecha"]) ? "" : Convert.ToDateTime(r["ultFecha"], ci).ToString("yyyy-MM-dd"), ["ultMonto"] = D(r["ultMonto"]) }).ToList();
-    cat["clientes"] = lista("orgCustomer");
-    cat["proveedores"] = lista("orgSupplier");
+    // Solo el lado de esta plantilla: la persona que lleva cuentas por cobrar no ve nada de las cuentas por pagar (y al revés); ni siquiera se cargan sus datos.
+    bool verC = TIPOS.Any(t => (string)t["lado"] == "C"), verP = TIPOS.Any(t => (string)t["lado"] == "P");
+    cat["clientes"] = verC ? lista("orgCustomer") : new List<Dictionary<string, object>>();
+    cat["proveedores"] = verP ? lista("orgSupplier") : new List<Dictionary<string, object>>();
     cat["cuentas"] = ctx.Query("SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["def"] = I(r["def"]) == 1 }).ToList();
     cat["formas"] = ctx.Query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")
@@ -110,8 +112,8 @@ Dictionary<string, object> Catalogos()
     foreach (var t in TIPOS)
         folios[(string)t["clave"]] = L(ctx.Scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + (int)t["modOp"] + " AND FolioPrefix = N'" + (string)t["prefijo"] + "'"));
     cat["folios"] = folios;
-    cat["docsC"] = DocsConSaldo("C");
-    cat["docsP"] = DocsConSaldo("P");
+    cat["docsC"] = verC ? DocsConSaldo("C") : new List<Dictionary<string, object>>();
+    cat["docsP"] = verP ? DocsConSaldo("P") : new List<Dictionary<string, object>>();
     return cat;
 }
 

@@ -1687,9 +1687,9 @@ def principal():
             txt_prod.Focus()
             raise Exception("Busca y elige un producto.")
         id_ = p["id"]
-        cant = float(nud_cant.Value)
-        precio = float(nud_precio.Value)
-        desc = float(nud_desc.Value)
+        cant = Convert.ToDouble(nud_cant.Value)
+        precio = Convert.ToDouble(nud_precio.Value)
+        desc = Convert.ToDouble(nud_desc.Value)
         i = cmb_imp.SelectedIndex
         imp = impuestos[i]["id"] if 0 <= i < len(impuestos) else 0
         if cant <= 0:
@@ -1975,7 +1975,7 @@ def principal():
             "condicion": cond["id"] if t["condicion"] and cond else 0,
             "fecha": dt_fecha.Value.ToString("yyyy-MM-dd"), "entrega": dt_entrega.Value.ToString("yyyy-MM-dd") if t["entrega"] else "",
             "titulo": txt_titulo.Text, "comentarios": txt_coment.Text, "origenes": list(origen_sel),
-            "moneda": mon["id"] if mon else 0, "tc": float(nud_tc.Value), "centro": cc["id"] if cc else 0,
+            "moneda": mon["id"] if mon else 0, "tc": Convert.ToDouble(nud_tc.Value), "centro": cc["id"] if cc else 0,
             "partidas": [{"id": f["id"], "nombre": f["nombre"], "cant": f["cant"], "precio": f["precio"], "desc": f["desc"], "imp": f["imp"], "origenItem": f["origenItem"]} for f in filas],
         }
         if con_cfdi():

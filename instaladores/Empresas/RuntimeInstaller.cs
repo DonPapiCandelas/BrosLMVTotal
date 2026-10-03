@@ -63,7 +63,7 @@ namespace BrosLMV.Empresas
             {
                 string raizScripts = Path.Combine(Base, "scripts");
                 var obsoletas = new List<string>();
-                foreach (var patron in new[] { "PLANTILLA_*", "EJEMPLO_*", "PRUEBA_*", "REQUISICION.ctx", "SOLICITUD_COMPRA.ctx", "SALDOS_ESTADOS_CUENTA.ctx" })       // 3.0.0: «Saldos y estados de cuenta» se separó en ESTADO_CUENTA_CLIENTES y ESTADO_CUENTA_PROVEEDORES
+                foreach (var patron in new[] { "PLANTILLA_*", "EJEMPLO_*", "PRUEBA_*", "REQUISICION.ctx", "SOLICITUD_COMPRA.ctx", "SALDOS_ESTADOS_CUENTA.ctx", "COBRO_PAGO_*" })       // 3.0.0: «Saldos y estados de cuenta» se separó en ESTADO_CUENTA_CLIENTES y ESTADO_CUENTA_PROVEEDORES
                     obsoletas.AddRange(Directory.GetFiles(raizScripts, patron));
                 if (obsoletas.Count > 0)
                 {

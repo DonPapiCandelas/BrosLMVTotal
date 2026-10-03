@@ -115,16 +115,19 @@ def catalogos():
     def lista(tabla):
         return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "credito": D(r["credito"]), "ultFecha": S(r["ultFecha"]), "ultMonto": D(r["ultMonto"])} for r in ctx.query(ent(tabla))]
 
-    cat["clientes"] = lista("orgCustomer")
-    cat["proveedores"] = lista("orgSupplier")
+    # Solo el lado de esta plantilla: la persona que lleva cuentas por cobrar no ve nada de las cuentas por pagar (y al revés); ni siquiera se cargan sus datos.
+    ver_c = any(t["lado"] == "C" for t in TIPOS)
+    ver_p = any(t["lado"] == "P" for t in TIPOS)
+    cat["clientes"] = lista("orgCustomer") if ver_c else []
+    cat["proveedores"] = lista("orgSupplier") if ver_p else []
     cat["cuentas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "def": I(r["def"]) == 1} for r in ctx.query(
         "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")]
     cat["formas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")]
     # Folio siguiente de cada tipo (el mismo cálculo que usa aplicar)
     cat["folios"] = {t["clave"]: I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + str(t["modOp"]) + " AND FolioPrefix = N'" + t["prefijo"] + "'")) for t in TIPOS}
     # Documentos con saldo pendiente de cada lado (los más antiguos primero)
-    cat["docsC"] = docs_con_saldo("C")
-    cat["docsP"] = docs_con_saldo("P")
+    cat["docsC"] = docs_con_saldo("C") if ver_c else []
+    cat["docsP"] = docs_con_saldo("P") if ver_p else []
     return cat
 
 

@@ -1,3 +1,379 @@
+# lang: python
+# timeout: 1800
+# AppKey recomendado: PAGO_PROVEEDOR_PYTHON_WINFORMS
+# Plantilla: Pago a proveedor (Python · ventana Windows Forms)
+# Categoria: Tesorería
+# Documentacion: COBRO_PAGO.html
+# ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un pago a proveedor y lo aplica a uno o varios documentos con saldo.
+# Comercial no ofrece una función para esto: la plantilla escribe directo en las tablas de Tesorería (una transacción por documento) y NO genera la póliza contable.
+# Plantilla separada a propósito: solo CUENTAS POR PAGAR (proveedores) para que quien la use no vea el otro lado. Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+#
+# Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
+# el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
+# Windows Forms desde Python (pythonnet): Python corre en su propio proceso, la ventana es automáticamente independiente y un error nunca tumba Comercial.
+
+import pythonnet
+pythonnet.load("netfx")
+
+import clr
+clr.AddReference("System.Windows.Forms")
+clr.AddReference("System.Drawing")
+
+import System
+import System.Threading
+from System import DateTime, Convert
+from System.Drawing import Point, Size, Color, Font, FontStyle, ContentAlignment, Pen, SolidBrush, StringFormat, StringTrimming, StringFormatFlags, RectangleF
+from System.Windows.Forms import (
+    Form, FormStartPosition, Label, TextBox, ComboBox, ComboBoxStyle, Button, FlatStyle, DataGridView, Panel, FlowLayoutPanel, NumericUpDown, HorizontalAlignment, DockStyle, Padding,
+    AutoSizeMode, DrawMode, DrawItemState, DataGridViewTextBoxColumn, DataGridViewCheckBoxColumn, DataGridViewContentAlignment, DataGridViewAutoSizeColumnsMode,
+    DataGridViewSelectionMode, DataGridViewCellBorderStyle, DataGridViewHeaderBorderStyle, DateTimePicker, DateTimePickerFormat,
+    ListBox, BorderStyle, Cursors, Keys, MessageBox, MessageBoxButtons, MessageBoxIcon,
+)
+from System.Windows.Forms import Timer as FormsTimer
+
+System.Threading.Thread.CurrentThread.SetApartmentState(System.Threading.ApartmentState.STA)
+
+import json
+import datetime
+import os
+
+from broslmv import ctx
+
+
+def S(v):
+    return "" if v is None else str(v)
+
+
+def I(v):
+    try:
+        return int(float(v))
+    except Exception:
+        return 0
+
+
+def D(v):
+    try:
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def Sq(s):
+    """Texto para un literal SQL."""
+    return S(s).replace("'", "''")
+
+
+def Num(x):
+    """Número para un literal SQL (siempre con punto)."""
+    t = ("%.8f" % float(x)).rstrip("0").rstrip(".")
+    return t if t not in ("", "-") else "0"
+
+
+def fecha_txt(v):
+    if v is None:
+        return ""
+    return v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else S(v)[:10]
+
+
+empresa = I(ctx.erp.OwnedBusinessEntityId())      # en Python ctx.erp.X siempre es una función (relevo al addon): se llama, aunque en C# sea una propiedad
+
+
+def L(v):
+    return I(v)
+
+
+# ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
+# El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
+def carpeta_local():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    d = os.path.join(base, "BrosLMV", "borradores")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def archivo_borrador(que):
+    try:
+        uid = int(ctx.user_id)
+    except Exception:
+        uid = 0
+    return os.path.join(carpeta_local(), que + "_" + str(empresa) + "_" + str(uid) + ".json")
+
+
+def leer_borrador(que, vence=True):
+    try:
+        a = archivo_borrador(que)
+        if not os.path.exists(a):
+            return None
+        if vence and (datetime.datetime.now().timestamp() - os.path.getmtime(a)) > 7 * 86400:
+            return None
+        with open(a, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def guardar_borrador(que, obj):
+    try:
+        with open(archivo_borrador(que), "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def borrar_borrador(que):
+    try:
+        a = archivo_borrador(que)
+        if os.path.exists(a):
+            os.remove(a)
+    except Exception:
+        pass
+
+# ===================================================================================================================================
+# COBRO A CLIENTE / PAGO A PROVEEDOR.
+# ⚠ PLANTILLA AVANZADA, NO NATIVA: Comercial no ofrece ninguna función para aplicar un cobro o un pago (se buscó en el SDK y en el motor, véase MANUAL §10.5).
+# Esta plantilla repite, con SQL directo y en UNA sola transacción por documento, lo que hace la pantalla de Tesorería: la operación financiera, la aplicación al
+# documento, su espejo, la transferencia bancaria, el reparto proporcional de impuestos y el nuevo saldo. La receta se validó contra cobros reales y contra el laboratorio.
+# NO genera la póliza contable del cobro/pago (eso lo hace el Motor de Asientos al contabilizar). Pruébala SIEMPRE primero en una base de pruebas.
+# ===================================================================================================================================
+# Tipos: clave · nombre · lado (C/P) · módulo de la operación (248 cobro, 247 pago) · DocRecipientID · DocumentTypeID de la operación · prefijo de folio
+def TP(clave, nombre, lado, mod_op, recip, tipo_op, prefijo):
+    return {"clave": clave, "nombre": nombre, "lado": lado, "modOp": mod_op, "recip": recip, "tipoOp": tipo_op, "prefijo": prefijo}
+
+
+TIPOS = [
+    TP("pago",  "Pago a proveedor", "P", 247, 2, 32, "PAG"),
+]
+TIPO_POR = {t["clave"]: t for t in TIPOS}
+
+# ---------- Qué módulos generan cuentas por cobrar / por pagar ----------
+# Se leen de los parámetros del módulo (DocRecipient 1 = cliente, 2 = proveedor; FinancialAffectation ≠ 0) por ModuleIDBase, así los módulos clonados cuentan igual.
+# Solo documentos que SUMAN saldo (facturas, notas de cargo, gastos): una nota de crédito no se cobra ni se paga, se aplica.
+_modulos = ctx.query(
+    "SELECT m.ModuleID, m.ModuleName, pv.Rec, pv.Af FROM engModule m JOIN ("
+    "  SELECT ModuleID, MAX(CASE WHEN ParameterKey='DocRecipient' THEN TRY_CONVERT(int, Value) END) AS Rec, MAX(CASE WHEN ParameterKey='DocumentTypeID' THEN TRY_CONVERT(int, Value) END) AS Tipo, "
+    "         MAX(CASE WHEN ParameterKey='FinancialAffectation' THEN TRY_CONVERT(int, Value) END) AS Af, MAX(CASE WHEN ParameterKey='TableName' THEN Value END) AS Tabla "
+    "  FROM engModuleParameter WHERE ParameterKey IN ('DocRecipient','DocumentTypeID','FinancialAffectation','TableName') GROUP BY ModuleID"
+    ") pv ON pv.ModuleID = ISNULL(NULLIF(m.ModuleIDBase,0), m.ModuleID) WHERE pv.Tabla = 'docDocument' AND pv.Rec IN (1,2) AND ((pv.Rec = 1 AND pv.Af = 1) OR (pv.Rec = 2 AND pv.Af = -1)) AND ISNULL(pv.Tipo,0) NOT IN (40,44)")
+modulos_lado = {"C": [], "P": []}
+nombre_mod = {}
+for _r in _modulos:
+    modulos_lado["C" if I(_r["Rec"]) == 1 else "P"].append(I(_r["ModuleID"]))
+    nombre_mod[I(_r["ModuleID"])] = S(_r["ModuleName"])
+
+
+# ---------- Documentos con saldo pendiente de un lado (C = por cobrar, P = por pagar) ----------
+# Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero). La ventana los pide otra vez después de aplicar, para ver los saldos nuevos.
+def docs_con_saldo(lado):
+    mods = modulos_lado[lado]
+    if not mods:
+        return []
+    filas = ctx.query(
+        "SELECT TOP 30000 d.DocumentID AS id, d.ModuleID AS modulo, d.BusinessEntityID AS ent, d.FolioPrefix, d.Folio, d.DateDocument AS fecha, ISNULL(d.Total,0) AS total, ISNULL(d.Balance,0) AS saldo, ISNULL(d.Title,'') AS titulo, "
+        "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS vence, "
+        "ISNULL((SELECT TOP 1 c.MetodoPago FROM docDocumentCFD c WHERE c.DocumentID = d.DocumentID), '') AS metodo "
+        "FROM docDocument d WHERE d.ModuleID IN (" + ",".join(str(m) for m in mods) + ") AND d.OwnedBusinessEntityID = " + str(empresa) +
+        " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) > 0.004 ORDER BY d.DateDocument")
+    return [{"id": I(r["id"]), "modulo": I(r["modulo"]), "tipo": nombre_mod.get(I(r["modulo"]), ""), "ent": I(r["ent"]), "folio": (S(r["FolioPrefix"]) + S(r["Folio"])).strip(),
+             "fecha": fecha_txt(r["fecha"]), "vence": fecha_txt(r["vence"]), "total": D(r["total"]), "saldo": D(r["saldo"]), "titulo": S(r["titulo"]), "metodo": S(r["metodo"])} for r in filas]
+
+
+# Los últimos cobros o pagos de esa persona (los 8 más recientes que no estén cancelados), con la cuenta y a cuántos documentos se aplicaron
+def movimientos_de(entidad, clave):
+    if clave not in TIPO_POR or entidad <= 0:
+        return []
+    return [{"id": I(r["id"]), "folio": (S(r["FolioPrefix"]) + "-" + S(r["Folio"])).strip(), "fecha": fecha_txt(r["DateOperation"]), "monto": D(r["Monto"]), "cuenta": S(r["Cuenta"]), "docs": I(r["Docs"])} for r in ctx.query(
+        "SELECT TOP 8 o.FinancialOperationID AS id, o.FolioPrefix, o.Folio, o.DateOperation, ISNULL(o.Amount,0) AS Monto, ISNULL(f.FinancialEntityName,'') AS Cuenta, "
+        "(SELECT COUNT(*) FROM docDocumentPayment p WHERE p.FinancialOperationID = o.FinancialOperationID AND p.DeletedOn IS NULL) AS Docs FROM docFinancialOperation o LEFT JOIN orgFinancialEntity f ON f.FinancialEntityID = o.FinancialEntityID "
+        "WHERE o.BusinessEntityID = " + str(entidad) + " AND o.ModuleID = " + str(TIPO_POR[clave]["modOp"]) + " AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL ORDER BY o.DateOperation DESC, o.FinancialOperationID DESC")]
+
+
+# Comportamiento de pago de una persona: lo cobrado (o pagado) por mes en los últimos 12 meses, los días promedio que tarda desde la fecha del documento, el atraso promedio
+# frente al vencimiento y el porcentaje de pagos a tiempo. Todo sale de Comercial en ese momento.
+def inteligencia_pago(entidad, clave):
+    res = {}
+    if clave not in TIPO_POR or entidad <= 0:
+        return res
+    t = TIPO_POR[clave]
+    mods = modulos_lado[t["lado"]]
+    por_mes = {}
+    for r in ctx.query("SELECT CONVERT(CHAR(7), o.DateOperation, 120) AS mes, SUM(ISNULL(o.Amount,0)) AS total, COUNT(*) AS n FROM docFinancialOperation o WHERE o.BusinessEntityID = " + str(entidad) + " AND o.ModuleID = " + str(t["modOp"]) +
+                       " AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL AND o.DateOperation >= DATEADD(MONTH, -11, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)) GROUP BY CONVERT(CHAR(7), o.DateOperation, 120)"):
+        por_mes[S(r["mes"])] = (D(r["total"]), D(r["n"]))
+    meses = []
+    total12 = 0.0
+    mov12 = 0
+    hoy = datetime.date.today()
+    for i in range(11, -1, -1):
+        y, m = hoy.year, hoy.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        k = "%04d-%02d" % (y, m)
+        v = por_mes.get(k, (0.0, 0.0))
+        meses.append({"mes": k, "total": round(v[0], 2), "n": int(v[1])})
+        total12 += v[0]
+        mov12 += int(v[1])
+    res["meses"] = meses
+    res["total12"] = round(total12, 2)
+    res["mov12"] = mov12
+    if mods:
+        e = ctx.query("SELECT COUNT(*) AS n, AVG(CAST(DATEDIFF(DAY, d.DateDocument, p.DateOperation) AS float)) AS dias, AVG(CAST(DATEDIFF(DAY, ISNULL(ag.due, d.DateDocument), p.DateOperation) AS float)) AS atraso, "
+                      "SUM(CASE WHEN p.DateOperation <= ISNULL(ag.due, d.DateDocument) THEN 1.0 ELSE 0 END) AS aTiempo FROM docDocumentPayment p JOIN docDocument d ON d.DocumentID = p.DocumentID "
+                      "OUTER APPLY (SELECT MAX(a.DatePayment) AS due FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) ag "
+                      "WHERE d.BusinessEntityID = " + str(entidad) + " AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.ModuleID IN (" + ",".join(str(m) for m in mods) + ") AND p.DeletedOn IS NULL")
+        n = I(e[0]["n"]) if e else 0
+        res["pagos"] = n
+        res["dias"] = round(D(e[0]["dias"]), 1) if n > 0 and e[0]["dias"] is not None else None
+        res["atraso"] = round(D(e[0]["atraso"]), 1) if n > 0 and e[0]["atraso"] is not None else None
+        res["puntual"] = round(D(e[0]["aTiempo"]) * 100.0 / n) if n > 0 else None
+    return res
+
+
+# ---------- Catálogos y documentos con saldo para el formulario ----------
+def catalogos():
+    cat = {}
+
+    # Persona con RFC, límite de crédito y su último cobro o pago (fecha e importe), para dar contexto al capturar
+    def ent(tabla):
+        return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.CreditLimit,0) AS credito, "
+                "CONVERT(VARCHAR(10), u.DateOperation, 23) AS ultFecha, ISNULL(u.Amount,0) AS ultMonto FROM " + tabla + " x "
+                "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID "
+                "OUTER APPLY (SELECT TOP 1 o.DateOperation, o.Amount FROM docFinancialOperation o WHERE o.BusinessEntityID = be.BusinessEntityID AND o.ModuleID IN (247,248) AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL ORDER BY o.DateOperation DESC, o.FinancialOperationID DESC) u "
+                "WHERE be.DeletedOn IS NULL AND x.DeletedOn IS NULL ORDER BY nombre")
+
+    def lista(tabla):
+        return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "credito": D(r["credito"]), "ultFecha": S(r["ultFecha"]), "ultMonto": D(r["ultMonto"])} for r in ctx.query(ent(tabla))]
+
+    # Solo el lado de esta plantilla: la persona que lleva cuentas por cobrar no ve nada de las cuentas por pagar (y al revés); ni siquiera se cargan sus datos.
+    ver_c = any(t["lado"] == "C" for t in TIPOS)
+    ver_p = any(t["lado"] == "P" for t in TIPOS)
+    cat["clientes"] = lista("orgCustomer") if ver_c else []
+    cat["proveedores"] = lista("orgSupplier") if ver_p else []
+    cat["cuentas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "def": I(r["def"]) == 1} for r in ctx.query(
+        "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")]
+    cat["formas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")]
+    # Folio siguiente de cada tipo (el mismo cálculo que usa aplicar)
+    cat["folios"] = {t["clave"]: I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + str(t["modOp"]) + " AND FolioPrefix = N'" + t["prefijo"] + "'")) for t in TIPOS}
+    # Documentos con saldo pendiente de cada lado (los más antiguos primero)
+    cat["docsC"] = docs_con_saldo("C") if ver_c else []
+    cat["docsP"] = docs_con_saldo("P") if ver_p else []
+    return cat
+
+
+# ---------- Aplicar ----------
+# «spec»: tipo, entidad, cuenta, forma (c_FormaPago), fecha (yyyy-MM-dd), referencia, aplicaciones [{doc, monto}]
+# Una operación financiera por documento (así lo hace Tesorería). Cada documento va en su propia transacción: si uno falla, los anteriores ya quedaron aplicados y el mensaje lo dice.
+# Regresa un resumen legible con los folios.
+def aplicar(spec):
+    clave = S(spec.get("tipo"))
+    if clave not in TIPO_POR:
+        raise Exception("Tipo desconocido: " + clave)
+    t = TIPO_POR[clave]
+    lado = t["lado"]
+    entidad = I(spec.get("entidad"))
+    cuenta = I(spec.get("cuenta"))
+    forma = I(spec.get("forma"))
+    if entidad <= 0:
+        raise Exception("Elige el " + ("cliente" if lado == "C" else "proveedor") + ".")
+    if cuenta <= 0:
+        raise Exception("Elige la cuenta bancaria o caja " + ("donde entra" if lado == "C" else "de donde sale") + " el dinero.")
+    if forma <= 0:
+        raise Exception("Elige la forma de pago.")
+    aps = [a for a in (spec.get("aplicaciones") or []) if D(a.get("monto")) > 0]
+    if not aps:
+        raise Exception("Marca al menos un documento y captura cuánto aplicar.")
+    fecha = S(spec.get("fecha"))
+    if len(fecha) < 10:
+        raise Exception("Captura la fecha.")
+    f8 = Sq(fecha[:10].replace("-", ""))
+    tracking = S(spec.get("referencia"))
+    mod_op, recip, tipo_op, pref = t["modOp"], t["recip"], t["tipoOp"], t["prefijo"]
+    uid = str(ctx.user_id)
+    resumen = []
+    total_aplicado = 0.0
+
+    for a in aps:
+        doc = I(a.get("doc"))
+        monto = round(D(a.get("monto")), 2)
+        etiqueta = "documento " + str(doc)
+        try:
+            d = ctx.query("SELECT Total, Balance, TotalPaid, BusinessEntityID, OwnedBusinessEntityID, CurrencyID, ModuleID, FolioPrefix, Folio FROM docDocument WHERE DocumentID=" + str(doc) + " AND DeletedOn IS NULL AND CancelledOn IS NULL")
+            if not d:
+                raise Exception("el documento no existe o está cancelado.")
+            x = d[0]
+            if I(x["ModuleID"]) in nombre_mod:
+                etiqueta = nombre_mod[I(x["ModuleID"])] + " " + (S(x["FolioPrefix"]) + S(x["Folio"])).strip()
+            if I(x["ModuleID"]) not in modulos_lado[lado]:
+                raise Exception("no es un documento que se " + ("cobre" if lado == "C" else "pague") + ".")
+            if I(x["BusinessEntityID"]) != entidad:
+                raise Exception("pertenece a otro " + ("cliente" if lado == "C" else "proveedor") + ".")
+            total, saldo, pagado = D(x["Total"]), D(x["Balance"]), D(x["TotalPaid"])
+            if monto > saldo + 0.005:
+                raise Exception("el monto (" + "{:,.2f}".format(monto) + ") es mayor que su saldo (" + "{:,.2f}".format(saldo) + ").")
+            if total <= 0:
+                raise Exception("tiene total cero.")
+            aplicado = min(monto, saldo)
+            nuevo = round(saldo - aplicado, 2)
+            prop = aplicado / total
+            owned, moneda = I(x["OwnedBusinessEntityID"]), I(x["CurrencyID"])
+            sb = []
+            sb.append("DECLARE @out TABLE(FinancialOperationID BIGINT); DECLARE @outPay TABLE(DocumentPaymentID BIGINT);\nBEGIN TRY BEGIN TRAN;\n")
+            # Folio serializado: el candado se toma dentro de la transacción y se libera solo al terminar, así dos cobros simultáneos nunca calculan el mismo folio
+            sb.append("DECLARE @lk INT; EXEC @lk = sp_getapplock @Resource = 'BrosCobroFolio_" + str(mod_op) + "_" + pref + "', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000;\n")
+            sb.append("IF @lk < 0 THROW 50001, 'No se pudo obtener el candado del folio (otro cobro/pago en curso).', 1;\n")
+            # El saldo se vuelve a comprobar DENTRO de la transacción: si alguien más aplicó algo mientras tanto, no se aplica de más
+            sb.append("IF (SELECT ISNULL(Balance,0) FROM docDocument WHERE DocumentID=" + str(doc) + ") < " + Num(aplicado - 0.005) + " THROW 50002, 'El saldo del documento cambió mientras se capturaba.', 1;\n")
+            sb.append("DECLARE @folio BIGINT = ISNULL((SELECT MAX(TRY_CONVERT(BIGINT, Folio)) FROM docFinancialOperation WHERE ModuleID=" + str(mod_op) + " AND FolioPrefix=N'" + pref + "'),0)+1;\n")
+            sb.append("DECLARE @f DATETIME = '" + f8 + "'; DECLARE @opId BIGINT, @payId BIGINT;\n")
+            sb.append("INSERT INTO docFinancialOperation (ModuleID, DocRecipientID, DocumentTypeID, OwnedBusinessEntityID, BusinessEntityID, DateOperation, FinancialEntityID, Amount, CurrencyID, PaymentMethodID, PartialityNumber, PartialityTotal, DocumentID, FolioPrefix, Folio, CreatedOn, CreatedBy) OUTPUT INSERTED.FinancialOperationID INTO @out ")
+            sb.append("VALUES (" + str(mod_op) + "," + str(recip) + "," + str(tipo_op) + "," + str(owned) + "," + str(entidad) + ",@f," + str(cuenta) + "," + Num(aplicado) + "," + str(moneda) + "," + str(forma) + ",1,1," + str(doc) + ",N'" + pref + "',CONVERT(NVARCHAR(50),@folio),GETDATE()," + uid + ");\n")
+            sb.append("SELECT @opId = FinancialOperationID FROM @out;\n")
+            sb.append("INSERT INTO docDocumentPayment (DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber, SaldoAnterior, SaldoInsoluto) OUTPUT INSERTED.DocumentPaymentID INTO @outPay VALUES (" +
+                      str(doc) + ",@opId,@f," + Num(aplicado) + ",1," + Num(aplicado) + ",1," + Num(saldo) + "," + Num(nuevo) + ");\nSELECT @payId = DocumentPaymentID FROM @outPay;\n")
+            # docDocumentPaymentEspejo.DocumentPaymentID NO es identity: espeja el mismo id recién generado
+            sb.append("INSERT INTO docDocumentPaymentEspejo (DocumentPaymentID, DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber) VALUES (@payId," + str(doc) + ",@opId,@f," + Num(aplicado) + ",1," + Num(aplicado) + ",1);\n")
+            if forma != 1:        # efectivo no lleva transferencia; cualquier otra forma deja su registro bancario
+                sb.append("INSERT INTO docBankTransfer (FinancialOperationID, FinancialEntityID, TrackingNumber, CreatedOn, CreatedBy) VALUES (@opId," + str(cuenta) + "," + ("NULL" if tracking == "" else "N'" + Sq(tracking) + "'") + ",GETDATE()," + uid + ");\n")
+            # Reparto proporcional de impuestos: lo aplicado de esta operación entre el total del documento
+            for tx in ctx.query("SELECT DocumentTaxDetailID, DocumentItemID, TaxTypeID, Amount, TaxBase, TaxPerc, TaxName, TaxTypeName FROM docDocumentTaxDetail WHERE DocumentID=" + str(doc)):
+                item = "NULL" if tx["DocumentItemID"] is None else str(I(tx["DocumentItemID"]))
+                sb.append("INSERT INTO docFinancialOperationTaxDetail (DocumentTaxDetailID, FinancialOperationID, DocumentID, DocumentItemID, Proporcion, Amount, TaxTypeID, TaxName, TaxTypeName, TaxBase, TaxPerc) VALUES (" +
+                          str(I(tx["DocumentTaxDetailID"])) + ",@opId," + str(doc) + "," + item + "," + Num(prop) + "," + Num(D(tx["Amount"]) * prop) + "," + str(I(tx["TaxTypeID"])) +
+                          ",N'" + Sq(tx["TaxName"]) + "',N'" + Sq(tx["TaxTypeName"]) + "'," + Num(D(tx["TaxBase"]) * prop) + "," + Num(D(tx["TaxPerc"])) + ");\n")
+            sb.append("UPDATE docDocument SET TotalPaid=" + Num(pagado + aplicado) + ", Balance=" + Num(nuevo) + ", StatusPaidID=" + ("1" if nuevo <= 0.0049 else "2") + " WHERE DocumentID=" + str(doc) + ";\n")
+            sb.append("COMMIT TRAN;\nEND TRY BEGIN CATCH IF @@TRANCOUNT>0 ROLLBACK TRAN; THROW; END CATCH;")
+            ctx.execute("".join(sb))
+            folio = ctx.scalar("SELECT TOP 1 Folio FROM docFinancialOperation WHERE DocumentID=" + str(doc) + " AND ModuleID=" + str(mod_op) + " ORDER BY FinancialOperationID DESC")
+            total_aplicado += aplicado
+            resumen.append(pref + "-" + S(folio) + " · " + etiqueta + " · " + "{:,.2f}".format(aplicado) + (" (liquidado)" if nuevo <= 0.0049 else " (queda " + "{:,.2f}".format(nuevo) + ")"))
+        except Exception as ex:
+            raise Exception("No se pudo aplicar a " + etiqueta + ": " + S(ex) + ("\n\nYa quedaron aplicados antes:\n" + "\n".join(resumen) if resumen else ""))
+    return t["nombre"] + " registrado: " + "{:,.2f}".format(total_aplicado) + "\n" + "\n".join(resumen)
+
+
+# ---------- Pruebas automáticas (sin ventanas): variable de entorno BROSLMV_PAGO_TEST (JSON con el «spec»), resultado en BROSLMV_PAGO_OUT ----------
+_modo_prueba = os.environ.get("BROSLMV_PAGO_TEST")
+if _modo_prueba:
+    _spec = json.loads(_modo_prueba)
+    if _spec.get("catalogo"):
+        _res = json.dumps(catalogos(), ensure_ascii=False, default=str)
+    elif _spec.get("movimientos"):
+        _res = json.dumps(movimientos_de(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
+    elif _spec.get("docs"):
+        _res = json.dumps(docs_con_saldo(S(_spec["lado"])), ensure_ascii=False, default=str)
+    elif _spec.get("inteligencia"):
+        _res = json.dumps(inteligencia_pago(I(_spec["entidad"]), S(_spec["tipo"])), ensure_ascii=False, default=str)
+    else:
+        try:
+            _res = "OK " + aplicar(_spec)
+        except Exception as _ex:
+            _res = "ERROR " + S(_ex)
+    _salida = os.environ.get("BROSLMV_PAGO_OUT")
+    if _salida:
+        with open(_salida, "w", encoding="utf-8") as _f:
+            _f.write(_res)
+    result = _res
+
 # ===================================================================================================================================
 # VENTANA (Windows Forms desde Python con pythonnet). Es el MISMO diseño que la versión de C# (ui_pagos_winforms.cs.part), con las mismas posiciones, colores y reglas:
 # cinta oscura con las acciones y la información del movimiento (fecha y folio), grupos numerados con la etiqueta arriba de cada campo (nada se encima),

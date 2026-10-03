@@ -8,6 +8,15 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.0.2] — 2026-10-03 — Cobros y pagos separados
+
+### Cambiado (requiere instalar: el instalador retira las plantillas anteriores)
+- **«Cobro a cliente» y «Pago a proveedor» ahora son plantillas separadas** (`COBRO_CLIENTE_*` y `PAGO_PROVEEDOR_*`, en C# y Python, HTML y Windows Forms): quien lleva cuentas por cobrar no ve las cuentas por pagar, y al revés; cada una ni siquiera carga los datos del otro lado y rechaza el otro tipo de movimiento. Reemplazan a `COBRO_PAGO_*`: el instalador mueve las anteriores a `scripts\_archivo` (no las borra).
+
+### Corregido (solo scripts)
+- **Python con pythonnet:** los campos numéricos (`NumericUpDown`) devuelven `System.Decimal`, que no se convierte con `float()`; se usa `Convert.ToDouble`.
+- La ventana de Windows Forms de Python se abre al frente y las ventanas HTML de Python terminan el script unos 10 segundos después de cerrarse.
+
 ## [3.0.1] — 2026-10-03 — Ventanas HTML en vivo (requiere instalar)
 
 Esta versión separa lo que **sí requiere instalar** (componentes nuevos del addon) de lo que **solo son scripts** (se actualizan sin instalar: basta publicar el script en la base).

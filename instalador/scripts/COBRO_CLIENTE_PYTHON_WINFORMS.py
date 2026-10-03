@@ -1,12 +1,12 @@
 # lang: python
 # timeout: 1800
-# AppKey recomendado: COBRO_PAGO_PYTHON_WINFORMS
-# Plantilla: Cobro a cliente / Pago a proveedor (Python · ventana Windows Forms)
+# AppKey recomendado: COBRO_CLIENTE_PYTHON_WINFORMS
+# Plantilla: Cobro a cliente (Python · ventana Windows Forms)
 # Categoria: Tesorería
 # Documentacion: COBRO_PAGO.html
-# ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un cobro a cliente o un pago a proveedor y lo aplica a uno o varios documentos con saldo.
+# ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un cobro a cliente y lo aplica a uno o varios documentos con saldo.
 # Comercial no ofrece una función para esto: la plantilla escribe directo en las tablas de Tesorería (una transacción por documento) y NO genera la póliza contable.
-# Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
+# Plantilla separada a propósito: solo CUENTAS POR COBRAR (clientes) para que quien la use no vea el otro lado. Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
 #
 # Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
 # el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
@@ -142,7 +142,6 @@ def TP(clave, nombre, lado, mod_op, recip, tipo_op, prefijo):
 
 TIPOS = [
     TP("cobro", "Cobro a cliente",  "C", 248, 1, 31, "COB"),
-    TP("pago",  "Pago a proveedor", "P", 247, 2, 32, "PAG"),
 ]
 TIPO_POR = {t["clave"]: t for t in TIPOS}
 
@@ -245,16 +244,19 @@ def catalogos():
     def lista(tabla):
         return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "credito": D(r["credito"]), "ultFecha": S(r["ultFecha"]), "ultMonto": D(r["ultMonto"])} for r in ctx.query(ent(tabla))]
 
-    cat["clientes"] = lista("orgCustomer")
-    cat["proveedores"] = lista("orgSupplier")
+    # Solo el lado de esta plantilla: la persona que lleva cuentas por cobrar no ve nada de las cuentas por pagar (y al revés); ni siquiera se cargan sus datos.
+    ver_c = any(t["lado"] == "C" for t in TIPOS)
+    ver_p = any(t["lado"] == "P" for t in TIPOS)
+    cat["clientes"] = lista("orgCustomer") if ver_c else []
+    cat["proveedores"] = lista("orgSupplier") if ver_p else []
     cat["cuentas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "def": I(r["def"]) == 1} for r in ctx.query(
         "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")]
     cat["formas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")]
     # Folio siguiente de cada tipo (el mismo cálculo que usa aplicar)
     cat["folios"] = {t["clave"]: I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + str(t["modOp"]) + " AND FolioPrefix = N'" + t["prefijo"] + "'")) for t in TIPOS}
     # Documentos con saldo pendiente de cada lado (los más antiguos primero)
-    cat["docsC"] = docs_con_saldo("C")
-    cat["docsP"] = docs_con_saldo("P")
+    cat["docsC"] = docs_con_saldo("C") if ver_c else []
+    cat["docsP"] = docs_con_saldo("P") if ver_p else []
     return cat
 
 
@@ -1043,8 +1045,10 @@ def principal():
         w = W - 2 * m
         ribbon.SetBounds(m, 10, w, 100)
         info.Location = Point(ribbon.Width - info.Width - 10, 6)
+        ver_tipos = len(TIPOS) > 1
+        p_tipos.Visible = ver_tipos      # con un solo tipo (cobro o pago, plantillas separadas) no hace falta la franja
         p_tipos.SetBounds(m, 118, w, 40)
-        y = 166
+        y = 166 if ver_tipos else 118
         g1.SetBounds(m, y, 620, 132)
         g2.SetBounds(m + 632, y, w - 632, 132)
         y += 140
@@ -1103,7 +1107,7 @@ def principal():
         t = round(sum(seleccion.values()), 2)
         ent = E["ent"]
         pend = ES[ent["id"]][0] if ent is not None and ent["id"] in ES else 0.0
-        mon = float(nud_monto.Value)
+        mon = Convert.ToDouble(nud_monto.Value)
         lbl_n.Text = str(len(seleccion))
         lbl_sal.Text = "{:,.2f}".format(pend)
         lbl_q.Text = "{:,.2f}".format(pend - t)
@@ -1212,7 +1216,7 @@ def principal():
     def repartir():
         if E["ent"] is None:
             raise Exception("Elige primero la persona.")
-        m = float(nud_monto.Value)
+        m = Convert.ToDouble(nud_monto.Value)
         if m <= 0:
             nud_monto.Focus()
             raise Exception("Captura el monto que se va a repartir.")

@@ -132,7 +132,7 @@ combo($('ent'),$('lstEnt'),function(){return ENT().slice().sort(function(a,b){re
   function(x){var e=ES[x.id];return {a:x.nombre,b:x.rfc,c:e?'debe '+f2(e.pend)+' · '+e.n+' doc.':'sin saldo',buscar:x.nombre+' '+x.rfc+' '+x.id};},elegirEnt,60,true);
 $('ent').addEventListener('input',function(){if(ST.ent){ST.ent=null;ST.sel={};pintarEnt();pintarDocs();}});
 // ---- tipo ----
-function pintarTipos(){$('tipos').innerHTML=TIPOS.map(function(t){return '<button class=\'tipo '+(t.lado==='C'?'c':'p')+(t.clave===ST.tipo?' on':'')+'\' onclick=\'setTipo(&quot;'+t.clave+'&quot;)\'><i style=font-style:normal>'+(t.lado==='C'?'💰':'💸')+'</i>'+esc(t.nombre)+'</button>';}).join('');}
+function pintarTipos(){$('tipos').style.display=TIPOS.length>1?'':'none';$('tipos').innerHTML=TIPOS.map(function(t){return '<button class=\'tipo '+(t.lado==='C'?'c':'p')+(t.clave===ST.tipo?' on':'')+'\' onclick=\'setTipo(&quot;'+t.clave+'&quot;)\'><i style=font-style:normal>'+(t.lado==='C'?'💰':'💸')+'</i>'+esc(t.nombre)+'</button>';}).join('');}
 function setTipo(c){var antes=tipoAct().lado;ST.tipo=c;var t=tipoAct();if(t.lado!==antes){ST.ent=null;$('ent').value='';}ST.sel={};
   document.body.classList.remove('cobro','pago');document.body.classList.add(t.lado==='C'?'cobro':'pago');$('ttl').textContent=t.nombre;$('sub').textContent=t.lado==='C'?'Cuentas por cobrar · entra dinero':'Cuentas por pagar · sale dinero';
   $('lblEnt').textContent=t.lado==='C'?'Cliente':'Proveedor';$('lblCta').textContent=t.lado==='C'?'Entra a la cuenta':'Sale de la cuenta';$('lblMonto').textContent=t.lado==='C'?'Monto recibido (opcional)':'Monto a pagar (opcional)';$('lblMon2').textContent=t.lado==='C'?'Monto recibido':'Monto a pagar';

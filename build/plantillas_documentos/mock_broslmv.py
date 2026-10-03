@@ -13,6 +13,14 @@ PLANTILLA = sys.argv[1] if len(sys.argv) > 1 else os.path.join(AQUI, "..", "..",
 registro = []
 
 
+def ruta_combinada(nombre):
+    """Las plantillas de cobro y pago estan separadas en fabrica; las pruebas de la receta necesitan las dos mitades: se arma la version combinada en una carpeta temporal."""
+    import tempfile
+    d = os.path.join(tempfile.gettempdir(), "brosLMV_combinado")
+    subprocess.run([sys.executable, os.path.join(AQUI, "generar.py"), "--combinado", d], check=True, capture_output=True)
+    return os.path.join(d, nombre)
+
+
 def sqlcmd(sql):
     r = subprocess.run(["sqlcmd", "-S", SERVIDOR, "-E", "-d", BASE, "-W", "-s", "\x1f", "-Q", "SET NOCOUNT ON; " + sql],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
