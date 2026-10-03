@@ -167,6 +167,58 @@ Dictionary<string, object> ValoresDisenoE(string html, string[] tokensExtra, boo
     }
     return new Dictionary<string, object> { ["valores"] = valores, ["filas"] = lasFilas, ["nFilas"] = filas.Count, ["attrs"] = attrs };
 }
+// ---------- De dónde sale cada etiqueta del documento ----------
+// Se lee la definición de la función de impresión (vwLBSDocDocumentPrint40-DocumentID) y se separa cada «expresión AS Alias» de su lista de columnas:
+// así el Diseñador puede decir, por ejemplo, que [NumeroIdentificacion] sale de docDocumentItem.ProductKey.
+Dictionary<string, string> OrigenesColumnasE()
+{
+    var res = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    string def = "";
+    try { def = S(ctx.Scalar("SELECT OBJECT_DEFINITION(OBJECT_ID('dbo.[vwLBSDocDocumentPrint40-DocumentID]'))")); } catch { }
+    if (def == "") return res;
+    int i = System.Text.RegularExpressions.Regex.Match(def, @"\bSELECT\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Index + 6;
+    int prof = 0; var item = new StringBuilder(); var items = new List<string>();
+    for (; i < def.Length; i++)
+    {
+        char c = def[i];
+        if (c == '\'') { item.Append(c); i++; while (i < def.Length) { item.Append(def[i]); if (def[i] == '\'') { if (i + 1 < def.Length && def[i + 1] == '\'') { i++; item.Append(def[i]); } else break; } i++; } continue; }
+        if (c == '-' && i + 1 < def.Length && def[i + 1] == '-') { while (i < def.Length && def[i] != '\n') i++; continue; }
+        if (c == '/' && i + 1 < def.Length && def[i + 1] == '*') { int fin = def.IndexOf("*/", i + 2, StringComparison.Ordinal); i = fin < 0 ? def.Length : fin + 1; continue; }
+        if (c == '(') prof++; else if (c == ')') prof--;
+        if (prof == 0)
+        {
+            if (c == ',') { items.Add(item.ToString()); item.Clear(); continue; }
+            if ((c == 'F' || c == 'f') && i + 5 <= def.Length && string.Compare(def, i, "FROM", 0, 4, StringComparison.OrdinalIgnoreCase) == 0 && (i == 0 || char.IsWhiteSpace(def[i - 1])) && char.IsWhiteSpace(def[i + 4])) { items.Add(item.ToString()); break; }
+        }
+        item.Append(c);
+    }
+    foreach (var raw in items)
+    {
+        string t = System.Text.RegularExpressions.Regex.Replace(raw, @"\s+", " ").Trim(); if (t == "") continue;
+        var m = System.Text.RegularExpressions.Regex.Match(t, @"^(.*?)\s+AS\s+\[?([A-Za-z_][A-Za-z0-9_]*)\]?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        string alias, expr;
+        if (m.Success) { expr = m.Groups[1].Value.Trim(); alias = m.Groups[2].Value; }
+        else { var m2 = System.Text.RegularExpressions.Regex.Match(t, @"^\[?([A-Za-z0-9_]+)\]?\.\[?([A-Za-z0-9_]+)\]?$"); if (!m2.Success) continue; expr = t; alias = m2.Groups[2].Value; }
+        var ms = System.Text.RegularExpressions.Regex.Match(expr, @"^\[?([A-Za-z0-9_]+)\]?\.\[?([A-Za-z0-9_]+)\]?$");
+        res[alias] = ms.Success ? ms.Groups[1].Value + "." + ms.Groups[2].Value : (expr.Length > 260 ? expr.Substring(0, 260) + "…" : expr);
+    }
+    return res;
+}
+// Para cada columna del documento: de dónde sale, el valor que tiene en este documento y si cambia por renglón
+Dictionary<string, object> InfoEtiquetasE(long doc)
+{
+    var origenes = OrigenesColumnasE(); var filas = CargarFilasE(doc);
+    var res = new Dictionary<string, object>();
+    if (filas.Count == 0) return new Dictionary<string, object> { ["columnas"] = res, ["hayDatos"] = false };
+    foreach (var kv in filas[0])
+    {
+        string o = origenes.ContainsKey(kv.Key) ? origenes[kv.Key] : "";
+        bool porRenglon = filas.Count > 1 && filas.Take(3).Select(f => FmtValorE(f.ContainsKey(kv.Key) ? f[kv.Key] : null)).Distinct().Count() > 1;
+        if (!porRenglon && (o.IndexOf("docDocumentItem", StringComparison.OrdinalIgnoreCase) >= 0 || o.IndexOf("orgProduct", StringComparison.OrdinalIgnoreCase) >= 0)) porRenglon = true;
+        res[kv.Key] = new Dictionary<string, object> { ["o"] = o, ["v"] = FmtValorE(kv.Value), ["r"] = porRenglon };
+    }
+    return new Dictionary<string, object> { ["columnas"] = res, ["hayDatos"] = true };
+}
 // HTML ya resuelto de UN documento a partir del TEXTO del formato (así se prueba lo que se está escribiendo, sin guardar)
 string ResolverFormatoE(string fuente, long doc, string baseDir)
 {

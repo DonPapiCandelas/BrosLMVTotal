@@ -12,7 +12,7 @@ qué formato HTML usa cada tipo de documento, dónde se guardan los PDF y cómo 
 
 ## Diseñador de formatos
 
-Con **Diseñar formato…** se abre el Diseñador: un editor **visual** para cambiar un formato sin saber HTML (y, si sabes, con el código a un clic). El formato HTML con `[Etiquetas]` sigue siendo la fuente de verdad: lo que haces en pantalla se escribe en el archivo.
+Con **Diseñar formato…** se abre el Diseñador como **programa aparte** (`C:\BrosLMV\disenador\BrosLMV.Disenador.exe`): una ventana propia que puedes **minimizar y mover** mientras sigues usando Comercial (Comercial no se bloquea). Habla directo con la base de la empresa; también se puede abrir sin formato y elegir uno de la lista con **Abrir…**. Es un editor **visual** para cambiar un formato sin saber HTML (y, si sabes, con el código a un clic). El formato HTML con `[Etiquetas]` sigue siendo la fuente de verdad: lo que haces en pantalla se escribe en el archivo.
 
 **Tres modos** (arriba): **Diseño** (el documento con valores reales), **Código** (el HTML) y **Vista final** (el documento tal como lo resuelve el motor de PDF). *Probar con* elige el documento real que se usa; **Deshacer/Rehacer** (Ctrl+Z / Ctrl+Y) y **Guardar** (Ctrl+S, con respaldo del original la primera vez).
 
@@ -32,6 +32,15 @@ Con **Diseñar formato…** se abre el Diseñador: un editor **visual** para cam
 **＋ Nueva referencia** crea una etiqueta nueva (`[MiEtiqueta]`) cuyo valor sale de una consulta que armas eligiendo: **1** la tabla (las más usadas primero, o cualquiera de las de Comercial), **2** el dato y cómo (el primero, la suma, cuántos hay, el máximo, el mínimo, el promedio, o unir todos), **3** cómo se relaciona con el documento
 (es de este documento, de esta partida, o comparte un campo con ellos, por ejemplo el mismo cliente o producto), **4** condiciones extra y el orden. Muestra la consulta generada (editable si sabes SQL), la **prueba con el documento** y la guarda en el **Diccionario de referencia** de Comercial como referencia propia: queda disponible en todos los formatos.
 Solo se permiten consultas de lectura.
+
+### Qué trae cada etiqueta (origen y valor)
+
+En el panel **Campos**, cada etiqueta muestra su **valor real** en el documento elegido y su **origen**: por ejemplo `[NumeroIdentificacion]` → `docDocumentItem.ProductKey`. El botón **ⓘ** abre el detalle: la tabla y columna de donde sale (o la consulta, si es una referencia) y el valor que daría. En una referencia propia hay **Editar esta referencia**.
+
+### Constructor: vistas, uniones y SQL ejecutable
+
+- La pestaña **Armarla sin SQL** admite **tablas y vistas**, y **uniones** (INNER o LEFT) entre varias fuentes eligiendo las columnas que las relacionan; el SQL generado se ve al instante.
+- La pestaña **Escribir SQL y ejecutarlo** tiene un explorador de tablas y columnas, **Probar el valor** (con el documento elegido) y **Ver filas** (hasta 50 filas en una cuadrícula). Solo se aceptan `SELECT` o `WITH`, una sola consulta, sin palabras de escritura, máximo 5000 filas. Puedes usar `{DocumentID}` y `{DocumentItemID}`.
 
 ### Notas
 

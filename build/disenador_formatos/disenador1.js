@@ -245,6 +245,7 @@ async function abrirDisenador(id) {
     document.querySelectorAll("#dModos button").forEach(b => b.classList.toggle("on", b.dataset.m === "diseno"));
     $d("dLienzo").hidden = false; $d("dCodigo").hidden = true; $d("dFinal").hidden = true;
     if (!D.etiquetas.length) { try { D.etiquetas = (await call("editorEtiquetas")).etiquetas; } catch (e) { D.etiquetas = []; } }
+    D.info = {}; if (D.docId) { try { D.info = (await call("etiquetasInfo", { docId: D.docId })).columnas || {}; } catch (e) { D.info = {}; } }
     if (D.docId) await pedirValores(true); else dToast("No hay documentos de este tipo: el diseño se verá sin datos de ejemplo.", "bad");
     await refrescar();
     D.source = serializar(); D.base = D.source; D.hist = []; D.hi = -1; histPush(D.source); estadoSucio();   // la fuente normalizada (el navegador ordena el HTML) es el punto de partida
@@ -262,7 +263,7 @@ async function guardarDisenador() {
 function cerrarDisenador() {
   if (D.modo === "diseno") D.source = serializar(); else if (D.modo === "codigo") D.source = $d("dTexto").value;
   if (D.source !== D.base && !confirm("Hay cambios sin guardar. ¿Cerrar sin guardarlos?")) return;
-  $d("dis").hidden = true;
+  if (typeof STANDALONE !== "undefined") call("cerrarApp"); else $d("dis").hidden = true;
 }
 function teclaGlobal(e) {
   if ($d("dis").hidden || !$d("dModal").hidden) return;

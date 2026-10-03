@@ -100,6 +100,11 @@ if (Test-Path "$pkg\docs\plantillas") {
 
 # 4c) BrosLMV.HtmlToPdf: motor HTML->PDF (WebView2) de "Generar documento (PDF)" y
 #     "Configuracion de formato". Proceso APARTE, nunca corre dentro de Comercial.
+if (Test-Path "$pkg\disenador") {
+    New-Item -ItemType Directory -Force "$base\disenador" | Out-Null
+    Copy-Item "$pkg\disenador\*" "$base\disenador" -Recurse -Force
+    Write-Host "BrosLMV.Disenador copiado a $base\disenador $(if(-not (Test-Path "$base\disenador\BrosLMV.Disenador.exe")){'[FALTA .exe]'})"
+}
 if (Test-Path "$pkg\htmlpdf") {
     New-Item -ItemType Directory -Force "$base\htmlpdf" | Out-Null
     Copy-Item "$pkg\htmlpdf\*" "$base\htmlpdf" -Recurse -Force

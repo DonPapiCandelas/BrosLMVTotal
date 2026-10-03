@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    BrosLMV.Disenador: el Diseñador de formatos como PROGRAMA APARTE (no dentro de Comercial). Así se puede minimizar, mover y
+    mantener abierto mientras se sigue usando Comercial: Comercial no se bloquea. Habla directo con la base de datos de la
+    empresa (la misma cadena de respaldo cifrada que usa BrosLMV.Runner, más /bd) y no necesita XEngine ni COM.
+
+    Uso:  BrosLMV.Disenador.exe /bd <base> [/empresa <OwnedBusinessEntityID>] [/userid <id>] [/formato <PrintFormatID>]
+    Pruebas sin ventana:  /prueba "<json con action y payload>" /salida <archivo>
+    Las piezas Backend.g.cs y pagina.g.html se GENERAN: python build/disenador_formatos/generar.py
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>BrosLMV.Disenador</AssemblyName>
+    <RootNamespace>BrosLMV.Disenador</RootNamespace>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <NoWarn>CA1416;CS8632;SYSLIB0014</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\src\Rutas.cs" Link="Rutas.cs" />
+    <EmbeddedResource Include="pagina.g.html" LogicalName="pagina.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

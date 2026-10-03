@@ -220,9 +220,15 @@ frm.Load += async (s, e) =>
                 }
                 else if (action == "editarHtml")
                 {
-                    var a = S(ctx.Scalar("SELECT FileName FROM engModulePrintFormat WHERE PrintFormatID=" + Convert.ToInt64(p["formatId"])));
-                    if (File.Exists(a)) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = a, UseShellExecute = true });
-                    else err = "No existe el archivo:\n" + a;
+                    // «Diseñar formato…»: abre el Diseñador como PROGRAMA APARTE (se puede minimizar y Comercial sigue libre)
+                    long fidD = Convert.ToInt64(p["formatId"]);
+                    string exeD = new[] { @"C:\BrosLMV\disenador\BrosLMV.Disenador.exe", @"C:\MLVTotal\designer\bin\Release\net8.0-windows\BrosLMV.Disenador.exe", @"C:\MLVTotal-union\designer\bin\Release\net8.0-windows\BrosLMV.Disenador.exe" }.FirstOrDefault(File.Exists);
+                    if (exeD == null) err = "No se encontró el Diseñador (BrosLMV.Disenador.exe). Reinstala BrosLMV con la versión que lo incluye.";
+                    else
+                    {
+                        string bdD = S(ctx.Scalar("SELECT DB_NAME()"));
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = exeD, Arguments = "--bd \"" + bdD + "\" --empresa " + owned + " --userid " + userId + " --formato " + fidD, UseShellExecute = false });
+                    }
                     data = o("ok", err == null);
                 }
                 else if (action == "abrirAyudaAppPassword")
@@ -703,7 +709,7 @@ function renderDetail(c){
        <div class='inline' style='margin-top:8px'>
          <button class='btn sm' onclick='nuevoFormato()'>Nuevo…</button>
          <button class='btn sm' onclick='nuevoFormato(""dup"")'>Duplicar</button>
-         <button class='btn sm' onclick='editarHtml()'>Editar HTML</button>
+         <button class='btn sm primary' onclick='editarHtml()'>Diseñar formato…</button>
          <button class='btn sm' onclick='quitarFormato()'>Quitar</button>
        </div>
        <div class='mono' id='fmtArch' style='margin-top:8px'>${esc(c.archivo)}</div>
@@ -753,7 +759,7 @@ async function guardarModulo(){
     personalizado:chk('pers'),defComercial:chk('defcom'),
     ruta:val('m_ruta'),patron:val('m_patron'),preguntar:chk('m_preg'),abrir:chk('m_abrir')});
   DATA=await call('cargarTodo'); renderList(document.getElementById('q').value.toLowerCase()); renderDetail(c); toast('Guardado','ok');}
-async function editarHtml(){const id=+val('fmt');if(!id){toast('No hay archivo','bad');return;}await call('editarHtml',{formatId:id});}
+async function editarHtml(){const id=+val('fmt');if(!id){toast('No hay archivo','bad');return;}try{await call('editarHtml',{formatId:id});toast('Abriendo el Diseñador…','ok');}catch(e){toast(e.message,'bad');}}
 async function quitarFormato(){const id=+val('fmt');if(!id)return;
   if(!confirm('¿Quitar este formato? (No borra el archivo .html)'))return;
   try{const c=await call('quitarFormato',{id:sel,formatId:id});renderDetail(c);toast('Formato quitado','ok');}
@@ -766,7 +772,7 @@ async function nuevoFormato(dup){
   try{const r=await call('nuevoFormato',{id:sel,nombre,modo,origenFormatId:origen});
     if(r&&r.cancel){return;} renderDetail(r.cfg);
     const s=document.getElementById('fmt'); if(s) s.value=r.nuevo; document.getElementById('fmt').dispatchEvent(new Event('change'));
-    toast('Formato creado — usa “Editar HTML” para ajustarlo','ok');}
+    toast('Formato creado — usa “Diseñar formato…” para ajustarlo','ok');}
   catch(e){toast(e.message,'bad');}}
 // -------- Diagnóstico --------
 async function renderDiag(){

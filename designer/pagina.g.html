@@ -1,0 +1,863 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Diseñador de formatos</title><style>
+:root{--accent:#2D6FE0;--accent-d:#1f56b8;--ink:#16263A;--muted:#64748B;--bg:#F4F6FA;--card:#FFFFFF;--line:#E5E9F0;--line-2:#EEF1F6;--ok:#16A34A;--bad:#DC2626}
+*{box-sizing:border-box}html,body{height:100%}[hidden]{display:none!important}
+body{margin:0;font:13px/1.5 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:12.5px;opacity:0;transition:.2s;pointer-events:none;z-index:200;max-width:80vw}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}.toast.bad{background:var(--bad)}.toast.ok{background:var(--ok)}
+#dis{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;font-size:12.5px}
+#dis button{font:inherit}
+#dis .dh{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:wrap}
+#dis .dh h3{margin:0;font-size:14px;font-weight:650}
+#dis .dh .sub{color:var(--muted);font-size:11.5px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#dis .esp{flex:1}
+#dis .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+#dis .seg button{border:0;background:#fff;padding:6px 12px;cursor:pointer;font-weight:600;color:var(--muted)}
+#dis .seg button.on{background:var(--accent);color:#fff}
+#dis .ib{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 9px;cursor:pointer;font-weight:600;color:var(--ink)}
+#dis .ib:hover{background:var(--line-2)}#dis .ib:disabled{opacity:.4;cursor:default}
+#dis .ib.p{background:var(--accent);border-color:var(--accent);color:#fff}
+#dis select,#dis input[type=text],#dis input[type=number],#dis textarea{border:1px solid var(--line);border-radius:7px;padding:5px 7px;font:inherit;color:var(--ink);background:#fff;width:100%}
+#dis .dh select{width:auto;max-width:260px}
+#dis .estado{font-size:12px;color:var(--muted)}#dis .estado.sucio{color:#B45309;font-weight:600}
+#dis .aviso{padding:6px 14px;background:#FFF7E6;color:#7A4B06;border-bottom:1px solid #F0D9AD;font-size:12px}
+#dis .cuerpo{flex:1;min-height:0;display:flex}
+#dis .lado{background:var(--card);display:flex;flex-direction:column;min-height:0}
+#dis #dIzq{flex:0 0 268px;border-right:1px solid var(--line)}
+#dis #dDer{flex:0 0 292px;border-left:1px solid var(--line)}
+#dis .ptabs{display:flex;border-bottom:1px solid var(--line)}
+#dis .ptabs button{flex:1;border:0;border-bottom:2px solid transparent;background:none;padding:8px 4px;cursor:pointer;font-weight:600;color:var(--muted)}
+#dis .ptabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+#dis .pbody{flex:1;overflow:auto;padding:10px}
+#dis .g{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 2px 4px}
+#dis .tag{display:flex;align-items:center;gap:6px;padding:4px 7px;border-radius:6px;cursor:grab;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;border:1px solid transparent}
+#dis .tag:hover{background:var(--line-2);border-color:var(--line)}#dis .tag small{color:var(--muted);font-family:inherit;margin-left:auto;font-size:10.5px}#dis .tag.nueva{color:#166534}
+#dis .pal{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#dis .pal button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:9px 6px;cursor:pointer;font-weight:600;text-align:center;line-height:1.2}
+#dis .pal button:hover{border-color:var(--accent);color:var(--accent)}#dis .pal button span{display:block;font-size:17px}
+#dis .centro{flex:1;min-width:0;display:flex;flex-direction:column;background:#5b616b}
+#dis #dMigas{display:flex;gap:2px;flex-wrap:wrap;align-items:center;padding:5px 10px;background:var(--card);border-bottom:1px solid var(--line);min-height:30px;font-size:11.5px}
+#dis #dMigas button{border:0;background:var(--line-2);border-radius:5px;padding:2px 7px;cursor:pointer;color:var(--ink);font-family:ui-monospace,Consolas,monospace;font-size:11px}
+#dis #dMigas button.on{background:var(--accent);color:#fff}#dis #dMigas i{color:var(--muted);font-style:normal}
+#dis #dLienzo{flex:1;min-height:0;overflow:auto;position:relative}
+#dis #dFrame,#dis #dFinalFrame{border:0;background:#5b616b;width:100%;height:100%;display:block;transform-origin:0 0}
+#dis #dCodigo,#dis #dFinal{flex:1;min-height:0;display:flex;flex-direction:column;background:#fff}
+#dis #dTexto{flex:1;border:0;border-radius:0;resize:none;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre;overflow:auto;padding:10px 12px;tab-size:2}
+#dis #dFaltan{padding:5px 12px;font-size:12px;background:#FFF7E6;color:#7A4B06;border-top:1px solid #F0D9AD}#dis #dFaltan code{background:#FDEBC8;border-radius:4px;padding:0 4px}
+#dis .campo{display:flex;align-items:center;gap:6px;margin:5px 0}#dis .campo label{flex:0 0 78px;color:var(--muted);font-size:11.5px}
+#dis .campo .dos{display:flex;gap:4px;flex:1}
+#dis .tb{display:flex;gap:3px;flex-wrap:wrap}
+#dis .tb button{border:1px solid var(--line);background:#fff;border-radius:6px;min-width:30px;padding:4px 7px;cursor:pointer;font-weight:700}
+#dis .tb button.on{background:var(--accent);color:#fff;border-color:var(--accent)}#dis .tb button:hover{border-color:var(--accent)}
+#dis details{border-bottom:1px solid var(--line-2);padding:4px 0}#dis summary{cursor:pointer;font-weight:650;padding:6px 2px}
+#dis input[type=color]{width:34px;height:26px;padding:0;border:1px solid var(--line);border-radius:6px;background:#fff;flex:0 0 34px}
+#dis .sw{display:flex;gap:6px;align-items:center;margin:4px 0}#dis .sw span{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--muted)}
+#dis .vacio{color:var(--muted);text-align:center;padding:20px 8px}
+#dis .tip{color:var(--muted);font-size:11px;margin:4px 0}
+#dis .carga{position:absolute;inset:0;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font-weight:650;z-index:5}
+#dModal{position:fixed;inset:0;z-index:80;background:rgba(15,30,50,.45);display:flex;align-items:center;justify-content:center}
+#dModal .caja{background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.35);width:min(760px,94vw);max-height:90vh;display:flex;flex-direction:column;font-size:12.5px}
+#dModal .caja h3{margin:0;padding:14px 18px 8px;font-size:15px}#dModal .cm{padding:6px 18px;overflow:auto}#dModal .pie{display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--line)}
+#dModal select,#dModal input[type=text],#dModal textarea{border:1px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;width:100%;background:#fff}
+#dModal .f{margin:8px 0}#dModal .f label{display:block;font-weight:600;margin-bottom:3px;font-size:12px}#dModal .fila{display:flex;gap:8px}#dModal .fila>*{flex:1}
+#dModal pre{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px;font-size:11.5px;white-space:pre-wrap;word-break:break-word;margin:6px 0}
+#dModal .res{padding:8px 10px;border-radius:8px;background:#EAF7EE;color:#166534;margin:6px 0}#dModal .res.mal{background:#FDECEC;color:#B42318}
+#dModal .ib{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:600;font:inherit}#dModal .ib.p{background:var(--accent);border-color:var(--accent);color:#fff}
+#dModal .lista{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:6px}
+#dModal .lista .t{padding:5px 10px;cursor:pointer;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;display:flex;gap:8px}#dModal .lista .t:hover{background:var(--line-2)}#dModal .lista .t small{margin-left:auto;color:var(--muted)}
+#dis .tag .val{color:var(--muted);margin-left:auto;font-family:'Segoe UI',sans-serif;font-size:10.5px;max-width:96px;overflow:hidden;white-space:nowrap}
+#dis .tag .inf{font-style:normal;color:var(--accent);cursor:pointer;padding:0 3px;margin-left:4px}#dis .tag .inf:hover{background:var(--accent);color:#fff;border-radius:50%}
+#dis .tag small{margin-left:4px}
+
+</style></head><body>
+<div id='dis' hidden>
+  <div class='dh'>
+    <h3>Diseñador</h3><span class='sub' id='dNombre'></span><button class='ib' id='dOtro' title='Abrir otro formato'>Abrir…</button>
+    <div class='seg' id='dModos'><button data-m='diseno' class='on'>Diseño</button><button data-m='codigo'>Código</button><button data-m='final'>Vista final</button></div>
+    <button class='ib' id='dUndo' title='Deshacer (Ctrl+Z)'>↶</button><button class='ib' id='dRedo' title='Rehacer (Ctrl+Y)'>↷</button>
+    <select id='dZoom' title='Zoom'><option value='0.6'>60%</option><option value='0.75' selected>75%</option><option value='0.9'>90%</option><option value='1'>100%</option><option value='1.25'>125%</option></select>
+    <span class='esp'></span>
+    <select id='dDoc' title='Documento con el que se prueba el diseño'></select>
+    <span class='estado' id='dEstado'>Guardado</span>
+    <button class='ib p' id='dGuardar'>Guardar (Ctrl+S)</button>
+    <button class='ib' id='dCerrar'>Cerrar</button>
+  </div>
+  <div class='aviso' id='dAviso' hidden></div>
+  <div class='cuerpo'>
+    <aside class='lado' id='dIzq'>
+      <div class='ptabs' id='dIzqTabs'><button data-p='campos' class='on'>Campos</button><button data-p='elementos'>Elementos</button><button data-p='documento'>Documento</button></div>
+      <div class='pbody' id='dIzqCuerpo'></div>
+    </aside>
+    <section class='centro'>
+      <div id='dMigas'></div>
+      <div id='dLienzo'><iframe id='dFrame'></iframe><div class='carga' id='dCarga' hidden>Preparando el diseño…</div></div>
+      <div id='dCodigo' hidden><textarea id='dTexto' spellcheck='false'></textarea></div>
+      <div id='dFinal' hidden><iframe id='dFinalFrame' style='flex:1'></iframe><div id='dFaltan' hidden></div></div>
+    </section>
+    <aside class='lado' id='dDer'>
+      <div class='ptabs'><button class='on' style='cursor:default'>Propiedades</button></div>
+      <div class='pbody' id='dDerCuerpo'></div>
+    </aside>
+  </div>
+</div>
+<div id='dModal' hidden></div>
+
+<div id="toast" class="toast"></div>
+<script>
+const INICIO = __INICIO__;
+const STANDALONE = true;
+const bus = {}; let _rid = 0;
+function call(action, payload) { return new Promise((res, rej) => { const reqId = 'r' + (++_rid); bus[reqId] = { res, rej }; window.chrome.webview.postMessage(JSON.stringify({ reqId, action, payload: payload || {} })); }); }
+window.chrome.webview.addEventListener('message', e => { const m = e.data; const h = bus[m.reqId]; if (!h) return; delete bus[m.reqId]; if (m.ok) h.res(m.data); else h.rej(new Error(m.error || 'error')); });
+function toast(msg, kind) { const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast show ' + (kind || ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 3200); }
+// =====================================================================================================================
+// DISEÑADOR DE FORMATOS (BrosLMV). El formato HTML con [Etiquetas] es la fuente de verdad; el lienzo lo muestra con los valores de un
+// documento real. Las etiquetas aparecen como «fichas» que no se pueden romper al escribir; al guardar vuelven a ser [Etiqueta].
+// =====================================================================================================================
+const TOK_SRC = "\\[(?:Format\\(\\s*[A-Za-z_][A-Za-z0-9_]*\\s*,\\s*[^\\)\\]]+?\\s*\\)|[A-Za-z_][A-Za-z0-9_]*)\\]";
+const TOK_G = () => new RegExp(TOK_SRC, "g");
+const TOK_1 = new RegExp(TOK_SRC);
+const $d = id => document.getElementById(id);
+const D = { id: 0, nombre: "", archivo: "", esDefault: false, docs: [], docId: 0, source: "", base: "", vals: { valores: {}, filas: [], nFilas: 0, attrs: {} },
+  hist: [], hi: -1, modo: "diseno", izq: "campos", sel: null, etiquetas: [], zoom: 0.75, editando: null, ocupado: false, drag: null };
+
+// ---------- utilidades ----------
+function dEsc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function dToast(m, k) { try { toast(m, k); } catch (e) { alert(m); } }
+function hexDe(c) {
+  if (!c) return "#000000"; c = c.trim();
+  if (c[0] === "#") { if (c.length === 4) return "#" + c[1] + c[1] + c[2] + c[2] + c[3] + c[3]; return c.slice(0, 7).toLowerCase(); }
+  const m = c.match(/rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)(?:[ ,/]+([\d.]+))?/);
+  if (!m) return "#000000";
+  if (m[4] !== undefined && parseFloat(m[4]) === 0) return "#ffffff";
+  return "#" + [m[1], m[2], m[3]].map(n => ("0" + parseInt(n, 10).toString(16)).slice(-2)).join("");
+}
+function tokensDe(texto) { return Array.from(new Set((texto.match(TOK_G()) || []))); }
+function fuenteSinScripts(src) { return src.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ""); }
+function tokensCabeceraYBanda(src) {
+  const s = fuenteSinScripts(src), m = s.match(/<DETAIL>([\s\S]*?)<\/DETAIL>/i);
+  const fuera = m ? s.replace(m[0], "") : s;
+  return { cab: tokensDe(fuera), banda: m ? tokensDe(m[1]) : [] };
+}
+
+// ---------- valores de ejemplo (los pide al servidor: el motor de etiquetas de Comercial) ----------
+async function pedirValores(completo) {
+  const r = await call("disenoValores", { formatId: D.id, docId: D.docId, html: completo ? D.source : "" });
+  D.vals = r;
+}
+async function asegurarValores() {
+  // Solo se piden las etiquetas nuevas (insertadas o cambiadas): no se vuelve a resolver todo el formato
+  const t = tokensCabeceraYBanda(D.source), faltaCab = t.cab.filter(k => !(k in D.vals.valores)), faltaBanda = t.banda.filter(k => !(D.vals.filas[0] && k in D.vals.filas[0]));
+  const attrsNuevos = [];
+  if (faltaCab.length) { const r = await call("disenoValores", { formatId: D.id, docId: D.docId, tokens: faltaCab, detalle: false }); Object.assign(D.vals.valores, r.valores); }
+  if (faltaBanda.length) { const r = await call("disenoValores", { formatId: D.id, docId: D.docId, tokens: faltaBanda, detalle: true }); (r.filas || []).forEach((f, i) => { D.vals.filas[i] = Object.assign(D.vals.filas[i] || {}, f); }); }
+  // atributos con etiquetas que aún no se resolvieron (p. ej. un logo recién puesto)
+  const reA = /([A-Za-z\-]+)\s*=\s*"([^"]*\[[A-Za-z_][^"]*)"/g; let m;
+  while ((m = reA.exec(fuenteSinScripts(D.source)))) if (TOK_1.test(m[2]) && !(m[2] in D.vals.attrs)) attrsNuevos.push(m[2]);
+  if (attrsNuevos.length) { const r = await call("disenoValores", { formatId: D.id, docId: D.docId, html: "<x " + attrsNuevos.map((a, i) => 'src="' + a + '"').join(" ") + ">" }); Object.assign(D.vals.attrs, r.attrs); }
+}
+
+// ---------- construir el DOM de diseño a partir de la fuente ----------
+const CSS_EDITOR = ".bros-tag{background:#e6f0ff;border:1px dashed #7aa7f0;border-radius:3px;padding:0 2px;cursor:default;white-space:pre-wrap}" +
+  ".bros-tag.vacio{background:#fff3d6;border-color:#e0b050;color:#8a6a1a;font-style:italic;font-size:.85em}.bros-tag.bloque{display:block;background:#eef5ff;padding:2px 4px}" +
+  ".bros-hover{outline:1px dashed #2d6fe0!important;outline-offset:-1px}.bros-sel{outline:2px solid #2d6fe0!important;outline-offset:-1px}" +
+  ".bros-clone{opacity:.5;pointer-events:none}[contenteditable=true]{outline:2px solid #16a34a!important;outline-offset:-1px;cursor:text}" +
+  "img{cursor:default}.bros-drop{outline:2px dashed #16a34a!important}";
+function preparar(source) {
+  const s = source.replace(/<DETAIL>/gi, "<!--BROS-DETAIL-->").replace(/<\/DETAIL>/gi, "<!--/BROS-DETAIL-->");
+  const doc = new DOMParser().parseFromString(s, "text/html");
+  doc.querySelectorAll("script").forEach(sc => { sc.setAttribute("data-bros-type", sc.getAttribute("type") || ""); sc.setAttribute("type", "text/bros-inerte"); });
+  const attrs = D.vals.attrs || {};
+  doc.querySelectorAll("*").forEach(el => {
+    Array.from(el.attributes).forEach(a => {
+      if (a.name.startsWith("data-bros-") || !TOK_1.test(a.value)) return;
+      el.setAttribute("data-bros-a-" + a.name, a.value);
+      if (a.name !== "data-qr" && a.value in attrs) el.setAttribute(a.name, attrs[a.value]);
+    });
+  });
+  // banda de renglones: los elementos entre los marcadores son la fila de ejemplo; se muestran copias (solo lectura) de los demás renglones
+  const filas = D.vals.filas || [], total = D.vals.nFilas || filas.length;
+  const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_COMMENT), ini = [];
+  while (w.nextNode()) if (w.currentNode.data === "BROS-DETAIL") ini.push(w.currentNode);
+  ini.forEach(c0 => {
+    const band = []; let n = c0.nextSibling, fin = null;
+    while (n) { if (n.nodeType === 8 && n.data === "/BROS-DETAIL") { fin = n; break; } if (n.nodeType === 1) band.push(n); n = n.nextSibling; }
+    if (!fin) return;
+    const clones = [];
+    for (let i = 1; i < Math.min(filas.length, 3); i++) band.forEach(el => { const c = el.cloneNode(true); c.classList.add("bros-clone"); c.setAttribute("data-bros-detail", String(i)); clones.push(c); });
+    band.forEach(el => el.setAttribute("data-bros-detail", "0"));
+    clones.forEach(c => fin.parentNode.insertBefore(c, fin));
+  });
+  chipificar(doc.body, doc);
+  const st = doc.createElement("style"); st.id = "bros-editor-css"; st.textContent = CSS_EDITOR; doc.head.appendChild(st);
+  return "<!doctype html>" + doc.documentElement.outerHTML;
+}
+function valorDe(tok, fila) {
+  const v = fila != null ? ((D.vals.filas[fila] || {})[tok]) : D.vals.valores[tok];
+  return v == null ? "" : v;
+}
+function chipificar(root, doc) {
+  const w = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.parentElement && /^(SCRIPT|STYLE|TEXTAREA|TITLE)$/.test(n.parentElement.tagName)) ? NodeFilter.FILTER_REJECT : TOK_1.test(n.data) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const nodos = []; while (w.nextNode()) nodos.push(w.currentNode);
+  nodos.forEach(n => {
+    const banda = n.parentElement && n.parentElement.closest("[data-bros-detail]");
+    const fila = banda ? parseInt(banda.getAttribute("data-bros-detail"), 10) : null;
+    const frag = doc.createDocumentFragment(), re = TOK_G(); let ult = 0, m;
+    while ((m = re.exec(n.data))) {
+      if (m.index > ult) frag.appendChild(doc.createTextNode(n.data.slice(ult, m.index)));
+      frag.appendChild(crearChip(doc, m[0], fila)); ult = m.index + m[0].length;
+    }
+    if (ult < n.data.length) frag.appendChild(doc.createTextNode(n.data.slice(ult)));
+    n.parentNode.replaceChild(frag, n);
+  });
+}
+function crearChip(doc, tok, fila) {
+  const c = doc.createElement("span"), v = valorDe(tok, fila);
+  c.className = "bros-tag"; c.setAttribute("data-tok", tok); c.setAttribute("contenteditable", "false"); c.title = tok;
+  if (tok === "[DesgloseImpuestos]") { c.classList.add("bloque"); c.innerHTML = v || "<i>[DesgloseImpuestos]</i>"; }
+  else if (v === "") { c.classList.add("vacio"); c.textContent = tok.slice(1, -1).replace(/^Format\(\s*([A-Za-z_0-9]+).*$/, "$1"); }
+  else c.textContent = v;
+  return c;
+}
+
+// ---------- serializar: del lienzo de vuelta al formato con [Etiquetas] ----------
+function serializar() {
+  const fr = $d("dFrame"); if (!fr.contentDocument || !fr.contentDocument.documentElement) return D.source;
+  const root = fr.contentDocument.documentElement.cloneNode(true), od = root.ownerDocument;
+  root.querySelectorAll(".bros-clone,#bros-editor-css").forEach(n => n.remove());
+  root.querySelectorAll("span.bros-tag").forEach(c => c.replaceWith(od.createTextNode(c.getAttribute("data-tok"))));
+  root.querySelectorAll("[data-bros-ce]").forEach(el => { el.removeAttribute("contenteditable"); el.removeAttribute("data-bros-ce"); });
+  root.querySelectorAll(".bros-sel,.bros-hover,.bros-drop").forEach(el => { el.classList.remove("bros-sel", "bros-hover", "bros-drop"); if (!el.getAttribute("class")) el.removeAttribute("class"); });
+  root.querySelectorAll("*").forEach(el => {
+    Array.from(el.attributes).forEach(a => { if (a.name.startsWith("data-bros-a-")) { el.setAttribute(a.name.slice(12), a.value); el.removeAttribute(a.name); } });
+    el.removeAttribute("data-bros-detail");
+  });
+  root.querySelectorAll("script[data-bros-type]").forEach(sc => { const t = sc.getAttribute("data-bros-type"); if (t) sc.setAttribute("type", t); else sc.removeAttribute("type"); sc.removeAttribute("data-bros-type"); });
+  let html = "<!doctype html>\n" + root.outerHTML;
+  return html.replace(/<!--BROS-DETAIL-->/g, "<DETAIL>").replace(/<!--\/BROS-DETAIL-->/g, "</DETAIL>");
+}
+
+// ---------- historial ----------
+function histPush(s) {
+  if (D.hist[D.hi] === s) return;
+  D.hist = D.hist.slice(0, D.hi + 1); D.hist.push(s); if (D.hist.length > 120) D.hist.shift(); D.hi = D.hist.length - 1; botonesHist();
+}
+function botonesHist() { $d("dUndo").disabled = D.hi <= 0; $d("dRedo").disabled = D.hi >= D.hist.length - 1; }
+async function deshacer() { if (D.hi > 0) { D.hi--; D.source = D.hist[D.hi]; botonesHist(); estadoSucio(); await refrescar(); } }
+async function rehacer() { if (D.hi < D.hist.length - 1) { D.hi++; D.source = D.hist[D.hi]; botonesHist(); estadoSucio(); await refrescar(); } }
+function estadoSucio() { const e = $d("dEstado"), sucio = D.source !== D.base; e.textContent = sucio ? "Sin guardar ●" : "Guardado"; e.className = "estado" + (sucio ? " sucio" : ""); }
+
+// ---------- pintar el lienzo ----------
+function rutaDe(el) {
+  if (!el) return null; const r = []; const d = $d("dFrame").contentDocument;
+  while (el && el !== d.documentElement) {
+    const p = el.parentElement; if (!p) break;
+    const hijos = Array.from(p.children).filter(x => !x.classList.contains("bros-clone") && x.id !== "bros-editor-css");
+    r.unshift(hijos.indexOf(el)); el = p;
+  }
+  return r;
+}
+function elDeRuta(ruta) {
+  if (!ruta) return null; let el = $d("dFrame").contentDocument.documentElement;
+  for (const i of ruta) { const hijos = Array.from(el.children).filter(x => !x.classList.contains("bros-clone") && x.id !== "bros-editor-css"); el = hijos[i]; if (!el) return null; }
+  return el;
+}
+async function refrescar(conservarSel) {
+  const ruta = conservarSel ? rutaDe(D.sel) : null;
+  $d("dCarga").hidden = false;
+  try { await asegurarValores(); } catch (e) { dToast("No se pudieron leer los valores de ejemplo: " + e.message, "bad"); }
+  const fr = $d("dFrame");
+  await new Promise(res => { fr.onload = () => res(); fr.srcdoc = preparar(D.source); });
+  conectarLienzo(); aplicarZoom();
+  D.sel = null;
+  if (ruta) { const el = elDeRuta(ruta); if (el) seleccionar(el); else pintarProps(); } else pintarProps();
+  pintarMigas();
+  $d("dCarga").hidden = true;
+}
+function aplicarZoom() { const f = $d("dFrame"); f.style.transform = "scale(" + D.zoom + ")"; f.style.width = (100 / D.zoom) + "%"; f.style.height = (100 / D.zoom) + "%"; }
+
+// Una edición ya hecha en el lienzo: se serializa, se guarda en el historial y (si afecta la banda de renglones) se repinta
+async function confirmar(repintar) {
+  const s = serializar(); D.source = s; histPush(s); estadoSucio();
+  if (D.modo === "codigo") $d("dTexto").value = s;
+  if (repintar) await refrescar(true); else { pintarProps(); pintarMigas(); }
+}
+
+// ---------- interacción dentro del lienzo ----------
+function conectarLienzo() {
+  const d = $d("dFrame").contentDocument; if (!d) return;
+  d.addEventListener("mouseover", e => { const t = objetivo(e.target); d.querySelectorAll(".bros-hover").forEach(x => x.classList.remove("bros-hover")); if (t && t !== d.body && t !== d.documentElement) t.classList.add("bros-hover"); });
+  d.addEventListener("mouseout", e => { const t = objetivo(e.target); if (t) t.classList.remove("bros-hover"); });
+  d.addEventListener("click", e => { if (D.editando && D.editando.contains(e.target)) return; e.preventDefault(); const t = objetivo(e.target); if (t) { terminarEdicion(); seleccionar(t); } });
+  d.addEventListener("dblclick", e => { const t = objetivo(e.target); if (t && !t.classList.contains("bros-tag")) empezarEdicion(t); else if (t) cambiarEtiquetaDialogo(t); });
+  d.addEventListener("keydown", teclaLienzo);
+  d.addEventListener("dragover", e => { if (D.drag) { e.preventDefault(); const t = objetivo(e.target); d.querySelectorAll(".bros-drop").forEach(x => x.classList.remove("bros-drop")); if (t) t.classList.add("bros-drop"); } });
+  d.addEventListener("dragleave", () => d.querySelectorAll(".bros-drop").forEach(x => x.classList.remove("bros-drop")));
+  d.addEventListener("drop", e => { if (!D.drag) return; e.preventDefault(); d.querySelectorAll(".bros-drop").forEach(x => x.classList.remove("bros-drop")); soltarEtiqueta(e, D.drag); D.drag = null; });
+}
+function objetivo(t) { if (!t) return null; if (t.nodeType === 3) t = t.parentElement; return t && t.closest ? (t.closest(".bros-tag") || t) : t; }
+function teclaLienzo(e) { teclaGlobal(e); }
+function seleccionar(el) {
+  const d = $d("dFrame").contentDocument; d.querySelectorAll(".bros-sel").forEach(x => x.classList.remove("bros-sel"));
+  D.sel = el; if (el) el.classList.add("bros-sel"); pintarProps(); pintarMigas();
+}
+function empezarEdicion(el) {
+  if (el.closest("[data-bros-detail]") && el.closest(".bros-clone")) return;
+  if (/^(IMG|TABLE|TBODY|THEAD|TR|HTML)$/.test(el.tagName)) return;
+  terminarEdicion(); D.editando = el; el.setAttribute("contenteditable", "true"); el.setAttribute("data-bros-ce", "1"); el.focus();
+  const fin = () => { el.removeEventListener("blur", fin); terminarEdicion(true); }; el.addEventListener("blur", fin);
+}
+function terminarEdicion(guardar) {
+  const el = D.editando; if (!el) return; D.editando = null;
+  el.removeAttribute("contenteditable"); el.removeAttribute("data-bros-ce");
+  if (guardar !== false) confirmar(!!el.closest("[data-bros-detail]"));
+}
+function pintarMigas() {
+  const m = $d("dMigas"); if (!D.sel) { m.innerHTML = "<span class='muted'>Haz clic en un elemento del documento para seleccionarlo · doble clic para escribir</span>"; return; }
+  const d = $d("dFrame").contentDocument, cadena = []; let el = D.sel;
+  while (el && el !== d.documentElement) { cadena.unshift(el); el = el.parentElement; }
+  m.innerHTML = cadena.map((e, i) => "<button data-i='" + i + "' class='" + (e === D.sel ? "on" : "") + "'>" + dEsc(nombreCorto(e)) + "</button>").join("<i>›</i>");
+  m.querySelectorAll("button").forEach(b => b.onclick = () => seleccionar(cadena[+b.dataset.i]));
+}
+function nombreCorto(e) {
+  if (e.classList && e.classList.contains("bros-tag")) return e.getAttribute("data-tok");
+  let n = e.tagName.toLowerCase(); const c = Array.from(e.classList || []).filter(x => !x.startsWith("bros-"))[0]; if (c) n += "." + c; return n;
+}
+
+// ---------- modos: diseño / código / vista final ----------
+async function cambiarModo(m) {
+  if (m === D.modo) return;
+  if (D.modo === "diseno") { terminarEdicion(); D.source = serializar(); histPush(D.source); }
+  else if (D.modo === "codigo") { const t = $d("dTexto").value; if (t !== D.source) { D.source = t; histPush(t); } }
+  D.modo = m; estadoSucio();
+  $d("dLienzo").hidden = m !== "diseno"; $d("dCodigo").hidden = m !== "codigo"; $d("dFinal").hidden = m !== "final";
+  document.querySelectorAll("#dModos button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+  if (m === "diseno") await refrescar(); else if (m === "codigo") { $d("dTexto").value = D.source; $d("dTexto").focus(); } else await vistaFinal();
+}
+async function vistaFinal() {
+  const fr = $d("dFinalFrame"), fa = $d("dFaltan");
+  try {
+    const r = await call("editorVista", { formatId: D.id, html: D.source, docId: D.docId });
+    if (r.error) { fr.srcdoc = "<body style='font:14px sans-serif;padding:30px;color:#b42318'>" + dEsc(r.error) + "</body>"; } else fr.srcdoc = r.html;
+    if (r.faltan && r.faltan.length) { fa.hidden = false; fa.innerHTML = "Sin valor en este documento: " + r.faltan.map(x => "<code>[" + dEsc(x) + "]</code>").join(" ") + " — si es una referencia nueva, revisa que su consulta regrese un valor."; } else fa.hidden = true;
+  } catch (e) { dToast(e.message, "bad"); }
+}
+
+// ---------- abrir / guardar / cerrar ----------
+async function abrirDisenador(id) {
+  try {
+    const r = await call("editorAbrir", { formatId: id });
+    Object.assign(D, { id, nombre: r.modulo + " · " + r.nombre, archivo: r.archivo, esDefault: r.esDefault, docs: r.docs, docId: r.docs.length ? r.docs[0].id : 0, modo: "diseno", sel: null, hist: [], hi: -1, editando: null });
+    $d("dNombre").textContent = D.nombre; $d("dNombre").title = D.archivo;
+    $d("dDoc").innerHTML = r.docs.length ? r.docs.map(x => "<option value=" + x.id + ">" + dEsc(x.etiqueta) + "</option>").join("") : "<option value=0>(no hay documentos de este tipo)</option>";
+    const av = $d("dAviso");
+    if (r.esDefault) { av.hidden = false; av.textContent = "Este es el formato predeterminado de Comercial: al guardar también cambias cómo imprime Comercial. Se guarda una copia de respaldo del archivo original. Si prefieres no tocarlo, duplícalo desde la lista de formatos."; } else av.hidden = true;
+    D.source = r.html; D.vals = { valores: {}, filas: [], nFilas: 0, attrs: {} };
+    $d("dis").hidden = false; $d("dCarga").hidden = false;
+    document.querySelectorAll("#dModos button").forEach(b => b.classList.toggle("on", b.dataset.m === "diseno"));
+    $d("dLienzo").hidden = false; $d("dCodigo").hidden = true; $d("dFinal").hidden = true;
+    if (!D.etiquetas.length) { try { D.etiquetas = (await call("editorEtiquetas")).etiquetas; } catch (e) { D.etiquetas = []; } }
+    D.info = {}; if (D.docId) { try { D.info = (await call("etiquetasInfo", { docId: D.docId })).columnas || {}; } catch (e) { D.info = {}; } }
+    if (D.docId) await pedirValores(true); else dToast("No hay documentos de este tipo: el diseño se verá sin datos de ejemplo.", "bad");
+    await refrescar();
+    D.source = serializar(); D.base = D.source; D.hist = []; D.hi = -1; histPush(D.source); estadoSucio();   // la fuente normalizada (el navegador ordena el HTML) es el punto de partida
+    pintarIzq();
+  } catch (e) { $d("dCarga").hidden = true; dToast(e.message, "bad"); }
+}
+async function guardarDisenador() {
+  try {
+    if (D.modo === "diseno") { terminarEdicion(false); D.source = serializar(); } else if (D.modo === "codigo") D.source = $d("dTexto").value;
+    const r = await call("editorGuardar", { formatId: D.id, html: D.source });
+    D.base = D.source; histPush(D.source); estadoSucio();
+    dToast(r.respaldo ? "Guardado. Respaldo del original: " + r.respaldo.split("\\").pop() : "Guardado", "ok");
+  } catch (e) { dToast(e.message, "bad"); }
+}
+function cerrarDisenador() {
+  if (D.modo === "diseno") D.source = serializar(); else if (D.modo === "codigo") D.source = $d("dTexto").value;
+  if (D.source !== D.base && !confirm("Hay cambios sin guardar. ¿Cerrar sin guardarlos?")) return;
+  if (typeof STANDALONE !== "undefined") call("cerrarApp"); else $d("dis").hidden = true;
+}
+function teclaGlobal(e) {
+  if ($d("dis").hidden || !$d("dModal").hidden) return;
+  const k = e.key.toLowerCase(), c = e.ctrlKey || e.metaKey, tx = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName), ed = D.editando;
+  if (c && k === "s") { e.preventDefault(); guardarDisenador(); return; }
+  if (c && k === "z" && !tx && !ed) { e.preventDefault(); deshacer(); return; }
+  if (c && k === "y" && !tx && !ed) { e.preventDefault(); rehacer(); return; }
+  if (ed) { if (k === "escape") { e.preventDefault(); terminarEdicion(true); } return; }
+  if (tx || D.modo !== "diseno") { if (k === "escape" && D.modo !== "diseno" && !tx) cerrarDisenador(); return; }
+  if (k === "delete" || k === "backspace") { if (D.sel && D.sel !== $d("dFrame").contentDocument.body) { e.preventDefault(); eliminarSel(); } }
+  else if (c && k === "d") { e.preventDefault(); duplicarSel(); }
+  else if (e.altKey && k === "arrowup") { e.preventDefault(); moverSel(-1); }
+  else if (e.altKey && k === "arrowdown") { e.preventDefault(); moverSel(1); }
+  else if (k === "escape") { seleccionar(null); }
+}
+
+// ---------- panel izquierdo: Campos / Elementos / Documento ----------
+function pintarIzq() {
+  document.querySelectorAll("#dIzqTabs button").forEach(b => b.classList.toggle("on", b.dataset.p === D.izq));
+  const c = $d("dIzqCuerpo");
+  if (D.izq === "campos") pintarCampos(c); else if (D.izq === "elementos") pintarElementos(c); else pintarDocumento(c);
+}
+function pintarCampos(c) {
+  const q = (c.querySelector("#dBuscar") || {}).value || "";
+  const ql = q.toLowerCase().trim(), vistos = {}, cols = [], refs = [], propias = [], info = D.info || {};
+  D.etiquetas.forEach(t => { if (vistos[t.k]) return; vistos[t.k] = 1; const inf = info[t.k]; if (ql && (t.k + " " + t.d + " " + (inf ? inf.o + " " + inf.v : "")).toLowerCase().indexOf(ql) < 0) return; (t.t === "col" ? cols : (t.c ? propias : refs)).push(t); });
+  const fila = t => { const inf = info[t.k], v = inf ? String(inf.v) : ""; return "<div class='tag" + (t.c ? " nueva" : "") + "' draggable=true data-k='" + dEsc(t.k) + "' title='" + dEsc((inf ? inf.o : t.d) || t.k) + "'><span>[" + dEsc(t.k) + "]</span>" +
+    (inf ? "<span class=val>" + dEsc(v.length > 22 ? v.slice(0, 22) + "…" : v) + "</span>" : "") + ((inf ? inf.r : t.r) ? "<small>renglón</small>" : "") + "<i class=inf data-i='" + dEsc(t.k) + "' title='De dónde sale y cuánto vale'>ⓘ</i></div>"; };
+  const g = (tit, l) => l.length ? "<div class=g>" + tit + " (" + l.length + ")</div>" + l.slice(0, 250).map(fila).join("") : "";
+  c.innerHTML = "<input type=text id=dBuscar placeholder='Buscar por nombre, valor u origen…' value='" + dEsc(q) + "' autocomplete=off><button class=ib style='width:100%;margin:8px 0' id=dNuevaRef>＋ Nueva referencia (tablas, vistas o SQL)</button>" +
+    "<div id=dTagInfo class=tip style='background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:6px 8px;display:" + (D.infoSel ? "block" : "none") + "'></div>" +
+    "<div class=tip>Arrastra un campo al documento, o selecciona un elemento y haz clic. <b>Mayús+clic</b>: con formato numérico. <b>ⓘ</b>: de dónde sale y cuánto vale con el documento elegido.</div>" +
+    (g("Referencias propias", propias) + g("Columnas del documento", cols) + g("Diccionario de referencia", refs) || "<div class=vacio>Sin resultados</div>");
+  const bq = c.querySelector("#dBuscar"); bq.oninput = () => { const pos = bq.selectionStart; pintarCampos(c); const n = c.querySelector("#dBuscar"); n.focus(); n.selectionStart = n.selectionEnd = pos; };
+  c.querySelector("#dNuevaRef").onclick = () => constructorReferencias();
+  c.querySelectorAll(".tag").forEach(t => {
+    t.addEventListener("dragstart", e => { D.drag = t.dataset.k; e.dataTransfer.setData("text/plain", "[" + t.dataset.k + "]"); e.dataTransfer.effectAllowed = "copy"; });
+    t.addEventListener("dragend", () => { D.drag = null; });
+    t.addEventListener("click", e => { if (e.target.classList.contains("inf")) { D.infoSel = e.target.dataset.i; $d("dTagInfo").style.display = "block"; verInfoEtiqueta(D.infoSel); return; } insertarEtiquetaEnSel(e.shiftKey ? "[Format(" + t.dataset.k + ",#,##0.00)]" : "[" + t.dataset.k + "]"); });
+  });
+  if (D.infoSel) verInfoEtiqueta(D.infoSel);
+}
+function pintarElementos(c) {
+  c.innerHTML = "<div class=campo><label>Insertar</label><div class='seg' id=dDonde><button data-v=despues class=on>Después</button><button data-v=dentro>Dentro</button></div></div>" +
+    "<div class=pal>" +
+    "<button data-e=texto><span>T</span>Texto</button><button data-e=titulo><span>H</span>Título</button>" +
+    "<button data-e=caja><span>▭</span>Caja con borde</button><button data-e=dos><span>◫</span>Dos columnas</button>" +
+    "<button data-e=linea><span>―</span>Línea</button><button data-e=espacio><span>↕</span>Espacio</button>" +
+    "<button data-e=logo><span>◈</span>Logo de la empresa</button><button data-e=imagen><span>🖼</span>Subir imagen…</button>" +
+    "<button data-e=datos><span>≣</span>Fila etiqueta + valor</button><button data-e=total><span>Σ</span>Fila de total</button>" +
+    "<button data-e=tabla><span>▦</span>Tabla 2×2</button><button data-e=salto><span>⤓</span>Salto de página</button>" +
+    "</div><div class=tip style='margin-top:10px'>Para agregar una fila de totales (por ejemplo ISR): selecciona la fila de IVA, usa <b>Duplicar</b> en Propiedades, cambia el texto con doble clic y la etiqueta con doble clic sobre ella.</div>";
+  c.querySelectorAll("#dDonde button").forEach(b => b.onclick = () => { c.querySelectorAll("#dDonde button").forEach(x => x.classList.remove("on")); b.classList.add("on"); });
+  c.querySelectorAll(".pal button").forEach(b => b.onclick = () => insertarElemento(b.dataset.e, (c.querySelector("#dDonde .on") || {}).dataset.v || "despues"));
+}
+
+// ---------- ajustes del documento (hoja «bros-ajustes» al final del head) ----------
+const PAPELES = { Letter: [216, 279], A4: [210, 297], Legal: [216, 356], Half: [140, 216] };
+function leerAjustes() {
+  const m = D.source.match(/\/\*BROS-AJUSTES (\{[\s\S]*?\}) \*\//);
+  const base = { papel: "", orient: "portrait", mt: "", mr: "", mb: "", ml: "", fuente: "", tam: "", color: "", repetir: false, noCortar: false, marca: "", marcaOp: 8 };
+  if (m) { try { return Object.assign(base, JSON.parse(m[1])); } catch (e) { } }
+  return base;
+}
+function escribirAjustes(a) {
+  let css = "/*BROS-AJUSTES " + JSON.stringify(a) + " */\n";
+  const sz = a.papel ? PAPELES[a.papel] : null;
+  if (a.papel || a.mt !== "" || a.mr !== "" || a.mb !== "" || a.ml !== "") {
+    css += "@page{" + (a.papel ? "size:" + a.papel + " " + a.orient + ";" : "") + (a.mt !== "" || a.mr !== "" || a.mb !== "" || a.ml !== "" ? "margin:" + [a.mt, a.mr, a.mb, a.ml].map(v => (v === "" ? 12 : v) + "mm").join(" ") + ";" : "") + "}\n";
+  }
+  if (sz) css += "@media screen{body{width:" + (a.orient === "landscape" ? sz[1] : sz[0]) + "mm!important;min-height:" + (a.orient === "landscape" ? sz[0] : sz[1]) + "mm!important}}\n";
+  if (a.fuente || a.tam || a.color) css += "body{" + (a.fuente ? "font-family:" + a.fuente + ";" : "") + (a.tam ? "font-size:" + a.tam + "pt;" : "") + (a.color ? "color:" + a.color + ";" : "") + "}\n";
+  if (a.repetir) css += "thead{display:table-header-group}\n";
+  if (a.noCortar) css += "tr{page-break-inside:avoid}\n";
+  if (a.marca) css += "body::before{content:'" + a.marca.replace(/['\\]/g, "") + "';position:fixed;top:38%;left:8%;font-size:96px;font-weight:700;color:rgba(0,0,0," + (a.marcaOp / 100) + ");transform:rotate(-28deg);pointer-events:none;z-index:9999;white-space:nowrap}\n";
+  let s = D.source.replace(/<style id="bros-ajustes">[\s\S]*?<\/style>\s*/i, "");
+  s = s.replace(/<\/head>/i, '<style id="bros-ajustes">' + css + "</style>\n</head>");
+  return s;
+}
+async function aplicarAjustes(a) { D.source = escribirAjustes(a); histPush(D.source); estadoSucio(); await refrescar(true); }
+
+function pintarDocumento(c) {
+  const a = leerAjustes(), colores = coloresDelFormato();
+  const op = (v, t, sel) => "<option value='" + v + "'" + (sel === v ? " selected" : "") + ">" + t + "</option>";
+  c.innerHTML = "<details open><summary>Página</summary>" +
+    "<div class=campo><label>Papel</label><select id=aPapel>" + op("", "(el del formato)", a.papel) + op("Letter", "Carta", a.papel) + op("A4", "A4", a.papel) + op("Legal", "Oficio", a.papel) + op("Half", "Media carta", a.papel) + "</select></div>" +
+    "<div class=campo><label>Orientación</label><select id=aOrient>" + op("portrait", "Vertical", a.orient) + op("landscape", "Horizontal", a.orient) + "</select></div>" +
+    "<div class=campo><label>Márgenes mm</label><div class=dos><input type=number id=aMt placeholder='arriba' value='" + a.mt + "'><input type=number id=aMr placeholder='der.' value='" + a.mr + "'><input type=number id=aMb placeholder='abajo' value='" + a.mb + "'><input type=number id=aMl placeholder='izq.' value='" + a.ml + "'></div></div>" +
+    "<div class=campo><label>Marca de agua</label><input type=text id=aMarca placeholder='COPIA, BORRADOR…' value='" + dEsc(a.marca) + "'></div></details>" +
+    "<details><summary>Letra del documento</summary>" +
+    "<div class=campo><label>Tipo</label><select id=aFuente>" + op("", "(la del formato)", a.fuente) + ["Segoe UI", "Arial", "Calibri", "Verdana", "Tahoma", "Georgia", "Times New Roman", "Courier New", "Consolas"].map(f => op(f, f, a.fuente)).join("") + "</select></div>" +
+    "<div class=campo><label>Tamaño pt</label><input type=number id=aTam step=0.5 value='" + a.tam + "'></div>" +
+    "<div class=campo><label>Color</label><input type=color id=aColor value='" + (a.color || "#1f2a37") + "'><button class=ib id=aColorQ>Quitar</button></div></details>" +
+    "<details><summary>Impresión</summary><label class=sw><input type=checkbox id=aRep" + (a.repetir ? " checked" : "") + "> Repetir el encabezado de la tabla en cada página</label>" +
+    "<label class=sw><input type=checkbox id=aNoc" + (a.noCortar ? " checked" : "") + "> No cortar renglones entre páginas</label></details>" +
+    "<details open><summary>Colores del formato</summary><div class=tip>Cambia un color y se cambia en todo el formato.</div>" +
+    colores.map((k, i) => "<div class=sw><input type=color data-c='" + i + "' value='" + k.hex + "'><span>" + k.hex + " · " + k.n + " uso(s)</span></div>").join("") + (colores.length ? "" : "<div class=tip>No se encontraron colores.</div>") + "</details>" +
+    "<details><summary>CSS avanzado</summary><div class=tip>La primera hoja de estilos del formato. Se aplica al salir del cuadro.</div><textarea id=aCss rows=12 spellcheck=false style='font-family:ui-monospace,Consolas,monospace;font-size:11.5px'>" + dEsc(cssPrincipal()) + "</textarea></details>" +
+    "<details><summary>JavaScript</summary><div class=tip>Funciones que se ejecutan al generar el PDF (se guardan en el formato). Biblioteca:</div>" +
+    "<div class=tb style='margin-bottom:6px'><button data-js=vacios title='Oculta los elementos con data-oculta-vacio cuyo valor está vacío'>Ocultar vacíos</button><button data-js=ceros title='Oculta filas de totales con importe cero'>Ocultar totales en 0</button><button data-js=fecha title='Pone la fecha de impresión en los elementos con data-hoy'>Fecha de hoy</button></div>" +
+    "<textarea id=aJs rows=10 spellcheck=false style='font-family:ui-monospace,Consolas,monospace;font-size:11.5px'>" + dEsc(jsUsuario()) + "</textarea></details>";
+  const ap = () => aplicarAjustes(Object.assign(leerAjustes(), { papel: $d("aPapel").value, orient: $d("aOrient").value, mt: $d("aMt").value, mr: $d("aMr").value, mb: $d("aMb").value, ml: $d("aMl").value, marca: $d("aMarca").value, fuente: $d("aFuente").value, tam: $d("aTam").value, repetir: $d("aRep").checked, noCortar: $d("aNoc").checked }));
+  ["aPapel", "aOrient", "aMt", "aMr", "aMb", "aMl", "aMarca", "aFuente", "aTam", "aRep", "aNoc"].forEach(i => $d(i).onchange = ap);
+  $d("aColor").onchange = () => aplicarAjustes(Object.assign(leerAjustes(), { color: $d("aColor").value }));
+  $d("aColorQ").onclick = () => aplicarAjustes(Object.assign(leerAjustes(), { color: "" }));
+  c.querySelectorAll("input[data-c]").forEach(inp => inp.onchange = () => cambiarColor(colores[+inp.dataset.c], inp.value));
+  $d("aCss").onchange = () => { cambiarCssPrincipal($d("aCss").value); };
+  $d("aJs").onchange = () => { cambiarJsUsuario($d("aJs").value); };
+  c.querySelectorAll("button[data-js]").forEach(b => b.onclick = () => { $d("aJs").value = ($d("aJs").value ? $d("aJs").value + "\n" : "") + SNIPPETS[b.dataset.js]; cambiarJsUsuario($d("aJs").value); });
+}
+const SNIPPETS = {
+  vacios: "document.querySelectorAll('[data-oculta-vacio]').forEach(function(e){ if(!e.textContent.trim()) e.style.display='none'; });",
+  ceros: "document.querySelectorAll('.tot .row').forEach(function(r){ var v=r.querySelector('.v'); if(v && /^[-$\\s]*0(\\.0+)?$/.test(v.textContent.trim())) r.remove(); });",
+  fecha: "document.querySelectorAll('[data-hoy]').forEach(function(e){ e.textContent=new Date().toLocaleDateString('es-MX'); });"
+};
+// colores: se buscan en las hojas de estilo y en los atributos style; se reemplazan en la fuente completa
+function coloresDelFormato() {
+  const mapa = {};
+  const re = /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)/g;
+  const zonas = (D.source.match(/<style[\s\S]*?<\/style>/gi) || []).concat(D.source.match(/style\s*=\s*"[^"]*"/gi) || []);
+  zonas.join("\n").replace(re, f => { const h = hexDe(f); (mapa[h] = mapa[h] || { hex: h, formas: new Set(), n: 0 }); mapa[h].formas.add(f); mapa[h].n++; return f; });
+  return Object.values(mapa).sort((a, b) => b.n - a.n).slice(0, 24).map(x => ({ hex: x.hex, formas: Array.from(x.formas), n: x.n }));
+}
+async function cambiarColor(c, nuevo) {
+  let s = D.source;
+  c.formas.forEach(f => { const esc = f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); s = s.replace(new RegExp(esc, "gi"), nuevo); });
+  D.source = s; histPush(s); estadoSucio(); await refrescar(true); pintarDocumento($d("dIzqCuerpo"));
+}
+function cssPrincipal() { const m = D.source.match(/<style(?![^>]*bros-ajustes)[^>]*>([\s\S]*?)<\/style>/i); return m ? m[1].trim() : ""; }
+async function cambiarCssPrincipal(css) {
+  const m = D.source.match(/<style(?![^>]*bros-ajustes)[^>]*>[\s\S]*?<\/style>/i);
+  D.source = m ? D.source.replace(m[0], m[0].replace(/>[\s\S]*<\/style>/i, ">\n" + css.replace(/\$/g, "$$$$") + "\n</style>")) : D.source.replace(/<\/head>/i, "<style>\n" + css + "\n</style>\n</head>");
+  histPush(D.source); estadoSucio(); await refrescar(true);
+}
+function jsUsuario() { const m = D.source.match(/<script id="bros-user"[^>]*>([\s\S]*?)<\/script>/i); return m ? m[1].trim() : ""; }
+async function cambiarJsUsuario(js) {
+  let s = D.source.replace(/<script id="bros-user"[^>]*>[\s\S]*?<\/script>\s*/i, "");
+  if (js.trim()) s = s.replace(/<\/body>/i, '<script id="bros-user">\n' + js.replace(/\$/g, "$$$$") + "\n<" + "/script>\n</body>");
+  D.source = s; histPush(s); estadoSucio(); await refrescar(true);
+}
+
+// ---------- operaciones sobre la selección ----------
+function celdaOCuerpo() { const d = $d("dFrame").contentDocument; return D.sel || d.body; }
+function nuevoNodo(html) { const t = $d("dFrame").contentDocument.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; }
+async function insertarElemento(tipo, donde) {
+  const d = $d("dFrame").contentDocument; let html = "", sel = D.sel || d.body;
+  const flex = "display:flex;justify-content:space-between;gap:12px;padding:2px 0";
+  switch (tipo) {
+    case "texto": html = "<p style='margin:6px 0'>Escribe aquí el texto</p>"; break;
+    case "titulo": html = "<h2 style='margin:10px 0 4px;font-size:14pt'>Título</h2>"; break;
+    case "caja": html = "<div style='border:1px solid #d7dee8;border-radius:6px;padding:8px 10px;margin:6px 0'>Contenido de la caja</div>"; break;
+    case "dos": html = "<div style='display:flex;gap:12px;margin:6px 0'><div style='flex:1'>Columna izquierda</div><div style='flex:1'>Columna derecha</div></div>"; break;
+    case "linea": html = "<hr style='border:0;border-top:1px solid #cbd5e1;margin:8px 0'>"; break;
+    case "espacio": html = "<div style='height:16px'></div>"; break;
+    case "salto": html = "<div style='page-break-after:always;break-after:page'></div>"; break;
+    case "datos": html = "<div style='" + flex + "'><span style='color:#64748b'>Etiqueta</span><span>[Folio]</span></div>"; break;
+    case "total": html = "<div style='" + flex + ";font-weight:700'><span>Total</span><span>$[Format(Total,#,##0.00)]</span></div>"; break;
+    case "tabla": html = "<table style='width:100%;border-collapse:collapse;margin:6px 0'><tbody><tr><td style='border:1px solid #cbd5e1;padding:6px'>Celda</td><td style='border:1px solid #cbd5e1;padding:6px'>Celda</td></tr><tr><td style='border:1px solid #cbd5e1;padding:6px'>Celda</td><td style='border:1px solid #cbd5e1;padding:6px'>Celda</td></tr></tbody></table>"; break;
+    case "logo": html = "<img src='[LogoEmpresa]' alt='Logo' style='max-height:60px;max-width:180px'>"; break;
+    case "imagen": {
+      try { const r = await call("disenoLogo"); if (r.cancel) return; html = "<img src='" + r.ruta + "' alt='' style='max-height:70px;max-width:200px'>"; D.vals.attrs[r.ruta] = r.vista; } catch (e) { dToast(e.message, "bad"); return; }
+      break;
+    }
+  }
+  const n = nuevoNodo(html); if (!n) return;
+  colocar(sel, n, donde); await confirmar(true); const el = elDeRutaNuevo(n); if (el) seleccionar(el);
+}
+let _ultimoNuevo = null;
+function colocar(sel, n, donde) {
+  _ultimoNuevo = n; const d = $d("dFrame").contentDocument;
+  if (sel === d.body || donde === "dentro") sel.appendChild(n);
+  else if (sel.closest("[data-bros-detail]") && /^(TR|TD|TH)$/.test(sel.tagName)) sel.parentNode.insertBefore(n, sel.nextSibling);
+  else sel.parentNode.insertBefore(n, sel.nextSibling);
+}
+function elDeRutaNuevo(n) { return null; }   // tras repintar la selección se restaura sola; el elemento nuevo queda a un clic
+async function eliminarSel() { const s = D.sel; if (!s) return; const p = s.parentElement; s.remove(); D.sel = p; await confirmar(true); }
+async function duplicarSel() { const s = D.sel; if (!s) return; const c = s.cloneNode(true); s.parentNode.insertBefore(c, s.nextSibling); await confirmar(true); }
+async function moverSel(dir) {
+  const s = D.sel; if (!s) return; const h = s.parentElement; if (!h) return;
+  if (dir < 0 && s.previousElementSibling) h.insertBefore(s, s.previousElementSibling);
+  else if (dir > 0 && s.nextElementSibling) h.insertBefore(s.nextElementSibling, s); else return;
+  await confirmar(true);
+}
+async function envolverSel() { const s = D.sel; if (!s) return; const w = nuevoNodo("<div style='border:1px solid #d7dee8;border-radius:6px;padding:8px 10px'></div>"); s.parentNode.insertBefore(w, s); w.appendChild(s); await confirmar(true); }
+async function sacarSel() { const s = D.sel; if (!s || !s.parentElement || s.parentElement === $d("dFrame").contentDocument.body) return; const p = s.parentElement; while (p.firstChild) p.parentNode.insertBefore(p.firstChild, p); p.remove(); D.sel = null; await confirmar(true); }
+async function insertarEtiquetaEnSel(tok) {
+  const d = $d("dFrame").contentDocument;
+  if (D.editando) { const r = d.getSelection(); if (r && r.rangeCount) { insertarChipEn(r.getRangeAt(0), tok); await confirmar(false); return; } }
+  const dest = D.sel && D.sel !== d.body ? D.sel : null;
+  if (!dest) { dToast("Selecciona primero dónde va el campo (un clic en el documento) o arrástralo.", "bad"); return; }
+  if (/^(TABLE|TBODY|THEAD|TR|IMG)$/.test(dest.tagName)) { dToast("Selecciona una celda o un texto para poner el campo.", "bad"); return; }
+  dest.appendChild(d.createTextNode(" ")); const sp = d.createElement("span"); sp.textContent = tok; dest.appendChild(sp); sp.replaceWith(d.createTextNode(tok));
+  await confirmar(true);
+}
+function insertarChipEn(rango, tok) {
+  const d = $d("dFrame").contentDocument, c = crearChip(d, tok, null);
+  rango.deleteContents(); rango.insertNode(c); const sp = d.createTextNode("\u200b"); c.after(sp); rango.setStartAfter(sp); rango.collapse(true);
+  const s = d.getSelection(); s.removeAllRanges(); s.addRange(rango);
+  asegurarValores().then(() => { c.replaceWith(crearChip(d, tok, c.closest("[data-bros-detail]") ? 0 : null)); confirmar(false); });
+}
+async function soltarEtiqueta(e, k) {
+  const d = $d("dFrame").contentDocument, tok = (e.shiftKey ? "[Format(" + k + ",#,##0.00)]" : "[" + k + "]");
+  let r = d.caretRangeFromPoint ? d.caretRangeFromPoint(e.clientX, e.clientY) : null;
+  const t = objetivo(e.target);
+  if (r && r.startContainer && !(r.startContainer.parentElement && r.startContainer.parentElement.closest(".bros-tag")) && t && !/^(TABLE|TBODY|THEAD|TR|HTML)$/.test(t.tagName)) {
+    const c = crearChip(d, tok, null); r.insertNode(c);
+  } else if (t && !/^(TABLE|TBODY|THEAD|TR|IMG|HTML)$/.test(t.tagName)) { t.appendChild(d.createTextNode(tok)); }
+  else { dToast("Suelta el campo sobre un texto o una celda.", "bad"); return; }
+  const s = await (async () => { D.source = serializar(); await refrescar(true); histPush(D.source); estadoSucio(); })();
+}
+
+// operaciones de tabla
+async function tablaOp(op) {
+  const s = D.sel; if (!s) return; const cel = s.closest("td,th"), tabla = s.closest("table"), fila = s.closest("tr"); if (!tabla) return;
+  const idx = cel ? cel.cellIndex : 0;
+  if (op === "colIzq" || op === "colDer") {
+    tabla.querySelectorAll("tr").forEach(tr => { const c = tr.cells[idx]; if (!c) return; const n = c.cloneNode(false); n.removeAttribute("data-bros-a-colspan"); n.textContent = c.tagName === "TH" ? "Nueva" : ""; tr.insertBefore(n, op === "colIzq" ? c : c.nextSibling); });
+  } else if (op === "colDel") { tabla.querySelectorAll("tr").forEach(tr => { if (tr.cells[idx]) tr.cells[idx].remove(); }); }
+  else if (op === "filaArriba" || op === "filaAbajo") { if (!fila) return; const n = fila.cloneNode(true); n.querySelectorAll("span.bros-tag").forEach(x => x.remove()); n.querySelectorAll("td,th").forEach(c => { c.textContent = ""; }); fila.parentNode.insertBefore(n, op === "filaArriba" ? fila : fila.nextSibling); }
+  else if (op === "filaDel") { if (fila) fila.remove(); }
+  await confirmar(true);
+}
+
+// cambiar la etiqueta de una ficha (selector con búsqueda)
+function cambiarEtiquetaDialogo(chip) {
+  const m = $d("dModal"); m.hidden = false;
+  const actual = chip.getAttribute("data-tok");
+  m.innerHTML = "<div class=caja><h3>Cambiar etiqueta</h3><div class=cm><div class=tip>Ahora: <b>" + dEsc(actual) + "</b></div><input type=text id=mBuscar placeholder='Buscar etiqueta…' autocomplete=off><div class=lista id=mLista></div></div><div class=pie><button class=ib id=mCancel>Cancelar</button></div></div>";
+  const pint = () => {
+    const q = $d("mBuscar").value.toLowerCase().trim(), vistos = {}, items = [];
+    D.etiquetas.forEach(t => { if (vistos[t.k]) return; vistos[t.k] = 1; if (!q || (t.k + " " + t.d).toLowerCase().indexOf(q) >= 0) items.push(t); });
+    $d("mLista").innerHTML = items.slice(0, 200).map(t => "<div class=t data-k='" + dEsc(t.k) + "'>[" + dEsc(t.k) + "]<small>" + dEsc((t.d || "").slice(0, 50)) + (t.r ? " · renglón" : "") + "</small></div>").join("") || "<div class=vacio>Sin resultados</div>";
+    $d("mLista").querySelectorAll(".t").forEach(x => x.onclick = async () => {
+      const mk = /^\[Format\(\s*[A-Za-z_0-9]+\s*,\s*([^\)]+?)\s*\)\]$/.exec(actual); const nuevo = mk ? "[Format(" + x.dataset.k + "," + mk[1] + ")]" : "[" + x.dataset.k + "]";
+      chip.setAttribute("data-tok", nuevo); chip.title = nuevo; m.hidden = true; await confirmar(true);
+    });
+  };
+  $d("mBuscar").oninput = pint; pint(); $d("mBuscar").focus(); $d("mCancel").onclick = () => { m.hidden = true; };
+}
+
+// ---------- panel derecho: propiedades del elemento seleccionado ----------
+const FUENTES = ["", "Segoe UI", "Arial", "Helvetica", "Calibri", "Verdana", "Tahoma", "Georgia", "Times New Roman", "Courier New", "Consolas", "sans-serif", "serif", "monospace"];
+function pintarProps() {
+  const c = $d("dDerCuerpo"), el = D.sel;
+  if (!el) { c.innerHTML = "<div class=vacio>Selecciona un elemento del documento para cambiar su letra, colores, bordes y tamaño.<br><br>Doble clic en un texto para escribir. Doble clic en un campo para cambiarlo.</div>"; return; }
+  const w = el.ownerDocument.defaultView, cs = w.getComputedStyle(el), esChip = el.classList.contains("bros-tag"), esImg = el.tagName === "IMG", enTabla = !!el.closest("table");
+  const px = v => Math.round(parseFloat(v) || 0), pt = Math.round((parseFloat(cs.fontSize) || 13) * 0.75 * 2) / 2;
+  const fam = (cs.fontFamily || "").split(",")[0].replace(/["']/g, "").trim();
+  const on = (a, b) => a === b ? " on" : "";
+  const bold = parseInt(cs.fontWeight, 10) >= 600, ital = cs.fontStyle === "italic", und = (cs.textDecorationLine || "").indexOf("underline") >= 0;
+  const al = cs.textAlign === "start" ? "left" : cs.textAlign;
+  let h = "<div class=tip><b>" + dEsc(esChip ? el.getAttribute("data-tok") : nombreCorto(el)) + "</b></div>";
+  if (esChip) {
+    const tok = el.getAttribute("data-tok"), mk = /^\[Format\(\s*([A-Za-z_0-9]+)\s*,\s*([^\)]+?)\s*\)\]$/.exec(tok);
+    h += "<details open><summary>Campo</summary><button class=ib id=pCambiar style='width:100%'>Cambiar campo…</button>" +
+      "<div class=campo style='margin-top:8px'><label>Formato</label><select id=pFmt><option value=''" + (mk ? "" : " selected") + ">Tal cual</option>" + ["#,##0.00", "#,##0", "0.00", "0.0000", "0", "0.00%"].map(f => "<option" + (mk && mk[2] === f ? " selected" : "") + ">" + f + "</option>").join("") + "</select></div>" +
+      "<div class=tip>El formato numérico aplica a campos con números (importes, cantidades).</div></details>";
+  }
+  h += "<details open><summary>Texto</summary>" +
+    "<div class=campo><label>Tipo</label><select id=pFam>" + FUENTES.map(f => "<option value='" + dEsc(f) + "'" + (f && fam.toLowerCase() === f.toLowerCase() ? " selected" : "") + ">" + (f || "(heredada)") + "</option>").join("") + (fam && !FUENTES.some(f => f.toLowerCase() === fam.toLowerCase()) ? "<option selected>" + dEsc(fam) + "</option>" : "") + "</select></div>" +
+    "<div class=campo><label>Tamaño pt</label><input type=number id=pTam step=0.5 value='" + pt + "'></div>" +
+    "<div class=campo><label>Estilo</label><div class=tb><button id=pB class='" + (bold ? "on" : "") + "' title=Negrita><b>N</b></button><button id=pI class='" + (ital ? "on" : "") + "' title=Cursiva><i>K</i></button><button id=pU class='" + (und ? "on" : "") + "' title=Subrayado><u>S</u></button></div></div>" +
+    "<div class=campo><label>Alinear</label><div class=tb>" + ["left", "center", "right", "justify"].map(a => "<button data-al=" + a + " class='" + (al === a ? "on" : "") + "'>" + { left: "⇤", center: "↔", right: "⇥", justify: "≡" }[a] + "</button>").join("") + "</div></div>" +
+    "<div class=campo><label>Color</label><input type=color id=pColor value='" + hexDe(cs.color) + "'></div>" +
+    "<div class=campo><label>Interlineado</label><input type=number id=pLh step=0.1 value='" + (parseFloat(cs.lineHeight) ? Math.round(parseFloat(cs.lineHeight) / parseFloat(cs.fontSize) * 10) / 10 : 1.4) + "'></div></details>";
+  if (!esChip) {
+    h += "<details><summary>Caja</summary>" +
+      "<div class=campo><label>Fondo</label><input type=color id=pBg value='" + hexDe(cs.backgroundColor) + "'><button class=ib id=pBgQ>Sin fondo</button></div>" +
+      "<div class=campo><label>Relleno</label><div class=dos>" + ["Top", "Right", "Bottom", "Left"].map(l => "<input type=number data-s='padding" + l + "' value='" + px(cs["padding" + l]) + "' title='" + l + "'>").join("") + "</div></div>" +
+      "<div class=campo><label>Margen</label><div class=dos>" + ["Top", "Right", "Bottom", "Left"].map(l => "<input type=number data-s='margin" + l + "' value='" + px(cs["margin" + l]) + "' title='" + l + "'>").join("") + "</div></div>" +
+      "<div class=campo><label>Borde</label><div class=dos><input type=number id=pBw value='" + px(cs.borderTopWidth) + "' title=grosor><input type=color id=pBc value='" + hexDe(cs.borderTopColor) + "'></div></div>" +
+      "<div class=campo><label>Esquinas</label><input type=number id=pRad value='" + px(cs.borderTopLeftRadius) + "'></div>" +
+      "<div class=campo><label>Ancho</label><input type=text id=pW placeholder='auto, 50%, 120px' value='" + dEsc(el.style.width || "") + "'></div>" +
+      "<div class=campo><label>Alto</label><input type=text id=pH placeholder='auto, 40px' value='" + dEsc(el.style.height || "") + "'></div></details>";
+  }
+  if (esImg) h += "<details open><summary>Imagen</summary><div class=campo><label>Ancho máx.</label><input type=text id=pImgW value='" + dEsc(el.style.maxWidth || "") + "' placeholder='180px'></div><div class=campo><label>Alto máx.</label><input type=text id=pImgH value='" + dEsc(el.style.maxHeight || "") + "' placeholder='60px'></div><button class=ib id=pLogoE style='width:100%;margin-top:4px'>Usar el logo de la empresa</button><button class=ib id=pLogoS style='width:100%;margin-top:4px'>Subir otra imagen…</button></details>";
+  if (enTabla) h += "<details open><summary>Tabla</summary><div class=tb><button data-t=colIzq>＋ Col. izq.</button><button data-t=colDer>＋ Col. der.</button><button data-t=colDel>✕ Columna</button><button data-t=filaArriba>＋ Fila ↑</button><button data-t=filaAbajo>＋ Fila ↓</button><button data-t=filaDel>✕ Fila</button></div></details>";
+  h += "<details open><summary>Estructura</summary><div class=tb><button id=pDup title='Ctrl+D'>⧉ Duplicar</button><button id=pDel title=Supr>🗑 Eliminar</button><button id=pUp title='Alt+↑'>↑</button><button id=pDn title='Alt+↓'>↓</button><button id=pWrap>▭ Envolver</button><button id=pOut>⤴ Sacar</button></div></details>";
+  if (!esChip) h += "<details><summary>Avanzado</summary><div class=campo><label>Clase</label><input type=text id=pCls value='" + dEsc(Array.from(el.classList).filter(x => !x.startsWith("bros-")).join(" ")) + "'></div>" +
+    "<div class=campo><label>Estilo CSS</label></div><textarea id=pCss rows=4 spellcheck=false style='font-family:ui-monospace,Consolas,monospace;font-size:11px'>" + dEsc(el.getAttribute("style") || "") + "</textarea>" +
+    "<label class=sw><input type=checkbox id=pOcultaVacio" + (el.hasAttribute("data-oculta-vacio") ? " checked" : "") + "> Ocultar si su valor está vacío (usa la biblioteca de JavaScript)</label></details>";
+  c.innerHTML = h; ligarProps(el, esChip);
+}
+function ligarProps(el, esChip) {
+  const q = id => $d(id), cambio = () => confirmar(!!el.closest("[data-bros-detail]")), est = (p, v) => { el.style[p] = v; };
+  if (q("pCambiar")) q("pCambiar").onclick = () => cambiarEtiquetaDialogo(el);
+  if (q("pFmt")) q("pFmt").onchange = async () => {
+    const tok = el.getAttribute("data-tok"), base = (/^\[(?:Format\(\s*)?([A-Za-z_0-9]+)/.exec(tok) || [])[1], f = q("pFmt").value;
+    const n = f ? "[Format(" + base + "," + f + ")]" : "[" + base + "]"; el.setAttribute("data-tok", n); el.title = n; await confirmar(true);
+  };
+  if (q("pFam")) q("pFam").onchange = () => { est("fontFamily", q("pFam").value); cambio(); };
+  if (q("pTam")) q("pTam").onchange = () => { est("fontSize", q("pTam").value + "pt"); cambio(); };
+  const alt = (id, prop, a, b) => { if (q(id)) q(id).onclick = () => { const on = q(id).classList.contains("on"); est(prop, on ? b : a); cambio(); }; };
+  alt("pB", "fontWeight", "700", "400"); alt("pI", "fontStyle", "italic", "normal"); alt("pU", "textDecoration", "underline", "none");
+  document.querySelectorAll("#dDerCuerpo button[data-al]").forEach(b => b.onclick = () => { est("textAlign", b.dataset.al); cambio(); });
+  if (q("pColor")) q("pColor").onchange = () => { est("color", q("pColor").value); cambio(); };
+  if (q("pLh")) q("pLh").onchange = () => { est("lineHeight", q("pLh").value); cambio(); };
+  if (q("pBg")) q("pBg").onchange = () => { est("backgroundColor", q("pBg").value); cambio(); };
+  if (q("pBgQ")) q("pBgQ").onclick = () => { est("backgroundColor", ""); cambio(); };
+  document.querySelectorAll("#dDerCuerpo input[data-s]").forEach(i => i.onchange = () => { est(i.dataset.s, i.value + "px"); cambio(); });
+  const borde = () => { if (+q("pBw").value > 0) { est("borderStyle", "solid"); est("borderWidth", q("pBw").value + "px"); est("borderColor", q("pBc").value); } else est("border", "none"); cambio(); };
+  if (q("pBw")) { q("pBw").onchange = borde; q("pBc").onchange = borde; }
+  if (q("pRad")) q("pRad").onchange = () => { est("borderRadius", q("pRad").value + "px"); cambio(); };
+  if (q("pW")) q("pW").onchange = () => { est("width", q("pW").value); cambio(); };
+  if (q("pH")) q("pH").onchange = () => { est("height", q("pH").value); cambio(); };
+  if (q("pImgW")) { q("pImgW").onchange = () => { est("maxWidth", q("pImgW").value); cambio(); }; q("pImgH").onchange = () => { est("maxHeight", q("pImgH").value); cambio(); }; }
+  if (q("pLogoE")) q("pLogoE").onclick = async () => { el.setAttribute("src", "[LogoEmpresa]"); await confirmar(true); };
+  if (q("pLogoS")) q("pLogoS").onclick = async () => { try { const r = await call("disenoLogo"); if (r.cancel) return; D.vals.attrs[r.ruta] = r.vista; el.setAttribute("src", r.ruta); await confirmar(true); } catch (e) { dToast(e.message, "bad"); } };
+  document.querySelectorAll("#dDerCuerpo button[data-t]").forEach(b => b.onclick = () => tablaOp(b.dataset.t));
+  if (q("pDup")) { q("pDup").onclick = duplicarSel; q("pDel").onclick = eliminarSel; q("pUp").onclick = () => moverSel(-1); q("pDn").onclick = () => moverSel(1); q("pWrap").onclick = envolverSel; q("pOut").onclick = sacarSel; }
+  if (q("pCls")) q("pCls").onchange = () => { const k = Array.from(el.classList).filter(x => x.startsWith("bros-")); el.className = (q("pCls").value + " " + k.join(" ")).trim(); cambio(); };
+  if (q("pCss")) q("pCss").onchange = () => { if (q("pCss").value.trim()) el.setAttribute("style", q("pCss").value); else el.removeAttribute("style"); cambio(); };
+  if (q("pOcultaVacio")) q("pOcultaVacio").onchange = () => { if (q("pOcultaVacio").checked) el.setAttribute("data-oculta-vacio", ""); else el.removeAttribute("data-oculta-vacio"); cambio(); };
+}
+
+// ---------- conexión de la ventana ----------
+(function () {
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("#dModos button").forEach(b => b.onclick = () => cambiarModo(b.dataset.m));
+    document.querySelectorAll("#dIzqTabs button").forEach(b => b.onclick = () => { D.izq = b.dataset.p; pintarIzq(); });
+    $d("dOtro").onclick = () => abrirSelector();
+    $d("dUndo").onclick = deshacer; $d("dRedo").onclick = rehacer; $d("dGuardar").onclick = guardarDisenador; $d("dCerrar").onclick = cerrarDisenador;
+    $d("dZoom").onchange = () => { D.zoom = parseFloat($d("dZoom").value); aplicarZoom(); };
+    $d("dDoc").onchange = async () => { D.docId = +$d("dDoc").value; $d("dCarga").hidden = false; try { if (D.modo === "diseno") D.source = serializar(); await pedirValores(true); } catch (e) { dToast(e.message, "bad"); } if (D.modo === "diseno") await refrescar(); else if (D.modo === "final") await vistaFinal(); };
+    $d("dTexto").addEventListener("input", () => { D.source = $d("dTexto").value; estadoSucio(); });
+    document.addEventListener("keydown", teclaGlobal);
+  });
+})();
+
+// ---------- selector de formato (al abrir el programa sin formato, o con «Abrir…») ----------
+async function abrirSelector() {
+  const m = $d("dModal"); m.hidden = false;
+  m.innerHTML = "<div class=caja><h3>Abrir un formato</h3><div class=cm><div class=vacio>Leyendo los formatos…</div></div></div>";
+  let lista = [];
+  try { lista = (await call("formatosListado")).formatos; } catch (e) { m.hidden = true; dToast(e.message, "bad"); return; }
+  const pint = () => {
+    const q = (($d("sBuscar") || {}).value || "").toLowerCase().trim(); let mod = null, h = "";
+    lista.filter(f => !q || (f.modulo + " " + f.nombre + " " + f.archivo).toLowerCase().indexOf(q) >= 0).forEach(f => {
+      if (f.modulo !== mod) { mod = f.modulo; h += "<div class=g style='padding:8px 10px 2px'>" + dEsc(mod || "(sin módulo)") + "</div>"; }
+      h += "<div class=t data-id=" + f.id + "><span>" + dEsc(f.nombre) + (f.def ? " <small style='color:#B45309'>(predeterminado de Comercial)</small>" : "") + "</span><small>" + dEsc(f.archivo.split("\\").pop()) + "</small></div>";
+    });
+    $d("sLista").innerHTML = h || "<div class=vacio>Sin resultados</div>";
+    $d("sLista").querySelectorAll(".t").forEach(t => t.onclick = () => { if (D.id && D.source !== D.base && !confirm("Hay cambios sin guardar en el formato abierto. ¿Abrir otro sin guardarlos?")) return; m.hidden = true; D.base = D.source; abrirDisenador(+t.dataset.id); });
+  };
+  m.innerHTML = "<div class=caja><h3>Abrir un formato</h3><div class=cm><input type=text id=sBuscar placeholder='Buscar por tipo de documento o nombre…' autocomplete=off><div class=lista id=sLista style='max-height:56vh'></div></div><div class=pie>" + (D.id ? "<button class=ib id=sCancel>Cancelar</button>" : "<button class=ib id=sSalir>Cerrar el Diseñador</button>") + "</div></div>";
+  $d("sBuscar").oninput = pint; pint(); $d("sBuscar").focus();
+  if ($d("sCancel")) $d("sCancel").onclick = () => { m.hidden = true; };
+  if ($d("sSalir")) $d("sSalir").onclick = () => call("cerrarApp");
+}
+
+// ---------- de dónde sale una etiqueta (origen y valor con el documento elegido) ----------
+async function verInfoEtiqueta(k) {
+  const caja = $d("dTagInfo"); if (!caja) return;
+  caja.innerHTML = "<div class=tip>Leyendo…</div>";
+  const col = D.info && D.info[k];
+  if (col) {
+    caja.innerHTML = "<b>[" + dEsc(k) + "]</b><div class=tip>Es una <b>columna del documento</b>" + (col.r ? " (cambia en cada renglón)" : "") + ".</div><div class=tip>Sale de: <code style='word-break:break-all'>" + dEsc(col.o || "(expresión interna de Comercial)") + "</code></div><div class=tip>Con este documento vale: <b>" + dEsc(col.v === "" ? "(vacío)" : col.v) + "</b></div>";
+    return;
+  }
+  try {
+    const r = await call("refDetalle", { k: k, docId: D.docId });
+    caja.innerHTML = "<b>[" + dEsc(k) + "]</b><div class=tip>" + (r.propia ? "Referencia <b>propia</b>." : "Referencia del <b>Diccionario de Comercial</b>.") + (r.desc ? " " + dEsc(r.desc) : "") + "</div>" +
+      "<div class=tip>Consulta:</div><pre style='margin:0;background:#0f172a;color:#e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:140px;overflow:auto'>" + dEsc(r.sql || "(vacía)") + "</pre>" +
+      "<div class=tip>Con este documento vale: <b>" + dEsc(r.error ? "error: " + r.error : (r.valor === "" ? "(vacío)" : r.valor)) + "</b></div>" +
+      (r.propia ? "<button class=ib id=dEditarRef style='margin-top:4px'>Editar esta referencia</button>" : "");
+    if ($d("dEditarRef")) $d("dEditarRef").onclick = () => constructorReferencias({ key: k, sql: r.sql, desc: r.desc });
+  } catch (e) { caja.innerHTML = "<div class=tip>" + dEsc(e.message) + "</div>"; }
+}
+
+// ---------- constructor de referencias: armar sin SQL (varias tablas y vistas) o escribir la consulta y ejecutarla ----------
+async function constructorReferencias(prefill) {
+  const m = $d("dModal"); m.hidden = false;
+  m.innerHTML = "<div class=caja><h3>Referencia — traer datos de tablas o vistas</h3><div class=cm><div class=vacio>Leyendo las tablas…</div></div></div>";
+  let tablas = [];
+  try { tablas = (await call("esquemaTablas")).tablas; } catch (e) { m.hidden = true; dToast(e.message, "bad"); return; }
+  const ES = D.esquema = D.esquema || {};
+  const esq = async t => { if (!ES[t]) ES[t] = await call("esquemaColumnas", { tabla: t }); return ES[t]; };
+  const opTablas = sel => "<optgroup label='Las más usadas'>" + tablas.filter(t => t.p).map(t => "<option" + (t.t === sel ? " selected" : "") + ">" + t.t + "</option>").join("") + "</optgroup><optgroup label='Tablas'>" + tablas.filter(t => !t.p && !t.v).map(t => "<option" + (t.t === sel ? " selected" : "") + ">" + t.t + "</option>").join("") + "</optgroup><optgroup label='Vistas'>" + tablas.filter(t => !t.p && t.v).map(t => "<option" + (t.t === sel ? " selected" : "") + ">" + t.t + "</option>").join("") + "</optgroup>";
+  const B = { tab: prefill ? "sql" : "armar", fuentes: [{ t: "docDocument", alias: "a0" }], conds: [], manual: !!prefill, sql: prefill ? prefill.sql : "" };
+  const OPS = [["=", "es igual a"], ["<>", "es distinto de"], [">", "es mayor que"], ["<", "es menor que"], ["LIKE", "contiene"], ["NULL", "está vacío"], ["NOTNULL", "no está vacío"]];
+  const colsDe = i => (ES[B.fuentes[i].t] || { columnas: [] }).columnas.map(c => c.n);
+  const todasCols = () => B.fuentes.flatMap((f, i) => colsDe(i).map(c => ({ v: f.alias + "." + c, t: f.alias + " · " + f.t + " · " + c })));
+  const sqlLit = v => /^-?\d+(\.\d+)?$/.test(v) ? v : "N'" + String(v).replace(/'/g, "''") + "'";
+  const rels = () => B.fuentes.flatMap(f => ((ES[f.t] || { relaciones: [] }).relaciones || []).map(r => ({ f, r })));
+
+  function generar() {
+    const col = ($d("bDato") || {}).value, agg = ($d("bAgg") || {}).value; const rel = rels()[($d("bRel") || {}).selectedIndex];
+    if (!col) return "";
+    const w = [];
+    if (rel) {
+      const a = rel.f.alias, c = rel.r.col;
+      if (rel.r.via === "doc") w.push(a + ".[" + c + "]={DocumentID}"); else if (rel.r.via === "item") w.push(a + ".[" + c + "]={DocumentItemID}");
+      else if (rel.r.via === "docCol") w.push(a + ".[" + c + "]=(SELECT [" + c + "] FROM docDocument WHERE DocumentID={DocumentID})");
+      else if (rel.r.via === "itemCol") w.push(a + ".[" + c + "]=(SELECT [" + c + "] FROM docDocumentItem WHERE DocumentItemID={DocumentItemID})");
+    }
+    B.fuentes.forEach(f => { if ((ES[f.t] || {}).borrado) w.push(f.alias + ".[DeletedOn] IS NULL"); });
+    document.querySelectorAll("#bConds .cond").forEach(r => {
+      const c = r.querySelector(".cc").value, o = r.querySelector(".co").value, v = r.querySelector(".cv").value; if (!c) return; const [al, cn] = c.split(".");
+      if (o === "NULL") w.push(al + ".[" + cn + "] IS NULL"); else if (o === "NOTNULL") w.push(al + ".[" + cn + "] IS NOT NULL"); else if (o === "LIKE") w.push(al + ".[" + cn + "] LIKE N'%" + v.replace(/'/g, "''") + "%'"); else w.push(al + ".[" + cn + "] " + o + " " + sqlLit(v));
+    });
+    const [al0, cn0] = col.split("."), dato = al0 + ".[" + cn0 + "]";
+    let sel; if (agg === "COUNT") sel = "SELECT COUNT(*)"; else if (agg === "TEXTO") sel = "SELECT STRING_AGG(CAST(" + dato + " AS NVARCHAR(MAX)), N', ')"; else if (agg) sel = "SELECT " + agg + "(" + dato + ")"; else sel = "SELECT TOP 1 " + dato;
+    let desde = " FROM [" + B.fuentes[0].t + "] AS " + B.fuentes[0].alias;
+    B.fuentes.slice(1).forEach(f => { if (f.j && f.j.de && f.j.col) desde += " " + f.j.tipo + " [" + f.t + "] AS " + f.alias + " ON " + f.j.de.split(".")[0] + ".[" + f.j.de.split(".")[1] + "]=" + f.alias + ".[" + f.j.col + "]"; });
+    const ordV = ($d("bOrd") || {}).value;
+    return sel + desde + (w.length ? " WHERE " + w.join(" AND ") : "") + (agg || !ordV ? "" : " ORDER BY " + ordV.split(".")[0] + ".[" + ordV.split(".")[1] + "] " + $d("bDir").value);
+  }
+  function sincronizarSql() { if (!B.manual) { B.sql = generar(); } const t = $d("bSql"); if (t && document.activeElement !== t) t.value = B.sql; const p = $d("bSqlVista"); if (p) p.textContent = B.sql || "(elige el dato y cómo se relaciona)"; }
+
+  function pintar() {
+    const dato = ($d("bDato") || {}).value, agg = ($d("bAgg") || {}).value, relI = ($d("bRel") || {}).selectedIndex, ord = ($d("bOrd") || {}).value, dir = ($d("bDir") || {}).value;
+    const prevConds = Array.from(document.querySelectorAll("#bConds .cond")).map(r => [r.querySelector(".cc").value, r.querySelector(".co").value, r.querySelector(".cv").value]);
+    const nombre = ($d("bNombre") || {}).value || (prefill ? prefill.key : ""), desc = ($d("bDesc") || {}).value || (prefill ? prefill.desc : "");
+    const cols = todasCols(), rl = rels();
+    m.innerHTML = "<div class=caja><h3>Referencia — traer datos de tablas o vistas</h3><div class=cm>" +
+      "<div class=fila><div class=f><label>Nombre de la etiqueta</label><input type=text id=bNombre placeholder='ej. NombreVendedor' value='" + dEsc(nombre) + "'" + (prefill ? " readonly" : "") + "></div><div class=f><label>Descripción (opcional)</label><input type=text id=bDesc value='" + dEsc(desc) + "'></div></div>" +
+      "<div class=seg id=bTabs style='margin:6px 0'><button data-t=armar class='" + (B.tab === "armar" ? "on" : "") + "'>Armarla sin SQL</button><button data-t=sql class='" + (B.tab === "sql" ? "on" : "") + "'>Escribir SQL y ejecutarlo</button></div>" +
+      "<div id=bArmar" + (B.tab === "armar" ? "" : " hidden") + ">" +
+      "<div class=f><label>1 · ¿De dónde sale? <span style='font-weight:400;color:#64748b'>(tablas y vistas; puedes unir varias)</span></label><div id=bFuentes></div><button class=ib id=bMas>＋ Unir otra tabla o vista</button></div>" +
+      "<div class=fila><div class=f><label>2 · ¿Qué dato?</label><select id=bDato>" + cols.map(c => "<option value='" + c.v + "'" + (c.v === dato ? " selected" : "") + ">" + dEsc(c.t) + "</option>").join("") + "</select></div>" +
+      "<div class=f><label>¿Cómo?</label><select id=bAgg><option value=''>El primero que encuentre</option><option value=SUM>La suma</option><option value=COUNT>Cuántos hay</option><option value=MAX>El máximo</option><option value=MIN>El mínimo</option><option value=AVG>El promedio</option><option value=TEXTO>Unir todos (texto)</option></select></div></div>" +
+      "<div class=f><label>3 · ¿Cómo se relaciona con el documento?</label><select id=bRel>" + (rl.length ? rl.map((r, i) => "<option>" + dEsc(r.f.alias + " · " + r.f.t + " — " + r.r.texto) + "</option>").join("") : "<option>(ninguna de estas tablas se relaciona con el documento: une una que sí, o escribe el SQL)</option>") + "</select></div>" +
+      "<div class=f><label>4 · Condiciones extra (opcional)</label><div id=bConds></div><button class=ib id=bMasCond>＋ Agregar condición</button></div>" +
+      "<div class=fila><div class=f><label>Si hay varios, ordenar por</label><select id=bOrd><option value=''>(sin orden)</option>" + cols.map(c => "<option value='" + c.v + "'" + (c.v === ord ? " selected" : "") + ">" + dEsc(c.t) + "</option>").join("") + "</select></div><div class=f><label>Orden</label><select id=bDir><option value=ASC>Ascendente</option><option value=DESC>Descendente (el último)</option></select></div></div>" +
+      "<div class=f><label>Consulta que se generó</label><pre id=bSqlVista></pre></div></div>" +
+      "<div id=bSqlCaja" + (B.tab === "sql" ? "" : " hidden") + "><div class=f><label>Consulta SQL <span style='font-weight:400;color:#64748b'>— una sola consulta de lectura. Usa <b>{DocumentID}</b> y <b>{DocumentItemID}</b> para el documento y la partida. Para una referencia debe regresar un solo valor.</span></label>" +
+      "<textarea id=bSql rows=9 spellcheck=false style='font-family:ui-monospace,Consolas,monospace;font-size:11.5px'></textarea></div>" +
+      "<div class=fila><div class=f><label>Explorar una tabla o vista</label><select id=bExpl><option value=''>(elige)</option>" + opTablas("") + "</select></div><div class=f><label>Columnas (clic para insertar)</label><div id=bExplCols style='max-height:84px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:4px 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px'>—</div></div></div></div>" +
+      "<div id=bRes></div></div><div class=pie><button class=ib id=bProbar>Probar el valor</button><button class=ib id=bFilas>Ver filas</button><span style='flex:1'></span><button class=ib id=bCancel>Cancelar</button><button class='ib p' id=bGuardar>Guardar referencia</button></div></div>";
+    // fuentes
+    $d("bFuentes").innerHTML = B.fuentes.map((f, i) => {
+      const prev = B.fuentes.slice(0, i).flatMap((g, gi) => colsDe(gi).map(c => g.alias + "." + c)), mias = colsDe(i);
+      return "<div class='fila' style='margin-bottom:4px;align-items:center' data-i=" + i + "><select class=ft style='flex:2'>" + opTablas(f.t) + "</select>" +
+        (i === 0 ? "<span class=tip style='flex:1'>tabla principal</span>" : "<select class=fj style='flex:1.2'><option value='INNER JOIN'" + (f.j && f.j.tipo === "INNER JOIN" ? " selected" : "") + ">solo si coincide</option><option value='LEFT JOIN'" + (f.j && f.j.tipo === "LEFT JOIN" ? " selected" : "") + ">aunque no coincida</option></select>" +
+          "<select class=fd style='flex:2'>" + prev.map(c => "<option" + (f.j && f.j.de === c ? " selected" : "") + ">" + c + "</option>").join("") + "</select><span>=</span><select class=fc style='flex:1.5'>" + mias.map(c => "<option" + (f.j && f.j.col === c ? " selected" : "") + ">" + c + "</option>").join("") + "</select><button class='ib fq'>✕</button>") + "</div>";
+    }).join("");
+    const nombresIgual = (i) => { const prev = B.fuentes.slice(0, i).flatMap((g, gi) => colsDe(gi).map(c => ({ de: g.alias + "." + c, c }))); return mias => { for (const c of mias) { const hit = prev.find(p => p.c === c); if (hit) return { de: hit.de, col: c }; } return null; }; };
+    $d("bFuentes").querySelectorAll("[data-i]").forEach(row => {
+      const i = +row.dataset.i, f = B.fuentes[i];
+      row.querySelector(".ft").onchange = async e => { f.t = e.target.value; await esq(f.t); if (i > 0) { const s = nombresIgual(i)(colsDe(i)); f.j = s ? { tipo: "INNER JOIN", de: s.de, col: s.col } : { tipo: "INNER JOIN", de: "", col: "" }; } B.manual = false; pintar(); };
+      if (i > 0) {
+        const act = () => { f.j = { tipo: row.querySelector(".fj").value, de: row.querySelector(".fd").value, col: row.querySelector(".fc").value }; B.manual = false; sincronizarSql(); };
+        ["fj", "fd", "fc"].forEach(c => row.querySelector("." + c).onchange = act); if (!f.j || !f.j.de) act();
+        row.querySelector(".fq").onclick = () => { B.fuentes.splice(i, 1); B.fuentes.forEach((g, k) => g.alias = "a" + k); B.manual = false; pintar(); };
+      }
+    });
+    $d("bMas").onclick = async () => {
+      const t = "orgBusinessEntity"; await esq(t); const i = B.fuentes.length; B.fuentes.push({ t, alias: "a" + i });
+      const s = nombresIgual(i)(colsDe(i)); B.fuentes[i].j = s ? { tipo: "INNER JOIN", de: s.de, col: s.col } : { tipo: "INNER JOIN", de: "", col: "" }; B.manual = false; pintar();
+    };
+    // condiciones
+    const agregarCond = (v) => {
+      const d0 = document.createElement("div"); d0.className = "fila cond"; d0.style.marginBottom = "4px";
+      d0.innerHTML = "<select class=cc style='flex:2'>" + cols.map(c => "<option value='" + c.v + "'>" + dEsc(c.t) + "</option>").join("") + "</select><select class=co>" + OPS.map(o => "<option value='" + o[0] + "'>" + o[1] + "</option>").join("") + "</select><input type=text class=cv placeholder='valor'><button class=ib>✕</button>";
+      if (v) { d0.querySelector(".cc").value = v[0]; d0.querySelector(".co").value = v[1]; d0.querySelector(".cv").value = v[2]; }
+      $d("bConds").appendChild(d0); d0.querySelectorAll("select,input").forEach(x => x.onchange = () => { B.manual = false; sincronizarSql(); }); d0.querySelector("button").onclick = () => { d0.remove(); B.manual = false; sincronizarSql(); };
+    };
+    prevConds.forEach(agregarCond); $d("bMasCond").onclick = () => agregarCond();
+    if (agg) $d("bAgg").value = agg; if (relI > 0) $d("bRel").selectedIndex = relI; if (dir) $d("bDir").value = dir;
+    ["bDato", "bAgg", "bRel", "bOrd", "bDir"].forEach(i => $d(i).onchange = () => { B.manual = false; sincronizarSql(); });
+    $d("bTabs").querySelectorAll("button").forEach(b => b.onclick = () => { if (b.dataset.t === "sql" && !B.manual) B.sql = generar(); B.tab = b.dataset.t; $d("bArmar").hidden = B.tab !== "armar"; $d("bSqlCaja").hidden = B.tab !== "sql"; $d("bTabs").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); sincronizarSql(); });
+    $d("bSql").oninput = () => { B.manual = true; B.sql = $d("bSql").value; };
+    $d("bExpl").onchange = async () => { const t = $d("bExpl").value; if (!t) return; const r = await esq(t); $d("bExplCols").innerHTML = r.columnas.map(c => "<span class=colx data-c='" + dEsc(c.n) + "' style='cursor:pointer;margin-right:8px' title='" + dEsc(c.t) + "'>" + dEsc(c.n) + "</span>").join(""); $d("bExplCols").querySelectorAll(".colx").forEach(x => x.onclick = () => { const ta = $d("bSql"), a = ta.selectionStart, b = ta.selectionEnd; ta.value = ta.value.slice(0, a) + "[" + t + "].[" + x.dataset.c + "]" + ta.value.slice(b); B.manual = true; B.sql = ta.value; ta.focus(); }); };
+    $d("bCancel").onclick = () => { m.hidden = true; };
+    const sqlActual = () => B.tab === "sql" || B.manual ? ($d("bSql").value || B.sql) : generar();
+    $d("bProbar").onclick = async () => { try { const r = await call("refProbar", { sql: sqlActual(), docId: D.docId }); $d("bRes").innerHTML = r.error ? "<div class='res mal'>No se pudo: " + dEsc(r.error) + "</div>" : "<div class=res>Con el documento elegido el valor es: <b>" + dEsc(r.valor === "" ? "(vacío)" : r.valor) + "</b></div>"; } catch (e) { $d("bRes").innerHTML = "<div class='res mal'>" + dEsc(e.message) + "</div>"; } };
+    $d("bFilas").onclick = async () => {
+      try {
+        const r = await call("refEjecutar", { sql: sqlActual(), docId: D.docId, max: 50 });
+        if (r.error) { $d("bRes").innerHTML = "<div class='res mal'>No se pudo: " + dEsc(r.error) + "</div>"; return; }
+        $d("bRes").innerHTML = "<div class=res>" + r.total + " fila(s)" + (r.total > r.filas.length ? " (se muestran " + r.filas.length + ")" : "") + "</div><div style='max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px'><table style='border-collapse:collapse;width:100%;font-size:11.5px'><thead><tr>" + r.columnas.map(c => "<th style='text-align:left;padding:4px 8px;background:#f1f5f9;border-bottom:1px solid var(--line);position:sticky;top:0'>" + dEsc(c) + "</th>").join("") + "</tr></thead><tbody>" +
+          r.filas.map(f => "<tr>" + f.map(v => "<td style='padding:3px 8px;border-bottom:1px solid #eef2f7;white-space:nowrap'>" + (v == null ? "<i style='color:#94a3b8'>NULL</i>" : dEsc(v)) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>";
+      } catch (e) { $d("bRes").innerHTML = "<div class='res mal'>" + dEsc(e.message) + "</div>"; }
+    };
+    $d("bGuardar").onclick = async () => {
+      const k = $d("bNombre").value.trim(); if (!k) { dToast("Ponle un nombre a la etiqueta.", "bad"); return; }
+      try { await call("refGuardar", { key: k, sql: sqlActual(), desc: $d("bDesc").value }); D.etiquetas = (await call("editorEtiquetas")).etiquetas; m.hidden = true; pintarIzq(); dToast("Referencia [" + k + "] guardada. Ya está en «Referencias propias».", "ok"); }
+      catch (e) { $d("bRes").innerHTML = "<div class='res mal'>" + dEsc(e.message) + "</div>"; }
+    };
+    sincronizarSql();
+  }
+  await esq("docDocument"); pintar();
+}
+
+window.addEventListener('load', () => { if (INICIO.formato) abrirDisenador(INICIO.formato); else abrirSelector(); });
+</script></body></html>

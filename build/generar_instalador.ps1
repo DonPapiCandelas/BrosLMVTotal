@@ -100,6 +100,12 @@ if (Test-Path $runnerOut) { Remove-Item $runnerOut -Recurse -Force }
 dotnet build (Join-Path $root "runner\BrosLMV.Runner.csproj") -c Release -o $runnerOut
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR DE COMPILACION DEL RUNNER" -ForegroundColor Red; exit 1 }
 
+Write-Host "3c) Compilando BrosLMV.Disenador (editor visual de formatos, programa aparte)..." -ForegroundColor Cyan
+$disOut = Join-Path $root "instalador\disenador"
+if (Test-Path $disOut) { Remove-Item $disOut -Recurse -Force }
+dotnet publish (Join-Path $root "designer\BrosLMV.Disenador.csproj") -c Release -o $disOut
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR DE COMPILACION DEL DISENADOR" -ForegroundColor Red; exit 1 }
+
 Write-Host "3d) Compilando BrosLMV.HtmlToPdf (HTML -> PDF con WebView2)..." -ForegroundColor Cyan
 $htmlpdfOut = Join-Path $root "instalador\htmlpdf"
 if (Test-Path $htmlpdfOut) { Remove-Item $htmlpdfOut -Recurse -Force }

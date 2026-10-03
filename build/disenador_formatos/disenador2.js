@@ -6,19 +6,23 @@ function pintarIzq() {
 }
 function pintarCampos(c) {
   const q = (c.querySelector("#dBuscar") || {}).value || "";
-  const ql = q.toLowerCase().trim(), vistos = {}, cols = [], refs = [], propias = [];
-  D.etiquetas.forEach(t => { if (vistos[t.k]) return; vistos[t.k] = 1; if (ql && (t.k + " " + t.d).toLowerCase().indexOf(ql) < 0) return; (t.t === "col" ? cols : (t.c ? propias : refs)).push(t); });
-  const g = (tit, l) => l.length ? "<div class=g>" + tit + " (" + l.length + ")</div>" + l.slice(0, 250).map(t => "<div class='tag" + (t.c ? " nueva" : "") + "' draggable=true data-k='" + dEsc(t.k) + "' title='" + dEsc(t.d || t.k) + "'>[" + dEsc(t.k) + "]" + (t.r ? "<small>renglón</small>" : "") + "</div>").join("") : "";
-  c.innerHTML = "<input type=text id=dBuscar placeholder='Buscar campo…' value='" + dEsc(q) + "' autocomplete=off><button class=ib style='width:100%;margin:8px 0' id=dNuevaRef>＋ Nueva referencia (traer datos de una tabla)</button>" +
-    "<div class=tip>Arrastra un campo al documento, o selecciona un elemento y haz clic en el campo. <b>Mayús+clic</b>: con formato numérico.</div>" +
+  const ql = q.toLowerCase().trim(), vistos = {}, cols = [], refs = [], propias = [], info = D.info || {};
+  D.etiquetas.forEach(t => { if (vistos[t.k]) return; vistos[t.k] = 1; const inf = info[t.k]; if (ql && (t.k + " " + t.d + " " + (inf ? inf.o + " " + inf.v : "")).toLowerCase().indexOf(ql) < 0) return; (t.t === "col" ? cols : (t.c ? propias : refs)).push(t); });
+  const fila = t => { const inf = info[t.k], v = inf ? String(inf.v) : ""; return "<div class='tag" + (t.c ? " nueva" : "") + "' draggable=true data-k='" + dEsc(t.k) + "' title='" + dEsc((inf ? inf.o : t.d) || t.k) + "'><span>[" + dEsc(t.k) + "]</span>" +
+    (inf ? "<span class=val>" + dEsc(v.length > 22 ? v.slice(0, 22) + "…" : v) + "</span>" : "") + ((inf ? inf.r : t.r) ? "<small>renglón</small>" : "") + "<i class=inf data-i='" + dEsc(t.k) + "' title='De dónde sale y cuánto vale'>ⓘ</i></div>"; };
+  const g = (tit, l) => l.length ? "<div class=g>" + tit + " (" + l.length + ")</div>" + l.slice(0, 250).map(fila).join("") : "";
+  c.innerHTML = "<input type=text id=dBuscar placeholder='Buscar por nombre, valor u origen…' value='" + dEsc(q) + "' autocomplete=off><button class=ib style='width:100%;margin:8px 0' id=dNuevaRef>＋ Nueva referencia (tablas, vistas o SQL)</button>" +
+    "<div id=dTagInfo class=tip style='background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:6px 8px;display:" + (D.infoSel ? "block" : "none") + "'></div>" +
+    "<div class=tip>Arrastra un campo al documento, o selecciona un elemento y haz clic. <b>Mayús+clic</b>: con formato numérico. <b>ⓘ</b>: de dónde sale y cuánto vale con el documento elegido.</div>" +
     (g("Referencias propias", propias) + g("Columnas del documento", cols) + g("Diccionario de referencia", refs) || "<div class=vacio>Sin resultados</div>");
   const bq = c.querySelector("#dBuscar"); bq.oninput = () => { const pos = bq.selectionStart; pintarCampos(c); const n = c.querySelector("#dBuscar"); n.focus(); n.selectionStart = n.selectionEnd = pos; };
   c.querySelector("#dNuevaRef").onclick = () => constructorReferencias();
   c.querySelectorAll(".tag").forEach(t => {
     t.addEventListener("dragstart", e => { D.drag = t.dataset.k; e.dataTransfer.setData("text/plain", "[" + t.dataset.k + "]"); e.dataTransfer.effectAllowed = "copy"; });
     t.addEventListener("dragend", () => { D.drag = null; });
-    t.addEventListener("click", e => insertarEtiquetaEnSel(e.shiftKey ? "[Format(" + t.dataset.k + ",#,##0.00)]" : "[" + t.dataset.k + "]"));
+    t.addEventListener("click", e => { if (e.target.classList.contains("inf")) { D.infoSel = e.target.dataset.i; $d("dTagInfo").style.display = "block"; verInfoEtiqueta(D.infoSel); return; } insertarEtiquetaEnSel(e.shiftKey ? "[Format(" + t.dataset.k + ",#,##0.00)]" : "[" + t.dataset.k + "]"); });
   });
+  if (D.infoSel) verInfoEtiqueta(D.infoSel);
 }
 function pintarElementos(c) {
   c.innerHTML = "<div class=campo><label>Insertar</label><div class='seg' id=dDonde><button data-v=despues class=on>Después</button><button data-v=dentro>Dentro</button></div></div>" +
