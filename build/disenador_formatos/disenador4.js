@@ -96,7 +96,7 @@ async function constructorReferencias(prefill) {
       "<div class=f><label>Consulta que se generó</label><pre id=bSqlVista></pre></div></div>" +
       "<div id=bSqlCaja" + (B.tab === "sql" ? "" : " hidden") + "><div class=f><label>Consulta SQL <span style='font-weight:400;color:#64748b'>— una sola consulta de lectura. Usa <b>{DocumentID}</b> y <b>{DocumentItemID}</b> para el documento y la partida. Para una referencia debe regresar un solo valor.</span></label>" +
       "<textarea id=bSql rows=9 spellcheck=false style='font-family:ui-monospace,Consolas,monospace;font-size:11.5px'></textarea></div>" +
-      "<div class=fila><div class=f><label>Explorar una tabla o vista</label><select id=bExpl><option value=''>(elige)</option>" + opTablas("") + "</select></div><div class=f><label>Columnas (clic para insertar)</label><div id=bExplCols style='max-height:84px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:4px 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px'>—</div></div></div></div>" +
+      "<div class=f><label>Explorar una tabla o vista <span style='font-weight:400;color:#64748b'>— clic en una columna para insertarla en la consulta</span></label><div class=fila style='align-items:center'><select id=bExpl style='flex:2'><option value=''>(elige una tabla o vista)</option>" + opTablas("") + "</select><input type=text id=bExplF placeholder='Filtrar columnas…' style='flex:1'></div><div id=bExplCols class=colbox><span class=colvacio>Elige una tabla para ver sus columnas.</span></div></div></div>" +
       "<div id=bRes></div></div><div class=pie><button class=ib id=bProbar>Probar el valor</button><button class=ib id=bFilas>Ver filas</button><span style='flex:1'></span><button class=ib id=bCancel>Cancelar</button><button class='ib p' id=bGuardar>Guardar referencia</button></div></div>";
     // fuentes
     $d("bFuentes").innerHTML = B.fuentes.map((f, i) => {
@@ -151,7 +151,15 @@ async function constructorReferencias(prefill) {
     ["bDato", "bAgg", "bRel", "bOrd", "bDir"].forEach(i => $d(i).onchange = () => { B.manual = false; sincronizarSql(); });
     $d("bTabs").querySelectorAll("button").forEach(b => b.onclick = () => { if (b.dataset.t === "sql" && !B.manual) B.sql = generar(); B.tab = b.dataset.t; $d("bArmar").hidden = B.tab !== "armar"; $d("bSqlCaja").hidden = B.tab !== "sql"; $d("bTabs").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); sincronizarSql(); });
     $d("bSql").oninput = () => { B.manual = true; B.sql = $d("bSql").value; };
-    $d("bExpl").onchange = async () => { const t = $d("bExpl").value; if (!t) return; const r = await esq(t); $d("bExplCols").innerHTML = r.columnas.map(c => "<span class=colx data-c='" + dEsc(c.n) + "' style='cursor:pointer;margin-right:8px' title='" + dEsc(c.t) + "'>" + dEsc(c.n) + "</span>").join(""); $d("bExplCols").querySelectorAll(".colx").forEach(x => x.onclick = () => { const ta = $d("bSql"), a = ta.selectionStart, b = ta.selectionEnd; ta.value = ta.value.slice(0, a) + "[" + t + "].[" + x.dataset.c + "]" + ta.value.slice(b); B.manual = true; B.sql = ta.value; ta.focus(); }); };
+    const pintarCols = (t, r) => {
+      const f = ($d("bExplF").value || "").toLowerCase(), caja = $d("bExplCols");
+      const lst = r.columnas.filter(c => !f || c.n.toLowerCase().includes(f));
+      caja.innerHTML = lst.length ? lst.map(c => "<button type=button class=colx data-c='" + dEsc(c.n) + "' title='" + dEsc(c.t) + "'>" + dEsc(c.n) + "</button>").join("") : "<span class=colvacio>Ninguna columna coincide.</span>";
+      caja.querySelectorAll(".colx").forEach(x => x.onclick = () => { const ta = $d("bSql"), a = ta.selectionStart, b = ta.selectionEnd; ta.value = ta.value.slice(0, a) + "[" + t + "].[" + x.dataset.c + "]" + ta.value.slice(b); B.manual = true; B.sql = ta.value; ta.focus(); ta.selectionStart = ta.selectionEnd = a + t.length + x.dataset.c.length + 6; });
+    };
+    let colsExp = null;
+    $d("bExpl").onchange = async () => { const t = $d("bExpl").value; if (!t) return; const r = await esq(t); colsExp = { t, r }; pintarCols(t, r); };
+    $d("bExplF").oninput = () => { if (colsExp) pintarCols(colsExp.t, colsExp.r); };
     $d("bCancel").onclick = () => { m.hidden = true; };
     const sqlActual = () => B.tab === "sql" || B.manual ? ($d("bSql").value || B.sql) : generar();
     $d("bProbar").onclick = async () => { try { const r = await call("refProbar", { sql: sqlActual(), docId: D.docId }); $d("bRes").innerHTML = r.error ? "<div class='res mal'>No se pudo: " + dEsc(r.error) + "</div>" : "<div class=res>Con el documento elegido el valor es: <b>" + dEsc(r.valor === "" ? "(vacío)" : r.valor) + "</b></div>"; } catch (e) { $d("bRes").innerHTML = "<div class='res mal'>" + dEsc(e.message) + "</div>"; } };

@@ -70,3 +70,11 @@
 #dis #dAsas .a-c{right:-6px;bottom:-6px;width:11px;height:11px;border-radius:3px;cursor:nwse-resize;border:1px solid #fff}
 #dis #dAsas .a-info{pointer-events:none;left:auto;right:0;top:-20px;padding:3px 6px;border-radius:5px 5px 0 0;background:#0f172a;opacity:.85;font-variant-numeric:tabular-nums}
 #dis #dLineaDrop{position:absolute;background:#16A34A;border-radius:2px;z-index:5;pointer-events:none}
+
+#dModal .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+#dModal .seg button{border:0;background:#fff;padding:7px 14px;cursor:pointer;font:inherit;font-weight:600;color:var(--muted)}
+#dModal .seg button.on{background:var(--accent);color:#fff}
+#dModal .colbox{display:flex;flex-wrap:wrap;gap:4px;max-height:104px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--line);border-radius:8px;padding:6px;margin-top:6px;background:#f8fafc;min-width:0}
+#dModal .colbox .colx{border:1px solid var(--line);background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--ink)}
+#dModal .colbox .colx:hover{border-color:var(--accent);color:var(--accent)}
+#dModal .colvacio{color:var(--muted);font-size:11.5px;padding:2px}

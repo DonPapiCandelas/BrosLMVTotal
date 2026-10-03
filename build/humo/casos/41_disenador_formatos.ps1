@@ -8,7 +8,7 @@ param(
     [string]$Server   = "localhost\compac",
     [string]$Database = "BROSLMV_DESARROLLO",
     [string]$RunnerExe = (Join-Path $PSScriptRoot "..\..\..\runner\bin\Release\BrosLMV.Runner.exe"),
-    [string]$DisenadorExe = (Join-Path $PSScriptRoot "..\..\..\designer\bin\Release\net8.0-windows\BrosLMV.Disenador.exe")
+    [string]$DisenadorExe = (Join-Path $PSScriptRoot "..\..\..\designer\bin\Release\net8.0-windows\win-x64\BrosLMV.Disenador.exe")
 )
 $ErrorActionPreference = "Continue"
 if ($Database -ne "BROSLMV_DESARROLLO") { Write-Host "  Esta prueba solo corre contra BROSLMV_DESARROLLO." -ForegroundColor Red; exit 1 }
