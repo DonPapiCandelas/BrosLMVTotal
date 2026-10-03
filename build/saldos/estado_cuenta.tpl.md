@@ -45,6 +45,8 @@ Todas las hojas traen configuración de impresión (horizontal, ajustada al anch
 
 Se excluyen los documentos eliminados y cancelados.
 
+**Documentos que se convierten en factura** (una venta, por ejemplo): la venta **no** se cuenta otra vez cuando ya se facturó, porque la deuda la lleva la factura. La regla es la misma que usa Comercial en su columna «Facturado» (`vwLBSDocCustomerSalesTotalInvoiced`): se suman las facturas vigentes cuyo `SourceDocumentID` es ese documento y al total del documento se le resta lo facturado (sin bajar de cero). Una venta facturada por completo desaparece del reporte y la factura la sustituye; si se facturó una parte, solo cuenta lo que falta por facturar. En el detalle del documento aparece un aviso cuando esto ocurre. Las facturas y notas de crédito nunca se descuentan por esta regla.
+
 ## Qué garantiza
 
 - Con corte = hoy, el saldo de cada documento coincide con `docDocument.Balance`; con un corte anterior coincide con un cálculo independiente en SQL (prueba de humo #38).

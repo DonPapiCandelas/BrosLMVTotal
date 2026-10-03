@@ -377,6 +377,10 @@ string filtroConSaldo =
 
 var docsSql = ctx.Query(
     "SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.DateDocument, ISNULL(d.Total,0) AS Total, d.BusinessEntityID, " +
+    // Lo ya facturado desde este documento: facturas (DocumentTypeID 5) vigentes cuyo SourceDocumentID es este documento. Es la misma regla que usa Comercial para
+    // «Facturado» en sus ventas (vwLBSDocCustomerSalesTotalInvoiced). Un documento que no es factura ni nota de crédito y ya se facturó NO debe contarse otra vez: lo debe la factura.
+    "CASE WHEN ISNULL(d.DocumentTypeID,0) IN (5,6) THEN 0 ELSE ISNULL((SELECT SUM(f.Total) FROM docDocument f WHERE f.SourceDocumentID = d.DocumentID AND f.DocumentTypeID = 5 " +
+    "AND f.DeletedOn IS NULL AND f.CancelledOn IS NULL AND f.DocRecipientID = d.DocRecipientID), 0) END AS Facturado, " +
     "ISNULL(be.CommercialName, be.OfficialName) AS Entidad, ISNULL(d.Title,'') AS Titulo, " +
     "(SELECT MAX(a.DatePayment) FROM docDocumentPaymentAgenda a WHERE a.DocumentID = d.DocumentID AND a.DeletedOn IS NULL) AS Vence " +
     "FROM docDocument d LEFT JOIN orgBusinessEntity be ON be.BusinessEntityID = d.BusinessEntityID WHERE d.DocumentID IN (" + filtroDocs + ")");
@@ -389,7 +393,7 @@ foreach (var r in docsSql)
     var d = new Dictionary<string, object>
     {
         ["id"] = L(r["DocumentID"]), ["mod"] = mid, ["lado"] = "C", ["s"] = signo[mid], ["tipo"] = nombreMod[mid], ["folio"] = folio,
-        ["fecha"] = FechaTxt(r["DateDocument"]), ["venc"] = FechaTxt(r["Vence"]), ["total"] = M(r["Total"]),
+        ["fecha"] = FechaTxt(r["DateDocument"]), ["venc"] = FechaTxt(r["Vence"]), ["total"] = Math.Max(0m, M(r["Total"]) - M(r["Facturado"])), ["totalOrig"] = M(r["Total"]), ["fact"] = M(r["Facturado"]),
         ["ent"] = L(r["BusinessEntityID"]), ["entNom"] = S(r["Entidad"]), ["titulo"] = S(r["Titulo"])
     };
     docs.Add(d); docPorId[(long)d["id"]] = d;
@@ -501,7 +505,7 @@ function calc(sinFiltros){
     if(d.fecha>corte)return;
     var ap=0;(pp[d.id]||[]).forEach(function(p){if(p.fecha<=corte)ap+=p.monto;});
     (nc[d.id]||[]).forEach(function(p){if(p.fecha<=corte)ap+=p.monto;});
-    var saldo=d.total-ap;if(Math.abs(saldo)<0.005)return;
+    var saldo=d.total-ap;if(Math.abs(saldo)<0.005)return;if(d.fact>0&&saldo<0)return;
     var venc=d.venc||d.fecha,dv=d.s<0?null:dias(venc,corte),b=d.s<0?5:(dv<=0?0:dv<=30?1:dv<=60?2:dv<=90?3:4);
     var fila={d:d,saldo:d.s*saldo,venc:venc,dv:dv,b:b,pagado:ap};
     if(!sinFiltros){
@@ -627,7 +631,7 @@ function verDoc(id,vol){
   (pp[d.id]||[]).forEach(function(p){if(p.fecha<=corte)ap+=p.monto;});(nc[d.id]||[]).forEach(function(p){if(p.fecha<=corte)ap+=p.monto;});
   var saldo=d.total-ap,venc=d.venc||d.fecha,dv=d.s<0?null:dias(venc,corte);
   var est=dv===null?'<span class=\'pill m\'>A favor</span>':Math.abs(saldo)<0.005?'<span class=\'pill v\'>Liquidado</span>':dv>0?'<span class=\'pill r\'>Vencido '+dv+' d</span>':dv>=-7?'<span class=\'pill a\'>Vence en 7 días</span>':'<span class=\'pill v\'>Vigente</span>';
-  var h='<div class=dc><div><b>Total</b><span>'+f2(d.total)+'</span></div><div><b>'+(LADO==='C'?'Cobrado':'Pagado')+'</b><span>'+f2(ap)+'</span></div><div><b>Saldo al corte</b><span>'+f2(saldo)+'</span></div><div><b>Vencimiento</b><span>'+(dv===null?'—':fmtF(venc))+'</span></div><div><b>Estatus</b><span>'+est+'</span></div></div>';
+  var h=(d.fact>0?'<div class=nota style=\'margin:0 0 8px;color:var(--ambar)\'>Este documento ya se facturó por '+f2(d.fact)+'; aquí solo cuenta lo que falta por facturar (la factura lleva la deuda).</div>':'')+'<div class=dc><div><b>Total</b><span>'+f2(d.total)+'</span></div><div><b>'+(LADO==='C'?'Cobrado':'Pagado')+'</b><span>'+f2(ap)+'</span></div><div><b>Saldo al corte</b><span>'+f2(saldo)+'</span></div><div><b>Vencimiento</b><span>'+(dv===null?'—':fmtF(venc))+'</span></div><div><b>Estatus</b><span>'+est+'</span></div></div>';
   h+='<div class=sec><h3>Partidas</h3>'+(d.p&&d.p.length?'<table><thead><tr><th>#</th><th class=l>Concepto</th><th>Cantidad</th><th>Precio</th><th>Total</th></tr></thead><tbody>'+d.p.map(function(p){return '<tr><td>'+p[0]+'</td><td class=l style=\'white-space:normal\'>'+esc(p[1])+'</td><td>'+f2(p[2])+'</td><td>'+f2(p[3])+'</td><td>'+f2(p[4])+'</td></tr>';}).join('')+'</tbody></table>':'<div class=nota>El detalle de partidas se carga solo de los documentos que hoy tienen saldo.</div>')+'</div>';
   h+='<div class=sec><h3>Agenda de '+(LADO==='C'?'cobro':'pago')+'</h3>'+(d.a&&d.a.length?'<table><thead><tr><th>Parcialidad</th><th>Fecha</th><th>Monto</th><th class=l>Estatus</th></tr></thead><tbody>'+d.a.map(function(a){return '<tr><td>'+a[0]+'</td><td>'+fmtF(a[1])+'</td><td>'+f2(a[2])+'</td><td class=l>'+(AGENDA[a[3]]||a[3])+'</td></tr>';}).join('')+'</tbody></table>':'<div class=nota>Sin agenda de pago capturada.</div>')+'</div>';
   var ncs=nc[d.id]||[];
