@@ -92,7 +92,7 @@ lanzador = '''                else if (action == "editarHtml")
                 {
                     // «Diseñar formato…»: abre el Diseñador como PROGRAMA APARTE (se puede minimizar y Comercial sigue libre)
                     long fidD = Convert.ToInt64(p["formatId"]);
-                    string exeD = new[] { @"C:\\BrosLMV\\disenador\\BrosLMV.Disenador.exe", @"C:\\MLVTotal\\designer\\bin\\Release\\net8.0-windows\\BrosLMV.Disenador.exe", @"C:\\MLVTotal-union\\designer\\bin\\Release\\net8.0-windows\\BrosLMV.Disenador.exe" }.FirstOrDefault(File.Exists);
+                    string exeD = new[] { @"C:\\BrosLMV\\disenador\\BrosLMV.Disenador.exe", @"C:\\MLVTotal\\designer\\bin\\Release\\net8.0-windows\\win-x64\\BrosLMV.Disenador.exe", @"C:\\MLVTotal-union\\designer\\bin\\Release\\net8.0-windows\\win-x64\\BrosLMV.Disenador.exe" }.Where(File.Exists).OrderByDescending(f => File.GetLastWriteTime(f)).FirstOrDefault();   // el más reciente (instalado o de desarrollo)
                     if (exeD == null) err = "No se encontró el Diseñador (BrosLMV.Disenador.exe). Reinstala BrosLMV con la versión que lo incluye.";
                     else
                     {
