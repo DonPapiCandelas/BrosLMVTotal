@@ -6,9 +6,8 @@ Plantilla de fábrica **Plantillas → Documentos → Asignar centro de costo de
 ## Cómo usarla
 
 1. En la **Consola** abre la plantilla, guárdala como botón (nombre sugerido `ASIGNAR_CENTRO_COSTO`) y ponla en el ribbon con *Crear botón…*.
-2. En la lista de documentos de Comercial **selecciona** los documentos (opcional) y pulsa el botón.
-3. **Paso 1 · Documentos.** Elige entre «los seleccionados en la lista» o «buscarlos con filtros»: fechas, módulos (los de tu empresa, con cuántos documentos hay en cada uno), cliente o proveedor, título y el
-   centro de costo que tienen ahora (cualquiera, ninguno o uno en concreto).
+2. En la lista de documentos de Comercial **selecciona** los documentos a los que quieres asignar el centro de costo y pulsa el botón. Sin documentos seleccionados la plantilla no hace nada y te lo dice.
+3. **Paso 1 · Documentos seleccionados.** La ventana te muestra los documentos que seleccionaste (cuántos por tipo, y su cliente o proveedor y centro de costo actual). Los cancelados, eliminados o de otra empresa no entran y se avisa.
 4. **Paso 2 · Qué centro de costo y dónde.**
    - **Dónde:** *Encabezado* (lo normal: es lo que usan casi todos los módulos), *Partidas* o *Ambos*.
    - **A cuáles:** *Solo donde esté vacío* (no pisa nada, es lo más seguro) o *Reemplazar el que tengan*.

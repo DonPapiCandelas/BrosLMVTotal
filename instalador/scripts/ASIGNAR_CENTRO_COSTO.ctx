@@ -264,7 +264,13 @@ if (centros.Count == 0)
     ctx.Msg("Esta empresa no tiene centros de costo dados de alta.\nDa de alta los centros en Comercial (catálogo de Centros de costo) y vuelve a ejecutar.", "Asignar centro de costo");
     return "SIN CENTROS";
 }
-var modulos = Modulos();
+if (seleccionLista.Count == 0)
+{
+    ctx.Msg("Selecciona en la lista los documentos a los que quieres asignar el centro de costo y vuelve a ejecutar.", "Asignar centro de costo");
+    return "SIN SELECCION";
+}
+int excSel;
+var docsSel = BuscarDocs(new Pars { Alcance = "seleccion", Ids = seleccionLista }, out excSel);          // los documentos seleccionados en el grid (cancelados y eliminados no entran)
 
 string Esc(string s) => (s ?? "").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 string Css() => @"<style>:root{--f:#f4f6f9;--t:#fff;--x:#16263a;--s:#64748b;--l:#cbd5e1;--a:#2d6fe0;--r:#c82828;--am:#b45309;--v:#16803b}*{box-sizing:border-box}
@@ -274,26 +280,22 @@ label{display:block;margin:8px 0 3px;color:var(--s);font-size:12px}select,input[
 .fila{display:flex;gap:12px}.fila>*{flex:1}.radios label{display:inline;margin-right:16px;color:var(--x);font-size:13px}
 button{border:1px solid var(--l);background:#fff;border-radius:6px;padding:7px 16px;cursor:pointer;font:inherit}button.p{background:var(--a);color:#fff;border-color:var(--a)}button.d{background:#fff;color:var(--am);border-color:var(--am)}
 table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e5eaf1}th{color:var(--s);font-size:11.5px}.av{color:var(--am);margin:4px 0}.ok{color:var(--v)}
-.acc{margin-top:14px;display:flex;gap:10px;justify-content:flex-end}select[multiple]{height:130px}</style>";
+.acc{margin-top:14px;display:flex;gap:10px;justify-content:flex-end}.tabla{max-height:230px;overflow:auto;margin-top:8px;border:1px solid #e5eaf1;border-radius:6px}.chip{display:inline-block;background:#eef2f7;border-radius:10px;padding:1px 9px;margin:0 6px 4px 0;font-size:12px}</style>";
 
 string PaginaFiltros(Pars p, string mensaje)
 {
     var opCentros = new StringBuilder("<option value=''>— elige un centro de costo —</option>");
     foreach (var c in centros) opCentros.Append("<option value='" + S(c["CostCenterID"]) + "'" + (p != null && p.CcNuevo == L(c["CostCenterID"]) ? " selected" : "") + ">" + Esc(S(c["CostCenterName"])) + (S(c["Segmento"]) != "" ? " (" + Esc(S(c["Segmento"])) + ")" : "") + "</option>");
-    var opActual = new StringBuilder("<option value='cualquiera'>Cualquiera</option><option value='vacio'>Sin centro de costo</option>");
-    foreach (var c in centros) opActual.Append("<option value='" + S(c["CostCenterID"]) + "'>" + Esc(S(c["CostCenterName"])) + "</option>");
-    var opMods = new StringBuilder();
-    foreach (var m in modulos) opMods.Append("<option value='" + S(m["ModuleID"]) + "'>" + Esc(S(m["ModuleName"])) + " (" + S(m["N"]) + ")</option>");
-    bool haySel = seleccionLista.Count > 0;
+    var tarjetaDocs = new StringBuilder("<div class='card'><h2>1 · Documentos seleccionados en la lista (" + docsSel.Count + ")</h2>");
+    if (seleccionLista.Count > docsSel.Count) tarjetaDocs.Append("<div class='av'>" + (seleccionLista.Count - docsSel.Count) + " de los " + seleccionLista.Count + " seleccionados no se incluyen porque están cancelados, eliminados o son de otra empresa.</div>");
+    foreach (var g in docsSel.GroupBy(d => d.ModuloNombre).OrderByDescending(g => g.Count())) tarjetaDocs.Append("<span class='chip'>" + Esc(g.Key) + ": <b>" + g.Count() + "</b></span>");
+    tarjetaDocs.Append("<div class='tabla'><table><tr><th>Fecha</th><th>Documento</th><th>Cliente / proveedor</th><th>Centro de costo ahora</th></tr>");
+    foreach (var d in docsSel.Take(200)) tarjetaDocs.Append("<tr><td>" + d.Fecha + "</td><td>" + Esc(d.ModuloNombre + " " + d.Folio) + "</td><td>" + Esc(d.Entidad) + "</td><td>" + (d.Cc == 0 ? "<i>(vacío)</i>" : Esc(d.CcNombre)) + "</td></tr>");
+    if (docsSel.Count > 200) tarjetaDocs.Append("<tr><td colspan='4'><i>… y " + (docsSel.Count - 200) + " más</i></td></tr>");
+    tarjetaDocs.Append("</table></div></div>");
     return "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'>" + Css() + "</head><body><div class='w'><h1>Asignar centro de costo</h1>" +
-        "<div class='sub'>Elige qué documentos y qué centro de costo. Antes de cambiar nada verás una vista previa. " + Esc(mensaje ?? "") + "</div>" +
-        "<div class='card'><h2>1 · Documentos</h2><div class='radios'>" +
-        "<label><input type='radio' name='alc' value='seleccion'" + (haySel ? " checked" : " disabled") + "> Los " + seleccionLista.Count + " seleccionados en la lista</label>" +
-        "<label><input type='radio' name='alc' value='filtro'" + (haySel ? "" : " checked") + "> Buscarlos con filtros</label></div>" +
-        "<div id='filtros' style='margin-top:8px'><div class='fila'><div><label>Desde</label><input type='date' id='desde'></div><div><label>Hasta</label><input type='date' id='hasta'></div></div>" +
-        "<div class='fila'><div><label>Cliente o proveedor contiene</label><input type='text' id='entidad'></div><div><label>Título del documento contiene</label><input type='text' id='titulo'></div></div>" +
-        "<div class='fila'><div><label>Módulos (Ctrl para varios; vacío = todos)</label><select id='modulos' multiple>" + opMods + "</select></div>" +
-        "<div><label>Centro de costo que tienen ahora</label><select id='ccActual'>" + opActual + "</select></div></div></div></div>" +
+        "<div class='sub'>Se asigna a los documentos que seleccionaste en la lista. Antes de cambiar nada verás una vista previa. " + Esc(mensaje ?? "") + "</div>" +
+        tarjetaDocs +
         "<div class='card'><h2>2 · Qué centro de costo y dónde</h2><label>Centro de costo nuevo</label><select id='ccNuevo'>" + opCentros + "</select>" +
         "<div class='radios' style='margin-top:10px'><b>Dónde:</b> <label><input type='radio' name='dnd' value='encabezado' checked> Encabezado del documento (lo normal)</label>" +
         "<label><input type='radio' name='dnd' value='partidas'> Partidas</label><label><input type='radio' name='dnd' value='ambos'> Ambos</label></div>" +
@@ -302,9 +304,9 @@ string PaginaFiltros(Pars p, string mensaje)
         "<div class='acc'><button class='d' onclick=\"enviar({accion:'deshacer'})\">Deshacer mi último lote</button><button class='p' onclick='preview()'>Ver vista previa</button></div></div>" +
         "<script>function enviar(o){window.chrome.webview.postMessage(JSON.stringify(o));}function v(i){return document.getElementById(i).value;}" +
         "function r(n){var x=document.querySelector('input[name='+n+']:checked');return x?x.value:'';}" +
-        "function preview(){if(!v('ccNuevo')){alert('Elige el centro de costo nuevo.');return;}var m=[].slice.call(document.getElementById('modulos').selectedOptions).map(function(o){return +o.value;});" +
-        "enviar({accion:'previsualizar',alcance:r('alc'),desde:v('desde'),hasta:v('hasta'),entidad:v('entidad'),titulo:v('titulo'),modulos:m,ccActual:v('ccActual'),ccNuevo:+v('ccNuevo'),donde:r('dnd'),modo:r('modo')});}" +
-        "function tg(){document.getElementById('filtros').style.opacity=r('alc')=='filtro'?1:.45;}document.querySelectorAll('input[name=alc]').forEach(function(x){x.onchange=tg;});tg();</script></body></html>";
+        "function preview(){if(!v('ccNuevo')){alert('Elige el centro de costo nuevo.');return;}" +
+        "enviar({accion:'previsualizar',alcance:'seleccion',ccNuevo:+v('ccNuevo'),donde:r('dnd'),modo:r('modo')});}" +
+        "</script></body></html>";
 }
 
 string PaginaPrevia(Pars p, List<DocFila> docs, int excedido, string nombreCc)

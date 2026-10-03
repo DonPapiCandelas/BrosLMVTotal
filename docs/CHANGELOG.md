@@ -10,6 +10,9 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ## [3.0.0] — 2026-10-02 — Plantillas de fábrica para publicar
 
+### Cambiado
+- **«Asignar centro de costo»** trabaja solo con los **documentos seleccionados en la lista** (se quitó la búsqueda por filtros); la ventana los muestra antes de la vista previa.
+
 ### Corregido
 - **«Asignar centro de costo»** decía «esta empresa no tiene centros de costo» cuando los centros se crean **globales** (`OwnedBusinessEntityID = 0`, como los crea Comercial en una base nueva): ahora lista los de la empresa y los globales.
 
