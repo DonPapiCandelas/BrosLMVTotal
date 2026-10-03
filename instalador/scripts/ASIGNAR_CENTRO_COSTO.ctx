@@ -52,7 +52,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_zzBrosCentroCostoLog_Lot
 
 // ---------- Catálogos de la empresa ----------
 List<Dictionary<string, object>> Centros() => ctx.Query(
-    "SELECT CostCenterID, CostCenterName, ISNULL(Segmento,'') AS Segmento FROM orgCostCenter WHERE DeletedOn IS NULL AND OwnedBusinessEntityID=" + empresa + " ORDER BY CostCenterName");
+    "SELECT CostCenterID, CostCenterName, ISNULL(Segmento,'') AS Segmento FROM orgCostCenter WHERE DeletedOn IS NULL AND OwnedBusinessEntityID IN (0, " + empresa + ") ORDER BY CostCenterName");
 
 List<Dictionary<string, object>> Modulos() => ctx.Query(
     "SELECT m.ModuleID, m.ModuleName, COUNT(*) AS N FROM docDocument d JOIN engModule m ON m.ModuleID=d.ModuleID " +

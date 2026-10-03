@@ -10,6 +10,9 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ## [3.0.0] — 2026-10-02 — Plantillas de fábrica para publicar
 
+### Corregido
+- **«Asignar centro de costo»** decía «esta empresa no tiene centros de costo» cuando los centros se crean **globales** (`OwnedBusinessEntityID = 0`, como los crea Comercial en una base nueva): ahora lista los de la empresa y los globales.
+
 ### Agregado
 - **«Trazabilidad del documento» rediseñada:** el flujo se ordena por **tipo de documento** (solicitud → pedido/orden → entrega/recepción → factura → nota de crédito) y por carril (venta, compra, inventario), no por quién nació de quién; cada tarjeta muestra folio **e ID**; debajo, el **detalle del documento elegido** (partidas con su unidad y equivalencia en unidad base, de dónde viene cada partida y cuánto falta por recibir/facturar, **lotes, series, pedimentos**, pagos y cobros con forma de pago y cuenta). Se quitó la columna de «evidencia». Exporta a CSV el documento o toda la cadena.
 - **`build/laboratorio/publicar_scripts_lab.ps1`:** publica las plantillas como scripts del laboratorio (con su hash) para editarlas y probarlas en Comercial sin generar una versión nueva del instalador.
