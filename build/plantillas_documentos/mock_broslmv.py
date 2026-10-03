@@ -105,6 +105,18 @@ class Falso(types.ModuleType):
     def __setitem__(self, k, v): pass
     def __delitem__(self, k): pass
     def __bool__(self): return True
+    # aritmética de mentira: una medida de un control (Height, Width, Right…) vale 0 para que los cálculos de posición corran
+    def __add__(self, o): return 0
+    def __radd__(self, o): return 0
+    def __sub__(self, o): return 0
+    def __rsub__(self, o): return 0
+    def __mul__(self, o): return 0
+    def __rmul__(self, o): return 0
+    def __truediv__(self, o): return 0
+    def __rtruediv__(self, o): return 0
+    def __floordiv__(self, o): return 0
+    def __rfloordiv__(self, o): return 0
+    def __neg__(self): return 0
     def __str__(self): return ""
 for _m in ("pythonnet", "clr", "System", "System.Threading", "System.Drawing", "System.Windows.Forms"):
     sys.modules.setdefault(_m, Falso())

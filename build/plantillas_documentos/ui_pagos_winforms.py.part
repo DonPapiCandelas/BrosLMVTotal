@@ -1,11 +1,12 @@
-
-
 # ===================================================================================================================================
-# VENTANA (Windows Forms). Python corre en su propio proceso: no hace falta modeless ni proteger a Comercial, pero cada manejador va en
-# «seguro» para que un error se explique en vez de dejar la ventana muda.
+# VENTANA (Windows Forms desde Python con pythonnet). Es el MISMO diseño que la versión de C# (ui_pagos_winforms.cs.part), con las mismas posiciones, colores y reglas:
+# cinta oscura con las acciones y la información del movimiento (fecha y folio), grupos numerados con la etiqueta arriba de cada campo (nada se encima),
+#   1 · Cliente / proveedor (búsqueda por nombre o RFC; las personas con saldo salen primero) · 2 · Datos del movimiento (cuenta, forma de pago, referencia, monto con «Distribuir») ·
+#   3 · Antigüedad de saldos de la persona · 4 · Documentos con saldo (marcables, con lo que se aplica a cada uno) · Resumen con lo que quedaría.
+# Python corre en su propio proceso: la ventana es independiente y no bloquea a Comercial. Cada manejador va en «seguro» para que un error se explique en vez de dejar la ventana muda.
 # ===================================================================================================================================
-def msg(texto, titulo="Cobro o pago", icono=None):
-    MessageBox.Show(texto, titulo, MessageBoxButtons.OK, icono if icono is not None else MessageBoxIcon.Warning)
+def msg(texto, titulo="Cobro o pago"):
+    MessageBox.Show(texto, titulo, MessageBoxButtons.OK, MessageBoxIcon.Warning)
 
 
 def seguro(fn):
@@ -13,292 +14,1066 @@ def seguro(fn):
         try:
             fn()
         except Exception as ex:
+            E["guardando"] = False
             msg(str(ex))
     return envuelto
 
 
+def rgb(r, g, b):
+    return Color.FromArgb(r, g, b)
+
+
+C_BG = rgb(241, 245, 249)
+C_LINE = rgb(203, 213, 225)
+C_TXT = rgb(30, 41, 59)
+C_MUTED = rgb(100, 116, 139)
+C_HEAD = rgb(248, 250, 252)
+C_SEL = rgb(238, 242, 255)
+C_RIB = rgb(51, 65, 85)
+C_RIB_TX = rgb(226, 232, 240)
+C_RIB_MU = rgb(148, 163, 184)
+C_COBRO = rgb(37, 99, 235)
+C_PAGO = rgb(15, 118, 110)
+C_ROJO = rgb(200, 40, 40)
+C_AMBAR = rgb(180, 83, 9)
+C_VERDE = rgb(22, 128, 59)
+F_BASE = Font("Segoe UI", 9.0)
+F_B = Font("Segoe UI", 9.0, FontStyle.Bold)
+F_H2 = Font("Segoe UI", 9.5, FontStyle.Bold)
+F_SM = Font("Segoe UI", 8.5)
+F_ICON = Font("Segoe UI Emoji", 20.0)
+F_TOT = Font("Segoe UI Semibold", 18.0)
+F_VAL = Font("Segoe UI Semibold", 11.0)
+
+E = {"ent": None, "guardando": False, "pintando": False, "tipo": 0, "resultado": "CANCELADO"}
+
+
+def fe(s):
+    try:
+        return datetime.datetime.strptime(S(s)[:10], "%Y-%m-%d")
+    except Exception:
+        return None
+
+
 def principal():
     global result
-    estado = {"catalogo": catalogos(), "entidad": 0, "bloquea": False, "vis_ent": [], "docs": [], "sel": {}}
-    catalogo = lambda: estado["catalogo"]
+    catalogo = catalogos()
+    folios = catalogo["folios"]
+    seleccion = {}        # documento → monto a aplicar
+    pastillas = []
+    vis = {"ent": []}
+    quien_soy = ""
+    nombre_empresa = ""
+    try:
+        quien_soy = S(ctx.scalar("SELECT TOP 1 ISNULL(UserName,'') FROM engUser WHERE UserID = " + str(int(ctx.user_id))))
+    except Exception:
+        pass
+    try:
+        nombre_empresa = S(ctx.scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + str(empresa)))
+    except Exception:
+        pass
 
     frm = Form()
-    frm.Text = "Cobro o pago"
-    frm.ClientSize = Size(1080, 700)
+    frm.Text = "Cobros y pagos · BrosLMV"
+    frm.ClientSize = Size(1200, 900)
+    frm.MinimumSize = Size(1160, 820)
     frm.StartPosition = FormStartPosition.CenterScreen
-    frm.BackColor = Color.FromArgb(244, 246, 249)
-    frm.Font = Font("Segoe UI", 9.0)
+    frm.BackColor = C_BG
+    frm.Font = F_BASE
     frm.KeyPreview = True
 
-    def et(texto, x, y):
+    def tipo_actual():
+        return TIPOS[E["tipo"]]
+
+    def es_cobro():
+        return tipo_actual()["lado"] == "C"
+
+    def acento():
+        return C_COBRO if es_cobro() else C_PAGO
+
+    def docs_lado():
+        return catalogo["docsC" if es_cobro() else "docsP"]
+
+    # ---------- piezas de construcción ----------
+    def grupo(titulo):
+        p = Panel()
+        p.BackColor = Color.White
+        p.Size = Size(600, 120)
+
+        def pintar(s, e):
+            g = e.Graphics
+            pen = Pen(C_LINE)
+            g.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1)
+            g.DrawLine(pen, 0, 28, p.Width, 28)
+            pen.Dispose()
+            b = SolidBrush(C_HEAD)
+            g.FillRectangle(b, 1, 1, p.Width - 2, 27)
+            b.Dispose()
+            b = SolidBrush(acento())
+            g.FillRectangle(b, 1, 1, 4, 27)
+            b.Dispose()
+            b = SolidBrush(C_TXT)
+            g.DrawString(titulo(), F_H2, b, 14.0, 5.0)
+            b.Dispose()
+        p.Paint += pintar
+        return p
+
+    def et(padre, texto, x, y):
         l = Label()
         l.Text = texto
         l.Location = Point(x, y)
         l.AutoSize = True
-        l.ForeColor = Color.FromArgb(100, 116, 139)
-        frm.Controls.Add(l)
+        l.ForeColor = C_MUTED
+        l.Font = F_SM
+        l.BackColor = Color.Transparent
+        padre.Controls.Add(l)
         return l
 
-    def poner(c, x, y, w, h=24):
-        c.Location = Point(x, y)
-        c.Size = Size(w, h)
-        frm.Controls.Add(c)
+    def cuadro(padre, etiqueta, x, y, w, solo_lectura=False):
+        # Marco de altura fija que dibuja el borde; el TextBox va adentro SIN borde y centrado (la altura no depende de la escala del monitor)
+        if etiqueta:
+            et(padre, etiqueta, x, y)
+        marco = Panel()
+        marco.Location = Point(x, y + 18)
+        marco.Size = Size(w, 26)
+        marco.BackColor = C_HEAD if solo_lectura else Color.White
+
+        def pintar(s, e):
+            pen = Pen(C_LINE)
+            e.Graphics.DrawRectangle(pen, 0, 0, marco.Width - 1, marco.Height - 1)
+            pen.Dispose()
+        marco.Paint += pintar
+        t = TextBox()
+        t.BorderStyle = getattr(BorderStyle, "None")
+        t.ReadOnly = solo_lectura
+        t.BackColor = marco.BackColor
+        t.ForeColor = C_MUTED if solo_lectura else C_TXT
+        t.Width = w - 14
+        t.Location = Point(7, max(0, (26 - t.Height) // 2))
+        marco.Controls.Add(t)
+        padre.Controls.Add(marco)
+        marco.Click += lambda s, e: t.Focus()
+        return t, marco
+
+    def lista(padre, etiqueta, x, y, w):
+        et(padre, etiqueta, x, y)
+        c = ComboBox()
+        c.Width = w
+        c.DropDownStyle = ComboBoxStyle.DropDownList
+        c.FlatStyle = FlatStyle.Flat
+        c.Location = Point(x, y + 18 + max(0, (26 - c.Height) // 2))
+        padre.Controls.Add(c)
         return c
 
-    aviso = poner(Label(), 16, 10, 1048, 38)
-    aviso.Text = ("PLANTILLA AVANZADA, NO NATIVA: escribe directo en las tablas de Tesorería (una transacción por documento) y no genera la póliza contable. "
-                  "Pruébala primero en una base de pruebas.")
-    aviso.ForeColor = Color.FromArgb(180, 83, 9)
-    aviso.BackColor = Color.FromArgb(253, 240, 220)
-    aviso.BorderStyle = BorderStyle.FixedSingle
+    def dato(padre, etiqueta, x, y):
+        et(padre, etiqueta, x, y)
+        v = Label()
+        v.Text = "0.00"
+        v.Font = F_VAL
+        v.ForeColor = C_TXT
+        v.Location = Point(x, y + 16)
+        v.Size = Size(140, 24)
+        v.TextAlign = ContentAlignment.MiddleLeft
+        v.BackColor = Color.Transparent
+        padre.Controls.Add(v)
+        return v
 
-    et("Qué vas a registrar", 16, 58)
-    cmb_tipo = poner(ComboBox(), 16, 78, 220)
-    cmb_tipo.DropDownStyle = ComboBoxStyle.DropDownList
-    for t in TIPOS:
-        cmb_tipo.Items.Add(t["nombre"])
-    cmb_tipo.SelectedIndex = 0
-    lbl_ent = et("Cliente", 256, 58)
-    txt_ent = poner(TextBox(), 256, 78, 400)
-    lst_ent = ListBox()
-    lst_ent.Visible = False
-    lst_ent.Location = Point(256, 102)
-    lst_ent.Size = Size(400, 150)
-    frm.Controls.Add(lst_ent)
-    lbl_cta = et("Cuenta donde entra el dinero", 676, 58)
-    cmb_cta = poner(ComboBox(), 676, 78, 220)
-    cmb_cta.DropDownStyle = ComboBoxStyle.DropDownList
-    for c in catalogo()["cuentas"]:
-        cmb_cta.Items.Add(c["nombre"])
-    if cmb_cta.Items.Count > 0:
-        cmb_cta.SelectedIndex = 0
-    et("Forma de pago", 916, 58)
-    cmb_forma = poner(ComboBox(), 916, 78, 148)
-    cmb_forma.DropDownStyle = ComboBoxStyle.DropDownList
-    for i, f in enumerate(catalogo()["formas"]):
-        cmb_forma.Items.Add(f["nombre"])
-        if f["id"] == 3:
-            cmb_forma.SelectedIndex = i
-    if cmb_forma.SelectedIndex < 0 and cmb_forma.Items.Count > 0:
-        cmb_forma.SelectedIndex = 0
+    def boton_plano(texto, x, y, w, h):
+        b = Button()
+        b.Text = texto
+        b.Location = Point(x, y)
+        b.Size = Size(w, h)
+        b.FlatStyle = FlatStyle.Flat
+        b.BackColor = Color.White
+        b.ForeColor = C_TXT
+        b.Cursor = Cursors.Hand
+        b.FlatAppearance.BorderColor = C_LINE
+        return b
 
-    et("Fecha", 16, 112)
-    dt_fecha = poner(DateTimePicker(), 16, 132, 130)
+    def poner_por_id(cmb, items, id_):
+        for i, it in enumerate(items):
+            if it["id"] == id_:
+                cmb.SelectedIndex = i
+                return
+        if len(items) > 0:
+            cmb.SelectedIndex = 0
+
+    def seleccionado(cmb, items):
+        i = cmb.SelectedIndex
+        return items[i] if 0 <= i < len(items) else None
+
+    # ---------- cinta superior ----------
+    ribbon = Panel()
+    ribbon.BackColor = C_RIB
+    ribbon.Size = Size(1176, 100)
+    lbl_rib_titulo = Label()
+    lbl_rib_titulo.Text = "Cobro a cliente"
+    lbl_rib_titulo.Font = F_H2
+    lbl_rib_titulo.ForeColor = C_RIB_TX
+    lbl_rib_titulo.BackColor = C_RIB
+    lbl_rib_titulo.Location = Point(12, 5)
+    lbl_rib_titulo.AutoSize = True
+    ribbon.Controls.Add(lbl_rib_titulo)
+    bx = [12]
+    textos_boton = {}
+
+    def boton_cinta(icono, texto, tecla, color_icono, al_clic, clave=None):
+        p = Panel()
+        p.Location = Point(bx[0], 26)
+        p.Size = Size(96, 68)
+        p.BackColor = C_RIB
+        p.Cursor = Cursors.Hand
+        bx[0] += 100
+        li = Label()
+        li.Text = icono
+        li.Font = F_ICON
+        li.ForeColor = color_icono if color_icono is not None else C_RIB_TX
+        li.BackColor = C_RIB
+        li.AutoSize = False
+        li.Size = Size(96, 34)
+        li.TextAlign = ContentAlignment.MiddleCenter
+        li.Location = Point(0, 0)
+        lt = Label()
+        lt.Text = texto
+        lt.Font = F_SM
+        lt.ForeColor = C_RIB_TX
+        lt.BackColor = C_RIB
+        lt.AutoSize = False
+        lt.Size = Size(96, 18)
+        lt.TextAlign = ContentAlignment.MiddleCenter
+        lt.Location = Point(0, 35)
+        lk = Label()
+        lk.Text = tecla
+        lk.Font = F_SM
+        lk.ForeColor = C_RIB_MU
+        lk.BackColor = C_RIB
+        lk.AutoSize = False
+        lk.Size = Size(96, 15)
+        lk.TextAlign = ContentAlignment.MiddleCenter
+        lk.Location = Point(0, 52)
+        if clave:
+            textos_boton[clave] = lt
+        p.Controls.Add(li)
+        p.Controls.Add(lt)
+        p.Controls.Add(lk)
+
+        def hover(encima):
+            c = rgb(71, 85, 105) if encima else C_RIB
+            p.BackColor = c
+            li.BackColor = c
+            lt.BackColor = c
+            lk.BackColor = c
+        for c in (p, li, lt, lk):
+            c.MouseEnter += lambda s, e: hover(True)
+            c.MouseLeave += lambda s, e: hover(False)
+            c.Click += seguro(al_clic)
+        ribbon.Controls.Add(p)
+        return p
+
+    boton_cinta("✅", "Registrar", "F5", rgb(74, 222, 128), lambda: registrar(False), "registrar")
+    boton_cinta("➕", "Registrar y nuevo", "F6", None, lambda: registrar(True))
+    boton_cinta("❌", "Cancelar", "Esc", rgb(248, 113, 113), lambda: frm.Close())
+    sep = Panel()
+    sep.Location = Point(bx[0], 30)
+    sep.Size = Size(1, 60)
+    sep.BackColor = C_RIB_MU
+    ribbon.Controls.Add(sep)
+    bx[0] += 12
+    boton_cinta("🧹", "Limpiar", "", None, lambda: limpiar())
+
+    info = Panel()
+    info.Size = Size(330, 92)
+    info.BackColor = C_RIB
+    ribbon.Controls.Add(info)
+
+    def pintar_info(s, e):
+        pen = Pen(C_RIB_MU)
+        e.Graphics.DrawRectangle(pen, 0, 7, info.Width - 1, info.Height - 11)
+        pen.Dispose()
+    info.Paint += pintar_info
+    t_info = Label()
+    t_info.Text = "Información del movimiento"
+    t_info.Font = F_SM
+    t_info.ForeColor = C_RIB_MU
+    t_info.BackColor = C_RIB
+    t_info.Location = Point(10, 0)
+    t_info.AutoSize = True
+    info.Controls.Add(t_info)
+
+    def et_r(texto, x, y):
+        l = Label()
+        l.Text = texto
+        l.Font = F_SM
+        l.ForeColor = C_RIB_TX
+        l.BackColor = C_RIB
+        l.Location = Point(x, y)
+        l.AutoSize = True
+        info.Controls.Add(l)
+        return l
+
+    def caja_info(x, y, w):
+        marco = Panel()
+        marco.Location = Point(x, y)
+        marco.Size = Size(w, 26)
+        marco.BackColor = Color.White
+
+        def pintar(s, e):
+            pen = Pen(C_RIB_MU)
+            e.Graphics.DrawRectangle(pen, 0, 0, marco.Width - 1, marco.Height - 1)
+            pen.Dispose()
+        marco.Paint += pintar
+        t = TextBox()
+        t.BorderStyle = getattr(BorderStyle, "None")
+        t.ReadOnly = True
+        t.BackColor = Color.White
+        t.ForeColor = C_TXT
+        t.Width = w - 12
+        t.Location = Point(6, max(0, (26 - t.Height) // 2))
+        marco.Controls.Add(t)
+        info.Controls.Add(marco)
+        return t
+
+    et_r("Fecha", 14, 20)
+    dt_fecha = DateTimePicker()
     dt_fecha.Format = DateTimePickerFormat.Short
-    et("Referencia o número de rastreo (opcional)", 166, 112)
-    txt_ref = poner(TextBox(), 166, 132, 490)
-    txt_ref.MaxLength = 60
+    dt_fecha.Width = 118
+    dt_fecha.Location = Point(14, 38 + max(0, (26 - dt_fecha.Height) // 2))
+    info.Controls.Add(dt_fecha)
+    et_r("Folio", 146, 20)
+    txt_folio = caja_info(146, 38, 110)
+    nota = et_r("(lo asigna el sistema al registrar)", 14, 70)
+    nota.ForeColor = C_RIB_MU
 
-    et("Documentos con saldo (marca los que quieras cobrar/pagar y ajusta el monto; por omisión, todo el saldo)", 16, 166)
-    grid = poner(DataGridView(), 16, 186, 1048, 420)
+    # ---------- tipos ----------
+    p_tipos = Panel()
+    p_tipos.BackColor = Color.White
+    p_tipos.Size = Size(1176, 40)
+
+    def pintar_tipos(s, e):
+        pen = Pen(C_LINE)
+        e.Graphics.DrawRectangle(pen, 0, 0, p_tipos.Width - 1, p_tipos.Height - 1)
+        pen.Dispose()
+    p_tipos.Paint += pintar_tipos
+    fl_tipos = FlowLayoutPanel()
+    fl_tipos.Dock = DockStyle.Fill
+    fl_tipos.WrapContents = False
+    fl_tipos.AutoScroll = False
+    fl_tipos.BackColor = Color.White
+    fl_tipos.Padding = Padding(8, 5, 8, 0)
+    p_tipos.Controls.Add(fl_tipos)
+    btns_tipo = []
+    for i, t in enumerate(TIPOS):
+        b = Button()
+        b.Text = t["nombre"]
+        b.FlatStyle = FlatStyle.Flat
+        b.Height = 28
+        b.AutoSize = True
+        b.AutoSizeMode = AutoSizeMode.GrowAndShrink
+        b.Padding = Padding(10, 0, 10, 0)
+        b.Margin = Padding(3, 0, 3, 0)
+        b.BackColor = Color.White
+        b.ForeColor = C_TXT
+        b.Cursor = Cursors.Hand
+        b.Font = F_BASE
+        b.FlatAppearance.BorderColor = C_LINE
+        b.Click += seguro((lambda k: (lambda: cambiar_tipo(k)))(i))
+        btns_tipo.append(b)
+        fl_tipos.Controls.Add(b)
+
+    # ---------- 1 · persona ----------
+    g1 = grupo(lambda: "1. " + ("Cliente" if es_cobro() else "Proveedor"))
+    txt_ent, marco_ent = cuadro(g1, "Buscar por nombre o RFC  (F2) · las personas con saldo salen primero", 14, 34, 440)
+    txt_rfc, _m = cuadro(g1, "RFC", 466, 34, 140, True)
+    txt_rfc.TabStop = False
+    p_chips = Panel()
+    p_chips.Location = Point(14, 88)
+    p_chips.Size = Size(490, 34)
+    p_chips.BackColor = Color.White
+    g1.Controls.Add(p_chips)
+
+    def pintar_chips(s, e):
+        x = 0
+        g = e.Graphics
+        for titulo, valor, color in pastillas:
+            sz1 = g.MeasureString(titulo, F_SM)
+            sz2 = g.MeasureString(valor, F_B)
+            w = int(max(sz1.Width, sz2.Width)) + 18
+            b = SolidBrush(C_HEAD)
+            g.FillRectangle(b, x, 0, w, 32)
+            b.Dispose()
+            pen = Pen(C_LINE)
+            g.DrawRectangle(pen, x, 0, w - 1, 31)
+            pen.Dispose()
+            b = SolidBrush(C_MUTED)
+            g.DrawString(titulo, F_SM, b, float(x + 9), 1.0)
+            b.Dispose()
+            b = SolidBrush(color)
+            g.DrawString(valor, F_B, b, float(x + 9), 15.0)
+            b.Dispose()
+            x += w + 6
+    p_chips.Paint += pintar_chips
+    btn_mov = boton_plano("Movimientos", 516, 92, 90, 28)
+    g1.Controls.Add(btn_mov)
+
+    # ---------- 2 · datos del movimiento ----------
+    g2 = grupo(lambda: "2. Datos del movimiento")
+    cmb_cta = lista(g2, "Cuenta o caja", 14, 34, 240)
+    cmb_forma = lista(g2, "Forma de pago", 266, 34, 230)
+    txt_ref, _m2 = cuadro(g2, "Referencia o número de rastreo (opcional)", 14, 84, 240)
+    txt_ref.MaxLength = 60
+    lbl_monto_et = et(g2, "Monto recibido (opcional)", 266, 84)
+    nud_monto = NumericUpDown()
+    nud_monto.Width = 130
+    nud_monto.DecimalPlaces = 2
+    nud_monto.Maximum = Convert.ToDecimal(9999999999)
+    nud_monto.Minimum = Convert.ToDecimal(0)
+    nud_monto.ThousandsSeparator = True
+    nud_monto.TextAlign = HorizontalAlignment.Right
+    nud_monto.Location = Point(266, 102 + max(0, (26 - nud_monto.Height) // 2))
+    g2.Controls.Add(nud_monto)
+    btn_dist = boton_plano("Distribuir", 404, 102, 92, 26)
+    g2.Controls.Add(btn_dist)
+    cta_items = [{"id": c["id"], "nombre": c["nombre"], "def": c.get("def", False)} for c in catalogo["cuentas"]]
+    for c in cta_items:
+        cmb_cta.Items.Add(c["nombre"])
+    for i, c in enumerate(cta_items):
+        if c["def"]:
+            cmb_cta.SelectedIndex = i
+            break
+    if cmb_cta.SelectedIndex < 0 and cmb_cta.Items.Count > 0:
+        cmb_cta.SelectedIndex = 0
+    forma_items = [{"id": f["id"], "nombre": f["nombre"]} for f in catalogo["formas"]]
+    for f in forma_items:
+        cmb_forma.Items.Add(f["nombre"])
+    poner_por_id(cmb_forma, forma_items, 3)
+
+    # ---------- 3 · antigüedad ----------
+    g3 = grupo(lambda: "3. Antigüedad de saldos")
+    p_edad = Panel()
+    p_edad.Location = Point(14, 36)
+    p_edad.Size = Size(1100, 40)
+    p_edad.BackColor = Color.White
+    g3.Controls.Add(p_edad)
+
+    def pintar_edad(s, e):
+        g = e.Graphics
+        ent = E["ent"]
+        if ent is None or ent["id"] not in ES:
+            b = SolidBrush(C_MUTED)
+            g.DrawString("Elige una persona para ver cuánto debe y desde cuándo." if ent is None else "Esta persona no tiene saldo pendiente.", F_BASE, b, 0.0, 10.0)
+            b.Dispose()
+            return
+        a = ES[ent["id"]]
+        total = max(0.01, a[0])
+        nom = ["Vigente", "1-30 días", "31-60 días", "61-90 días", "Más de 90"]
+        col = [C_VERDE, rgb(101, 163, 13), rgb(217, 119, 6), rgb(234, 88, 12), C_ROJO]
+        w = (p_edad.Width - 4 * 10) // 5
+        for i in range(5):
+            x = i * (w + 10)
+            b = SolidBrush(C_MUTED)
+            g.DrawString(nom[i], F_SM, b, float(x), 0.0)
+            b.Dispose()
+            b = SolidBrush(col[i])
+            g.DrawString("{:,.2f}".format(a[3 + i]), F_B, b, float(x), 14.0)
+            b.Dispose()
+            b = SolidBrush(rgb(229, 234, 241))
+            g.FillRectangle(b, x, 34, w, 5)
+            b.Dispose()
+            b = SolidBrush(col[i])
+            g.FillRectangle(b, x, 34, int(w * a[3 + i] / total), 5)
+            b.Dispose()
+    p_edad.Paint += pintar_edad
+    p_edad.Resize += lambda s, e: p_edad.Invalidate()
+
+    # ---------- 4 · documentos ----------
+    g4 = grupo(lambda: "4. Documentos con saldo")
+    lbl_docs_est = Label()
+    lbl_docs_est.Location = Point(230, 7)
+    lbl_docs_est.AutoSize = True
+    lbl_docs_est.ForeColor = C_MUTED
+    lbl_docs_est.Font = F_SM
+    lbl_docs_est.BackColor = C_HEAD
+    g4.Controls.Add(lbl_docs_est)
+    xb = 14
+    for texto, accion in (("Marcar todos", lambda: marcar_todos()), ("Marcar vencidos", lambda: marcar_vencidos()), ("Quitar marcas", lambda: quitar_marcas())):
+        b = boton_plano(texto, xb, 34, 120, 28)
+        b.Click += seguro(accion)
+        g4.Controls.Add(b)
+        xb += 126
+    grid = DataGridView()
+    grid.Location = Point(14, 70)
+    grid.Size = Size(560, 150)
     grid.AllowUserToAddRows = False
     grid.AllowUserToDeleteRows = False
     grid.RowHeadersVisible = False
     grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect
+    grid.MultiSelect = False
     grid.BackgroundColor = Color.White
+    grid.BorderStyle = BorderStyle.FixedSingle
+    grid.EnableHeadersVisualStyles = False
+    grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal
+    grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single
+    grid.GridColor = rgb(230, 235, 242)
+    grid.RowTemplate.Height = 30
     grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+    grid.ColumnHeadersDefaultCellStyle.BackColor = C_HEAD
+    grid.ColumnHeadersDefaultCellStyle.ForeColor = C_TXT
+    grid.ColumnHeadersDefaultCellStyle.Font = F_B
+    grid.ColumnHeadersHeight = 30
+    grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = C_HEAD
+    grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = C_TXT
+    grid.DefaultCellStyle.SelectionBackColor = C_SEL
+    grid.DefaultCellStyle.SelectionForeColor = C_TXT
+    grid.DefaultCellStyle.Padding = Padding(4, 0, 4, 0)
     c_marca = DataGridViewCheckBoxColumn()
     c_marca.Name = "Marca"
     c_marca.HeaderText = ""
     c_marca.FillWeight = 4
     grid.Columns.Add(c_marca)
-    for nombre, titulo, peso in (("Tipo", "Tipo", 16), ("Folio", "Folio", 14), ("Fecha", "Fecha", 9), ("Vence", "Vence", 9), ("Total", "Total", 10), ("Saldo", "Saldo", 10), ("Aplicar", "Aplicar", 12)):
+    for nombre, titulo, peso in (("Doc", "DOCUMENTO", 28), ("Fecha", "FECHA", 10), ("Vence", "VENCE", 10), ("Estado", "ESTADO", 14), ("Total", "TOTAL", 11), ("Saldo", "SALDO", 11), ("Aplicar", "APLICAR", 12)):
         c = DataGridViewTextBoxColumn()
         c.Name = nombre
         c.HeaderText = titulo
-        c.ReadOnly = nombre != "Aplicar"
         c.FillWeight = peso
+        c.ReadOnly = nombre != "Aplicar"
         grid.Columns.Add(c)
     for nombre in ("Total", "Saldo", "Aplicar"):
         grid.Columns[nombre].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight
-    lbl_tot = poner(Label(), 560, 612, 504, 26)
+        grid.Columns[nombre].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight
+    grid.Columns["Saldo"].DefaultCellStyle.Font = F_B
+    grid.Columns["Aplicar"].DefaultCellStyle.BackColor = rgb(255, 251, 235)
+    g4.Controls.Add(grid)
+
+    # ---------- resumen ----------
+    g5 = grupo(lambda: "Resumen")
+    lbl_n = dato(g5, "Documentos marcados", 14, 34)
+    lbl_sal = dato(g5, "Saldo de la persona", 174, 34)
+    lbl_q = dato(g5, "Quedaría", 334, 34)
+    lbl_mon = dato(g5, "Monto capturado", 494, 34)
+    lbl_tot_et = Label()
+    lbl_tot_et.Text = "A APLICAR"
+    lbl_tot_et.Font = F_SM
+    lbl_tot_et.ForeColor = C_MUTED
+    lbl_tot_et.AutoSize = False
+    lbl_tot_et.Size = Size(240, 16)
+    lbl_tot_et.TextAlign = ContentAlignment.MiddleRight
+    lbl_tot_et.Location = Point(560, 32)
+    g5.Controls.Add(lbl_tot_et)
+    lbl_tot = Label()
+    lbl_tot.Text = "0.00"
+    lbl_tot.Font = F_TOT
+    lbl_tot.AutoSize = False
+    lbl_tot.Size = Size(240, 36)
     lbl_tot.TextAlign = ContentAlignment.MiddleRight
-    lbl_tot.Font = Font("Segoe UI", 10.0, FontStyle.Bold)
-    btn_aplicar = poner(Button(), 826, 656, 150, 32)
-    btn_aplicar.Text = "Registrar"
-    btn_aplicar.BackColor = Color.FromArgb(45, 111, 224)
-    btn_aplicar.ForeColor = Color.White
-    btn_aplicar.FlatStyle = FlatStyle.Flat
-    btn_cancelar = poner(Button(), 986, 656, 78, 32)
-    btn_cancelar.Text = "Cancelar"
+    lbl_tot.Location = Point(560, 46)
+    g5.Controls.Add(lbl_tot)
+    et(g5, "Se registra una operación (folio) por documento, con su aplicación, espejo, transferencia bancaria y reparto de impuestos. No genera la póliza contable; pruébalo primero en una base de pruebas.", 14, 82)
+
+    # ---------- pie ----------
+    p_pie = Panel()
+    p_pie.BackColor = Color.White
+    p_pie.Size = Size(1200, 40)
+
+    def pintar_pie(s, e):
+        pen = Pen(C_LINE)
+        e.Graphics.DrawLine(pen, 0, 0, p_pie.Width, 0)
+        pen.Dispose()
+    p_pie.Paint += pintar_pie
+    lbl_pie = Label()
+    lbl_pie.Location = Point(14, 12)
+    lbl_pie.AutoSize = True
+    lbl_pie.ForeColor = C_MUTED
+    lbl_pie.Font = F_BASE
+    p_pie.Controls.Add(lbl_pie)
+    lbl_avisos = Label()
+    lbl_avisos.Location = Point(520, 5)
+    lbl_avisos.Size = Size(660, 30)
+    lbl_avisos.ForeColor = C_AMBAR
+    lbl_avisos.Font = F_BASE
+    lbl_avisos.TextAlign = ContentAlignment.MiddleLeft
+    lbl_avisos.AutoEllipsis = True
+    p_pie.Controls.Add(lbl_avisos)
+
+    def hacer_lista(ancho, alto, renglones2):
+        lb = ListBox()
+        lb.Visible = False
+        lb.Size = Size(ancho, alto)
+        lb.BorderStyle = BorderStyle.FixedSingle
+        lb.DrawMode = DrawMode.OwnerDrawFixed
+        lb.ItemHeight = 42
+        lb.IntegralHeight = False
+
+        def dibuja(s, ev):
+            if ev.Index < 0:
+                return
+            sel = (ev.State & DrawItemState.Selected) == DrawItemState.Selected
+            b = SolidBrush(C_SEL if sel else Color.White)
+            ev.Graphics.FillRectangle(b, ev.Bounds)
+            b.Dispose()
+            sf = StringFormat()
+            sf.Trimming = StringTrimming.EllipsisCharacter
+            sf.FormatFlags = StringFormatFlags.NoWrap
+            b = SolidBrush(C_TXT)
+            ev.Graphics.DrawString(str(lb.Items[ev.Index]), F_B, b, RectangleF(float(ev.Bounds.Left + 10), float(ev.Bounds.Top + 4), float(ev.Bounds.Width - 18), 18.0), sf)
+            b.Dispose()
+            if ev.Index < len(renglones2):
+                b = SolidBrush(C_MUTED)
+                ev.Graphics.DrawString(renglones2[ev.Index], F_SM, b, RectangleF(float(ev.Bounds.Left + 10), float(ev.Bounds.Top + 22), float(ev.Bounds.Width - 18), 16.0), sf)
+                b.Dispose()
+        lb.DrawItem += dibuja
+        return lb
+
+    ent_l2 = []
+    lst_ent = hacer_lista(560, 258, ent_l2)
+    lbl_toast = Label()
+    lbl_toast.AutoSize = False
+    lbl_toast.Height = 34
+    lbl_toast.Visible = False
+    lbl_toast.ForeColor = Color.White
+    lbl_toast.BackColor = C_TXT
+    lbl_toast.TextAlign = ContentAlignment.MiddleCenter
+    lbl_toast.Font = F_B
+    t_toast = FormsTimer()
+    t_toast.Interval = 4500
+
+    def oculta_toast(s, e):
+        lbl_toast.Visible = False
+        t_toast.Stop()
+    t_toast.Tick += oculta_toast
+
+    def aviso(m, mal=False):
+        lbl_toast.Text = m
+        lbl_toast.BackColor = C_ROJO if mal else C_VERDE
+        lbl_toast.Width = min(frm.ClientSize.Width - 80, 900)
+        lbl_toast.Location = Point((frm.ClientSize.Width - lbl_toast.Width) // 2, frm.ClientSize.Height - 96)
+        lbl_toast.Visible = True
+        lbl_toast.BringToFront()
+        t_toast.Stop()
+        t_toast.Start()
+
+    for c in (ribbon, p_tipos, g1, g2, g3, g4, g5, p_pie, lst_ent, lbl_toast):
+        frm.Controls.Add(c)
+
+    # ---------- distribución (todo a mano: nada se encima y se ajusta al tamaño de la ventana) ----------
+    def acomodar():
+        W = frm.ClientSize.Width
+        H = frm.ClientSize.Height
+        m = 12
+        w = W - 2 * m
+        ribbon.SetBounds(m, 10, w, 100)
+        info.Location = Point(ribbon.Width - info.Width - 10, 6)
+        p_tipos.SetBounds(m, 118, w, 40)
+        y = 166
+        g1.SetBounds(m, y, 620, 132)
+        g2.SetBounds(m + 632, y, w - 632, 132)
+        y += 140
+        g3.SetBounds(m, y, w, 84)
+        p_edad.SetBounds(14, 36, g3.Width - 28, 40)
+        y += 92
+        yb = H - 40 - 108 - 8
+        g5.SetBounds(m, yb, w, 108)
+        lbl_tot_et.Location = Point(g5.Width - 254, 32)
+        lbl_tot.Location = Point(g5.Width - 254, 46)
+        g4.SetBounds(m, y, w, max(170, yb - 8 - y))
+        grid.SetBounds(14, 70, g4.Width - 28, g4.Height - 82)
+        p_pie.SetBounds(0, H - 40, W, 40)
+        x0 = max(420, lbl_pie.Right + 20)
+        lbl_avisos.SetBounds(x0, 5, max(100, W - x0 - 14), 30)
+        for g in (g1, g2, g3, g4, g5):
+            g.Invalidate()
+        p_edad.Invalidate()
+    frm.Resize += lambda s, e: acomodar()
 
     # ---------- lógica ----------
-    def tipo_actual():
-        return TIPOS[cmb_tipo.SelectedIndex]
+    def hoy():
+        return dt_fecha.Value.ToString("yyyy-MM-dd")
 
-    def fuente_entidad():
-        return catalogo()["clientes"] if tipo_actual()["lado"] == "C" else catalogo()["proveedores"]
+    def dias_vencido(d):
+        v = fe(d["vence"]) if d["vence"] else None
+        if v is None:
+            return None
+        h = fe(hoy())
+        if h is None:
+            return None
+        return (h - v).days
+
+    def docs_de_ent():
+        if E["ent"] is None:
+            return []
+        return [d for d in docs_lado() if d["ent"] == E["ent"]["id"]]
+
+    def stats():           # por persona: [pendiente, vencido, #docs, v0..v4]
+        m = {}
+        for d in docs_lado():
+            a = m.setdefault(d["ent"], [0.0] * 8)
+            s = d["saldo"]
+            a[0] += s
+            a[2] += 1
+            dv = dias_vencido(d)
+            if dv is not None and dv > 0:
+                a[1] += s
+            b = 0 if dv is None or dv <= 0 else 1 if dv <= 30 else 2 if dv <= 60 else 3 if dv <= 90 else 4
+            a[3 + b] += s
+        return m
+
+    ES = stats()
 
     def totales():
-        lbl_tot.Text = "{} documento(s) marcado(s)   TOTAL A APLICAR {:,.2f}".format(len(estado["sel"]), sum(estado["sel"].values()))
+        t = round(sum(seleccion.values()), 2)
+        ent = E["ent"]
+        pend = ES[ent["id"]][0] if ent is not None and ent["id"] in ES else 0.0
+        mon = float(nud_monto.Value)
+        lbl_n.Text = str(len(seleccion))
+        lbl_sal.Text = "{:,.2f}".format(pend)
+        lbl_q.Text = "{:,.2f}".format(pend - t)
+        lbl_mon.Text = "{:,.2f}".format(mon) if mon > 0 else "—"
+        lbl_tot.Text = "{:,.2f}".format(t)
+        lbl_tot.ForeColor = acento()
+        av = []
+        if mon > 0 and t > 0 and abs(mon - t) > 0.005:
+            av.append(("⚠ Sobran " + "{:,.2f}".format(mon - t) + " del monto: no se aplican (los anticipos no se manejan aquí)") if mon > t else ("⚠ Faltan " + "{:,.2f}".format(t - mon) + " para cubrir lo marcado"))
+        if dt_fecha.Value.Date.CompareTo(DateTime.Today) > 0:
+            av.append("⚠ La fecha es posterior a hoy")
+        lbl_avisos.Text = "     ".join(av)
 
     def pintar_docs():
-        estado["bloquea"] = True
+        E["pintando"] = True
         grid.Rows.Clear()
-        estado["docs"] = []
-        if estado["entidad"]:
-            hoy = dt_fecha.Value.ToString("yyyy-MM-dd")
-            for d in catalogo()["docsC" if tipo_actual()["lado"] == "C" else "docsP"]:
-                if d["ent"] != estado["entidad"]:
-                    continue
-                estado["docs"].append(d)
-                on = d["id"] in estado["sel"]
-                r = grid.Rows.Add(on, d["tipo"], d["folio"], d["fecha"], d["vence"], "{:,.2f}".format(d["total"]), "{:,.2f}".format(d["saldo"]), "{:.2f}".format(estado["sel"][d["id"]]) if on else "")
-                if d["vence"] and d["vence"] < hoy:
-                    grid.Rows[r].Cells["Vence"].Style.ForeColor = Color.FromArgb(200, 40, 40)
-        estado["bloquea"] = False
+        ds = docs_de_ent()
+        for d in ds:
+            id_ = d["id"]
+            on = id_ in seleccion
+            dv = dias_vencido(d)
+            estado = "sin vencimiento" if dv is None else ("vencido %d d" % dv) if dv > 0 else ("vence en %d d" % (-dv)) if dv >= -7 else "vigente"
+            fecha = fe(d["fecha"])
+            vence = fe(d["vence"]) if d["vence"] else None
+            r = grid.Rows.Add(on, d["tipo"] + " " + d["folio"], fecha.strftime("%d/%m/%Y") if fecha else "", vence.strftime("%d/%m/%Y") if vence else "—", estado,
+                              "{:,.2f}".format(d["total"]), "{:,.2f}".format(d["saldo"]), ("%.2f" % seleccion[id_]) if on else "")
+            grid.Rows[r].Tag = id_
+            grid.Rows[r].Cells["Estado"].Style.ForeColor = C_ROJO if dv is not None and dv > 0 else C_AMBAR if dv is not None and dv >= -7 else C_VERDE
+        lbl_docs_est.Text = "elige primero la persona" if E["ent"] is None else "%d documento(s) con saldo · captura el monto y usa «Distribuir», o marca y ajusta «Aplicar»" % len(ds)
+        E["pintando"] = False
         totales()
 
-    def cambio_tipo():
+    def pintar_ent():
+        del pastillas[:]
+        ent = E["ent"]
+        txt_rfc.Text = "" if ent is None else ("(sin RFC)" if not ent["rfc"] else ent["rfc"])
+        btn_mov.Enabled = ent is not None
+        if ent is not None:
+            e = ES.get(ent["id"], [0.0] * 8)
+            pastillas.append(("Saldo pendiente", "{:,.2f}".format(e[0]), C_AMBAR if e[0] > 0 else C_TXT))
+            pastillas.append(("Vencido", "{:,.2f}".format(e[1]), C_ROJO if e[1] > 0 else C_TXT))
+            pastillas.append(("Documentos", "%d" % e[2], C_TXT))
+            if ent["credito"] > 0:
+                pastillas.append(("Límite de crédito", "{:,.2f}".format(ent["credito"]), C_TXT))
+            uf = fe(ent["ultFecha"]) if ent["ultFecha"] else None
+            pastillas.append(("Último cobro" if es_cobro() else "Último pago", (uf.strftime("%d/%m/%y") + " · " + "{:,.2f}".format(ent["ultMonto"])) if uf else "—", C_TXT))
+        p_chips.Invalidate()
+        p_edad.Invalidate()
+
+    def elegir_ent(x):
+        E["ent"] = x
+        txt_ent.Text = x["nombre"]
+        lst_ent.Visible = False
+        seleccion.clear()
+        pintar_ent()
+        pintar_docs()
+        nud_monto.Focus()
+
+    def cambiar_tipo(idx):
+        antes = tipo_actual()["lado"]
+        E["tipo"] = idx
         t = tipo_actual()
-        lbl_ent.Text = "Cliente" if t["lado"] == "C" else "Proveedor"
-        lbl_cta.Text = "Cuenta donde entra el dinero" if t["lado"] == "C" else "Cuenta de donde sale el dinero"
-        estado["entidad"] = 0
-        estado["bloquea"] = True
-        txt_ent.Text = ""
-        estado["bloquea"] = False
-        estado["sel"] = {}
+        if t["lado"] != antes:
+            E["ent"] = None
+            txt_ent.Text = ""
+        seleccion.clear()
+        ES.clear()
+        ES.update(stats())
+        for i, b in enumerate(btns_tipo):
+            on = i == idx
+            col = C_COBRO if TIPOS[i]["lado"] == "C" else C_PAGO
+            b.BackColor = col if on else Color.White
+            b.ForeColor = Color.White if on else C_TXT
+            b.FlatAppearance.BorderColor = col if on else C_LINE
+            b.Font = F_B if on else F_BASE
+        lbl_rib_titulo.Text = t["nombre"] + ("  ·  cuentas por cobrar, entra dinero" if es_cobro() else "  ·  cuentas por pagar, sale dinero")
+        lbl_monto_et.Text = "Monto recibido (opcional)" if es_cobro() else "Monto a pagar (opcional)"
+        textos_boton["registrar"].Text = "Registrar cobro" if es_cobro() else "Registrar pago"
+        btn_mov.Text = "Movimientos"
+        fo = folios.get(t["clave"])
+        txt_folio.Text = (t["prefijo"] + "-" + str(fo)) if fo is not None else ""
+        lbl_pie.Text = "Elaboró: " + (quien_soy or "—") + "      Empresa: " + nombre_empresa + "      Operación " + str(t["modOp"]) + " · folio " + t["prefijo"] + "-n"
+        pintar_ent()
+        pintar_docs()
+        acomodar()
+
+    def marcar_todos():
+        for d in docs_de_ent():
+            seleccion[d["id"]] = d["saldo"]
         pintar_docs()
 
-    cmb_tipo.SelectedIndexChanged += seguro(cambio_tipo)
-    dt_fecha.ValueChanged += seguro(pintar_docs)
+    def marcar_vencidos():
+        seleccion.clear()
+        for d in docs_de_ent():
+            dv = dias_vencido(d)
+            if dv is not None and dv > 0:
+                seleccion[d["id"]] = d["saldo"]
+        pintar_docs()
+        if not seleccion:
+            aviso("No hay documentos vencidos.")
 
-    def buscar():
+    def quitar_marcas():
+        seleccion.clear()
+        pintar_docs()
+
+    def repartir():
+        if E["ent"] is None:
+            raise Exception("Elige primero la persona.")
+        m = float(nud_monto.Value)
+        if m <= 0:
+            nud_monto.Focus()
+            raise Exception("Captura el monto que se va a repartir.")
+        seleccion.clear()
+        resto = round(m, 2)
+        for d in sorted(docs_de_ent(), key=lambda x: ((x["vence"] or x["fecha"]), x["id"])):
+            if resto <= 0:
+                break
+            ap = min(d["saldo"], resto)
+            seleccion[d["id"]] = round(ap, 2)
+            resto = round(resto - ap, 2)
+        pintar_docs()
+
+    # búsqueda de persona (las que tienen saldo, primero)
+    def fuente_ent():
+        lst = catalogo["clientes"] if es_cobro() else catalogo["proveedores"]
+        return sorted(lst, key=lambda x: (-(ES[x["id"]][0] if x["id"] in ES else 0.0), x["nombre"]))
+
+    def desplegar():
         q = txt_ent.Text.lower().split()
-        vis = []
-        for x in fuente_entidad():
-            h = (x["nombre"] + " " + x["rfc"]).lower()
+        vis_ = []
+        for x in fuente_ent():
+            h = (x["nombre"] + " " + x["rfc"] + " " + str(x["id"])).lower()
             if all(w in h for w in q):
-                vis.append(x)
-                if len(vis) >= 40:
+                vis_.append(x)
+                if len(vis_) >= 60:
                     break
-        estado["vis_ent"] = vis
+        vis["ent"][:] = vis_
         lst_ent.Items.Clear()
-        for x in vis:
-            lst_ent.Items.Add(x["nombre"] + ("  [" + x["rfc"] + "]" if x["rfc"] else ""))
+        del ent_l2[:]
+        for x in vis_:
+            lst_ent.Items.Add(x["nombre"])
+            ent_l2.append((x["rfc"] if x["rfc"] else "sin RFC") + "   ·   " + (("debe " + "{:,.2f}".format(ES[x["id"]][0]) + " en %d documento(s)" % ES[x["id"]][2]) if x["id"] in ES else "sin saldo"))
+        pos = frm.PointToClient(marco_ent.Parent.PointToScreen(Point(marco_ent.Left, marco_ent.Bottom + 1)))
+        lst_ent.Location = pos
+        lst_ent.Height = min(280, lst_ent.Items.Count * lst_ent.ItemHeight + 4)
         lst_ent.Visible = lst_ent.Items.Count > 0
         if lst_ent.Visible:
             lst_ent.BringToFront()
             lst_ent.SelectedIndex = 0
 
-    def elegir_entidad():
+    def elegir_de_lista():
         i = lst_ent.SelectedIndex
-        if i < 0 or i >= len(estado["vis_ent"]):
-            return
-        x = estado["vis_ent"][i]
-        estado["entidad"] = x["id"]
-        estado["bloquea"] = True
-        txt_ent.Text = x["nombre"]
-        estado["bloquea"] = False
-        lst_ent.Visible = False
-        estado["sel"] = {}
-        pintar_docs()
+        if 0 <= i < len(vis["ent"]):
+            elegir_ent(vis["ent"][i])
 
     def ent_cambio():
-        if estado["bloquea"]:
+        if not txt_ent.Focused:
             return
-        estado["entidad"] = 0
-        estado["sel"] = {}
-        pintar_docs()
-        buscar()
-
+        if E["ent"] is not None:
+            E["ent"] = None
+            seleccion.clear()
+            pintar_ent()
+            pintar_docs()
+        desplegar()
     txt_ent.TextChanged += seguro(ent_cambio)
+    txt_ent.Enter += seguro(lambda: (txt_ent.SelectAll(), desplegar() if E["ent"] is None else None))
 
     def tecla_ent(sender, ev):
         if ev.KeyCode == Keys.Down and lst_ent.Visible:
             lst_ent.Focus()
             ev.Handled = True
-        elif ev.KeyCode == Keys.Enter:
-            seguro(elegir_entidad)()
+        if ev.KeyCode == Keys.Enter:
+            seguro(elegir_de_lista)()
             ev.SuppressKeyPress = True
-
+        if ev.KeyCode == Keys.Escape and lst_ent.Visible:
+            lst_ent.Visible = False
+            ev.SuppressKeyPress = True
+            ev.Handled = True
     txt_ent.KeyDown += tecla_ent
-    lst_ent.Click += seguro(elegir_entidad)
-    lst_ent.KeyDown += lambda s, ev: (seguro(elegir_entidad)(), setattr(ev, "SuppressKeyPress", True)) if ev.KeyCode == Keys.Enter else None
+    lst_ent.Click += seguro(elegir_de_lista)
 
-    def suciedad(sender, ev):
-        if grid.IsCurrentCellDirty and grid.CurrentCell is not None and grid.CurrentCell.OwningColumn.Name == "Marca":
-            grid.CommitEdit(DataGridViewDataErrorContexts.Commit)
+    def tecla_lst(sender, ev):
+        if ev.KeyCode == Keys.Enter:
+            seguro(elegir_de_lista)()
+            ev.SuppressKeyPress = True
+    lst_ent.KeyDown += tecla_lst
 
-    grid.CurrentCellDirtyStateChanged += suciedad
+    def fuera_ent(sender, ev):
+        if not lst_ent.Focused:
+            lst_ent.Visible = False
+    txt_ent.Leave += fuera_ent
+    nud_monto.ValueChanged += lambda s, e: totales()
 
-    def valor_cambiado(sender, ev):
-        if estado["bloquea"] or ev.RowIndex < 0 or ev.RowIndex >= len(estado["docs"]):
+    def tecla_monto(sender, ev):
+        if ev.KeyCode == Keys.Enter:
+            seguro(repartir)()
+            ev.SuppressKeyPress = True
+    nud_monto.KeyDown += tecla_monto
+    btn_dist.Click += seguro(repartir)
+
+    def cambio_fecha():
+        ES.clear()
+        ES.update(stats())
+        pintar_ent()
+        pintar_docs()
+    dt_fecha.ValueChanged += seguro(cambio_fecha)
+
+    def clic_celda(sender, ev):
+        if E["pintando"] or ev.RowIndex < 0 or grid.Columns[ev.ColumnIndex].Name != "Marca":
             return
         try:
-            d = estado["docs"][ev.RowIndex]
-            col = grid.Columns[ev.ColumnIndex].Name
-            fila = grid.Rows[ev.RowIndex]
-            estado["bloquea"] = True
-            if col == "Marca":
-                if bool(fila.Cells["Marca"].Value):
-                    estado["sel"][d["id"]] = d["saldo"]
-                    fila.Cells["Aplicar"].Value = "{:.2f}".format(d["saldo"])
-                else:
-                    estado["sel"].pop(d["id"], None)
-                    fila.Cells["Aplicar"].Value = ""
-            elif col == "Aplicar":
-                if d["id"] in estado["sel"]:
-                    try:
-                        n = float(str(fila.Cells["Aplicar"].Value).replace(",", ""))
-                    except Exception:
-                        n = 0.0
-                    n = max(0.0, min(n, d["saldo"]))
-                    estado["sel"][d["id"]] = n
-                    fila.Cells["Aplicar"].Value = "{:.2f}".format(n)
-                else:
-                    fila.Cells["Aplicar"].Value = ""
-            estado["bloquea"] = False
-            totales()
+            grid.EndEdit()
+            id_ = grid.Rows[ev.RowIndex].Tag
+            d = next(x for x in docs_de_ent() if x["id"] == id_)
+            on = bool(grid.Rows[ev.RowIndex].Cells["Marca"].EditedFormattedValue)
+            if on:
+                seleccion[id_] = d["saldo"]
+            else:
+                seleccion.pop(id_, None)
+            pintar_docs()
         except Exception as ex:
-            estado["bloquea"] = False
             msg(str(ex))
+    grid.CellContentClick += clic_celda
 
-    grid.CellValueChanged += valor_cambiado
+    def fin_edicion(sender, ev):
+        if E["pintando"] or ev.RowIndex < 0 or grid.Columns[ev.ColumnIndex].Name != "Aplicar":
+            return
+        try:
+            id_ = grid.Rows[ev.RowIndex].Tag
+            d = next(x for x in docs_de_ent() if x["id"] == id_)
+            try:
+                n = float(str(grid.Rows[ev.RowIndex].Cells["Aplicar"].Value).replace(",", ""))
+            except Exception:
+                n = 0.0
+            n = max(0.0, min(n, d["saldo"]))
+            if n > 0:
+                seleccion[id_] = n
+            else:
+                seleccion.pop(id_, None)
+            pintar_docs()
+        except Exception as ex:
+            msg(str(ex))
+    grid.CellEndEdit += fin_edicion
+    grid.DataError += lambda s, ev: setattr(ev, "ThrowException", False)
 
-    def registrar():
+    # últimos movimientos de la persona: ventana aparte
+    def ver_movimientos():
+        ent = E["ent"]
+        if ent is None:
+            return
+        mv = movimientos_de(ent["id"], tipo_actual()["clave"])
+        h = Form()
+        h.Text = ("Últimos cobros · " if es_cobro() else "Últimos pagos · ") + ent["nombre"]
+        h.Size = Size(640, 330)
+        h.StartPosition = FormStartPosition.CenterParent
+        h.BackColor = Color.White
+        h.Font = F_BASE
+        h.MaximizeBox = False
+        l2 = []
+        lb = hacer_lista(600, 250, l2)
+        lb.Dock = DockStyle.Fill
+        lb.BorderStyle = getattr(BorderStyle, "None")
+        for m in mv:
+            f = fe(m["fecha"])
+            lb.Items.Add(m["folio"] + "   ·   " + "{:,.2f}".format(m["monto"]))
+            l2.append((f.strftime("%d/%m/%Y") if f else "") + "   ·   " + m["cuenta"] + "   ·   %d documento(s)" % m["docs"])
+        if not mv:
+            lb.Items.Add("Sin movimientos registrados")
+        lb.Visible = True
+        h.Controls.Add(lb)
+        h.Show(frm)
+    btn_mov.Click += seguro(ver_movimientos)
+
+    def limpiar():
+        E["ent"] = None
+        txt_ent.Text = ""
+        seleccion.clear()
+        txt_ref.Text = ""
+        nud_monto.Value = Convert.ToDecimal(0)
+        pintar_ent()
+        pintar_docs()
+        txt_ent.Focus()
+
+    def refrescar_docs():          # después de aplicar (bien o mal) los saldos cambiaron
+        try:
+            catalogo["docsC"] = docs_con_saldo("C")
+            catalogo["docsP"] = docs_con_saldo("P")
+        except Exception:
+            pass
+        seleccion.clear()
+        ES.clear()
+        ES.update(stats())
+        pintar_ent()
+        pintar_docs()
+
+    def registrar(otro):
+        if E["guardando"]:
+            return
         t = tipo_actual()
-        if not estado["entidad"]:
-            raise Exception("Elige el " + ("cliente" if t["lado"] == "C" else "proveedor") + " de la lista (escribe y selecciona).")
-        aps = [{"doc": k, "monto": v} for k, v in estado["sel"].items() if v > 0]
+        if E["ent"] is None:
+            txt_ent.Focus()
+            raise Exception("Elige " + ("el cliente" if es_cobro() else "el proveedor") + " de la lista (escribe y selecciona).")
+        cta = seleccionado(cmb_cta, cta_items)
+        if cta is None:
+            raise Exception("Elige la cuenta.")
+        aps = [{"doc": k, "monto": v} for k, v in seleccion.items() if v > 0]
         if not aps:
             raise Exception("Marca al menos un documento y captura cuánto aplicar.")
-        spec = {"tipo": t["clave"], "entidad": estado["entidad"], "cuenta": catalogo()["cuentas"][cmb_cta.SelectedIndex]["id"] if cmb_cta.SelectedIndex >= 0 else 0,
-                "forma": catalogo()["formas"][cmb_forma.SelectedIndex]["id"] if cmb_forma.SelectedIndex >= 0 else 0, "fecha": dt_fecha.Value.ToString("yyyy-MM-dd"),
-                "referencia": txt_ref.Text, "aplicaciones": aps}
-        btn_aplicar.Enabled = False
+        forma = seleccionado(cmb_forma, forma_items)
+        spec = {"tipo": t["clave"], "entidad": E["ent"]["id"], "cuenta": cta["id"], "forma": forma["id"] if forma else 0, "fecha": hoy(), "referencia": txt_ref.Text, "aplicaciones": aps}
+        E["guardando"] = True
         frm.Cursor = Cursors.WaitCursor
         try:
             resumen = aplicar(spec)
-            try:
-                ctx.erp.RefreshGrid()
-            except Exception:
-                pass
-            msg(resumen, "Cobro o pago registrado", MessageBoxIcon.Information)
-            estado["resultado"] = resumen
-            frm.Close()
-        except Exception:
-            estado["catalogo"] = catalogos()      # si falló, los saldos pudieron cambiar
-            pintar_docs()
-            raise
         finally:
-            btn_aplicar.Enabled = True
+            E["guardando"] = False
             frm.Cursor = Cursors.Default
-
-    btn_aplicar.Click += seguro(registrar)
-    btn_cancelar.Click += lambda s, e: frm.Close()
+            refrescar_docs()
+        try:
+            ctx.erp.RefreshGrid()
+        except Exception:
+            pass
+        E["resultado"] = resumen
+        if otro:
+            titulo = resumen.split("\n")[0]
+            limpiar()
+            aviso(titulo)
+        else:
+            MessageBox.Show(resumen, "Cobro o pago registrado", MessageBoxButtons.OK, MessageBoxIcon.Information)
+            frm.Close()
 
     def tecla_forma(sender, ev):
-        if ev.KeyCode == Keys.Escape and not lst_ent.Visible:
+        if ev.KeyCode == Keys.F5:
+            seguro(lambda: registrar(False))()
+            ev.Handled = True
+        elif ev.KeyCode == Keys.F6:
+            seguro(lambda: registrar(True))()
+            ev.Handled = True
+        elif ev.KeyCode == Keys.F2:
+            txt_ent.Focus()
+            ev.Handled = True
+        elif ev.KeyCode == Keys.Escape and not lst_ent.Visible:
             frm.Close()
             ev.Handled = True
-
     frm.KeyDown += tecla_forma
 
     # ---------- Arranque ----------
-    cambio_tipo()
+    cambiar_tipo(0)
+    acomodar()
     frm.ShowDialog()
-    result = estado.get("resultado", "CANCELADO")
+    result = E["resultado"]
 
 
 if not _modo_prueba:

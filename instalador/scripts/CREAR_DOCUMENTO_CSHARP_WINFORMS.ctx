@@ -468,12 +468,12 @@ Control Caja(TextBox t) { return (t.Tag as Control) ?? t; }
 ComboBox Lista(Control padre, string etiqueta, int x, int y, int w, int anchoMenu = 0)
 {
     Et(padre, etiqueta, x, y);
-    var c = new ComboBox { Location = new Point(x, y + 17), Size = new Size(w, 24), DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat }; if (anchoMenu > 0) c.DropDownWidth = anchoMenu; padre.Controls.Add(c); return c;
+    var c = new ComboBox { Width = w, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat }; c.Location = new Point(x, y + 18 + Math.Max(0, (26 - c.Height) / 2)); if (anchoMenu > 0) c.DropDownWidth = anchoMenu; padre.Controls.Add(c); return c;
 }
 NumericUpDown Numero(Control padre, string etiqueta, int x, int y, int w, int dec, decimal max)
 {
     Et(padre, etiqueta, x, y);
-    var n = new NumericUpDown { Location = new Point(x, y + 17), Size = new Size(w, 24), DecimalPlaces = dec, Maximum = max, Minimum = 0, ThousandsSeparator = true, TextAlign = HorizontalAlignment.Right }; padre.Controls.Add(n); return n;
+    var n = new NumericUpDown { Width = w, DecimalPlaces = dec, Maximum = max, Minimum = 0, ThousandsSeparator = true, TextAlign = HorizontalAlignment.Right }; n.Location = new Point(x, y + 18 + Math.Max(0, (26 - n.Height) / 2)); padre.Controls.Add(n); return n;
 }
 void PonerPorId(ComboBox c, int id) { for (int i = 0; i < c.Items.Count; i++) if (((Opcion)c.Items[i]).Id == id) { c.SelectedIndex = i; return; } if (c.Items.Count > 0) c.SelectedIndex = 0; }
 void PonerPorClave(ComboBox c, string clave) { for (int i = 0; i < c.Items.Count; i++) if (string.Equals(((Opcion)c.Items[i]).Extra, clave, StringComparison.OrdinalIgnoreCase)) { c.SelectedIndex = i; return; } }
@@ -502,15 +502,16 @@ Boton("❌", "Cancelar", "Esc", Color.FromArgb(248, 113, 113), () => frm.Close()
 Separador();
 Boton("🧹", "Limpiar", "", null, () => Limpiar());
 
-info = new Panel { Size = new Size(430, 86), BackColor = C_RIB }; ribbon.Controls.Add(info);
-info.Paint += (s, e) => { using (var pen = new Pen(C_RIB_MU)) e.Graphics.DrawRectangle(pen, 0, 7, info.Width - 1, info.Height - 10); };
+info = new Panel { Size = new Size(430, 92), BackColor = C_RIB }; ribbon.Controls.Add(info);
+info.Paint += (s, e) => { using (var pen = new Pen(C_RIB_MU)) e.Graphics.DrawRectangle(pen, 0, 7, info.Width - 1, info.Height - 11); };
 new Label { Text = "Información del documento", Font = F_SM, ForeColor = C_RIB_MU, BackColor = C_RIB, Location = new Point(10, 0), AutoSize = true }.Parent = info;
 Label EtR(string t, int x, int y) { var l = new Label { Text = t, Font = F_SM, ForeColor = C_RIB_TX, BackColor = C_RIB, Location = new Point(x, y), AutoSize = true }; info.Controls.Add(l); return l; }
-EtR("Fecha", 14, 20); dtFecha = new DateTimePicker { Format = DateTimePickerFormat.Short, Location = new Point(14, 37), Size = new Size(118, 24) }; info.Controls.Add(dtFecha);
-EtR("Serie", 146, 20); txtSerie = new TextBox { Location = new Point(146, 37), Size = new Size(64, 24), ReadOnly = true, BorderStyle = BorderStyle.FixedSingle }; info.Controls.Add(txtSerie);
-EtR("Folio", 222, 20); txtFolio = new TextBox { Location = new Point(222, 37), Size = new Size(86, 24), ReadOnly = true, BorderStyle = BorderStyle.FixedSingle }; info.Controls.Add(txtFolio);
-lblEntregaEt = EtR("Entrega esperada", 320, 20); dtEntrega = new DateTimePicker { Format = DateTimePickerFormat.Short, Location = new Point(320, 37), Size = new Size(100, 24), Value = DateTime.Today.AddDays(7) }; info.Controls.Add(dtEntrega);
-EtR("(el folio definitivo lo asigna Comercial al guardar)", 14, 64).ForeColor = C_RIB_MU;
+TextBox CajaInfo(int x, int y, int w) { var marco = new Panel { Location = new Point(x, y), Size = new Size(w, 26), BackColor = Color.White }; marco.Paint += (s, e) => { using (var pen = new Pen(C_RIB_MU)) e.Graphics.DrawRectangle(pen, 0, 0, marco.Width - 1, marco.Height - 1); }; var t = new TextBox { BorderStyle = BorderStyle.None, ReadOnly = true, BackColor = Color.White, ForeColor = C_TXT, Width = w - 12 }; t.Location = new Point(6, Math.Max(0, (26 - t.Height) / 2)); marco.Controls.Add(t); info.Controls.Add(marco); return t; }
+EtR("Fecha", 14, 20); dtFecha = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 118 }; dtFecha.Location = new Point(14, 38 + Math.Max(0, (26 - dtFecha.Height) / 2)); info.Controls.Add(dtFecha);
+EtR("Serie", 146, 20); txtSerie = CajaInfo(146, 38, 64);
+EtR("Folio", 222, 20); txtFolio = CajaInfo(222, 38, 86);
+lblEntregaEt = EtR("Entrega esperada", 320, 20); dtEntrega = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 100, Value = DateTime.Today.AddDays(7) }; dtEntrega.Location = new Point(320, 38 + Math.Max(0, (26 - dtEntrega.Height) / 2)); info.Controls.Add(dtEntrega);
+EtR("(el folio definitivo lo asigna Comercial al guardar)", 14, 70).ForeColor = C_RIB_MU;
 
 // ---------- tipos de documento ----------
 pTipos = new Panel { BackColor = Color.White, Size = new Size(1176, 40) };
@@ -541,7 +542,7 @@ pChips.Paint += (s, e) =>
         x += w + 6;
     }
 };
-var btnHist = new Button { Text = "Historial", Location = new Point(526, 90), Size = new Size(80, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnHist.FlatAppearance.BorderColor = C_LINE; g1.Controls.Add(btnHist);
+var btnHist = new Button { Text = "Historial", Location = new Point(526, 92), Size = new Size(80, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnHist.FlatAppearance.BorderColor = C_LINE; g1.Controls.Add(btnHist);
 txtRfc.TabStop = false;
 
 // ---------- 2 · almacén, centro de costo y moneda ----------
@@ -567,13 +568,13 @@ clbOrigen = new CheckedListBox { Location = new Point(14, 36), Size = new Size(1
 // ---------- partidas ----------
 g5 = Grupo(() => NumeroGrupo(g5) + ". Partidas");
 txtProd = Cuadro(g5, "Producto: nombre, clave o código de barras  (F3)", 14, 34, 340);
-var btnBuscaProd = new Button { Text = "Ver todos", Location = new Point(360, 51), Size = new Size(76, 26), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnBuscaProd.FlatAppearance.BorderColor = C_LINE; g5.Controls.Add(btnBuscaProd);
+var btnBuscaProd = new Button { Text = "Ver todos", Location = new Point(360, 52), Size = new Size(80, 26), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnBuscaProd.FlatAppearance.BorderColor = C_LINE; g5.Controls.Add(btnBuscaProd);
 nudCant = Numero(g5, "Cantidad", 450, 34, 92, 4, 999999999M); nudCant.Value = 1;
 nudPrecio = Numero(g5, "Precio unitario", 554, 34, 118, 2, 999999999M);
 nudDesc = Numero(g5, "Descuento %", 684, 34, 84, 2, 100M);
-cmbImp = Lista(g5, "Impuesto", 780, 34, 170); foreach (var i in impuestos) cmbImp.Items.Add(i); if (cmbImp.Items.Count > 0) cmbImp.SelectedIndex = 0;
-var btnAgregar = new Button { Text = "Agregar", Location = new Point(964, 50), Size = new Size(92, 28), FlatStyle = FlatStyle.Flat, ForeColor = Color.White, Cursor = Cursors.Hand, Font = F_B }; btnAgregar.FlatAppearance.BorderSize = 0; g5.Controls.Add(btnAgregar);
-var btnQuitar = new Button { Text = "Quitar", Location = new Point(1062, 50), Size = new Size(80, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_ROJO, Cursor = Cursors.Hand }; btnQuitar.FlatAppearance.BorderColor = C_LINE; g5.Controls.Add(btnQuitar);
+cmbImp = Lista(g5, "Impuesto", 780, 34, 170); foreach (var i in impuestos) cmbImp.Items.Add(i); if (cmbImp.Items.Count > 0) { var iva = impuestos.FirstOrDefault(o => Math.Abs(D(o.Extra) - 0.16) < 0.0001); cmbImp.SelectedIndex = iva != null ? impuestos.IndexOf(iva) : 0; }
+var btnAgregar = new Button { Text = "Agregar", Location = new Point(964, 52), Size = new Size(92, 26), FlatStyle = FlatStyle.Flat, ForeColor = Color.White, Cursor = Cursors.Hand, Font = F_B }; btnAgregar.FlatAppearance.BorderSize = 0; g5.Controls.Add(btnAgregar);
+var btnQuitar = new Button { Text = "Quitar", Location = new Point(1062, 52), Size = new Size(80, 26), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_ROJO, Cursor = Cursors.Hand }; btnQuitar.FlatAppearance.BorderColor = C_LINE; g5.Controls.Add(btnQuitar);
 lblNumPart = new Label { Location = new Point(14, 86), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, Text = "Sin partidas" }; g5.Controls.Add(lblNumPart);
 lblHint = new Label { Location = new Point(420, 86), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, Text = "Escribe el nombre y Enter · escanea el código de barras y Enter agrega directo · edita cantidad, precio, descuento e impuesto en la tabla." }; g5.Controls.Add(lblHint);
 grid = new DataGridView

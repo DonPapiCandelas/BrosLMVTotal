@@ -23,7 +23,7 @@ La versión **HTML** (C# y Python) y la de **Windows Forms** de C# capturan lo m
 - **Resumen:** documentos marcados, saldo de la persona, **cuánto quedaría**, monto recibido y **total a aplicar**, con avisos (sobra o falta monto, fecha posterior a hoy) y los **últimos cobros o pagos** de la persona.
 - **No bloquea Comercial:** se puede minimizar.
 
-La versión **HTML** consulta a Comercial **en vivo** (últimos movimientos de la persona y saldos ya actualizados después de registrar, sin cerrar la ventana) con `ctx.ShowHtmlModeless` y respuestas `__JS__…`; la de **Python en HTML** abre la misma página con lo precargado (sin consultas en vivo ni «Registrar y nuevo»); la de **Windows Forms** de C# trae el mismo diseño con controles nativos. La de **Python en Windows Forms** sigue con la ventana sencilla de antes.
+La versión **HTML** consulta a Comercial **en vivo** (últimos movimientos de la persona y saldos ya actualizados después de registrar, sin cerrar la ventana) con `ctx.ShowHtmlModeless` y respuestas `__JS__…`; la de **Python en HTML** hace lo mismo con un servidor local (ver [`UI_VENTANAS.md`](UI_VENTANAS.md) §5). **Regla de la casa: las versiones de C# y de Python son idénticas.** La de WebView2 de C# y la de WebView2 de Python usan **la misma página** (solo cambia el lenguaje que atiende la ventana), y la de Windows Forms de C# y la de Windows Forms de Python tienen **el mismo diseño, con las mismas posiciones, colores y reglas** (la de Python es un espejo línea por línea de la de C#, con pythonnet). Si se cambia una, se cambia la otra.
 
 ## Lo que solo una ventana web puede dar (WebView2)
 

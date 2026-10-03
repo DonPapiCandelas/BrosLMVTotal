@@ -21,13 +21,14 @@ clr.AddReference("System.Drawing")
 
 import System
 import System.Threading
-from System.Drawing import Point, Size, Color, Font, FontStyle, ContentAlignment
+from System import DateTime, Convert
+from System.Drawing import Point, Size, Color, Font, FontStyle, ContentAlignment, Pen, SolidBrush, StringFormat, StringTrimming, StringFormatFlags, RectangleF
 from System.Windows.Forms import (
-    Form, FormStartPosition, Label, TextBox, ComboBox, ComboBoxStyle, Button, FlatStyle, DataGridView,
-    DataGridViewTextBoxColumn, DataGridViewCheckBoxColumn, DataGridViewComboBoxColumn, DataGridViewDataErrorContexts, DataGridViewCheckBoxCell, DataGridViewContentAlignment, DataGridViewAutoSizeColumnsMode,
-    DataGridViewSelectionMode, DateTimePicker, DateTimePickerFormat, ListBox, CheckedListBox, CheckState, BorderStyle,
-    Cursors, Keys, MessageBox, MessageBoxButtons, MessageBoxIcon,
+    Form, FormStartPosition, Label, TextBox, ComboBox, ComboBoxStyle, Button, FlatStyle, DataGridView, Panel, FlowLayoutPanel, NumericUpDown, HorizontalAlignment, DockStyle, Padding,
+    AutoSizeMode, DrawMode, DrawItemState, DataGridViewTextBoxColumn, DataGridViewCheckBoxColumn, DataGridViewContentAlignment, DataGridViewAutoSizeColumnsMode,
+    DataGridViewSelectionMode, DataGridViewCellBorderStyle, DataGridViewHeaderBorderStyle, DateTimePicker, DateTimePickerFormat,
+    ListBox, BorderStyle, Cursors, Keys, MessageBox, MessageBoxButtons, MessageBoxIcon,
 )
+from System.Windows.Forms import Timer as FormsTimer
 
 System.Threading.Thread.CurrentThread.SetApartmentState(System.Threading.ApartmentState.STA)
-
