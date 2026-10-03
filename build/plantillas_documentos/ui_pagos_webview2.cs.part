@@ -13,24 +13,27 @@ if (!string.IsNullOrEmpty(htmlPrueba))
     System.IO.File.WriteAllText(htmlPrueba, PAGINA.Replace("__DATOS__", ser.Serialize(d0).Replace("</", "<\\/")), new UTF8Encoding(false));
     return "HTML";
 }
-while (true)
+// Ventana NO modal (ShowHtmlModeless): se puede minimizar y seguir usando Comercial. Si falla, la página se repinta con lo capturado.
+Func<Dictionary<string, object>, string> alMensaje = (r) =>
 {
-    var datos = new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["inicial"] = inicial };
-    string json = ser.Serialize(datos).Replace("</", "<\\/");
-    var r = ctx.ShowHtmlFormulario(PAGINA.Replace("__DATOS__", json), "Cobro o pago", 1180, 900, 0);
-    if (!r.ContainsKey("submitted") || !(bool)r["submitted"] || S(r.ContainsKey("accion") ? r["accion"] : "") != "aplicar") return "CANCELADO";
+    if (S(r.ContainsKey("accion") ? r["accion"] : "") != "aplicar") return "__CERRAR__";
     var spec = ser.Deserialize<Dictionary<string, object>>(S(r["spec"]));
     try
     {
         string resumen = Aplicar(spec);
         try { ctx.erp.RefreshGrid(); } catch { }
         ctx.Msg(resumen, "Cobro o pago registrado");
-        return resumen;
+        return "__CERRAR__";
     }
     catch (Exception ex)
     {
         ctx.Msg(ex.Message, "Cobro o pago");
-        inicial = spec;
-        catalogo = Catalogos();          // los saldos pudieron cambiar
+        var d1 = new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = Catalogos(), ["inicial"] = spec };   // los saldos pudieron cambiar
+        return PAGINA.Replace("__DATOS__", ser.Serialize(d1).Replace("</", "<\\/"));
     }
+};
+{
+    var datos = new Dictionary<string, object> { ["tipos"] = TIPOS, ["cat"] = catalogo, ["inicial"] = inicial };
+    ctx.ShowHtmlModeless(PAGINA.Replace("__DATOS__", ser.Serialize(datos).Replace("</", "<\\/")), "Cobro o pago", 1180, 900, alMensaje);
 }
+return "OK";

@@ -33,12 +33,17 @@ Con **Diseñar formato…** se abre el Diseñador como **programa aparte** (`C:\
 (es de este documento, de esta partida, o comparte un campo con ellos, por ejemplo el mismo cliente o producto), **4** condiciones extra y el orden. Muestra la consulta generada (editable si sabes SQL), la **prueba con el documento** y la guarda en el **Diccionario de referencia** de Comercial como referencia propia: queda disponible en todos los formatos.
 Solo se permiten consultas de lectura.
 
+### Estirar y mover con el mouse
+
+Al seleccionar un elemento aparece su **marco** con asas: la de la derecha **estira el ancho**, la de abajo el **alto** y la de la esquina ambos (en una celda de tabla el ancho se guarda en porcentaje de la tabla); un indicador muestra el tamaño en píxeles. El asa **⠿** (arriba a la izquierda) **mueve** el elemento: arrástrala sobre otro elemento y suéltala; una línea verde indica si quedará antes o después, y un borde verde punteado si quedará **dentro** de ese contenedor. Todo se puede deshacer con Ctrl+Z.
+
 ### Qué trae cada etiqueta (origen y valor)
 
 En el panel **Campos**, cada etiqueta muestra su **valor real** en el documento elegido y su **origen**: por ejemplo `[NumeroIdentificacion]` → `docDocumentItem.ProductKey`. El botón **ⓘ** abre el detalle: la tabla y columna de donde sale (o la consulta, si es una referencia) y el valor que daría. En una referencia propia hay **Editar esta referencia**.
 
 ### Constructor: vistas, uniones y SQL ejecutable
 
+- **Unión guiada:** «＋ Unir otra tabla o vista» propone las tablas que se pueden unir a lo que ya elegiste (las que comparten una columna `…ID`, por ejemplo `docDocument.BusinessEntityID` con `orgBusinessEntity`) y deja la unión armada.
 - La pestaña **Armarla sin SQL** admite **tablas y vistas**, y **uniones** (INNER o LEFT) entre varias fuentes eligiendo las columnas que las relacionan; el SQL generado se ve al instante.
 - La pestaña **Escribir SQL y ejecutarlo** tiene un explorador de tablas y columnas, **Probar el valor** (con el documento elegido) y **Ver filas** (hasta 50 filas en una cuadrícula). Solo se aceptan `SELECT` o `WITH`, una sola consulta, sin palabras de escritura, máximo 5000 filas. Puedes usar `{DocumentID}` y `{DocumentItemID}`.
 

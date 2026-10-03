@@ -62,6 +62,9 @@ if (Test-Path (Join-Path $inst "runtimes")) {
 if (Test-Path (Join-Path $inst "runner")) {
     Copy-Item (Join-Path $inst "runner") (Join-Path $pl "runner") -Recurse -Force
 }
+if (Test-Path (Join-Path $inst "disenador")) {
+    Copy-Item (Join-Path $inst "disenador") (Join-Path $pl "disenador") -Recurse -Force
+}
 if (Test-Path (Join-Path $inst "htmlpdf")) {
     Copy-Item (Join-Path $inst "htmlpdf") (Join-Path $pl "htmlpdf") -Recurse -Force
 }

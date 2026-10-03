@@ -339,42 +339,43 @@ string PaginaResultado(string titulo, string detalle, List<string> avisos)
     return sb.ToString();
 }
 
-Pars actual = null; string aviso = null;
-while (true)
+// Ventana NO modal (ShowHtmlModeless): se puede minimizar y seguir usando Comercial. Cada clic llega a este manejador y devuelve la página siguiente.
+Pars actual = null; List<DocFila> docsPrev = null;
+Func<Dictionary<string, object>, string> alMensaje = (r) =>
 {
-    var r = ctx.ShowHtmlFormulario(PaginaFiltros(actual, aviso), "Asignar centro de costo", 920, 780, 0);
-    aviso = null;
-    if (!r.ContainsKey("submitted") || !(bool)r["submitted"]) return "OK";
     string accion = S(r.ContainsKey("accion") ? r["accion"] : "");
-
     if (accion == "deshacer")
     {
         var d = DeshacerUltimo();
-        if (S(d["lote"]) == "") aviso = "No tienes ningún lote por deshacer.";
-        else { try { ctx.erp.RefreshGrid(); } catch { } ctx.ShowHtmlFormulario(PaginaResultado("Lote deshecho", "Se restauró el centro de costo anterior en <b>" + d["encabezados"] + "</b> encabezado(s) y <b>" + d["partidas"] + "</b> partida(s).", new List<string> { "Solo se restaura lo que sigue teniendo el valor que puso el lote." }), "Asignar centro de costo", 640, 340, 0); }
-        continue;
-    }
-    if (accion != "previsualizar") return "OK";
-
-    actual = LeerPars(r, seleccionLista);
-    if (actual.CcNuevo <= 0) { aviso = "Elige el centro de costo nuevo."; continue; }
-    int exc;
-    var docs = BuscarDocs(actual, out exc);
-    string nombreCc = S(centros.First(c => L(c["CostCenterID"]) == actual.CcNuevo)["CostCenterName"]);
-    var rp = ctx.ShowHtmlFormulario(PaginaPrevia(actual, docs, exc, nombreCc), "Vista previa", 980, 780, 0);
-    if (!rp.ContainsKey("submitted") || !(bool)rp["submitted"]) return "OK";
-    if (S(rp["accion"]) != "aplicar") continue;
-
-    try
-    {
-        var res = Aplicar(actual, docs);
+        if (S(d["lote"]) == "") return PaginaFiltros(actual, "No tienes ningún lote por deshacer.");
         try { ctx.erp.RefreshGrid(); } catch { }
-        var avisos = new List<string>();
-        var omit = (List<string>)res["omitidosEnUso"];
-        if (omit.Count > 0) avisos.Add(omit.Count + " documento(s) abiertos por otro usuario se omitieron: " + string.Join(", ", omit.Take(8)) + (omit.Count > 8 ? "…" : ""));
-        avisos.Add("Si algo no es lo que esperabas, usa «Deshacer mi último lote».");
-        ctx.ShowHtmlFormulario(PaginaResultado("Listo", "Documentos procesados: <b>" + res["documentos"] + "</b> · encabezados cambiados: <b>" + res["encabezados"] + "</b> · partidas cambiadas: <b>" + res["partidas"] + "</b>", avisos), "Asignar centro de costo", 700, 380, 0);
+        return PaginaResultado("Lote deshecho", "Se restauró el centro de costo anterior en <b>" + d["encabezados"] + "</b> encabezado(s) y <b>" + d["partidas"] + "</b> partida(s).", new List<string> { "Solo se restaura lo que sigue teniendo el valor que puso el lote." });
     }
-    catch (Exception ex) { ctx.Msg("No se aplicó nada (se revirtió todo):\n" + ex.Message, "Asignar centro de costo"); }
-    return "OK";
-}
+    if (accion == "previsualizar")
+    {
+        actual = LeerPars(r, seleccionLista);
+        if (actual.CcNuevo <= 0) return PaginaFiltros(actual, "Elige el centro de costo nuevo.");
+        int exc;
+        docsPrev = BuscarDocs(actual, out exc);
+        string nombreCc = S(centros.First(c => L(c["CostCenterID"]) == actual.CcNuevo)["CostCenterName"]);
+        return PaginaPrevia(actual, docsPrev, exc, nombreCc);
+    }
+    if (accion == "aplicar" && actual != null && docsPrev != null)
+    {
+        try
+        {
+            var res = Aplicar(actual, docsPrev);
+            try { ctx.erp.RefreshGrid(); } catch { }
+            var avisos = new List<string>();
+            var omit = (List<string>)res["omitidosEnUso"];
+            if (omit.Count > 0) avisos.Add(omit.Count + " documento(s) abiertos por otro usuario se omitieron: " + string.Join(", ", omit.Take(8)) + (omit.Count > 8 ? "…" : ""));
+            avisos.Add("Si algo no es lo que esperabas, usa «Deshacer mi último lote».");
+            return PaginaResultado("Listo", "Documentos procesados: <b>" + res["documentos"] + "</b> · encabezados cambiados: <b>" + res["encabezados"] + "</b> · partidas cambiadas: <b>" + res["partidas"] + "</b>", avisos);
+        }
+        catch (Exception ex) { ctx.Msg("No se aplicó nada (se revirtió todo):\n" + ex.Message, "Asignar centro de costo"); return "__CERRAR__"; }
+    }
+    if (accion == "volver" && actual != null) return PaginaFiltros(actual, null);
+    return "__CERRAR__";
+};
+ctx.ShowHtmlModeless(PaginaFiltros(actual, null), "Asignar centro de costo", 980, 780, alMensaje);
+return "OK";

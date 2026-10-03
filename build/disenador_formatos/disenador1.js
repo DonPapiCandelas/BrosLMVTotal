@@ -159,7 +159,7 @@ async function refrescar(conservarSel) {
   conectarLienzo(); aplicarZoom();
   D.sel = null;
   if (ruta) { const el = elDeRuta(ruta); if (el) seleccionar(el); else pintarProps(); } else pintarProps();
-  pintarMigas();
+  pintarMigas(); asasConectarFrame();
   $d("dCarga").hidden = true;
 }
 function aplicarZoom() { const f = $d("dFrame"); f.style.transform = "scale(" + D.zoom + ")"; f.style.width = (100 / D.zoom) + "%"; f.style.height = (100 / D.zoom) + "%"; }
@@ -168,7 +168,7 @@ function aplicarZoom() { const f = $d("dFrame"); f.style.transform = "scale(" + 
 async function confirmar(repintar) {
   const s = serializar(); D.source = s; histPush(s); estadoSucio();
   if (D.modo === "codigo") $d("dTexto").value = s;
-  if (repintar) await refrescar(true); else { pintarProps(); pintarMigas(); }
+  if (repintar) await refrescar(true); else { pintarProps(); pintarMigas(); asasPosicionar(); }
 }
 
 // ---------- interacción dentro del lienzo ----------
@@ -187,7 +187,7 @@ function objetivo(t) { if (!t) return null; if (t.nodeType === 3) t = t.parentEl
 function teclaLienzo(e) { teclaGlobal(e); }
 function seleccionar(el) {
   const d = $d("dFrame").contentDocument; d.querySelectorAll(".bros-sel").forEach(x => x.classList.remove("bros-sel"));
-  D.sel = el; if (el) el.classList.add("bros-sel"); pintarProps(); pintarMigas();
+  D.sel = el; if (el) el.classList.add("bros-sel"); pintarProps(); pintarMigas(); asasPosicionar();
 }
 function empezarEdicion(el) {
   if (el.closest("[data-bros-detail]") && el.closest(".bros-clone")) return;
@@ -233,6 +233,7 @@ async function vistaFinal() {
 
 // ---------- abrir / guardar / cerrar ----------
 async function abrirDisenador(id) {
+  asasIniciar();
   try {
     const r = await call("editorAbrir", { formatId: id });
     Object.assign(D, { id, nombre: r.modulo + " · " + r.nombre, archivo: r.archivo, esDefault: r.esDefault, docs: r.docs, docId: r.docs.length ? r.docs[0].id : 0, modo: "diseno", sel: null, hist: [], hi: -1, editando: null });

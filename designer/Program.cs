@@ -20,7 +20,8 @@ namespace BrosLMV.Disenador
             string bd = Arg(args, "--bd"), conn = Arg(args, "--conn");
             int empresa = int.TryParse(Arg(args, "--empresa"), out var e1) ? e1 : 1, userId = int.TryParse(Arg(args, "--userid"), out var u1) ? u1 : 1;
             long formato = long.TryParse(Arg(args, "--formato"), out var f1) ? f1 : 0;
-            string prueba = Arg(args, "--prueba"), salida = Arg(args, "--salida");
+            string prueba = Arg(args, "--prueba"), salida = Arg(args, "--salida"), entrada = Arg(args, "--entrada");
+            if (prueba == null && !string.IsNullOrEmpty(entrada)) prueba = File.ReadAllText(entrada, Encoding.UTF8);   // el JSON de la acción en un archivo (cuando es muy largo para la línea de comandos)
 
             string cs = conn;
             if (string.IsNullOrEmpty(cs))

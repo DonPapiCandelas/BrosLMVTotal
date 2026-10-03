@@ -87,7 +87,7 @@ async function constructorReferencias(prefill) {
       "<div class=fila><div class=f><label>Nombre de la etiqueta</label><input type=text id=bNombre placeholder='ej. NombreVendedor' value='" + dEsc(nombre) + "'" + (prefill ? " readonly" : "") + "></div><div class=f><label>Descripción (opcional)</label><input type=text id=bDesc value='" + dEsc(desc) + "'></div></div>" +
       "<div class=seg id=bTabs style='margin:6px 0'><button data-t=armar class='" + (B.tab === "armar" ? "on" : "") + "'>Armarla sin SQL</button><button data-t=sql class='" + (B.tab === "sql" ? "on" : "") + "'>Escribir SQL y ejecutarlo</button></div>" +
       "<div id=bArmar" + (B.tab === "armar" ? "" : " hidden") + ">" +
-      "<div class=f><label>1 · ¿De dónde sale? <span style='font-weight:400;color:#64748b'>(tablas y vistas; puedes unir varias)</span></label><div id=bFuentes></div><button class=ib id=bMas>＋ Unir otra tabla o vista</button></div>" +
+      "<div class=f><label>1 · ¿De dónde sale? <span style='font-weight:400;color:#64748b'>(tablas y vistas; puedes unir varias)</span></label><div id=bFuentes></div><button class=ib id=bMas>＋ Unir otra tabla o vista</button><div id=bSug hidden style='margin-top:6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#f8fafc'></div></div>" +
       "<div class=fila><div class=f><label>2 · ¿Qué dato?</label><select id=bDato>" + cols.map(c => "<option value='" + c.v + "'" + (c.v === dato ? " selected" : "") + ">" + dEsc(c.t) + "</option>").join("") + "</select></div>" +
       "<div class=f><label>¿Cómo?</label><select id=bAgg><option value=''>El primero que encuentre</option><option value=SUM>La suma</option><option value=COUNT>Cuántos hay</option><option value=MAX>El máximo</option><option value=MIN>El mínimo</option><option value=AVG>El promedio</option><option value=TEXTO>Unir todos (texto)</option></select></div></div>" +
       "<div class=f><label>3 · ¿Cómo se relaciona con el documento?</label><select id=bRel>" + (rl.length ? rl.map((r, i) => "<option>" + dEsc(r.f.alias + " · " + r.f.t + " — " + r.r.texto) + "</option>").join("") : "<option>(ninguna de estas tablas se relaciona con el documento: une una que sí, o escribe el SQL)</option>") + "</select></div>" +
@@ -115,9 +115,29 @@ async function constructorReferencias(prefill) {
         row.querySelector(".fq").onclick = () => { B.fuentes.splice(i, 1); B.fuentes.forEach((g, k) => g.alias = "a" + k); B.manual = false; pintar(); };
       }
     });
+    // Unión guiada: propone las tablas que se pueden unir a lo que ya elegiste (una columna «XxxID» y la tabla «…Xxx» que la tiene) y arma la unión sola
+    const agregarFuente = async (t, de, col) => {
+      await esq(t); const i = B.fuentes.length; B.fuentes.push({ t, alias: "a" + i });
+      const s = nombresIgual(i)(colsDe(i)); B.fuentes[i].j = de ? { tipo: "INNER JOIN", de, col } : s ? { tipo: "INNER JOIN", de: s.de, col: s.col } : { tipo: "INNER JOIN", de: "", col: "" }; B.manual = false; pintar();
+    };
+    const sugerirUniones = async () => {
+      const yaT = new Set(B.fuentes.map(f => f.t)), cand = [], vistos = new Set(), OMITIR = /^(CreatedBy|DeletedBy|ModifiedBy|UserID|OwnedBusinessEntityID)$/;
+      B.fuentes.forEach((f, i) => colsDe(i).forEach(c => {
+        if (!/ID$/.test(c) || c.length < 4 || OMITIR.test(c)) return;
+        const stem = c.slice(0, -2).toLowerCase();
+        tablas.filter(t => !t.v && !yaT.has(t.t) && t.t.toLowerCase().endsWith(stem) && t.t.toLowerCase().length - stem.length <= 4).forEach(t => { const k = t.t + "|" + f.alias + "." + c; if (!vistos.has(k)) { vistos.add(k); cand.push({ t: t.t, de: f.alias + "." + c, col: c }); } });
+      }));
+      const ok = [];
+      for (const c of cand.slice(0, 14)) { try { const e = await esq(c.t); if ((e.columnas || []).some(x => x.n === c.col)) ok.push(c); } catch (e) { } }
+      return ok;
+    };
     $d("bMas").onclick = async () => {
-      const t = "orgBusinessEntity"; await esq(t); const i = B.fuentes.length; B.fuentes.push({ t, alias: "a" + i });
-      const s = nombresIgual(i)(colsDe(i)); B.fuentes[i].j = s ? { tipo: "INNER JOIN", de: s.de, col: s.col } : { tipo: "INNER JOIN", de: "", col: "" }; B.manual = false; pintar();
+      const box = $d("bSug"); if (!box.hidden) { box.hidden = true; return; }
+      box.hidden = false; box.innerHTML = "<span class=tip>Buscando tablas que se pueden unir…</span>";
+      const sug = await sugerirUniones();
+      box.innerHTML = (sug.length ? "<div class=tip>Tablas que se pueden unir (elige una y la unión se arma sola):</div>" + sug.map((c, k) => "<button class=ib data-k='" + k + "' style='margin:2px 4px 2px 0'>" + dEsc(c.t) + " <span style='font-weight:400;color:#64748b'>por " + dEsc(c.col) + "</span></button>").join("") : "<div class=tip>No encontré tablas que se unan por una columna igual.</div>") +
+        "<div style='margin-top:4px'><button class=ib data-k='otra'>Elegir otra tabla o vista…</button></div>";
+      box.querySelectorAll("button").forEach(bt => bt.onclick = async () => { box.hidden = true; if (bt.dataset.k === "otra") await agregarFuente("orgBusinessEntity"); else { const c = sug[+bt.dataset.k]; await agregarFuente(c.t, c.de, c.col); } });
     };
     // condiciones
     const agregarCond = (v) => {

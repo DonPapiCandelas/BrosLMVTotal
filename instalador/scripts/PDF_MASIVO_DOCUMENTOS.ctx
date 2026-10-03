@@ -553,44 +553,34 @@ if (modoPrueba)
 
 // ---------- Interfaz ----------
 Parametros actual = new Parametros { Carpeta = CarpetaSugerida(), Patron = patronConfig, AbrirCarpeta = abrirCarpetaConfig };
-string aviso = null;
-while (true)
+string aviso = null; int vMid = 0; long vDoc = 0, vFmt = 0; string nombreMod = "";
+Dictionary<string, object> ultimoResultado = null;
+// Ventana NO modal (ShowHtmlModeless): se puede minimizar y seguir usando Comercial. Cada clic llega aquí y devuelve la página siguiente.
+Func<Dictionary<string, object>, string> alMensaje = (r) =>
 {
-    var r = ctx.ShowHtmlFormulario(PaginaOpciones(actual, aviso), "PDF masivo", 940, 760, 0);
-    aviso = null;
-    if (!r.ContainsKey("submitted") || !(bool)r["submitted"]) return "OK";
     string accion = S(r.ContainsKey("accion") ? r["accion"] : "");
     if (accion == "examinar")
     {
         actual = LeerParametros(r);
         using (var dlg = new FolderBrowserDialog { Description = "Carpeta donde se guardarán los PDF", SelectedPath = Directory.Exists(actual.Carpeta) ? actual.Carpeta : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) })
             if (dlg.ShowDialog() == DialogResult.OK) actual.Carpeta = Path.Combine(dlg.SelectedPath, "Lote " + DateTime.Now.ToString("yyyyMMdd_HHmm"));
-        continue;
+        return PaginaOpciones(actual, null);
     }
     if (accion == "vista")
     {
-        actual = LeerParametros(r);
-        int vMid = I(r["mid"]);
-        long vDoc = docs.Where(d => I(d["ModuleID"]) == vMid).Select(d => L(d["DocumentID"])).FirstOrDefault();
-        long vFmt = actual.Formato.ContainsKey(vMid) ? actual.Formato[vMid] : FormatoInicial(vMid);
-        string nombreMod = S(docs.First(d => I(d["ModuleID"]) == vMid)["ModuloNombre"]);
-        while (true)
-        {
-            var rv = ctx.ShowHtmlFormulario(PaginaVista(vMid, vDoc, vFmt), "Vista previa — " + nombreMod, 1120, 880, 0);
-            if (!rv.ContainsKey("submitted") || !(bool)rv["submitted"]) break;
-            string av = S(rv.ContainsKey("accion") ? rv["accion"] : "");
-            if (av == "vista") { vDoc = L(rv["doc"]); vFmt = L(rv["fmt"]); continue; }
-            if (av == "usar") { actual.Formato[vMid] = L(rv["fmt"]); aviso = "Formato elegido para " + nombreMod + "."; }
-            break;
-        }
-        continue;
+        if (r.ContainsKey("mid")) { actual = LeerParametros(r); vMid = I(r["mid"]); vDoc = docs.Where(d => I(d["ModuleID"]) == vMid).Select(d => L(d["DocumentID"])).FirstOrDefault(); vFmt = actual.Formato.ContainsKey(vMid) ? actual.Formato[vMid] : FormatoInicial(vMid); nombreMod = S(docs.First(d => I(d["ModuleID"]) == vMid)["ModuloNombre"]); }
+        else { vDoc = L(r["doc"]); vFmt = L(r["fmt"]); }
+        return PaginaVista(vMid, vDoc, vFmt);
     }
-    if (accion != "generar") return "OK";
+    if (accion == "usar") { actual.Formato[vMid] = L(r["fmt"]); return PaginaOpciones(actual, "Formato elegido para " + nombreMod + "."); }
+    if (accion == "volver" || accion == "cancelarVista") return PaginaOpciones(actual, null);
+    if (accion == "carpeta") { if (ultimoResultado != null) try { Process.Start(new ProcessStartInfo { FileName = S(ultimoResultado["carpeta"]), UseShellExecute = true }); } catch { } return null; }
+    if (accion != "generar") return "__CERRAR__";
     actual = LeerParametros(r);
 
     // Ventana de avance con «Cancelar»
     bool cancelar = false; Process procActual = null;
-    var frm = new Form { Text = "PDF masivo", Width = 560, Height = 300, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false, ControlBox = false, Font = new Font("Segoe UI", 9f), BackColor = Color.White };
+    var frm = new Form { Text = "PDF masivo — avance", Width = 560, Height = 300, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = true, ControlBox = false, Font = new Font("Segoe UI", 9f), BackColor = Color.White };
     var lbl = new Label { Left = 20, Top = 20, Width = 510, Height = 40, Text = "Preparando…" };
     var barra = new ProgressBar { Left = 20, Top = 66, Width = 510, Height = 22, Minimum = 0, Maximum = 100 };
     var registro = new ListBox { Left = 20, Top = 100, Width = 510, Height = 110, IntegralHeight = false };
@@ -600,16 +590,14 @@ while (true)
 
     Dictionary<string, object> resultado = null; Exception fallo = null;
     // El armado usa ctx.Query (puente COM de Comercial): corre en ESTE hilo; el motor externo corre aparte y se lee sin bloquear (DoEvents)
-    frm.Shown += (s, e) =>
-    {
-        try { resultado = Ejecutar(actual, (a, tt, m) => { barra.Maximum = Math.Max(1, tt); barra.Value = Math.Min(a, barra.Maximum); lbl.Text = m; Application.DoEvents(); }, () => { Application.DoEvents(); return cancelar; }, pr => procActual = pr); }
-        catch (Exception ex) { fallo = ex; }
-        frm.Close();
-    };
-    frm.ShowDialog();
+    frm.Show();
+    try { resultado = Ejecutar(actual, (a, tt, m) => { barra.Maximum = Math.Max(1, tt); barra.Value = Math.Min(a, barra.Maximum); lbl.Text = m; Application.DoEvents(); }, () => { Application.DoEvents(); return cancelar; }, pr => procActual = pr); }
+    catch (Exception ex) { fallo = ex; }
+    frm.Close();
 
-    if (fallo != null) { ctx.Msg("No se generaron los PDF:\n" + fallo.Message, "PDF masivo"); aviso = fallo.Message; continue; }
-    if (resultado == null) return "OK";
+    if (fallo != null) { ctx.Msg("No se generaron los PDF:\n" + fallo.Message, "PDF masivo"); return PaginaOpciones(actual, fallo.Message); }
+    if (resultado == null) return PaginaOpciones(actual, null);
+    ultimoResultado = resultado;
 
     var sb = new StringBuilder("<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><style>body{margin:0;font:13px 'Segoe UI',Arial,sans-serif;background:#f4f6f9;color:#16263a}.w{padding:18px 24px}h1{margin:0 0 6px;font-size:20px}" +
         ".card{background:#fff;border:1px solid #cbd5e1;border-radius:9px;padding:14px 16px;margin:10px 0}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e5eaf1}th{color:#64748b;font-size:11.5px}" +
@@ -629,8 +617,9 @@ while (true)
         sb.Append("</table></div>");
     }
     sb.Append("<div style='text-align:right'><button onclick=\"window.chrome.webview.postMessage(JSON.stringify({accion:'carpeta'}))\">Abrir la carpeta</button><button class='p' onclick=\"window.chrome.webview.postMessage(JSON.stringify({accion:'cerrar'}))\">Cerrar</button></div></div></body></html>");
-    var fin = ctx.ShowHtmlFormulario(sb.ToString(), "PDF masivo — resultado", 900, 620, 0);
-    if (actual.AbrirCarpeta || (fin.ContainsKey("accion") && S(fin["accion"]) == "carpeta"))
+    if (actual.AbrirCarpeta)
         try { Process.Start(new ProcessStartInfo { FileName = S(resultado["carpeta"]), UseShellExecute = true }); } catch { }
-    return "OK";
-}
+    return sb.ToString();
+};
+ctx.ShowHtmlModeless(PaginaOpciones(actual, null), "PDF masivo", 960, 780, alMensaje);
+return "OK";

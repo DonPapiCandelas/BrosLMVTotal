@@ -115,6 +115,8 @@ namespace BrosLMV.Empresas
             // BrosLMV.HtmlToPdf.exe (motor HTML->PDF) + las 10 plantillas genericas: siempre se
             // refrescan. Las plantillas van a C:\BrosLMV\formatos (fuente del boton "Instalar
             // formatos BrosLMV") y tambien a la carpeta Formatos de Comercial de este equipo.
+            // BrosLMV.Disenador.exe (editor visual de formatos, programa aparte, autocontenido): siempre se refresca.
+            try { CopyDirectoryIfExists(Path.Combine(tmp, "disenador"), Path.Combine(Base, "disenador"), true); } catch { }
             try { CopyDirectoryIfExists(Path.Combine(tmp, "htmlpdf"), Path.Combine(Base, "htmlpdf"), true); } catch { }
             try { CopyDirectoryIfExists(Path.Combine(tmp, "formatos"), Path.Combine(Base, "formatos"), true); } catch { }
             string srcFmt = Path.Combine(tmp, "formatos");

@@ -532,7 +532,7 @@ frm.Load += async (s, e) =>
     catch (Exception ex) { ctx.Msg("No se pudo iniciar la ventana:\n" + ex.Message, "Configuración de formato"); frm.Close(); }
 };
 
-frm.ShowDialog();
+frm.Show();   // no modal: se puede minimizar y seguir usando Comercial
 return "OK";
 
 // ============================================================ UI (HTML/CSS/JS)

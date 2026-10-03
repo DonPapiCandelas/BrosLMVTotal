@@ -61,3 +61,12 @@
 #dis .tag .val{color:var(--muted);margin-left:auto;font-family:'Segoe UI',sans-serif;font-size:10.5px;max-width:96px;overflow:hidden;white-space:nowrap}
 #dis .tag .inf{font-style:normal;color:var(--accent);cursor:pointer;padding:0 3px;margin-left:4px}#dis .tag .inf:hover{background:var(--accent);color:#fff;border-radius:50%}
 #dis .tag small{margin-left:4px}
+
+#dis #dAsas{position:absolute;pointer-events:none;border:1.5px solid var(--accent);z-index:4}
+#dis #dAsas span{position:absolute;pointer-events:auto;background:var(--accent);color:#fff;font-size:11px;line-height:1}
+#dis #dAsas .a-m{left:-1px;top:-20px;padding:3px 7px;border-radius:5px 5px 0 0;cursor:grab;font-size:13px}
+#dis #dAsas .a-d{right:-6px;top:50%;margin-top:-14px;width:9px;height:28px;border-radius:5px;cursor:ew-resize;border:1px solid #fff}
+#dis #dAsas .a-b{left:50%;bottom:-6px;margin-left:-14px;width:28px;height:9px;border-radius:5px;cursor:ns-resize;border:1px solid #fff}
+#dis #dAsas .a-c{right:-6px;bottom:-6px;width:11px;height:11px;border-radius:3px;cursor:nwse-resize;border:1px solid #fff}
+#dis #dAsas .a-info{pointer-events:none;left:auto;right:0;top:-20px;padding:3px 6px;border-radius:5px 5px 0 0;background:#0f172a;opacity:.85;font-variant-numeric:tabular-nums}
+#dis #dLineaDrop{position:absolute;background:#16A34A;border-radius:2px;z-index:5;pointer-events:none}

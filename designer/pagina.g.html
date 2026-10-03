@@ -68,6 +68,15 @@ body{margin:0;font:13px/1.5 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans
 #dis .tag .inf{font-style:normal;color:var(--accent);cursor:pointer;padding:0 3px;margin-left:4px}#dis .tag .inf:hover{background:var(--accent);color:#fff;border-radius:50%}
 #dis .tag small{margin-left:4px}
 
+#dis #dAsas{position:absolute;pointer-events:none;border:1.5px solid var(--accent);z-index:4}
+#dis #dAsas span{position:absolute;pointer-events:auto;background:var(--accent);color:#fff;font-size:11px;line-height:1}
+#dis #dAsas .a-m{left:-1px;top:-20px;padding:3px 7px;border-radius:5px 5px 0 0;cursor:grab;font-size:13px}
+#dis #dAsas .a-d{right:-6px;top:50%;margin-top:-14px;width:9px;height:28px;border-radius:5px;cursor:ew-resize;border:1px solid #fff}
+#dis #dAsas .a-b{left:50%;bottom:-6px;margin-left:-14px;width:28px;height:9px;border-radius:5px;cursor:ns-resize;border:1px solid #fff}
+#dis #dAsas .a-c{right:-6px;bottom:-6px;width:11px;height:11px;border-radius:3px;cursor:nwse-resize;border:1px solid #fff}
+#dis #dAsas .a-info{pointer-events:none;left:auto;right:0;top:-20px;padding:3px 6px;border-radius:5px 5px 0 0;background:#0f172a;opacity:.85;font-variant-numeric:tabular-nums}
+#dis #dLineaDrop{position:absolute;background:#16A34A;border-radius:2px;z-index:5;pointer-events:none}
+
 </style></head><body>
 <div id='dis' hidden>
   <div class='dh'>
@@ -270,7 +279,7 @@ async function refrescar(conservarSel) {
   conectarLienzo(); aplicarZoom();
   D.sel = null;
   if (ruta) { const el = elDeRuta(ruta); if (el) seleccionar(el); else pintarProps(); } else pintarProps();
-  pintarMigas();
+  pintarMigas(); asasConectarFrame();
   $d("dCarga").hidden = true;
 }
 function aplicarZoom() { const f = $d("dFrame"); f.style.transform = "scale(" + D.zoom + ")"; f.style.width = (100 / D.zoom) + "%"; f.style.height = (100 / D.zoom) + "%"; }
@@ -279,7 +288,7 @@ function aplicarZoom() { const f = $d("dFrame"); f.style.transform = "scale(" + 
 async function confirmar(repintar) {
   const s = serializar(); D.source = s; histPush(s); estadoSucio();
   if (D.modo === "codigo") $d("dTexto").value = s;
-  if (repintar) await refrescar(true); else { pintarProps(); pintarMigas(); }
+  if (repintar) await refrescar(true); else { pintarProps(); pintarMigas(); asasPosicionar(); }
 }
 
 // ---------- interacción dentro del lienzo ----------
@@ -298,7 +307,7 @@ function objetivo(t) { if (!t) return null; if (t.nodeType === 3) t = t.parentEl
 function teclaLienzo(e) { teclaGlobal(e); }
 function seleccionar(el) {
   const d = $d("dFrame").contentDocument; d.querySelectorAll(".bros-sel").forEach(x => x.classList.remove("bros-sel"));
-  D.sel = el; if (el) el.classList.add("bros-sel"); pintarProps(); pintarMigas();
+  D.sel = el; if (el) el.classList.add("bros-sel"); pintarProps(); pintarMigas(); asasPosicionar();
 }
 function empezarEdicion(el) {
   if (el.closest("[data-bros-detail]") && el.closest(".bros-clone")) return;
@@ -344,6 +353,7 @@ async function vistaFinal() {
 
 // ---------- abrir / guardar / cerrar ----------
 async function abrirDisenador(id) {
+  asasIniciar();
   try {
     const r = await call("editorAbrir", { formatId: id });
     Object.assign(D, { id, nombre: r.modulo + " · " + r.nombre, archivo: r.archivo, esDefault: r.esDefault, docs: r.docs, docId: r.docs.length ? r.docs[0].id : 0, modo: "diseno", sel: null, hist: [], hi: -1, editando: null });
@@ -793,7 +803,7 @@ async function constructorReferencias(prefill) {
       "<div class=fila><div class=f><label>Nombre de la etiqueta</label><input type=text id=bNombre placeholder='ej. NombreVendedor' value='" + dEsc(nombre) + "'" + (prefill ? " readonly" : "") + "></div><div class=f><label>Descripción (opcional)</label><input type=text id=bDesc value='" + dEsc(desc) + "'></div></div>" +
       "<div class=seg id=bTabs style='margin:6px 0'><button data-t=armar class='" + (B.tab === "armar" ? "on" : "") + "'>Armarla sin SQL</button><button data-t=sql class='" + (B.tab === "sql" ? "on" : "") + "'>Escribir SQL y ejecutarlo</button></div>" +
       "<div id=bArmar" + (B.tab === "armar" ? "" : " hidden") + ">" +
-      "<div class=f><label>1 · ¿De dónde sale? <span style='font-weight:400;color:#64748b'>(tablas y vistas; puedes unir varias)</span></label><div id=bFuentes></div><button class=ib id=bMas>＋ Unir otra tabla o vista</button></div>" +
+      "<div class=f><label>1 · ¿De dónde sale? <span style='font-weight:400;color:#64748b'>(tablas y vistas; puedes unir varias)</span></label><div id=bFuentes></div><button class=ib id=bMas>＋ Unir otra tabla o vista</button><div id=bSug hidden style='margin-top:6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#f8fafc'></div></div>" +
       "<div class=fila><div class=f><label>2 · ¿Qué dato?</label><select id=bDato>" + cols.map(c => "<option value='" + c.v + "'" + (c.v === dato ? " selected" : "") + ">" + dEsc(c.t) + "</option>").join("") + "</select></div>" +
       "<div class=f><label>¿Cómo?</label><select id=bAgg><option value=''>El primero que encuentre</option><option value=SUM>La suma</option><option value=COUNT>Cuántos hay</option><option value=MAX>El máximo</option><option value=MIN>El mínimo</option><option value=AVG>El promedio</option><option value=TEXTO>Unir todos (texto)</option></select></div></div>" +
       "<div class=f><label>3 · ¿Cómo se relaciona con el documento?</label><select id=bRel>" + (rl.length ? rl.map((r, i) => "<option>" + dEsc(r.f.alias + " · " + r.f.t + " — " + r.r.texto) + "</option>").join("") : "<option>(ninguna de estas tablas se relaciona con el documento: une una que sí, o escribe el SQL)</option>") + "</select></div>" +
@@ -821,9 +831,29 @@ async function constructorReferencias(prefill) {
         row.querySelector(".fq").onclick = () => { B.fuentes.splice(i, 1); B.fuentes.forEach((g, k) => g.alias = "a" + k); B.manual = false; pintar(); };
       }
     });
+    // Unión guiada: propone las tablas que se pueden unir a lo que ya elegiste (una columna «XxxID» y la tabla «…Xxx» que la tiene) y arma la unión sola
+    const agregarFuente = async (t, de, col) => {
+      await esq(t); const i = B.fuentes.length; B.fuentes.push({ t, alias: "a" + i });
+      const s = nombresIgual(i)(colsDe(i)); B.fuentes[i].j = de ? { tipo: "INNER JOIN", de, col } : s ? { tipo: "INNER JOIN", de: s.de, col: s.col } : { tipo: "INNER JOIN", de: "", col: "" }; B.manual = false; pintar();
+    };
+    const sugerirUniones = async () => {
+      const yaT = new Set(B.fuentes.map(f => f.t)), cand = [], vistos = new Set(), OMITIR = /^(CreatedBy|DeletedBy|ModifiedBy|UserID|OwnedBusinessEntityID)$/;
+      B.fuentes.forEach((f, i) => colsDe(i).forEach(c => {
+        if (!/ID$/.test(c) || c.length < 4 || OMITIR.test(c)) return;
+        const stem = c.slice(0, -2).toLowerCase();
+        tablas.filter(t => !t.v && !yaT.has(t.t) && t.t.toLowerCase().endsWith(stem) && t.t.toLowerCase().length - stem.length <= 4).forEach(t => { const k = t.t + "|" + f.alias + "." + c; if (!vistos.has(k)) { vistos.add(k); cand.push({ t: t.t, de: f.alias + "." + c, col: c }); } });
+      }));
+      const ok = [];
+      for (const c of cand.slice(0, 14)) { try { const e = await esq(c.t); if ((e.columnas || []).some(x => x.n === c.col)) ok.push(c); } catch (e) { } }
+      return ok;
+    };
     $d("bMas").onclick = async () => {
-      const t = "orgBusinessEntity"; await esq(t); const i = B.fuentes.length; B.fuentes.push({ t, alias: "a" + i });
-      const s = nombresIgual(i)(colsDe(i)); B.fuentes[i].j = s ? { tipo: "INNER JOIN", de: s.de, col: s.col } : { tipo: "INNER JOIN", de: "", col: "" }; B.manual = false; pintar();
+      const box = $d("bSug"); if (!box.hidden) { box.hidden = true; return; }
+      box.hidden = false; box.innerHTML = "<span class=tip>Buscando tablas que se pueden unir…</span>";
+      const sug = await sugerirUniones();
+      box.innerHTML = (sug.length ? "<div class=tip>Tablas que se pueden unir (elige una y la unión se arma sola):</div>" + sug.map((c, k) => "<button class=ib data-k='" + k + "' style='margin:2px 4px 2px 0'>" + dEsc(c.t) + " <span style='font-weight:400;color:#64748b'>por " + dEsc(c.col) + "</span></button>").join("") : "<div class=tip>No encontré tablas que se unan por una columna igual.</div>") +
+        "<div style='margin-top:4px'><button class=ib data-k='otra'>Elegir otra tabla o vista…</button></div>";
+      box.querySelectorAll("button").forEach(bt => bt.onclick = async () => { box.hidden = true; if (bt.dataset.k === "otra") await agregarFuente("orgBusinessEntity"); else { const c = sug[+bt.dataset.k]; await agregarFuente(c.t, c.de, c.col); } });
     };
     // condiciones
     const agregarCond = (v) => {
@@ -857,6 +887,92 @@ async function constructorReferencias(prefill) {
     sincronizarSql();
   }
   await esq("docDocument"); pintar();
+}
+
+// ---------- asas sobre el elemento seleccionado: estirar con el mouse y arrastrar para reordenar ----------
+// Las asas viven en la página del Diseñador (encima del lienzo), no dentro del documento: así nunca se guardan en el formato.
+function asasPosicionar() {
+  const cont = $d("dAsas"); if (!cont) return;
+  const fr = $d("dFrame"), el = D.sel;
+  if (!el || D.modo !== "diseno" || !fr.contentDocument || !el.isConnected || el.classList.contains("bros-clone") || el.tagName === "HTML" || el.tagName === "BODY" || D.editando) { cont.hidden = true; return; }
+  const r = el.getBoundingClientRect(), z = D.zoom || 1;
+  const l = r.left * z, t = r.top * z, w = r.width * z, h = r.height * z;
+  cont.hidden = false; cont.style.left = l + "px"; cont.style.top = t + "px"; cont.style.width = w + "px"; cont.style.height = h + "px";
+  const esCelda = /^(TD|TH)$/.test(el.tagName), esFila = /^(TR|THEAD|TBODY|TABLE)$/.test(el.tagName), esChip = el.classList.contains("bros-tag");
+  cont.querySelector(".a-d").style.display = esFila || esChip ? "none" : "";
+  cont.querySelector(".a-b").style.display = esCelda || esFila || esChip ? "none" : "";
+  cont.querySelector(".a-c").style.display = esCelda || esFila || esChip ? "none" : "";
+  cont.querySelector(".a-m").style.display = esCelda && false ? "none" : "";
+  cont.querySelector(".a-info").textContent = Math.round(r.width) + " × " + Math.round(r.height);
+}
+function asasIniciar() {
+  const lienzo = $d("dLienzo"); if (!lienzo || $d("dAsas")) return;
+  const cont = document.createElement("div"); cont.id = "dAsas"; cont.hidden = true;
+  cont.innerHTML = "<span class='a-m' title='Arrastra para mover este elemento a otro lugar'>⠿</span><span class='a-d' title='Estira el ancho'></span><span class='a-b' title='Estira el alto'></span><span class='a-c' title='Estira ancho y alto'></span><span class='a-info'></span>";
+  lienzo.appendChild(cont);
+  const linea = document.createElement("div"); linea.id = "dLineaDrop"; linea.hidden = true; lienzo.appendChild(linea);
+  const win = () => $d("dFrame").contentWindow;
+
+  // --- estirar ---
+  const estirar = (asa, ancho, alto) => asa.addEventListener("pointerdown", ev => {
+    const el = D.sel; if (!el) return; ev.preventDefault(); asa.setPointerCapture(ev.pointerId);
+    const z = D.zoom || 1, r0 = el.getBoundingClientRect(), x0 = ev.clientX, y0 = ev.clientY;
+    const celda = /^(TD|TH)$/.test(el.tagName), tabla = celda ? el.closest("table") : null, wTabla = tabla ? tabla.getBoundingClientRect().width : 0;
+    if (!celda && win().getComputedStyle(el).display === "inline") el.style.display = "inline-block";
+    const mover = e => {
+      const dx = (e.clientX - x0) / z, dy = (e.clientY - y0) / z;
+      if (ancho) { const nw = Math.max(12, Math.round(r0.width + dx)); el.style.width = celda && wTabla ? (Math.round(nw / wTabla * 1000) / 10) + "%" : nw + "px"; }
+      if (alto) el.style.height = Math.max(8, Math.round(r0.height + dy)) + "px";
+      asasPosicionar();
+    };
+    const fin = () => { asa.removeEventListener("pointermove", mover); asa.removeEventListener("pointerup", fin); asa.removeEventListener("pointercancel", fin); confirmar(!!el.closest("[data-bros-detail]")); };
+    asa.addEventListener("pointermove", mover); asa.addEventListener("pointerup", fin); asa.addEventListener("pointercancel", fin);
+  });
+  estirar(cont.querySelector(".a-d"), true, false); estirar(cont.querySelector(".a-b"), false, true); estirar(cont.querySelector(".a-c"), true, true);
+
+  // --- mover (reordenar) ---
+  const m = cont.querySelector(".a-m");
+  m.addEventListener("pointerdown", ev => {
+    const el = D.sel; if (!el) return; ev.preventDefault(); m.setPointerCapture(ev.pointerId);
+    const fr = $d("dFrame"), d = fr.contentDocument, z = D.zoom || 1; let destino = null, despues = false, dentro = false;
+    const ocultar = () => { linea.hidden = true; d.querySelectorAll(".bros-drop").forEach(x => x.classList.remove("bros-drop")); };
+    const mover = e => {
+      const fb = fr.getBoundingClientRect(), x = (e.clientX - fb.left) / z, y = (e.clientY - fb.top) / z;
+      ocultar(); destino = null;
+      let t = d.elementFromPoint(x, y); if (!t) return;
+      t = objetivo(t); if (!t || t === el || el.contains(t) || t.tagName === "HTML" || t.closest(".bros-clone")) return;
+      if (t.tagName === "BODY") { destino = t; dentro = true; t.classList.add("bros-drop"); return; }
+      const r = t.getBoundingClientRect(), vertical = (y - r.top) / Math.max(1, r.height), horizontal = (x - r.left) / Math.max(1, r.width);
+      const filaFlex = t.parentElement && /flex|grid/.test(win().getComputedStyle(t.parentElement).display) && win().getComputedStyle(t.parentElement).flexDirection === "row";
+      const contenedor = /^(DIV|TD|TH|SECTION|ARTICLE|LI|BODY|HEADER|FOOTER|MAIN)$/.test(t.tagName) && !t.classList.contains("bros-tag");
+      destino = t; dentro = false;
+      if (contenedor && vertical > 0.3 && vertical < 0.7 && horizontal > 0.15 && horizontal < 0.85) { dentro = true; t.classList.add("bros-drop"); return; }
+      despues = filaFlex ? horizontal > 0.5 : vertical > 0.5;
+      const lb = $d("dLienzo").getBoundingClientRect(), fx = fb.left - lb.left + $d("dLienzo").scrollLeft, fy = fb.top - lb.top + $d("dLienzo").scrollTop;
+      linea.hidden = false;
+      if (filaFlex) { linea.style.left = (fx + (despues ? r.right : r.left) * z - 1) + "px"; linea.style.top = (fy + r.top * z) + "px"; linea.style.width = "3px"; linea.style.height = (r.height * z) + "px"; }
+      else { linea.style.left = (fx + r.left * z) + "px"; linea.style.top = (fy + (despues ? r.bottom : r.top) * z - 1) + "px"; linea.style.width = (r.width * z) + "px"; linea.style.height = "3px"; }
+    };
+    const fin = () => {
+      m.removeEventListener("pointermove", mover); m.removeEventListener("pointerup", fin); m.removeEventListener("pointercancel", fin);
+      const t = destino, enDetalle = !!el.closest("[data-bros-detail]"); ocultar();
+      if (!t) return;
+      try {
+        if (dentro) t.appendChild(el); else if (despues) t.after(el); else t.before(el);
+      } catch (e) { dToast("No se puede mover ahí: " + e.message, "bad"); return; }
+      el.removeAttribute("data-bros-detail");
+      confirmar(true || enDetalle);
+    };
+    m.addEventListener("pointermove", mover); m.addEventListener("pointerup", fin); m.addEventListener("pointercancel", fin);
+  });
+
+  window.addEventListener("resize", asasPosicionar);
+  $d("dZoom").addEventListener("change", () => setTimeout(asasPosicionar, 0));
+}
+function asasConectarFrame() {
+  const w = $d("dFrame").contentWindow; if (!w) return;
+  w.addEventListener("scroll", asasPosicionar); w.addEventListener("resize", asasPosicionar);
+  asasPosicionar();
 }
 
 window.addEventListener('load', () => { if (INICIO.formato) abrirDisenador(INICIO.formato); else abrirSelector(); });

@@ -60,7 +60,7 @@ namespace BrosLMV.Disenador
 open(os.path.join(RAIZ, 'designer', 'Backend.g.cs'), 'w', encoding='utf-8', newline='').write(backend.replace('\n', '\r\n'))
 
 # ---------------------------------------------------------------- 2) pagina.g.html
-js = leer('disenador1.js') + '\n' + leer('disenador2.js') + '\n' + leer('disenador3.js') + '\n' + leer('disenador4.js')
+js = leer('disenador1.js') + '\n' + leer('disenador2.js') + '\n' + leer('disenador3.js') + '\n' + leer('disenador4.js') + '\n' + leer('disenador5.js')
 pagina = '''<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Diseñador de formatos</title><style>
 :root{--accent:#2D6FE0;--accent-d:#1f56b8;--ink:#16263A;--muted:#64748B;--bg:#F4F6FA;--card:#FFFFFF;--line:#E5E9F0;--line-2:#EEF1F6;--ok:#16A34A;--bad:#DC2626}
 *{box-sizing:border-box}html,body{height:100%}[hidden]{display:none!important}
