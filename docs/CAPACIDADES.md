@@ -267,6 +267,8 @@ using Newtonsoft.Json;
 // ... usar JsonConvert ...
 ```
 
+> **Catálogo completo de lo que ya viene instalado, con ejemplos: [`LIBRERIAS.md`](LIBRERIAS.md).**
+
 ### Cómo agregar una librería
 1. Consigue el DLL de la librería **compatible con .NET Framework 4.8**
    (net48 o netstandard2.0).

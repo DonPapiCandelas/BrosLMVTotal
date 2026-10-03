@@ -34,6 +34,7 @@
 | [`CREAR_DOCUMENTO.md`](CREAR_DOCUMENTO.md) | Plantillas de fábrica «Crear documento» (C#/Python × HTML/Windows Forms): factura, pedido, remisión, compra, OC y recepción, con documentos derivados |
 | [`COBRO_PAGO.md`](COBRO_PAGO.md) | Plantillas avanzadas «Cobro a cliente / Pago a proveedor» (C#/Python × HTML/Windows Forms): la receta de SQL directo, límites y pruebas |
 | [`CONFIGURACION_FORMATO.md`](CONFIGURACION_FORMATO.md) | Configuración de formato: formatos por tipo de documento, carpeta y nombre de los PDF, correo, y el editor de formato con vista previa |
+| [`LIBRERIAS.md`](LIBRERIAS.md) | **Qué librerías y componentes ya tenemos** (Excel/ClosedXML, Word y PowerPoint/Open XML, QR, JSON, WebView2, SQLite…), ejemplos para copiar, candidatas por agregar, Power BI y cómo sumar una nueva |
 | [`CAPACIDADES.md`](CAPACIDADES.md) | Qué se puede construir: reportes, análisis, integraciones |
 | [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) | Reportes HTML rápidos y portables (`ctx.dashboard()`, `ctx.show_html`) |
 
