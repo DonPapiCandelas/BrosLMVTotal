@@ -8,6 +8,20 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.0.1] — 2026-10-03 — Ventanas HTML en vivo (requiere instalar)
+
+Esta versión separa lo que **sí requiere instalar** (componentes nuevos del addon) de lo que **solo son scripts** (se actualizan sin instalar: basta publicar el script en la base).
+
+### Agregado (componentes del addon: requiere instalar)
+- **Respuestas `__JS__` en `ctx.ShowHtmlModeless`:** el script contesta a la página con JavaScript sin repintarla (consultas en vivo). Las plantillas WebView2 de C# las necesitan; sin esta versión se ve el texto `__JS__respuesta(...)` en pantalla.
+- **`window.close()` cierra la ventana HTML** (`ctx.ShowHtmlModeless` y `ctx.show_html`): lo usan las ventanas HTML en vivo de Python para cerrarse al guardar o cancelar.
+- **Páginas HTML grandes** (más de ~1.5 MB) se cargan desde un archivo temporal, y la depuración remota de WebView2 (`BROSLMV_WEBVIEW_DEBUG_PORT`) para pruebas.
+
+### Cambiado (solo scripts: se actualizan sin instalar)
+- Plantillas «Crear documento» y «Cobro/Pago»: WebView2 al máximo en C# y Python (gráficas, paleta, vista previa, borrador, etc.), Windows Forms rehecho y **Python idéntico a C#**, y corrección del error de las plantillas Python al leer la empresa (ver las entradas de 3.0.0).
+
+> **Regla:** si un cambio toca el addon (ClsMain, Scripting, HostClient, el Host o el Runner) o agrega una función del SDK, sube la versión. Si solo cambia un script o una plantilla, no se sube la versión ni se instala: se publica el script.
+
 ## [3.0.0] — 2026-10-02 — Plantillas de fábrica para publicar
 
 ### Cambiado
