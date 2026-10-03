@@ -13,7 +13,7 @@ Cotización → Pedido → Remisión → Factura → Cobro, incluidos los módul
 2. En la lista de documentos de Comercial **selecciona un documento** (o ábrelo ya guardado) y pulsa el botón.
 3. Se abre una ventana con el mapa. Desde ahí:
    - **Un clic** en otro documento centra la trazabilidad en él.
-   - **Doble clic** lo abre en Comercial.
+   - **Doble clic** lo abre en Comercial y **cierra la ventana** (para volver al mapa, ejecuta el botón otra vez; ver «Para desarrolladores»).
    - **Exportar a CSV** guarda los vínculos y las cantidades por partida.
 
 ## Cómo leer el mapa
@@ -68,7 +68,7 @@ verás las tres órdenes a la izquierda y la factura a la derecha. Se crean con 
 - El motor arma un modelo (`nodos`, `aristas`, `avisos`) con consultas por lotes (400 documentos por consulta, hasta 25 niveles y 300 documentos) y luego lo dibuja.
 - **Modo de pruebas sin ventanas:** con la variable de entorno `BROSLMV_TRAZA_DOC=<DocumentID>` el script no abre la ventana y escribe el modelo en JSON en el archivo de `BROSLMV_TRAZA_OUT`.
   Así corre en `BrosLMV.Runner` (el script lleva `// job: safe-offline`) y en la prueba de humo `build/humo/casos/35_trazabilidad.ps1`.
-- La ventana usa `ctx.ShowHtmlFormulario`; el clic y el doble clic mandan un mensaje (`centrar` / `abrir`) y el script vuelve a mostrar la ventana.
+- La ventana usa `ctx.ShowHtmlFormulario`; el clic manda `centrar` y el script vuelve a mostrar la ventana; el doble clic manda `abrir`, abre el documento y **termina el script**: reabrir la ventana justo después bloquea el hilo de Comercial mientras carga el documento y XEngine contesta «the other application is busy».
 
 ## Si algo no sale
 

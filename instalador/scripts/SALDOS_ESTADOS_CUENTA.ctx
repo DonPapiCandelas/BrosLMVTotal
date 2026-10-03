@@ -276,10 +276,9 @@ while (true)
     if (accion == "abrir")
     {
         try { ctx.erp.AbrirDocumento((int)L(r["id"]), I(r["modulo"])); } catch (Exception ex) { ctx.Msg("No se pudo abrir el documento: " + ex.Message, "Saldos y estados de cuenta"); }
-        // Comercial carga el documento en este mismo hilo y le habla a XEngine; si aquí se reabre enseguida la ventana (que bloquea el hilo), XEngine responde
-        // «the other application is busy». Se deja trabajar a Comercial unos segundos (bombeando mensajes) antes de volver a mostrar la ventana.
-        { var hasta = DateTime.Now.AddSeconds(3); while (DateTime.Now < hasta) { System.Windows.Forms.Application.DoEvents(); System.Threading.Thread.Sleep(30); } }
-        continue;
+        // Comercial carga el documento en este mismo hilo y le habla a XEngine: si aquí se vuelve a mostrar la ventana (que bloquea el hilo), XEngine contesta
+        // «the other application is busy». Por eso, al abrir un documento, el script TERMINA (como todos los que abren documentos) y la ventana se cierra.
+        return "OK";
     }
     if (accion == "csv")
     {

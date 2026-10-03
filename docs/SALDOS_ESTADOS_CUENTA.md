@@ -9,7 +9,7 @@ Solo lee: no cambia ningún documento.
 2. Pulsa el botón. Se abre una ventana con tres pestañas y un selector **Por cobrar (clientes) / Por pagar (proveedores)**.
 3. **Fecha de corte.** Por omisión es hoy. Al cambiarla todo se recalcula al instante: ve cuánto se debía en esa fecha, aunque el documento se haya pagado después.
 4. **Antigüedad por cliente / proveedor.** Una fila por cliente o proveedor con su saldo en *Vigente*, *1-30*, *31-60*, *61-90* y *Más de 90* días de vencido, y *A favor* (notas de crédito sin aplicar). Clic en una fila abre su estado de cuenta.
-5. **Documentos con saldo.** Cada documento con su vencimiento, días de atraso y saldo. **Doble clic** abre el documento en Comercial.
+5. **Documentos con saldo.** Cada documento con su vencimiento, días de atraso y saldo. **Doble clic** abre el documento en Comercial y cierra la ventana (vuelve a ejecutar el botón para regresar).
 6. **Estado de cuenta.** Elige el cliente o proveedor y el periodo: saldo inicial, cada movimiento (documentos como cargos; cobros, pagos y notas de crédito como abonos) con saldo corriente, y totales del periodo.
 7. **Buscar** (nombre, folio o título) y **Solo vencidos** filtran las tres pestañas. **Exportar a CSV (Excel)** guarda lo que estás viendo.
 
