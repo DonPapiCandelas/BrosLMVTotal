@@ -8,6 +8,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.1.1] — 2026-10-07 — Numeración externa opcional y Runner con conexión protegida (requiere instalar)
+
+### Agregado
+- **Numeración externa opcional:** `NuevoDocumento` acepta `folioPrefixOverride` y `folioOverride` juntos y usa esa identidad sin invocar `GetFolioPrefix`/`GetNextFolio`. Valida entero positivo y rechaza una identidad existente (incluye documentos cancelados o eliminados). Omitir ambos mantiene la numeración automática. El consumidor es responsable de la exclusividad de la serie, la reserva atómica y la idempotencia (ver `NUMERACION_EXTERNA.md`). **Validación nativa en laboratorio pendiente.**
+- **Runner 0.4.0 (versión propia, independiente del addon):** canal `--conn-stdin`, rechazo de argv simultáneo, `--check-connection` con SELECT, errores de arranque censurados. Contrato y límites en `RUNNER_SEGURIDAD.md`.
+- **Crear documentos desde XML:** repartir un gasto entre proyectos, por porcentaje o por importe.
+- Guías nuevas: `RECEPCIONES_Y_COLAS`, `RENTABILIDAD_SIN_FACTURA`.
+
 ## [3.1.0] — 2026-10-07 — Plantillas clasificadas y con guía propia (requiere instalar)
 
 ### Cambiado

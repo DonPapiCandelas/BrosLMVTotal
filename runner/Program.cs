@@ -57,7 +57,7 @@ using Microsoft.Win32;
 
 // Prototipo T3.3 -- aún no se distribuye con el instalador; versión propia, independiente
 // de BrosLMVClsMain.dll.
-[assembly: AssemblyVersion("0.3.0.0")]
+[assembly: AssemblyVersion("0.4.0.0")]
 [assembly: AssemblyTitle("BrosLMV.Runner - Programador headless (prototipo T3.3)")]
 
 namespace BrosLMV.Runner
@@ -68,6 +68,7 @@ namespace BrosLMV.Runner
         private static int Main(string[] args)
         {
             string appKey = null, connOverride = null, bd = null;
+            bool connStdin = false, checkConnection = false;
             int userId = 0;
             for (int i = 0; i < args.Length; i++)
             {
@@ -76,13 +77,51 @@ namespace BrosLMV.Runner
                     case "--appkey": appKey = ArgSiguiente(args, ref i); break;
                     case "--userid": int.TryParse(ArgSiguiente(args, ref i), out userId); break;
                     case "--conn":   connOverride = ArgSiguiente(args, ref i); break;
+                    case "--conn-stdin": connStdin = true; break;
+                    case "--check-connection": checkConnection = true; break;
                     case "--bd":     bd = ArgSiguiente(args, ref i); break;
                     default:
                         Console.Error.WriteLine("Argumento desconocido: " + args[i]);
                         return Uso();
                 }
             }
-            if (string.IsNullOrEmpty(appKey)) return Uso();
+            if (string.IsNullOrEmpty(appKey) && !checkConnection) return Uso();
+            if (connStdin)
+            {
+                if (!Console.IsInputRedirected || connOverride != null)
+                {
+                    Console.Error.WriteLine("La conexión protegida requiere stdin redirigido y no permite --conn simultáneo.");
+                    return 2;
+                }
+                // Bounded input: do not wait for EOF after receiving a newline.
+                var buffer = new System.Text.StringBuilder();
+                int c;
+                while ((c = Console.In.Read()) != -1 && c != '\n')
+                {
+                    if (buffer.Length >= 16384) { Console.Error.WriteLine("Entrada de conexión inválida."); return 2; }
+                    buffer.Append((char)c);
+                }
+                connOverride = buffer.ToString().TrimEnd('\r');
+                if (string.IsNullOrWhiteSpace(connOverride)) { Console.Error.WriteLine("Entrada de conexión vacía."); return 2; }
+            }
+            if (checkConnection)
+            {
+                // SQL SELECT only: no XEngine bootstrap or execution of commercial scripts.
+                try
+                {
+                    var builder = new SqlConnectionStringBuilder(connOverride);
+                    if (string.IsNullOrEmpty(bd) || builder.InitialCatalog != bd) return 2;
+                    using (var sql = new SqlConnection(builder.ConnectionString))
+                    {
+                        sql.Open();
+                        using (var command = new SqlCommand("SELECT DB_NAME()", sql))
+                            if ((string)command.ExecuteScalar() != bd) return 2;
+                    }
+                    Console.WriteLine("CONNECTION CHECK PASS (SELECT only)");
+                    return 0;
+                }
+                catch { Console.Error.WriteLine("No se pudo validar la conexión protegida."); return 1; }
+            }
 
             Console.WriteLine("BrosLMV.Runner v" + typeof(Program).Assembly.GetName().Version);
 
@@ -120,7 +159,7 @@ namespace BrosLMV.Runner
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine("ERROR al crear XEngine standalone: " + ex.Message);
+                Console.Error.WriteLine("ERROR al crear XEngine standalone (" + ex.GetType().Name + "). Revisar configuración y permisos.");
                 return 1;
             }
 

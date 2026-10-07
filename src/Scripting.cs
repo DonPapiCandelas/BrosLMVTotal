@@ -1860,7 +1860,8 @@ namespace BrosLMV
         // argumentos posicionales) que ya corren en producción (integraciones externas, POS).
         public int NuevoDocumento(int moduleId, int depotId, int businessEntityId = 0,
             double rate = 1, int paymentTermId = 1, int currencyId = 3,
-            string title = null, int sourceDocumentId = 0)
+            string title = null, int sourceDocumentId = 0,
+            string folioPrefixOverride = null, string folioOverride = null)
         {
             RequiereSql("NuevoDocumento");
             GuardaEscritura();
@@ -1869,8 +1870,19 @@ namespace BrosLMV
             int docRecipientID = ModuloParametroInt(moduleId, "DocRecipient", 0);
             int owned          = OwnedBusinessEntityId;
             int userID         = UserId;
-            string prefix      = GetFolioPrefix(moduleId, depotId) ?? "";
-            string folio       = GetNextFolio(moduleId, prefix, depotId) ?? "";
+            bool externalFolio = folioPrefixOverride != null || folioOverride != null;
+            if (externalFolio && (folioPrefixOverride == null || folioOverride == null))
+                throw new ArgumentException("La numeracion externa requiere serie y folio juntos (serie vacia es valida). ");
+            long externalNumber;
+            if (externalFolio && (folioPrefixOverride.Length > 20 ||
+                !Regex.IsMatch(folioOverride, @"^[0-9]{1,18}$") ||
+                !long.TryParse(folioOverride, out externalNumber) || externalNumber <= 0))
+                throw new ArgumentException("Serie externa: maximo 20 caracteres; folio: entero positivo de hasta 18 digitos.");
+            string prefix = externalFolio ? folioPrefixOverride : (GetFolioPrefix(moduleId, depotId) ?? "");
+            string folio  = externalFolio ? folioOverride : (GetNextFolio(moduleId, prefix, depotId) ?? "");
+            if (externalFolio && _owner.Query("SELECT TOP 1 DocumentID FROM docDocument WHERE ModuleID=" + moduleId +
+                " AND OwnedBusinessEntityID=" + owned + " AND FolioPrefix=" + Lit(prefix) + " AND Folio=" + Lit(folio)).Count > 0)
+                throw new InvalidOperationException("La serie y folio externos ya existen. Reconciliar el documento antes de reintentar; no se renumera automaticamente.");
 
             bool conSource = sourceDocumentId > 0;
             string colSource = conSource ? ", SourceDocumentID" : "";

@@ -1,4 +1,12 @@
 # Auditoría de trazabilidad e integraciones — 2026-10-01
+## Avance posterior — capa de consumo operativa
+
+Tres consumidores recibieron tableros basados en tablas, enlaces por IDs/recurso autorizado, recepción pendiente por partida, agregados por moneda y reportes/Excel de compras. Se usaron sus consultas de visibilidad, no consultas globales de todas las empresas. Comparación de precios por producto/proveedor/moneda/unidad/impuesto; sin base positiva ni dimensión conocida no se produce porcentaje. Compromiso de OC no se etiqueta como deuda ni pago. La recepción excesiva de una línea no cancela el pendiente de otra.
+
+Este avance no modifica el SDK ni acredita los pendientes A-01/A-02/A-03/A-05/A-06. CxP, pagos, agenda y conciliación siguen pendientes. Folios propios siguen como candidato sin activar. Revisión visual/aceptación nativa/restauración aislada aplazadas por el usuario. No contiene datos de clientes ni configura producción desde el núcleo.
+
+Dos consumidores recibieron el parche de seguridad CommonMark 2.10.2, preservando las demás versiones y su autoloader activo; auditoría de paquetes productivos sin avisos conocidos y regresiones de renderizado aprobadas. Un tercer consumidor mantiene avisos: tiene solo un lock alternativo resuelto, sin instalación ni aceptación. Resolver dependencias no equivale a auditar el código propio ni a conciliar documentos nativos. Las guardas de acceso directo a OC exigen permiso de consulta además de visibilidad/usuario activo.
+
 
 Se examinó el núcleo vigente documentado como v2.98.0, sus contratos de scripting/Runner, el canal Python, generación documental y conocimiento experimental reciente.
 La comparación de tres consumidores se efectuó contra sus instalaciones vivas; se omiten identidades, rutas de red y datos privados.
@@ -105,3 +113,11 @@ Control documental: regla de oro valida versión2.98.0/changelog/notas pero fall
 4. Semántica histórica de eliminación/cancelación/aplicaciones/divisas en versión de Comercial instalada.
 5. Nivel de auditoría pendiente del resto del producto (subproducto de descargas, instaladores, todas las ramas UI).
 6. Una versión FileVersion del Runner no corresponde necesariamente a la versión del addon; definir manifiesto de compilación/hash, no comparar números de componentes diferentes.
+
+## Actualización anónima — consulta de cuentas por pagar
+
+Se implementó en los consumidores un módulo de consulta de facturas de compra/gastos, calendario del primer vencimiento, reporte/Excel por empresa y moneda, aplicaciones y pagos relacionados a OC por IDs. Permisos financieros independientes para perfiles expresamente autorizados, negativas a inactivos/no autorizados, errores de origen sin saldos cero ficticios y proyección sin acciones CRUD. Verificación SELECT-only nativa y Excel reabierto; no se probaron escrituras financieras ni se activaron folios.
+
+Reglas genéricas incorporadas a MANUAL §10.6: Amount en moneda del documento, AmountPaidCurrency en moneda de operación; la parcialidad del pago NO garantiza vínculo con la agenda; agenda StatusID/PaidWithDocumentID no demuestra saldo pendiente; TotalPaid puede diferir de las aplicaciones y requiere advertencia, no reparación automática.
+
+La conexión de consulta hereda aún los privilegios del conector existente: usuario SQL mínimo, distribución conciliada de parcialidades, corte histórico, REP/póliza y aceptación operativa permanecen abiertos. Una factura compartida entre OC no se atribuye íntegramente a cada una. La instalación sin facturas/gastos queda vacía, no convierte compromisos de OC en deuda. No hubo cambios de src, instalación del motor, pruebas COM ni resolución del contrato de escritura en este avance.

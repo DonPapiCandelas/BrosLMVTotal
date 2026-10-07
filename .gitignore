@@ -101,3 +101,6 @@ __pycache__/
 /designer/bin/
 /designer/obj/
 /instalador/disenador/
+
+# salida de compilaciones de prueba del Runner
+/build/runner-security/

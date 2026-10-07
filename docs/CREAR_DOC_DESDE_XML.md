@@ -162,3 +162,24 @@ Sugerencias, de más a menos específica (se ven con una etiqueta en la pestaña
   muestra el documento creado, así que **si todo salió bien la ventana se cierra sola**; si hubo errores o algún documento quedó sin
   póliza, se queda en la pestaña Resultado. Los avisos informativos (p. ej. redondeo de centavos) van al log de scripts. El perfil
   temporal de WebView2 se borra en segundo plano para no congelar Comercial al cerrar.
+
+## 9. Repartir gastos entre proyectos
+
+En **Partidas**, usar **Repartir** para un concepto o **Repartir todo el gasto** para todas
+las partidas. Seleccionar proyectos vigentes de la empresa y capturar porcentajes que sumen
+100%, o importes que sumen la base neta después del descuento. La pantalla muestra el
+importe por proyecto y permite quitar o editar el reparto antes de crear documentos.
+
+Disponible solo para destinos de tipo Gasto, sin afectación de inventario y sin productos
+asignados a los conceptos repartidos. Para materiales, asignar el proyecto en su consumo.
+El reparto conserva un documento y su UUID; crea renglones descriptivos con `Proyecto`
+igual al identificador del proyecto y comentarios con UUID, concepto origen y porcentaje.
+Las partidas no repartidas mantienen su comportamiento anterior. No registra pagos.
+
+Los importes se distribuyen en centavos por mayor residuo. Los conceptos con el mismo
+plan se equilibran para conservar tanto sus bases como el total por proyecto del documento.
+Se conservan el tipo de gasto y la composición fiscal; el motor nativo recalcula impuestos
+y guarda el documento. La validación se repite antes de crear: proyectos repetidos,
+inactivos, de otra empresa, planes incompletos y conceptos que quedarían con base cero
+se rechazan. El reparto se conserva únicamente durante la sesión del importador hasta
+crear el documento.

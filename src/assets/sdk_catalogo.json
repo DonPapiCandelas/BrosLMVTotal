@@ -721,10 +721,10 @@
    "lang": "cs",
    "cat": "ERP · Documento",
    "nombre": "erp.NuevoDocumento",
-   "firma": "ctx.erp.NuevoDocumento(moduleId, depotId, businessEntityId?, rate?, paymentTermId?, currencyId?, title?, sourceDocumentId?) : int",
+   "firma": "ctx.erp.NuevoDocumento(moduleId, depotId, businessEntityId?, rate?, paymentTermId?, currencyId?, title?, sourceDocumentId?, folioPrefixOverride?, folioOverride?) : int",
    "resumen": "Crea el encabezado de un documento con los defaults del módulo (folio, tipo, moneda) y devuelve el DocumentID.",
    "ejemplo": "int id = ctx.erp.NuevoDocumento(183, 1, 162); // OC, almacén, proveedor",
-   "detalle": "Crea el encabezado de un documento nuevo (folio automático) y devuelve su DocumentID. Después se le agregan partidas con AgregarArticulo.",
+   "detalle": "Crea el encabezado y devuelve DocumentID. Por omisión usa folio automático. Con folioPrefixOverride y folioOverride juntos usa numeración externa sin calcular consecutivo nativo; consumidor debe reservar atómicamente y controlar reintentos/serie exclusiva. Rechaza identidad existente, no renumera ni rellena automáticamente un documento parcial.",
    "params": [
     [
      "moduleId",
@@ -765,6 +765,16 @@
      "sourceDocumentId",
      "int",
      "Documento de origen (0 = ninguno)."
+    ],
+    [
+     "folioPrefixOverride",
+     "string",
+     "Serie externa (máximo 20 caracteres; vacío válido), null conserva comportamiento anterior. Requiere folioOverride."
+    ],
+    [
+     "folioOverride",
+     "string",
+     "Entero positivo externo de hasta 18 dígitos; requiere serie. No invoca GetNextFolio."
     ]
    ],
    "retorna": "int: DocumentID del nuevo documento.",
