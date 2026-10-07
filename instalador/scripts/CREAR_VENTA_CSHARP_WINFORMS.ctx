@@ -1,17 +1,10 @@
 // lang: csharp
 // AppKey recomendado: CREAR_VENTA_WINFORMS
 // Plantilla: Crear documento de venta (C# · ventana Windows Forms)
-// Categoria: Documentos
-// Documentacion: CREAR_DOCUMENTO.html
+// Categoria: Ventas
+// Documentacion: CREAR_VENTA.html
 // job: safe-offline
 // Crea un documento de Comercial desde una ventana de Windows Forms: factura de cliente, pedido o remisión (ventas). Plantilla separada a propósito: solo VENTAS (clientes), para que quien la use no vea el otro lado.
-// Es una plantilla de EJEMPLO funcional: ábrela, pruébala, y copia lo que necesites. Documentación: clic secundario sobre la plantilla → «Ver documentación».
-//
-// Qué enseña:
-//   · El patrón completo de creación: NuevoDocumento → perfil del módulo → AgregarArticulo × N → RecalcCompleto → AffectStockNEW (solo si el módulo lo pide) → Save → agenda de pago.
-//   · Documentos DERIVADOS: selecciona antes una o varias órdenes de compra (o un pedido) en la lista y la ventana ofrece partir de ellas con lo que aún falta por surtir.
-//   · Ventana modeless (Show, nunca ShowDialog) con try/catch en cada manejador, como exige MANUAL §10.2.
-// Para un botón de un solo tipo (por ejemplo solo «Orden de compra») deja esa fila en la tabla TIPOS y borra las demás.
 
 using System;
 using System.Collections.Generic;
@@ -29,25 +22,17 @@ long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v
 int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
 double D(object v) { try { return v == null || v is DBNull ? 0.0 : Convert.ToDouble(v, ci); } catch { return 0.0; } }
 bool Nulo(object v) => v == null || v is DBNull;
-string Sq(string s) => (s ?? "").Replace("'", "''");                       // texto para un literal SQL
-string Num(double d) => d.ToString("0.########", ci);                       // número para un literal SQL (siempre con punto)
+string Sq(string s) => (s ?? "").Replace("'", "''");
+string Num(double d) => d.ToString("0.########", ci);
 
 int empresa = ctx.erp.OwnedBusinessEntityId;
 
-// ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
-// El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
 string CarpetaLocal() { string d = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BrosLMV", "borradores"); System.IO.Directory.CreateDirectory(d); return d; }
 string ArchivoBorrador(string que) { int u = 0; try { u = ctx.erp.UserId; } catch { } return System.IO.Path.Combine(CarpetaLocal(), que + "_" + empresa + "_" + u + ".json"); }
 string LeerBorrador(string que, bool vence = true) { try { string a = ArchivoBorrador(que); if (!System.IO.File.Exists(a) || (vence && (DateTime.Now - System.IO.File.GetLastWriteTime(a)).TotalDays > 7)) return null; return System.IO.File.ReadAllText(a, System.Text.Encoding.UTF8); } catch { return null; } }
 void GuardarBorrador(string que, string json) { try { System.IO.File.WriteAllText(ArchivoBorrador(que), json, new System.Text.UTF8Encoding(false)); } catch { } }
 void BorrarBorrador(string que) { try { string a = ArchivoBorrador(que); if (System.IO.File.Exists(a)) System.IO.File.Delete(a); } catch { } }
 
-// ===================================================================================================================================
-// TIPOS DE DOCUMENTO. Cada fila es el «perfil» que Comercial espera de ese módulo (confirmado contra capturas del documento nativo).
-// Para quitar un tipo del formulario borra su fila; para agregar otro, copia una fila y ajusta sus datos. Nada más depende de esta tabla.
-//   clave · nombre · módulo · lado (C = cliente, P = proveedor) · de dónde sale el precio (venta/compra) · perfil SQL de encabezado ·
-//   ¿lleva condición de pago? · ¿lleva fecha de entrega? · cómo se liga al origen (""/cabecera/partida/entrega) · módulo de origen
-// ===================================================================================================================================
 Dictionary<string, object> T(string clave, string nombre, int modulo, string lado, string precio, string perfil, bool condicion, bool entrega, string vinculo, int origen) =>
     new Dictionary<string, object> { ["clave"] = clave, ["nombre"] = nombre, ["modulo"] = modulo, ["lado"] = lado, ["precio"] = precio, ["perfil"] = perfil,
         ["condicion"] = condicion, ["entrega"] = entrega, ["vinculo"] = vinculo, ["origen"] = origen };
@@ -58,16 +43,14 @@ var TIPOS = new List<Dictionary<string, object>>
     T("remision",        "Remisión (entrega)",   157, "C", "venta",  "DepotIDFrom=0, PaymentTermID=0, StatusDeliveryID=0",                 false, true,  "cabecera", 967),
 };
 var tipoPor = TIPOS.ToDictionary(t => (string)t["clave"]);
-bool LlevaCfdi(string clave) => clave == "factura_cliente";          // uso del CFDI, forma y método de pago: solo el comprobante fiscal
+bool LlevaCfdi(string clave) => clave == "factura_cliente";
 
-// ---------- Catálogos para el formulario ----------
 Dictionary<string, object> Catalogos(IEnumerable<string> claves)
 {
     var cat = new Dictionary<string, object>();
     cat["almacenes"] = ctx.Query("SELECT DepotID AS id, DepotName AS nombre FROM orgDepot WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = " + empresa + " ORDER BY DepotName")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
-    // Cliente o proveedor con lo que ayuda a decidir al capturar: RFC, condición de pago y descuento habituales, límite de crédito, saldo abierto y fecha de su último documento.
-    // Saldo = facturas, notas de cargo, recibos y gastos con saldo menos notas de crédito con saldo (docDocument.Balance; es la foto de hoy).
+
     string ent(string tabla) =>
         "SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.PaymentTermID,0) AS cond, ISNULL(x.Discount,0) AS descto, " +
         "ISNULL(x.CreditLimit,0) AS credito, ISNULL(sd.Saldo,0) AS saldo, sd.Ultimo AS ultimo, ISNULL(x.CurrencyID,0) AS moneda, " + (tabla == "orgCustomer" ? "ISNULL(x.ReceptorUsoCFDI,'')" : "''") + " AS uso FROM " + tabla + " x " +
@@ -83,7 +66,7 @@ Dictionary<string, object> Catalogos(IEnumerable<string> claves)
     cat["proveedores"] = lados.Contains("P") ? lista("orgSupplier") : new List<Dictionary<string, object>>();
     cat["condiciones"] = ctx.Query("SELECT PaymentTermID AS id, PaymentTermName AS nombre, Sales AS v, Buys AS c FROM engPaymentTerm WHERE DeletedOn IS NULL ORDER BY PaymentTermID")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["venta"] = I(r["v"]) == 1, ["compra"] = I(r["c"]) == 1 }).ToList();
-    // Moneda con su tipo de cambio vigente; catálogos del SAT (forma de pago, método de pago, uso del CFDI) tal como los guarda Comercial; centros de costo de la empresa
+
     cat["monedas"] = ctx.Query("SELECT CurrencyID AS id, IntlSymbol AS simbolo, Currency AS nombre, Rate AS tc FROM vwLBSCurrencyList ORDER BY CurrencyID")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["simbolo"] = S(r["simbolo"]), ["nombre"] = S(r["nombre"]), ["tc"] = D(r["tc"]) }).ToList();
     Func<string, string, List<Dictionary<string, object>>> sat = (g1, g2) =>
@@ -99,13 +82,13 @@ Dictionary<string, object> Catalogos(IEnumerable<string> claves)
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
     cat["impuestos"] = ctx.Query("SELECT t.TaxTypeID AS id, t.TaxTypeName AS nombre, ISNULL(tp.IVA_Perc,0) AS perc FROM vwLBSTaxType t LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = t.TaxTypeID ORDER BY t.TaxTypeName")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["perc"] = D(r["perc"]) }).ToList();
-    // Productos: lo mínimo para buscar y poner precio. Tope de seguridad: un catálogo enorme se carga por completo pero se avisa.
+
     cat["productos"] = ctx.Query("SELECT TOP 30000 ProductID AS id, ISNULL(ProductKey,'') AS clave, ProductName AS nombre, ISNULL(Unit,'') AS unidad, ISNULL(TaxTypeID,0) AS imp, " +
         "ISNULL(PriceList,0) AS venta, ISNULL(CostPrice,0) AS costo, ISNULL(BarCode,'') AS barras, ISNULL(UseLot,0) AS lote, ISNULL(UseSerialNumber,0) AS serie, ISNULL(ProductIsService,0) AS servicio " +
         "FROM orgProduct WHERE DeletedOn IS NULL ORDER BY ProductName")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["clave"] = S(r["clave"]), ["nombre"] = S(r["nombre"]), ["unidad"] = S(r["unidad"]), ["imp"] = I(r["imp"]),
             ["venta"] = D(r["venta"]), ["costo"] = D(r["costo"]), ["barras"] = S(r["barras"]), ["lote"] = I(r["lote"]) == 1, ["serie"] = I(r["serie"]) == 1, ["servicio"] = I(r["servicio"]) == 1 }).ToList();
-    // Existencias por almacén (suma del kardex): {productoId: {almacenId: cantidad}}; un producto sin movimientos no aparece (existencia 0)
+
     var exist = new Dictionary<string, object>();
     try
     {
@@ -117,18 +100,14 @@ Dictionary<string, object> Catalogos(IEnumerable<string> claves)
     }
     catch { }
     cat["existencias"] = exist;
-    // Siguiente folio probable de cada tipo (lo asigna Comercial al guardar; aquí solo se muestra)
+
     var folios = new Dictionary<string, object>();
     foreach (var t in TIPOS.Where(t => claves.Contains((string)t["clave"])))
-        folios[(string)t["clave"]] = I(ctx.Scalar("SELECT ISNULL((SELECT TOP 1 ISNULL(TRY_CONVERT(int, Folio),0) + 1 FROM docDocument WHERE ModuleID = " + (int)t["modulo"] + " AND OwnedBusinessEntityID = " + empresa + " AND DeletedOn IS NULL ORDER BY DocumentID DESC), 1)"));          // el folio del último documento + 1
+        folios[(string)t["clave"]] = I(ctx.Scalar("SELECT ISNULL((SELECT TOP 1 ISNULL(TRY_CONVERT(int, Folio),0) + 1 FROM docDocument WHERE ModuleID = " + (int)t["modulo"] + " AND OwnedBusinessEntityID = " + empresa + " AND DeletedOn IS NULL ORDER BY DocumentID DESC), 1)"));
     cat["folios"] = folios;
     return cat;
 }
 
-// ---------- Documentos de origen (los que estaban seleccionados al lanzar el botón) ----------
-// Para cada documento seleccionado cuyo módulo sirve de origen de algún tipo: sus partidas con lo que AÚN falta por surtir PARA CADA TIPO DERIVADO
-// (una orden de compra puede estar toda recibida y aún sin facturar). «Lo ya surtido» se cuenta por la columna de vínculo propia de cada tipo:
-//   Recepción → DeliverDocumentItemID · Factura de compra → SourceDocumentItemID · Remisión → por producto, dentro de las remisiones que apuntan al pedido (SourceDocumentID).
 List<Dictionary<string, object>> Origenes(IList<long> ids)
 {
     var res = new List<Dictionary<string, object>>();
@@ -175,8 +154,6 @@ List<Dictionary<string, object>> Origenes(IList<long> ids)
     return res;
 }
 
-// ---------- Consultas en vivo (las pide la ventana mientras se captura) ----------
-// Documentos que sirven de origen para el tipo elegido y que pertenecen a esa persona: los 40 más recientes del módulo de origen con partidas que aún faltan por surtir.
 List<Dictionary<string, object>> PendientesDe(long entidad, string claveTipo)
 {
     if (!tipoPor.ContainsKey(claveTipo) || entidad <= 0) return new List<Dictionary<string, object>>();
@@ -185,7 +162,7 @@ List<Dictionary<string, object>> PendientesDe(long entidad, string claveTipo)
         " AND DeletedOn IS NULL AND CancelledOn IS NULL ORDER BY DateDocument DESC, DocumentID DESC").Select(r => L(r["DocumentID"])).ToList();
     return Origenes(ids).Where(o => ((List<Dictionary<string, object>>)((Dictionary<string, object>)o["partidasPor"])[claveTipo]).Count > 0).ToList();
 }
-// Los últimos documentos de esa persona (cualquier módulo), para tener contexto antes de capturar
+
 List<Dictionary<string, object>> UltimosDe(long entidad)
 {
     return ctx.Query("SELECT TOP 6 d.DocumentID, d.ModuleID, ISNULL(m.ModuleName,'') AS Modulo, d.FolioPrefix, d.Folio, d.DateDocument, ISNULL(d.Total,0) AS Total, ISNULL(d.Balance,0) AS Saldo FROM docDocument d " +
@@ -194,9 +171,6 @@ List<Dictionary<string, object>> UltimosDe(long entidad)
             ["fecha"] = Nulo(r["DateDocument"]) ? "" : Convert.ToDateTime(r["DateDocument"], ci).ToString("yyyy-MM-dd"), ["total"] = D(r["Total"]), ["saldo"] = D(r["Saldo"]) }).ToList();
 }
 
-// ---------- Inteligencia de una persona (la pide la ventana HTML al elegirla) ----------
-// Facturado (o comprado) por mes en los últimos 12 meses, los productos que más maneja con su último precio, los días promedio que tarda en pagar y el último
-// documento de ese tipo con sus partidas (para «Repetir último»). Todo sale de Comercial en ese momento; nada se guarda.
 Dictionary<string, object> InteligenciaDe(long entidad, string claveTipo)
 {
     var res = new Dictionary<string, object>();
@@ -237,9 +211,6 @@ Dictionary<string, object> InteligenciaDe(long entidad, string claveTipo)
     return res;
 }
 
-// ---------- Agenda de pago ----------
-// NuevoDocumento deja una parcialidad «de relleno» con importe 0; después de guardar hay que rehacerla con el total real y la condición de pago elegida.
-// Cada renglón de engPaymentTermDetail vence en (fecha + PaymentUnit × días del periodo) y lleva su porcentaje; el último absorbe el redondeo.
 void ArmarAgenda(int doc, int condicion, DateTime fecha)
 {
     double total = D(ctx.Scalar("SELECT Total FROM docDocument WHERE DocumentID=" + doc));
@@ -261,10 +232,6 @@ void ArmarAgenda(int doc, int condicion, DateTime fecha)
     }
 }
 
-// ---------- Crear el documento ----------
-// «spec»: tipo, almacen, entidad, condicion, fecha (yyyy-MM-dd), entrega (yyyy-MM-dd), titulo, comentarios, origenes [ids], partidas [{id, cant, precio, desc (0-100), imp, origenItem}]
-//   y, opcionales: moneda (id), tc (tipo de cambio), centro (id del centro de costo), uso / forma / metodo (claves SAT; solo la factura de cliente)
-// Regresa el DocumentID. Si algo no es válido lanza una excepción con un mensaje que se le puede mostrar a la persona.
 long CrearDocumento(Dictionary<string, object> spec)
 {
     string clave = S(spec["tipo"]);
@@ -285,7 +252,7 @@ long CrearDocumento(Dictionary<string, object> spec)
         if (D(p["precio"]) < 0) throw new Exception("La partida " + n + " tiene precio negativo.");
         double dsc = D(p["desc"]); if (dsc < 0 || dsc > 100) throw new Exception("El descuento de la partida " + n + " debe estar entre 0 y 100.");
     }
-    // Controles previos: nada se escribe en Comercial hasta que todo esto pasa (un documento a medias es peor que un error claro)
+
     string lado = (string)t["lado"];
     if (I(ctx.Scalar("SELECT COUNT(*) AS n FROM orgDepot WHERE DepotID = " + almacen + " AND DeletedOn IS NULL AND OwnedBusinessEntityID = " + empresa)) == 0) throw new Exception("El almacén elegido no existe en esta empresa.");
     if (I(ctx.Scalar("SELECT COUNT(*) AS n FROM " + (lado == "C" ? "orgCustomer" : "orgSupplier") + " x JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID WHERE x.BusinessEntityID = " + entidad + " AND x.DeletedOn IS NULL AND be.DeletedOn IS NULL")) == 0)
@@ -313,23 +280,23 @@ long CrearDocumento(Dictionary<string, object> spec)
 
     try
     {
-    // Encabezado: perfil del módulo + lo que capturó la persona
+
     int centro = spec.ContainsKey("centro") ? I(spec["centro"]) : 0;
     var set = new List<string> { (string)t["perfil"], "CampaignID=NULL", "CostCenterID=" + (centro > 0 ? centro.ToString(ci) : "NULL"), "ProjectID=NULL" };
     int moneda = spec.ContainsKey("moneda") ? I(spec["moneda"]) : 0; double tc = spec.ContainsKey("tc") ? D(spec["tc"]) : 0;
-    if (moneda > 0) set.Add("CurrencyID=" + moneda + ", Rate=" + Num(simboloMon == "MXN" ? 1 : tc));          // en pesos el tipo de cambio siempre es 1
+    if (moneda > 0) set.Add("CurrencyID=" + moneda + ", Rate=" + Num(simboloMon == "MXN" ? 1 : tc));
     if ((bool)t["condicion"]) set.Add("PaymentTermID=" + I(spec["condicion"]));
     string fecha = S(spec.ContainsKey("fecha") ? spec["fecha"] : ""); if (fecha.Length >= 10) set.Add("DateDocument='" + Sq(fecha.Substring(0, 10).Replace("-", "")) + "'");
     string entrega = S(spec.ContainsKey("entrega") ? spec["entrega"] : ""); if ((bool)t["entrega"] && entrega.Length >= 10) set.Add("DateDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "', DateDocDelivery='" + Sq(entrega.Substring(0, 10).Replace("-", "")) + "'");
     string titulo = S(spec.ContainsKey("titulo") ? spec["titulo"] : ""); if (titulo != "") set.Add("Title=N'" + Sq(titulo) + "'");
     string coment = S(spec.ContainsKey("comentarios") ? spec["comentarios"] : ""); if (coment != "") set.Add("Comments=N'" + Sq(coment) + "'");
-    if (origenes.Count > 0) set.Add("SourceDocumentID=" + origenes[0]);          // el sistema solo guarda UN origen en el encabezado; cada partida liga el suyo
+    if (origenes.Count > 0) set.Add("SourceDocumentID=" + origenes[0]);
     ctx.NonQuery("UPDATE docDocument SET " + string.Join(", ", set) + " WHERE DocumentID=" + doc);
 
     foreach (var p in partidas)
     {
         int pid = I(p["id"]); double cant = D(p["cant"]), precio = D(p["precio"]); int imp = I(p["imp"]); long origenItem = p.ContainsKey("origenItem") ? L(p["origenItem"]) : 0;
-        // Costo: compra → el precio pactado; remisión → costo promedio del producto; el resto de ventas no lleva costo
+
         double costo = -1;
         if (!venta) costo = precio;
         else if (modulo == 157) costo = D(ctx.Scalar("SELECT ISNULL(MAX(TOT_Cost),0) FROM orgProductCostComercial WHERE ProductID=" + pid + " AND DepotID=" + almacen));
@@ -338,7 +305,7 @@ long CrearDocumento(Dictionary<string, object> spec)
         if (vinculo == "partida" && origenItem > 0) ctx.NonQuery("UPDATE docDocumentItem SET SourceDocumentItemID=" + origenItem + " WHERE DocumentItemID=" + item);
     }
     ctx.erp.RecalcCompleto(doc);
-    // ¿Mueve o compromete inventario? Lo decide el módulo (StockAffectation ≠ 0), no el tipo de documento
+
     if (I(ctx.Scalar("SELECT ISNULL(MAX(TRY_CONVERT(int, Value)),0) FROM engModuleParameter WHERE ParameterKey='StockAffectation' AND ModuleID=" + modulo)) != 0)
     {
         ctx.erp.AffectStockNEW(doc);
@@ -346,7 +313,7 @@ long CrearDocumento(Dictionary<string, object> spec)
     }
     ctx.erp.Save(doc);
     if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("Save: " + ctx.erp.LastError);
-    if (LlevaCfdi(clave))                                             // datos del comprobante: el motor deja la fila de docDocumentCFD con valores por omisión (G03 / PPD / 99)
+    if (LlevaCfdi(clave))
     {
         var cf = new List<string>();
         string uso = S(spec.ContainsKey("uso") ? spec["uso"] : ""), forma = S(spec.ContainsKey("forma") ? spec["forma"] : ""), metodo = S(spec.ContainsKey("metodo") ? spec["metodo"] : "");
@@ -358,25 +325,23 @@ long CrearDocumento(Dictionary<string, object> spec)
     if ((bool)t["condicion"])
     {
         DateTime fechaBase = DateTime.Today; if (fecha.Length >= 10) DateTime.TryParse(fecha.Substring(0, 10), ci, DateTimeStyles.None, out fechaBase);
-        ArmarAgenda(doc, I(spec["condicion"]), fechaBase);                                                   // agenda de pago con los montos reales
-        try { ctx.erp.UpdateDocumentPaidInfo(doc); } catch { }                                                // saldo y balance
+        ArmarAgenda(doc, I(spec["condicion"]), fechaBase);
+        try { ctx.erp.UpdateDocumentPaidInfo(doc); } catch { }
     }
-    if (vinculo != "") { try { ctx.erp.UpdateStatusDelivery(doc); } catch { } }                       // estado de entrega del documento de origen
+    if (vinculo != "") { try { ctx.erp.UpdateStatusDelivery(doc); } catch { } }
     return doc;
     }
     catch (Exception ex)
     {
-        // El documento ya existe como borrador: se avisa su número para que no quede perdido
+
         throw new Exception(ex.Message + "\n\nQuedó un documento incompleto (id " + doc + "): elimínalo o cancélalo desde Comercial.");
     }
 }
 
-// ---------- Qué documentos seleccionados sirven de origen ----------
 string[] CLAVES = TIPOS.Select(t => (string)t["clave"]).ToArray();
 var seleccion = new List<long>();
 try { var sel = ctx.GetSelectedIds(); if (sel != null) seleccion.AddRange(sel.Select(x => (long)x)); } catch { }
 
-// ---------- Pruebas automáticas (sin ventanas): BROSLMV_DOC_TEST = JSON con el «spec» de un documento; el resultado va al archivo BROSLMV_DOC_OUT ----------
 string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_DOC_TEST");
 if (!string.IsNullOrEmpty(modoPrueba))
 {
@@ -398,15 +363,6 @@ if (!string.IsNullOrEmpty(modoPrueba))
     return resultado;
 }
 
-// ===================================================================================================================================
-// VENTANA (Windows Forms, NO modal: Show, nunca ShowDialog → se puede minimizar y seguir trabajando en Comercial).
-// Diseño de «documento de Comercial»: cinta oscura con las acciones y la información del documento (fecha, serie, folio, entrega), grupos numerados
-// con una etiqueta arriba de cada campo (nada se encima ni se corta), y las partidas con captura rápida + tabla editable.
-//   1 · Cliente / proveedor (búsqueda por nombre o RFC, saldo, crédito) · 2 · Almacén, centro de costo y moneda con tipo de cambio ·
-//   3 · Datos fiscales del CFDI (uso, forma y método de pago; solo la factura de cliente) · 4 · Documento de origen (si el tipo parte de otro) ·
-//   Partidas · Comentarios · Totales con importe en letra.
-// Los manejadores llevan try/catch porque, en modeless, el script «ya terminó» cuando se hace clic. Al guardar SIEMPRE se abre el documento nativo de Comercial.
-// ===================================================================================================================================
 class Opcion { public int Id { get; set; } public string Nombre { get; set; } public string Extra { get; set; } public override string ToString() => Nombre; }
 class Fila { public int Id; public string Clave = "", Nombre = "", Unidad = ""; public double Cant = 1, Max = 0, Precio, Desc; public int Imp; public long OrigenItem; public long Origen; public bool Auto; }
 class Pastilla { public string Titulo, Valor; public Color Color; }
@@ -425,13 +381,12 @@ var origenSel = new List<long>();
 var pendientes = new List<Dictionary<string, object>>();
 var pastillas = new List<Pastilla>();
 Dictionary<string, object> entSel = null, prodSel = null;
-bool guardando = false, suspender = false, metodoManual = false, verG3 = true, verG4 = false;          // Control.Visible miente hasta que la ventana se muestra: se llevan banderas propias
+bool guardando = false, suspender = false, metodoManual = false, verG3 = true, verG4 = false;
 int tipoIdx = 0;
 string quienSoy = "", nombreEmpresa = "";
 try { quienSoy = S(ctx.Scalar("SELECT TOP 1 ISNULL(UserName,'') FROM engUser WHERE UserID = " + ctx.erp.UserId)); } catch { }
 try { nombreEmpresa = S(ctx.Scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + empresa)); } catch { }
 
-// ---------- diseño ----------
 var C_BG = Color.FromArgb(241, 245, 249); var C_LINE = Color.FromArgb(203, 213, 225); var C_TXT = Color.FromArgb(30, 41, 59); var C_MUTED = Color.FromArgb(100, 116, 139);
 var C_HEAD = Color.FromArgb(248, 250, 252); var C_SEL = Color.FromArgb(238, 242, 255); var C_RIB = Color.FromArgb(51, 65, 85); var C_RIB_TX = Color.FromArgb(226, 232, 240); var C_RIB_MU = Color.FromArgb(148, 163, 184);
 var C_VENTA = Color.FromArgb(37, 99, 235); var C_COMPRA = Color.FromArgb(15, 118, 110); var C_ROJO = Color.FromArgb(200, 40, 40); var C_AMBAR = Color.FromArgb(180, 83, 9); var C_VERDE = Color.FromArgb(22, 128, 59);
@@ -445,7 +400,6 @@ bool EsVenta() => (string)TipoActual()["lado"] == "C";
 bool ConCfdi() => LlevaCfdi((string)TipoActual()["clave"]);
 Color Acento() => EsVenta() ? C_VENTA : C_COMPRA;
 
-// controles declarados de antemano (los manejadores de abajo los usan antes de que se construyan)
 Panel ribbon = null, info = null, pTipos = null, pPie = null, g1 = null, g2 = null, g3 = null, g4 = null, g5 = null, g6 = null, g7 = null, pChips = null, btnGuardar = null;
 Label lblRibTitulo = null, lblEntregaEt = null, lblOrigenEst = null, lblNumPart = null, lblSub = null, lblDes = null, lblImp = null, lblTot = null, lblTotEt = null, lblLetra = null, lblPie = null, lblAvisos = null, lblToast = null, lblHint = null;
 DateTimePicker dtFecha = null, dtEntrega = null;
@@ -455,7 +409,6 @@ NumericUpDown nudTC = null, nudCant = null, nudPrecio = null, nudDesc = null;
 CheckedListBox clbOrigen = null; DataGridView grid = null; ListBox lstEnt = null, lstProd = null;
 var btnsTipo = new List<Button>(); var botonesCinta = new List<Panel>();
 
-// ---------- piezas de construcción ----------
 Panel Grupo(Func<string> titulo)
 {
     var p = new Panel { BackColor = Color.White, Size = new Size(600, 120) };
@@ -471,8 +424,7 @@ Panel Grupo(Func<string> titulo)
 Label Et(Control padre, string t, int x, int y) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = Color.Transparent }; padre.Controls.Add(l); return l; }
 TextBox Cuadro(Control padre, string etiqueta, int x, int y, int w, bool soloLectura = false)
 {
-    // Marco de altura fija que dibuja el borde; el TextBox va adentro SIN borde y centrado. Así la altura no depende de cómo calcule Windows la del TextBox
-    // (cambia con el monitor y la escala) y ya no se encima con la etiqueta.
+
     if (etiqueta != "") Et(padre, etiqueta, x, y);
     var marco = new Panel { Location = new Point(x, y + 18), Size = new Size(w, 26), BackColor = soloLectura ? C_HEAD : Color.White };
     marco.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawRectangle(pen, 0, 0, marco.Width - 1, marco.Height - 1); };
@@ -497,7 +449,6 @@ void PonerPorClave(ComboBox c, string clave) { for (int i = 0; i < c.Items.Count
 string ClaveDe(ComboBox c) { var o = c.SelectedItem as Opcion; return o == null ? "" : o.Extra ?? ""; }
 void LlenarSat(ComboBox c, string grupo) { c.Items.Clear(); foreach (var x in cat(grupo)) c.Items.Add(new Opcion { Id = c.Items.Count, Extra = S(x["clave"]), Nombre = S(x["clave"]) + "  ·  " + S(x["nombre"]) }); }
 
-// ---------- cinta superior ----------
 ribbon = new Panel { BackColor = C_RIB, Size = new Size(1176, 100) };
 lblRibTitulo = new Label { Text = "Nuevo documento", Font = F_H2, ForeColor = C_RIB_TX, BackColor = C_RIB, Location = new Point(12, 5), AutoSize = true }; ribbon.Controls.Add(lblRibTitulo);
 int bx = 12;
@@ -530,7 +481,6 @@ EtR("Folio", 222, 20); txtFolio = CajaInfo(222, 38, 86);
 lblEntregaEt = EtR("Entrega esperada", 320, 20); dtEntrega = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 100, Value = DateTime.Today.AddDays(7) }; dtEntrega.Location = new Point(320, 38 + Math.Max(0, (26 - dtEntrega.Height) / 2)); info.Controls.Add(dtEntrega);
 EtR("(el folio definitivo lo asigna Comercial al guardar)", 14, 70).ForeColor = C_RIB_MU;
 
-// ---------- tipos de documento ----------
 pTipos = new Panel { BackColor = Color.White, Size = new Size(1176, 40) };
 pTipos.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawRectangle(pen, 0, 0, pTipos.Width - 1, pTipos.Height - 1); };
 var flTipos = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, AutoScroll = false, BackColor = Color.White, Padding = new Padding(8, 5, 8, 0) }; pTipos.Controls.Add(flTipos);
@@ -543,7 +493,6 @@ for (int i = 0; i < TIPOS.Count; i++)
     b.FlatAppearance.BorderColor = C_LINE; b.Click += (s, e) => Seguro(() => CambiarTipo(idx)); btnsTipo.Add(b); flTipos.Controls.Add(b);
 }
 
-// ---------- 1 · persona ----------
 g1 = Grupo(() => NumeroGrupo(g1) + ". " + (EsVenta() ? "Cliente" : "Proveedor"));
 txtEnt = Cuadro(g1, "Buscar por nombre o RFC  (F2)", 14, 34, 320); txtRfc = Cuadro(g1, "RFC", 346, 34, 130, true);
 cmbCond = Lista(g1, "Condición de pago", 488, 34, 118);
@@ -562,7 +511,6 @@ pChips.Paint += (s, e) =>
 var btnHist = new Button { Text = "Historial", Location = new Point(526, 92), Size = new Size(80, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnHist.FlatAppearance.BorderColor = C_LINE; g1.Controls.Add(btnHist);
 txtRfc.TabStop = false;
 
-// ---------- 2 · almacén, centro de costo y moneda ----------
 g2 = Grupo(() => NumeroGrupo(g2) + ". Almacén, centro de costo y moneda");
 cmbAlm = Lista(g2, "Almacén", 14, 34, 230); cmbCC = Lista(g2, "Centro de costo", 256, 34, 210);
 cmbMon = Lista(g2, "Moneda", 14, 84, 230); nudTC = Numero(g2, "Tipo de cambio", 256, 84, 120, 4, 9999999M);
@@ -572,17 +520,14 @@ cmbCC.Items.Add(new Opcion { Id = 0, Nombre = "(ninguno)" }); foreach (var c in 
 foreach (var m in monedas) cmbMon.Items.Add(new Opcion { Id = I(m["id"]), Nombre = S(m["simbolo"]) + "  ·  " + S(m["nombre"]), Extra = S(m["tc"]) });
 PonerPorId(cmbMon, 3);
 
-// ---------- 3 · datos fiscales (solo la factura de cliente) ----------
 g3 = Grupo(() => NumeroGrupo(g3) + ". Datos fiscales del CFDI");
 cmbUso = Lista(g3, "Uso del CFDI", 14, 34, 410, 640); cmbForma = Lista(g3, "Forma de pago", 436, 34, 330, 520); cmbMetodo = Lista(g3, "Método de pago", 778, 34, 290, 420);
 LlenarSat(cmbUso, "usos"); LlenarSat(cmbForma, "formas"); LlenarSat(cmbMetodo, "metodos"); PonerPorClave(cmbUso, "G03"); PonerPorClave(cmbMetodo, "PUE"); PonerPorClave(cmbForma, "01");
 
-// ---------- 4 · documento de origen ----------
 g4 = Grupo(() => NumeroGrupo(g4) + ". Partir de un documento existente");
 lblOrigenEst = new Label { Location = new Point(330, 7), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = C_HEAD }; g4.Controls.Add(lblOrigenEst);
 clbOrigen = new CheckedListBox { Location = new Point(14, 36), Size = new Size(1000, 70), CheckOnClick = true, BorderStyle = BorderStyle.None, BackColor = Color.White }; g4.Controls.Add(clbOrigen);
 
-// ---------- partidas ----------
 g5 = Grupo(() => NumeroGrupo(g5) + ". Partidas");
 txtProd = Cuadro(g5, "Producto: nombre, clave o código de barras  (F3)", 14, 34, 340);
 var btnBuscaProd = new Button { Text = "Ver todos", Location = new Point(360, 52), Size = new Size(80, 26), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnBuscaProd.FlatAppearance.BorderColor = C_LINE; g5.Controls.Add(btnBuscaProd);
@@ -615,12 +560,11 @@ foreach (var c in new[] { "Exist", "Cant", "Precio", "DescPerc", "Importe" }) { 
 grid.Columns["Importe"].DefaultCellStyle.Font = F_B; grid.Columns["Desc"].DefaultCellStyle.WrapMode = DataGridViewTriState.False;
 g5.Controls.Add(grid);
 
-// ---------- comentarios ----------
 g6 = Grupo(() => "Referencia y comentarios");
 txtTitulo = Cuadro(g6, "Título (opcional)", 14, 34, 190); txtTitulo.MaxLength = 120;
 txtComent = Cuadro(g6, "Comentarios (opcional)", 216, 34, 210); txtComent.MaxLength = 250;
 Et(g6, "Ambos se guardan en el encabezado del documento.", 14, 80);
-// ---------- totales ----------
+
 g7 = Grupo(() => "Totales");
 Label Total(string cap, int x, out Label val) { Et(g7, cap, x, 34); val = new Label { Text = "0.00", Font = F_VAL, ForeColor = C_TXT, Location = new Point(x, 50), Size = new Size(140, 24), TextAlign = ContentAlignment.MiddleLeft, BackColor = Color.Transparent }; g7.Controls.Add(val); return val; }
 Total("Subtotal", 14, out lblSub); Total("Descuento", 164, out lblDes); Total("Impuestos", 314, out lblImp);
@@ -628,7 +572,6 @@ lblTotEt = new Label { Text = "TOTAL", Font = F_SM, ForeColor = C_MUTED, AutoSiz
 lblTot = new Label { Text = "0.00", Font = F_TOT, AutoSize = false, Size = new Size(240, 36), TextAlign = ContentAlignment.MiddleRight, Location = new Point(560, 46) }; g7.Controls.Add(lblTot);
 lblLetra = new Label { Text = "", Font = F_ITAL, ForeColor = C_MUTED, AutoSize = false, Size = new Size(780, 20), Location = new Point(14, 86), AutoEllipsis = true }; g7.Controls.Add(lblLetra);
 
-// ---------- pie ----------
 pPie = new Panel { BackColor = Color.White, Size = new Size(1200, 40) };
 pPie.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawLine(pen, 0, 0, pPie.Width, 0); };
 lblPie = new Label { Location = new Point(14, 12), AutoSize = true, ForeColor = C_MUTED, Font = F_BASE }; pPie.Controls.Add(lblPie);
@@ -651,7 +594,6 @@ void Aviso(string m, bool mal = false) { lblToast.Text = m; lblToast.BackColor =
 
 foreach (var c in new Control[] { ribbon, pTipos, g1, g2, g3, g4, g5, g6, g7, pPie, lstEnt, lstProd, lblToast }) frm.Controls.Add(c);
 
-// ---------- distribución (todo a mano: nada se encima y se ajusta al tamaño de la ventana) ----------
 int NumeroGrupo(Panel g) { int n = 0; foreach (var x in new[] { g1, g2, g3, g4, g5 }) { if ((x == g3 && !verG3) || (x == g4 && !verG4)) continue; n++; if (x == g) return n; } return n; }
 void Distribuir()
 {
@@ -673,9 +615,8 @@ void Distribuir()
 }
 frm.Resize += (s, e) => Distribuir();
 
-// ---------- lógica ----------
 Dictionary<string, object> ProdPor(int id) => productos.FirstOrDefault(x => I(x["id"]) == id);
-// Los precios y costos del catálogo están en pesos: en un documento en otra moneda se convierten con el tipo de cambio capturado
+
 double TcPesos() { var m = MonedaSel(); return m != null && S(m["simbolo"]) != "MXN" && nudTC.Value > 0 ? (double)nudTC.Value : 1.0; }
 double tcPrev = 1.0; bool enCambioMon = false;
 double PrecioDe(int id) { var p = ProdPor(id); return p == null ? 0 : Math.Round((!EsVenta() ? D(p["costo"]) : D(p["venta"])) / TcPesos(), 4); }
@@ -774,7 +715,7 @@ void PintarOrigenes()
         clbOrigen.Items.Add(new Opcion { Id = (int)L(o["id"]), Nombre = (S(o["folio"]) == "" ? "Documento " + L(o["id"]) : S(o["folio"])) + "  ·  " + S(o["entidadNombre"]) + "  ·  " + (S(o["fecha"]) != "" ? S(o["fecha"]) + "  ·  " : "") + n + " partida(s) pendiente(s)" + (D(o["total"]) > 0 ? "  ·  total " + D(o["total"]).ToString("N2") : "") }, origenSel.Contains(L(o["id"])));
     }
 }
-// El método de pago sigue a la condición (contado → una sola exhibición; crédito → parcialidades, forma 99) mientras la persona no lo cambie a mano
+
 void AutoMetodo()
 {
     if (!ConCfdi() || metodoManual) return; var c = cmbCond.SelectedItem as Opcion; bool contado = c != null && c.Nombre.ToUpperInvariant().Contains("CONTADO");
@@ -810,7 +751,6 @@ void CambiarTipo(int idx)
     if (entSel != null) ElegirEntidad(entSel);
 }
 
-// ---------- búsqueda con lista desplegable (persona y producto) ----------
 void Desplegar(TextBox txt, ListBox lst, IEnumerable<Dictionary<string, object>> fuente, Func<Dictionary<string, object>, string> linea1, Func<Dictionary<string, object>, string> linea2, Func<Dictionary<string, object>, string> buscar, int max)
 {
     var q = txt.Text.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -850,7 +790,7 @@ Action ElegirDeListaProd = () =>
 {
     string v = txtProd.Text.Trim(); Dictionary<string, object> p = null;
     if (v != "") p = productos.FirstOrDefault(x => (S(x["barras"]) != "" && S(x["barras"]) == v) || string.Equals(S(x["clave"]), v, StringComparison.OrdinalIgnoreCase));
-    if (p != null) { ElegirProducto(p); AgregarCaptura(); return; }                      // código de barras o clave exacta: se agrega directo (flujo de lector)
+    if (p != null) { ElegirProducto(p); AgregarCaptura(); return; }
     var o = lstProd.Visible ? lstProd.SelectedItem as Opcion : null;
     if (o != null) { ElegirProducto(productos.First(x => I(x["id"]) == o.Id)); return; }
     if (prodSel != null) AgregarCaptura();
@@ -886,8 +826,7 @@ cmbMon.SelectedIndexChanged += (_, __) => Seguro(() =>
     var m = MonedaSel(); enCambioMon = true; if (m != null) { nudTC.Value = (decimal)Math.Max(0.0001, S(m["simbolo"]) == "MXN" ? 1.0 : D(m["tc"])); nudTC.Enabled = S(m["simbolo"]) != "MXN"; } enCambioMon = false;
     Repreciar(true);
 });
-// Al cambiar de moneda: los precios del catálogo (automáticos) se recalculan desde su precio en pesos; los que la persona escribió se convierten proporcionalmente; los de un documento de origen se respetan.
-// Al ajustar solo el tipo de cambio: se recalculan los automáticos.
+
 void Repreciar(bool cambioMoneda)
 {
     double ahora = TcPesos(), antes = tcPrev; tcPrev = ahora;
@@ -921,7 +860,6 @@ clbOrigen.ItemCheck += (_, ev) => frm.BeginInvoke(new Action(() => Seguro(() =>
     PintarGrid();
 })));
 
-// historial de la persona: ventana aparte, también sin bloquear
 btnHist.Click += (_, __) => Seguro(() =>
 {
     if (entSel == null) return; var ult = UltimosDe(L(entSel["id"]));
@@ -964,7 +902,7 @@ void Crear(bool otro)
     try { ctx.erp.RefreshGrid(); } catch { }
     string folio = ""; try { folio = S(ctx.Scalar("SELECT ISNULL(FolioPrefix,'') + CAST(ISNULL(Folio,'') AS NVARCHAR(30)) FROM docDocument WHERE DocumentID = " + doc)); } catch { }
     string abrirMal = null;
-    try { ctx.erp.AbrirDocumento((int)doc, (int)t["modulo"]); } catch (Exception ex) { abrirMal = ex.Message; }          // SIEMPRE se abre el documento nativo del sistema
+    try { ctx.erp.AbrirDocumento((int)doc, (int)t["modulo"]); } catch (Exception ex) { abrirMal = ex.Message; }
     if (abrirMal != null) MessageBox.Show("El documento " + (folio == "" ? doc.ToString() : folio) + " se creó, pero no se pudo abrir en Comercial:\n" + abrirMal + "\n\nBúscalo por su folio.", "Crear documento", MessageBoxButtons.OK, MessageBoxIcon.Information);
     if (otro) { Limpiar(); Aviso("Documento " + (folio == "" ? doc.ToString() : folio) + " creado" + (abrirMal == null ? " y abierto en Comercial." : ".")); }
     else frm.Close();
@@ -978,16 +916,15 @@ frm.KeyDown += (_, ev) =>
     else if (ev.KeyCode == Keys.Escape && !lstEnt.Visible && !lstProd.Visible) { frm.Close(); ev.Handled = true; }
 };
 
-// ---------- Arranque: modeless ----------
 { var m0 = MonedaSel(); if (m0 != null) { nudTC.Value = (decimal)Math.Max(0.0001, D(m0["tc"])); nudTC.Enabled = S(m0["simbolo"]) != "MXN"; } }
 CambiarTipo(0);
-if (origenes.Count > 0)                   // seleccionados en la lista de Comercial: se propone el tipo que parte de ellos y se marcan
+if (origenes.Count > 0)
 {
     int ti = TIPOS.FindIndex(t => (int)t["origen"] == I(origenes[0]["modulo"]));
     if (ti >= 0) { CambiarTipo(ti); for (int i = 0; i < clbOrigen.Items.Count; i++) clbOrigen.SetItemChecked(i, true); }
 }
 Distribuir();
-string capturaPrueba = Environment.GetEnvironmentVariable("BROSLMV_DOC_SHOT");        // pruebas: guarda una captura de la ventana (con datos de ejemplo) y no la deja abierta
+string capturaPrueba = Environment.GetEnvironmentVariable("BROSLMV_DOC_SHOT");
 if (!string.IsNullOrEmpty(capturaPrueba))
 {
     int tipoShot = int.TryParse(Environment.GetEnvironmentVariable("BROSLMV_DOC_SHOT_TIPO"), out var ts) ? ts : 0; CambiarTipo(tipoShot);

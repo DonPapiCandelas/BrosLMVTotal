@@ -6,7 +6,6 @@
 // Categoria: Documentos
 // Documentacion: CREAR_DOC_DESDE_XML.html
 // Crear documentos desde XML: convierte los CFDI recibidos seleccionados en Facturas de Compra, Gastos y demás módulos que reciben XML.
-// Selecciona los XML en la lista de Comercial y ejecuta. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
 
 using System;
 using System.Collections.Generic;
@@ -27,8 +26,6 @@ if (ids == null || ids.Count == 0)
     return;
 }
 
-// Todo se descubre de la empresa activa (ownEntityId): módulos por su naturaleza, catálogos, valores fiscales y rutas; nada va escrito a mano.
-// Lo que no se pueda descubrir en una empresa nueva se fija en la tabla zzBrosCfdiConfig (Clave, Valor).
 var ci = CultureInfo.InvariantCulture;
 var ser = new JavaScriptSerializer { MaxJsonLength = 128 * 1024 * 1024 };
 
@@ -54,7 +51,6 @@ string FechaSql(DateTime d) => "'" + d.ToString("yyyy-MM-dd HH:mm:ss", ci) + "'"
 int ownEntityId = ctx.erp.OwnedBusinessEntityId;
 string idsJoined = ctx.JoinIds(ids);
 
-// ── 1. Tablas propias (memoria por empresa) ─────────────────────────────────────────────────────────────
 ctx.NonQuery(@"
 IF OBJECT_ID('zzBrosCfdiProductoMapa', 'U') IS NULL
     CREATE TABLE zzBrosCfdiProductoMapa (
@@ -69,7 +65,6 @@ IF OBJECT_ID('zzBrosCfdiGastoMapa', 'U') IS NULL
 IF COL_LENGTH('zzBrosCfdiGastoMapa', 'ClaveProdServ') IS NULL ALTER TABLE zzBrosCfdiGastoMapa ADD ClaveProdServ NVARCHAR(20) NULL;
 IF OBJECT_ID('zzBrosCfdiConfig', 'U') IS NULL CREATE TABLE zzBrosCfdiConfig (Clave NVARCHAR(60) NOT NULL PRIMARY KEY, Valor NVARCHAR(200) NULL);");
 
-// ── 2. Modelos ───────────────────────────────────────────────────────────────────────────────────────────
 class TaxRow
 {
     public int Id; public string Nombre; public double Iva, Ieps, RetIva, RetIsr;
@@ -151,12 +146,11 @@ class DocXml
     public string Estado { get; set; }
     public string EstadoTipo { get; set; }
     public List<string> Avisos { get; set; } = new List<string>();
-    public List<string> Tags { get; set; } = new List<string>();   // versión corta de los avisos para la lista
+    public List<string> Tags { get; set; } = new List<string>();
     public List<ItemXml> Partidas { get; set; } = new List<ItemXml>();
     public DateTime FechaDoc { get { return FechaEmision ?? FechaCert ?? DateTime.Now; } }
 }
 
-// ── 3. Catálogos (una sola función; se usa al abrir y en "Recargar catálogos") ────────────────────────────
 List<Dictionary<string, object>> provs = null, prods = null, exps = null, terms = null, depots = null, curs = null;
 List<Dictionary<string, object>> mapasProd = null, mapasGasto = null;
 var taxRows = new List<TaxRow>();
@@ -173,10 +167,10 @@ var mGastoProv = new Dictionary<string, int>();
 var histGastoDesc = new Dictionary<string, int>();
 var histGastoProv = new Dictionary<int, int>();
 var detalleTerm = new Dictionary<int, List<Dictionary<string, object>>>();
-// Configuración leída de la empresa (no hay valores fijos para altas, rutas ni listas fiscales)
-int cfgTipoDocCompra = -1, cfgTipoDocGasto = -1;                 // enumeración DocumentType del motor
+
+int cfgTipoDocCompra = -1, cfgTipoDocGasto = -1;
 int cfgCfdTipo = -1, cfgCfdEstatus = -1, cfgPagoEstatus = -1, cfgXmlUsaClave = -1;
-int cfgEntMoral = -1, cfgEntFisica = -1, cfgEntExtranjero = -1;   // enumeración BusinessEntityType
+int cfgEntMoral = -1, cfgEntFisica = -1, cfgEntExtranjero = -1;
 int cfgCanalEmail = -1, cfgCanalTel = -1;
 string cfgNomCanalEmail = "", cfgNomCanalTel = "";
 List<Dictionary<string, object>> regimenes = new List<Dictionary<string, object>>(), personas = new List<Dictionary<string, object>>();
@@ -184,10 +178,9 @@ string cfgCfdExport = "", cfgFormaDef = "", cfgMetodoDef = "", cfgUsoDef = "";
 var cfgOverride = new Dictionary<string, string>();
 int cfgPais = 0, cfgIdioma = 0, cfgMonedaBase = 0, cfgTipoIdentRfc = 0, cfgTipoDireccion = 0, cfgTipoProducto = 0;
 string cfgNombreIdentRfc = "", cfgNombreDireccion = "", cfgRutaProcesado = "";
-var cfgCarpetasXml = new List<string>();   // plantillas de carpeta donde buscar los XML ({RFC} = RFC de la empresa)
+var cfgCarpetasXml = new List<string>();
 List<Dictionary<string, object>> formas = new List<Dictionary<string, object>>(), metodos = new List<Dictionary<string, object>>(), usos = new List<Dictionary<string, object>>();
-// Tipo: "compra" (naturaleza de Facturas Compra), "gasto" (naturaleza de Gastos) u "otro" (recibe XML pero su comportamiento aún no está validado)
-// Stock/Costo/CostoCom/Fin = parámetros de afectación del módulo (engModuleParameter): inventario, costo fiscal, costo comercial y saldo/banco. 0 = no afecta.
+
 class Destino { public int Id; public string Nombre; public string Tipo; public string Aviso; public int Stock, Costo, CostoCom, Fin, Poliza; }
 var destinos = new List<Destino>();
 bool EsGasto(int m) { return destinos.Any(x => x.Id == m && x.Tipo == "gasto"); }
@@ -195,7 +188,6 @@ bool EsCompra(int m) { return destinos.Any(x => x.Id == m && x.Tipo == "compra")
 Destino DestinoDe(int m) { return destinos.First(x => x.Id == m); }
 bool EsOtro(int m) { return destinos.Any(x => x.Id == m && x.Tipo == "otro"); }
 
-// Valor fijado por empresa en zzBrosCfdiConfig (si existe) o, si no, el descubierto en engRefCombo por nombre.
 int ComboItem(string clave, string grupo, string filtroNombre)
 {
     string ov;
@@ -205,8 +197,6 @@ int ComboItem(string clave, string grupo, string filtroNombre)
     return r.Count > 0 ? I(r[0]["ItemData"]) : -1;
 }
 
-// Destinos: todo módulo sobre docDocument con XMLRecibido = 1, clasificado por su DocumentTypeID (compra / gasto / otro sin validar); así entran
-// también los módulos copiados o renombrados.
 void CargarDestinos()
 {
     cfgTipoDocCompra = ComboItem("TipoDocCompra", "DocumentType", "Factura");
@@ -239,7 +229,6 @@ GROUP BY m.ModuleID, m.ModuleName");
         throw new Exception("No se encontraron módulos de compra ni de gasto que reciban XML. Si el catálogo DocumentType de esta empresa usa otros nombres, fije TipoDocCompra y TipoDocGasto en zzBrosCfdiConfig.");
 }
 
-// Valor más frecuente de una consulta de una columna (muestra de lo que Comercial ya hizo en esta empresa)
 string Moda(string sql, string col)
 {
     var r = ctx.Query(sql);
@@ -265,7 +254,7 @@ void CargarConfiguracion()
     cfgNombreDireccion = a.Count > 0 ? S(a[0]["AddressName"]) : "";
     var t = ctx.Query("SELECT ItemData FROM engRefCombo WHERE CboGroupName = N'ProductType' AND DeletedOn IS NULL ORDER BY ItemData");
     cfgTipoProducto = t.Count > 0 ? I(t[0]["ItemData"]) : 0;
-    // Carpeta donde Comercial deja los XML procesados: se toma de un documento que ya la tenga
+
     var p = ctx.Query("SELECT TOP 1 CFDFileXML FROM docDocumentCFD WHERE CFDFileXML LIKE N'%XMLRecibidos%' ORDER BY DocumentID DESC");
     cfgRutaProcesado = "";
     if (p.Count > 0)
@@ -273,8 +262,7 @@ void CargarConfiguracion()
         string f = S(p[0]["CFDFileXML"]); int i = f.LastIndexOf('\\');
         if (i > 0) cfgRutaProcesado = f.Substring(0, i + 1);
     }
-    // Dónde buscar los XML: 1) la ruta de un documento que ya la tenga, 2) el parámetro de carpeta de CFDI de Comercial,
-    // 3) la carpeta de datos de Comercial (padre de su carpeta de respaldos) + \CFDI\<RFC>\XMLRecibidos
+
     cfgCarpetasXml = new List<string>();
     if (cfgRutaProcesado.Length > 0) cfgCarpetasXml.Add(cfgRutaProcesado);
     string cfdDocs = Moda("SELECT TOP 1 [Value] FROM engParameter WHERE [Key] = N'CFDDocumentsPath' AND [Value] IS NOT NULL AND LTRIM(RTRIM(CAST([Value] AS nvarchar(500)))) <> ''", "Value").Trim();
@@ -305,11 +293,11 @@ void CargarConfiguracion()
     cfgNomCanalEmail = ne.Count > 0 ? S(ne[0]["ItemValue"]) : "";
     cfgNomCanalTel = nt.Count > 0 ? S(nt[0]["ItemValue"]) : "";
     CargarDestinos();
-    // Enumeración de tipo de persona (Moral / Física / Extranjero) del alta de proveedores
+
     cfgEntMoral = ComboItem("TipoEntidadMoral", "BusinessEntityType", "%Moral%");
     cfgEntFisica = ComboItem("TipoEntidadFisica", "BusinessEntityType", "%sica%");
     cfgEntExtranjero = ComboItem("TipoEntidadExtranjero", "BusinessEntityType", "%Extranjer%");
-    // Valores fiscales: muestra de los documentos que Comercial ya creó desde XML en esta empresa; si aún no hay, del catálogo
+
     string idsDest = string.Join(",", destinos.Select(x => x.Id));
     string idsCompra = string.Join(",", destinos.Where(x => x.Tipo == "compra").Select(x => x.Id).DefaultIfEmpty(-1));
     string baseCfd = "FROM docDocumentCFD c INNER JOIN docDocument d ON d.DocumentID = c.DocumentID WHERE d.DeletedOn IS NULL AND d.OwnedBusinessEntityID = " + ownEntityId + " AND d.ModuleID IN (" + idsDest + ") AND ISNULL(c.CFDIFolioFiscal, '') <> ''";
@@ -405,7 +393,6 @@ ORDER BY t.TaxTypeName");
     foreach (var k in tiposPorRfc.Where(x => x.Value.Count > 1).Select(x => x.Key).ToList()) mGastoProv.Remove(k);
 }
 
-// Historial de tipos de gasto que Comercial ya tiene por proveedor (gastos capturados a mano o desde XML).
 void CargarHistorial(IEnumerable<int> bes)
 {
     var lista = bes.Where(x => x > 0).Distinct().ToList();
@@ -441,12 +428,10 @@ List<Dictionary<string, object>> DetalleDePlazo(int id)
 CargarCatalogos();
 CargarConfiguracion();
 
-// ── 4. Opciones de la sesión ─────────────────────────────────────────────────────────────────────────────
-bool optCrearProv = true;          // proveedor faltante: true = se da de alta solo
-string optProductos = "sin";       // sin = renglón descriptivo | crear = alta automática | exigir = bloquea hasta asignar
-int optGastoDefecto = 0;           // tipo de gasto para partidas sin sugerencia (0 = ninguno)
+bool optCrearProv = true;
+string optProductos = "sin";
+int optGastoDefecto = 0;
 
-// ── 5. Encabezados y partidas del lote seleccionado ──────────────────────────────────────────────────────
 var headsRaw = ctx.Query(@"
 SELECT s.DocSATID, s.UUID, s.TipoComprobante, s.RFCEmisor, s.RazonSocial,
        s.RFCReceptor, s.DomicilioFiscalReceptor, s.RegimenFiscalReceptor, s.UsoCFDI,
@@ -475,8 +460,6 @@ FROM docDocumentItemCFDiSAT
 WHERE DocSATID IN (" + idsJoined + @")
 ORDER BY ItemID");
 
-// ── 6. Impuestos: el XML manda; se empareja contra los tipos de impuesto que YA existen ──────────────────
-
 bool Cerca(double a, double b, double baseImp) { return Math.Abs(a - b) <= 0.0006 + 0.0101 / Math.Max(baseImp, 1.0); }
 
 double Ajusta(double tasa, double baseImp)
@@ -498,7 +481,6 @@ string ComposicionTexto(double iva, double ieps, double retIva, double retIsr, s
     return string.Join(" + ", p);
 }
 
-// Devuelve el TaxTypeID que coincide EXACTO con lo que trae el XML, o 0 si no hay ninguno.
 void ResolverImpuesto(ItemXml it)
 {
     double b = it.BaseImp;
@@ -522,15 +504,14 @@ void ResolverImpuesto(ItemXml it)
         int s = 0;
         if (todoCero)
         {
-            if (t.EsExento) s += 3;                          // "Exento" solo si el usuario lo elige
-            if (t.EsNA) s += obj01 ? -2 : 2;                 // "N/A" para objeto 01 (no objeto de impuesto)
+            if (t.EsExento) s += 3;
+            if (t.EsNA) s += obj01 ? -2 : 2;
         }
         return s;
     };
     it.TaxTypeId = cand.OrderBy(puntos).ThenBy(t => t.Id).First().Id;
 }
 
-// ── 7. Sugerencias de producto y de tipo de gasto (memoria) ──────────────────────────────────────────────
 void Sugerir(DocXml d, ItemXml it)
 {
     if (it.ProdId == 0 || it.ProdOrigen == "memoria" || it.ProdOrigen == "sugerido")
@@ -554,10 +535,9 @@ void Sugerir(DocXml d, ItemXml it)
     }
 }
 
-// ── 8. Armado de documentos en memoria ───────────────────────────────────────────────────────────────────
 var docs = new Dictionary<long, DocXml>();
 int defaultDepot = depots.Count > 0 ? I(depots[0]["DepotID"]) : 1;
-// Plazo por omisión: el de contado (todas sus parcialidades a 0 días), o el primero de la lista
+
 int defaultTerm = terms.Count > 0 ? I(terms[0]["PaymentTermID"]) : 0;
 foreach (var tm in terms)
 {
@@ -629,7 +609,6 @@ CargarHistorial(docs.Values.Select(x => x.BusinessEntityId));
 foreach (var d in docs.Values)
     foreach (var it in d.Partidas) { ResolverImpuesto(it); Sugerir(d, it); }
 
-// Vuelve a evaluar impuestos y sugerencias (tras recargar catálogos, asociar proveedor, etc.)
 void ReevaluarTodo(bool impuestos)
 {
     foreach (var d in docs.Values)
@@ -640,7 +619,6 @@ void ReevaluarTodo(bool impuestos)
         }
 }
 
-// ── 9. Estado de cada documento ──────────────────────────────────────────────────────────────────────────
 void EvaluarEstados()
 {
     foreach (var d in docs.Values)
@@ -660,7 +638,7 @@ void EvaluarEstados()
         {
             d.Estado = "Bloqueado: destino inválido"; d.EstadoTipo = "blocked"; d.Crear = false; continue;
         }
-        // 1) Impuestos: sin coincidencia exacta NO se crea, se sugiere el tipo de impuesto a dar de alta
+
         var faltan = d.Partidas.Where(l => l.TaxTypeId == 0).Select(l => l.CompTxt).Distinct().ToList();
         if (faltan.Count > 0)
         {
@@ -669,16 +647,16 @@ void EvaluarEstados()
             foreach (var f in faltan) { d.Avisos.Add("Sugerencia: dar de alta en Comercial un tipo de impuesto «" + f + "» y recargar catálogos."); d.Tags.Add("falta impuesto: " + f); }
             continue;
         }
-        // 2) Proveedor
+
         bool pendiente = false;
         if (d.BusinessEntityId == 0)
         {
             if (optCrearProv) { d.Avisos.Add("Se creará el proveedor"); d.Tags.Add("proveedor nuevo"); }
             else { d.Avisos.Add("El proveedor no existe (activa «Crear proveedores faltantes» o víncula uno)"); d.Tags.Add("sin proveedor"); pendiente = true; }
         }
-        // 3) Productos
+
         var dm = DestinoDe(d.DestinoModulo);
-        bool usaProducto = dm.Tipo == "compra" || dm.Stock != 0;   // los módulos que mueven inventario necesitan producto
+        bool usaProducto = dm.Tipo == "compra" || dm.Stock != 0;
         int sinProd = usaProducto ? d.Partidas.Count(l => l.ProdId == 0) : 0;
         var dest = destinos.First(x => x.Id == d.DestinoModulo);
         if (dest.Aviso.Length > 0) { d.Avisos.Add("Módulo «" + dest.Nombre + "» " + dest.Aviso); d.Tags.Add("módulo sin validar"); }
@@ -688,7 +666,7 @@ void EvaluarEstados()
             else if (optProductos == "crear") { d.Avisos.Add("Se crearán " + sinProd + " producto(s)"); d.Tags.Add(sinProd + " producto(s) nuevos"); }
             else { d.Avisos.Add(sinProd + " partida(s) como renglón descriptivo (sin producto)" + (dm.Stock != 0 ? ": NO moverán inventario" : "")); d.Tags.Add(sinProd + " sin producto"); }
         }
-        // 4) Tipo de gasto
+
         if (EsGasto(d.DestinoModulo))
         {
             int sinGasto = d.Partidas.Count(l => l.ProdId == 0 && l.ExpId == 0);
@@ -701,7 +679,6 @@ void EvaluarEstados()
 }
 EvaluarEstados();
 
-// ── 10. Estado hacia la interfaz ─────────────────────────────────────────────────────────────────────────
 object GenerarCatalogos()
 {
     return new
@@ -808,9 +785,6 @@ object GenerarEstado()
     };
 }
 
-// ── 11. Altas (mismas tablas que escribe Comercial al generar desde XML; registros 012 y 013 del laboratorio) ─
-// Ejecuta un lote de ALTA (varios INSERT en transacción) por una conexión propia (ctx.OpenConn) y devuelve el ID de su SELECT final.
-// Por el puente COM de Comercial (ctx.Scalar / ctx.NonQuery) estos lotes se ejecutan pero el resultado no se puede leer y falla.
 int EjecutaAlta(string sql)
 {
     using (var cn = ctx.OpenConn())
@@ -822,8 +796,6 @@ int EjecutaAlta(string sql)
     }
 }
 
-// Datos con los que se da de alta un proveedor: los del XML (régimen fiscal y CP del lugar de expedición, que el staging no guarda)
-// más lo que el usuario complete en la pestaña Proveedores.
 class ProvNuevo
 {
     public string Rfc = "", Razon = "", NombreCom = "", Regimen = "", Cp = "", Colonia = "", Calle = "", NumExt = "", NumInt = "", Tel = "", Email = "";
@@ -862,7 +834,6 @@ ProvNuevo ProvDe(DocXml d)
     return p;
 }
 
-// Catálogo de direcciones de Comercial (engRefCountryAddress): con el CP salen estado, municipio y colonias
 List<Dictionary<string, object>> DireccionesPorCp(string cp)
 {
     cp = (cp ?? "").Trim();
@@ -890,7 +861,7 @@ int CrearProveedorDesdeXml(ProvNuevo p, int destino)
     int te = p.Persona;
     string tipoCol = te >= 0 ? "BusinessEntityTypeID, " : "", tipoVal = te >= 0 ? te + ", " : "";
     string claveCol = cfgXmlUsaClave >= 0 ? ", XMLImportUseProductKey" : "", claveVal = cfgXmlUsaClave >= 0 ? ", " + cfgXmlUsaClave : "";
-    // Dirección: estado, municipio y (si es única o se eligió) colonia salen del catálogo por el CP
+
     var dirs = DireccionesPorCp(p.Cp);
     Dictionary<string, object> dir = dirs.Count == 0 ? null : (dirs.FirstOrDefault(x => S(x["City"]) == p.Colonia) ?? dirs[0]);
     bool colSel = dir != null && (dirs.Count == 1 || S(dir["City"]) == p.Colonia);
@@ -900,7 +871,7 @@ int CrearProveedorDesdeXml(ProvNuevo p, int destino)
     string tel = (p.Tel ?? "").Trim(), mail = (p.Email ?? "").Trim();
     string sql =
         "SET NOCOUNT ON;\n" +
-        // La persona (entidad) es compartida entre empresas: si el RFC ya existe se reutiliza y solo se agrega el rol de proveedor de ESTA empresa
+
         "DECLARE @ex BIGINT = (SELECT TOP 1 mi.BusinessEntityID FROM orgBusinessEntityMainInfo mi " +
         "INNER JOIN orgBusinessEntity b ON b.BusinessEntityID = mi.BusinessEntityID AND b.DeletedOn IS NULL AND b.IsOwned = 0 WHERE mi.OfficialNumber = " + Q(rfc) + " ORDER BY mi.BusinessEntityID);\n" +
         "IF @ex IS NOT NULL BEGIN\n" +
@@ -927,7 +898,7 @@ int CrearProveedorDesdeXml(ProvNuevo p, int destino)
         "INSERT INTO orgSupplier (OwnedBusinessEntityID, BusinessEntityID, CurrencyID, PaymentTermID, Segmento, CreatedBy, CreatedOn) " +
         "VALUES (" + ownEntityId + ", @be, " + cfgMonedaBase + ", " + p.PlazoId + ", ISNULL((SELECT MAX(Segmento) FROM orgSupplier WHERE OwnedBusinessEntityID = " + ownEntityId + "), 0) + 1, " + u + ", GETDATE());\n" +
         "COMMIT; SELECT @be; END TRY BEGIN CATCH IF @@TRANCOUNT > 0 ROLLBACK; THROW; END CATCH";
-    int id = EjecutaAlta(sql);   // conexión propia: el puente COM de Comercial no puede leer el resultado de lotes con varios INSERT
+    int id = EjecutaAlta(sql);
     if (id <= 0) throw new Exception("No se obtuvo el ID del proveedor creado.");
     return id;
 }
@@ -971,7 +942,6 @@ int CrearProductoDesdeXml(ItemXml it, DocXml d)
     return id;
 }
 
-// ── 12. Memoria (mapas propios) ──────────────────────────────────────────────────────────────────────────
 string SqlMapaProd(string rfc, string c, string dsc, int pid)
 {
     return "DELETE FROM zzBrosCfdiProductoMapa WHERE OwnedBusinessEntityID=" + ownEntityId + " AND RFCEmisor=" + Q(rfc) + " AND ClaveProveedor=" + Q(c) + " AND DescripcionNormalizada=" + Q(Cortar(dsc, 300)) + ";" +
@@ -1027,7 +997,6 @@ void AsignarGasto(string grupo, int eid, string origen)
     }
 }
 
-// ── 13. Creación de UN documento (la vía nativa hace lo pesado; el resto va en pocas sentencias por lote) ───
 DateTime SumaPlazo(DateTime b, int unidad, int cuenta)
 {
     switch (unidad)
@@ -1052,7 +1021,7 @@ string ClaveDeTexto(string s, int max, string defecto)
 
 string RutaXmlCompleta(DocXml d)
 {
-    // Busca el archivo en las carpetas candidatas (ver CargarConfiguracion); si no lo encuentra, solo el nombre
+
     if (string.IsNullOrEmpty(d.XmlFileName)) return "";
     foreach (var t in cfgCarpetasXml)
     {
@@ -1078,7 +1047,7 @@ int CrearUnDocumento(DocXml d, List<string> notas)
     string fDoc = FechaSql(d.FechaDoc);
     var lote1 = new List<string>();
     var dm = DestinoDe(d.DestinoModulo);
-    // Si el módulo mueve inventario, el propio documento es la entrega (fecha de entrega = fecha del documento); si no, no hay entrega
+
     var hdr = "UPDATE docDocument SET DepotIDFrom=0, PaymentTermID=" + d.PaymentTermId + ", DateDocument=" + fDoc + ", DateCost=" + fDoc +
               (dm.Stock != 0 ? ", DateDelivery=" + fDoc + ", DateDocDelivery=" + fDoc : ", DateDocDelivery=NULL");
     if (dm.Fin != 0 && cfgPagoEstatus >= 0) hdr += ", StatusPaidID=" + cfgPagoEstatus;
@@ -1115,18 +1084,18 @@ int CrearUnDocumento(DocXml d, List<string> notas)
     ctx.NonQuery(string.Join(";\n", lote1));
     if (conDescuento > 0) notas.Add(conDescuento + " partida(s) con descuento: se capturó el precio neto.");
 
-    ctx.erp.RecalcCompleto(docId);                  // totales + costos + saldo pagado
+    ctx.erp.RecalcCompleto(docId);
     if (dm.Stock != 0 && d.Partidas.Any(x => x.ProdId > 0))
     {
-        ctx.erp.AffectStockNEW(docId);              // kardex: existencias presente/disponible según StockAffectation del módulo
+        ctx.erp.AffectStockNEW(docId);
         notas.Add("Inventario afectado (kardex).");
     }
     if ((dm.Costo != 0 || dm.CostoCom != 0) && d.Partidas.Any(x => x.ProdId > 0))
-        ctx.erp.CalcularCostos(docId);              // costo fiscal / comercial según el módulo
+        ctx.erp.CalcularCostos(docId);
     ctx.erp.Save(docId);
 
     var lote2 = new List<string>();
-    // Comprobación contra el XML: los impuestos los calcula Comercial con el compuesto; solo se corrige si no cuadra.
+
     var tot = ctx.Query("SELECT Total, ISNULL(TotalRetention,0) AS Ret FROM docDocument WHERE DocumentID=" + docId);
     bool ajustado = false;
     if (tot.Count > 0 && Math.Abs(D(tot[0]["Total"]) - d.Total) > 0.02)
@@ -1140,7 +1109,6 @@ int CrearUnDocumento(DocXml d, List<string> notas)
         ajustado = true;
     }
 
-    // Agenda de pagos según la condición real, sobre la fecha del XML
     var det = DetalleDePlazo(d.PaymentTermId);
     DateTime fb = d.FechaDoc;
     lote2.Add("UPDATE docDocumentPaymentAgenda SET DeletedOn=GETDATE() WHERE DeletedOn IS NULL AND DocumentID=" + docId);
@@ -1166,7 +1134,6 @@ int CrearUnDocumento(DocXml d, List<string> notas)
     }
     lote2.Add("UPDATE docDocument SET DateLastPayment=" + FechaSql(ultima.Date) + " WHERE DocumentID=" + docId);
 
-    // Cabecera fiscal del CFDI (vive en docDocumentCFD, no en docDocument)
     string cert = d.FechaCert.HasValue ? d.FechaCert.Value.ToString("yyyy-MM-dd HH:mm:ss", ci) : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", ci);
     string expd = d.FechaDoc.ToString("M/d/yyyy h:mm:ss tt", ci);
     string metodo = ClaveDeTexto(d.MetodoPago, 3, cfgMetodoDef);
@@ -1179,25 +1146,23 @@ int CrearUnDocumento(DocXml d, List<string> notas)
 
     if (dm.Fin != 0)
     {
-        ctx.erp.UpdateDocumentPaidInfo(docId);      // saldo / cuenta por pagar-cobrar (afectación en banco) sobre la agenda ya regenerada
+        ctx.erp.UpdateDocumentPaidInfo(docId);
         if (ajustado) ctx.NonQuery("UPDATE docDocument SET Balance=" + Num(d.Total) + " WHERE DocumentID=" + docId + " AND TotalPaid=0");
     }
-    ctx.erp.UpdateStatusDelivery(docId);            // estatus de entrega (no lo calcula RecalcCompleto)
-    // Póliza: el Save por script no la genera; se pide a la clase nativa que la genera al guardar en Comercial (Accounting.clsMain)
+    ctx.erp.UpdateStatusDelivery(docId);
+
     if (dm.Poliza != 0) GenerarPolizaNativa(docId, notas);
     return docId;
 }
 
 class Creado { public int DocId; public int Modulo; public string Folio; public string Proveedor; public double Total; }
 
-// Genera las pólizas del documento con el motor nativo de Comercial (Accounting.clsMain.CrearPolizasDocumento), el mismo que usa el
-// guardado de la ventana. No envía nada a CONTPAQi Contabilidad (eso es la sincronización manual de Comercial).
 void GenerarPolizaNativa(int docId, List<string> notas)
 {
     try
     {
-        var acc = ctx.erp.CrearHelper("Accounting.clsMain");   // asigna XEngineLib
-        var args = new object[] { docId, false, "" };            // DocumentID, ShowResult, sAdvertencias (los tres por referencia en VB6)
+        var acc = ctx.erp.CrearHelper("Accounting.clsMain");
+        var args = new object[] { docId, false, "" };
         var r = acc.GetType().InvokeMember("CrearPolizasDocumento", System.Reflection.BindingFlags.InvokeMethod, null, acc, args);
         int generadas = 0; try { generadas = Convert.ToInt32(r); } catch { }
         try { ctx.Log("Importador XML - póliza del documento " + docId + ": CrearPolizasDocumento devolvió " + generadas); } catch { }
@@ -1210,14 +1175,11 @@ void GenerarPolizaNativa(int docId, List<string> notas)
     }
 }
 
-// Refresca el grid de Comercial (estándar de BrosLMV: todo script que cambie datos visibles en una lista lo hace al terminar).
-// Desde v2.94.0 ctx.erp.RefreshGrid() conserva la fila y la vista.
 void RefrescarGrid() { try { ctx.erp.RefreshGrid(); } catch { } }
-bool cerrarAlTerminar = false;   // lo decide CrearDocumentos: si todo salió bien la ventana se cierra sola
+bool cerrarAlTerminar = false;
 
 Destino DestinoDeDoc(int docId) { var d = docs.Values.FirstOrDefault(x => x.DocIdVinculado == docId); return d != null ? DestinoDe(d.DestinoModulo) : new Destino(); }
 
-// ── 14. Crear todos los documentos marcados ──────────────────────────────────────────────────────────────
 Action<object> responder = null;
 
 object CrearDocumentos(bool abrirDocs, bool verificarPoliza)
@@ -1238,7 +1200,6 @@ object CrearDocumentos(bool abrirDocs, bool verificarPoliza)
         try { if (responder != null) responder(new { evento = "progreso", i = paso, n = totalPasos, msg = msg }); Application.DoEvents(); } catch { }
     };
 
-    // a) Proveedores faltantes (una vez por RFC)
     var faltantes = listos.Where(x => x.BusinessEntityId == 0).GroupBy(x => Norm(x.Rfc)).ToList();
     if (faltantes.Count > 0)
     {
@@ -1263,7 +1224,6 @@ object CrearDocumentos(bool abrirDocs, bool verificarPoliza)
         ReevaluarTodo(false);
     }
 
-    // b) Productos, solo si el usuario eligió "crear automáticamente"
     if (optProductos == "crear")
     {
         var nuevos = listos.Where(x => !omitir.Contains(x.SatId)).SelectMany(x => x.Partidas.Select(l => new { d = x, l = l })).Where(z => z.l.ProdId == 0 && (DestinoDe(z.d.DestinoModulo).Tipo == "compra" || DestinoDe(z.d.DestinoModulo).Stock != 0)).GroupBy(z => z.l.Grupo).ToList();
@@ -1279,7 +1239,6 @@ object CrearDocumentos(bool abrirDocs, bool verificarPoliza)
         }
     }
 
-    // c) Documentos
     tiempo("proveedores y productos listos");
     var aprender = new List<string>();
     foreach (var d in listos)
@@ -1297,7 +1256,7 @@ object CrearDocumentos(bool abrirDocs, bool verificarPoliza)
             creados.Add(new Creado { DocId = docId, Modulo = d.DestinoModulo, Folio = etiqueta, Proveedor = d.BusinessEntityName, Total = d.Total });
             tiempo("creado " + etiqueta);
             foreach (var n in notas) avisosRes.Add(etiqueta + ": " + n);
-            // aprende producto y tipo de gasto usados (el impuesto NO se aprende: lo rige el XML)
+
             foreach (var l in d.Partidas)
             {
                 if (l.ProdId > 0 && l.ProdOrigen != "comercial") aprender.Add(SqlMapaProd(l.Rfc, l.ClaveNorm, l.DescNorm, l.ProdId));
@@ -1324,8 +1283,7 @@ object CrearDocumentos(bool abrirDocs, bool verificarPoliza)
         }
         catch { }
     }
-    // Si todo salió bien la ventana se cierra sola: no se recargan catálogos ni se manda estado a la interfaz, y el grid de Comercial se
-    // refresca UNA vez al cerrar (FormClosed). Solo si hubo errores o falta póliza se recarga y se muestra el Resultado.
+
     cerrarAlTerminar = errores.Count == 0 && sinPoliza.Count == 0;
     if (!cerrarAlTerminar) { CargarCatalogos(); RefrescarGrid(); tiempo("catálogos recargados y grid refrescado"); }
     if (abrirDocs)
@@ -1337,7 +1295,6 @@ object CrearDocumentos(bool abrirDocs, bool verificarPoliza)
     return new { creados = creados.Select(c => new { docId = c.DocId, modulo = c.Modulo, folio = c.Folio, proveedor = c.Proveedor, total = c.Total }).ToArray(), errores = errores, avisos = avisosRes, sinPoliza = sinPoliza };
 }
 
-// ── 15. Ventana y mensajes con la interfaz ───────────────────────────────────────────────────────────────
 var frm = new Form
 {
     Text = "BrosLMV · Documentos desde XML",
@@ -1425,7 +1382,7 @@ object Despachar(string accion, Dictionary<string, object> p)
 
         case "provDatos":
         {
-            // Edición de los datos con que se dará de alta un proveedor faltante
+
             var d0 = docs.Values.FirstOrDefault(x => Norm(x.Rfc) == Norm(S(p["rfc"])));
             if (d0 == null) throw new Exception("RFC no encontrado en el lote.");
             var pn = ProvDe(d0);
@@ -1520,7 +1477,7 @@ object Despachar(string accion, Dictionary<string, object> p)
 
         case "impuestoComposicion":
         {
-            // Aplica un tipo de impuesto existente a TODAS las partidas del lote con esa misma composición del XML
+
             string comp = S(p["comp"]); int tid = I(p["taxTypeId"]);
             foreach (var it in todasLasLineas.Where(x => x.CompTxt == comp)) { it.TaxTypeId = tid; it.TaxTypeManual = tid > 0; if (tid == 0) { it.TaxTypeManual = false; ResolverImpuesto(it); } }
             break;
@@ -1547,7 +1504,7 @@ frm.Load += async (s, e) =>
         string perfil = Path.Combine(Path.GetTempPath(), "BrosLMV_XmlImport_" + Guid.NewGuid().ToString("N"));
         frm.FormClosed += (s3, e3) =>
         {
-            // Borrar el perfil de WebView2 puede tardar (sus procesos aún lo tienen abierto): se hace en segundo plano para no congelar Comercial al cerrar
+
             System.Threading.ThreadPool.QueueUserWorkItem(_ => { System.Threading.Thread.Sleep(4000); try { if (Directory.Exists(perfil)) Directory.Delete(perfil, true); } catch { } });
             RefrescarGrid();
         };

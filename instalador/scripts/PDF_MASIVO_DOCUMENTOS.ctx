@@ -5,11 +5,6 @@
 // Documentacion: PDF_MASIVO_DOCUMENTOS.html
 // job: safe-offline
 // PDF masivo: genera el PDF de TODOS los documentos que selecciones en la lista de Comercial (no solo el primero), con el formato HTML de cada módulo.
-// Una sola instancia del motor de PDF para todo el lote (rápido), barra de avance con «Cancelar», un documento con problemas NO detiene a los demás y al final
-// ves un reporte de cuáles salieron y cuáles no. Puedes dejarlos sueltos en una carpeta, comprimirlos en un ZIP, unirlos en un solo PDF o ambas cosas.
-// Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
-//
-// Usa las MISMAS etiquetas, formatos, patrón de nombre y carpeta que «Configuración de formato» y «Generar documento (PDF)»: nada va escrito a mano.
 
 using System;
 using System.Collections.Generic;
@@ -33,11 +28,10 @@ string Esc(string s) => (s ?? "").Replace("&", "&amp;").Replace("<", "&lt;").Rep
 int empresa = ctx.erp.OwnedBusinessEntityId;
 const int MaxDocs = 2000;
 
-string prueba = Environment.GetEnvironmentVariable("BROSLMV_PDFM_TEST");        // solo para pruebas automáticas: JSON, sin ventanas
+string prueba = Environment.GetEnvironmentVariable("BROSLMV_PDFM_TEST");
 bool modoPrueba = !string.IsNullOrEmpty(prueba);
 Dictionary<string, object> parPrueba = modoPrueba ? ser.Deserialize<Dictionary<string, object>>(prueba) : null;
 
-// ---------- 1) Documentos seleccionados ----------
 var ids = new List<long>();
 if (modoPrueba && parPrueba.ContainsKey("ids") && parPrueba["ids"] is System.Collections.IEnumerable lp) foreach (var x in lp) ids.Add(L(x));
 else ids = (ctx.GetSelectedIds() ?? new List<long>()).ToList();
@@ -60,7 +54,6 @@ var docs = ctx.Query(
 if (docs.Count == 0) { ctx.Msg("Ninguno de los documentos seleccionados existe o pertenece a esta empresa.", "PDF masivo"); return "SIN DOCUMENTOS"; }
 var modulosSel = docs.Select(d => I(d["ModuleID"])).Distinct().ToList();
 
-// ---------- 2) Formatos HTML de cada módulo y configuración de BrosLMV ----------
 var formatosPorModulo = new Dictionary<int, List<Dictionary<string, object>>>();
 foreach (var f in ctx.Query("SELECT ModuleID, PrintFormatID, FormatName, FileName, FormatIsDefault FROM engModulePrintFormat WHERE ModuleID IN (" + string.Join(",", modulosSel) +
     ") AND ISNULL(FileName,'')<>'' AND (FileName LIKE '%.html' OR FileName LIKE '%.htm') ORDER BY ModuleID, FormatIsDefault DESC, FormatName"))
@@ -70,7 +63,7 @@ foreach (var f in ctx.Query("SELECT ModuleID, PrintFormatID, FormatName, FileNam
     formatosPorModulo[mid].Add(f);
 }
 var formatoPreferido = new Dictionary<int, long>();
-var propio = new Dictionary<int, string[]>();                  // módulo -> { carpeta, patrón } cuando «Configuración de formato» lo tiene personalizado
+var propio = new Dictionary<int, string[]>();
 string rutaPdfConfig = "", patronConfig = "[Serie][Folio] - [Modulo]";
 bool abrirCarpetaConfig = true;
 try
@@ -93,7 +86,7 @@ try
         if (rowGen["AbrirTrasGenerar"] != null && !(rowGen["AbrirTrasGenerar"] is DBNull)) abrirCarpetaConfig = Convert.ToBoolean(rowGen["AbrirTrasGenerar"]);
     }
 }
-catch { /* sin la tabla de configuración se usan los valores por omisión */ }
+catch {  }
 
 long FormatoInicial(int modulo)
 {
@@ -103,7 +96,6 @@ long FormatoInicial(int modulo)
     return L(lista[0]["PrintFormatID"]);
 }
 
-// ---------- 3) Motor de etiquetas (las mismas de Comercial y de «Generar documento (PDF)») ----------
 var cacheRef = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 Dictionary<string, string> sqlRefs = null;
 var refsExisten = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -125,7 +117,7 @@ string ResolverRef(string clave, long doc, long item)
     string val = "";
     try
     {
-        // El diccionario de referencia se lee UNA vez por ejecución (no una consulta por etiqueta y por renglón)
+
         if (sqlRefs == null)
         {
             sqlRefs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -208,7 +200,6 @@ string LeerFormato(string archivo)
     return html;
 }
 
-// HTML ya resuelto de UN documento con el formato elegido
 string ConstruirHtml(long doc, string archivoFormato)
 {
     string html = LeerFormato(archivoFormato);
@@ -236,7 +227,7 @@ string ConstruirHtml(long doc, string archivoFormato)
     if (outHtml.IndexOf("[QRPayload]", StringComparison.Ordinal) >= 0)
     {
         string payload = System.Net.WebUtility.HtmlDecode(Resolver("[EmisorRfc]|[Serie][Folio]|[FechaDocumento]|[Format(Total,#,##0.00)] [Moneda]", fila0, doc, item0));
-        // Documento TIMBRADO: el QR de la representación impresa es el del SAT (verificación de CFDI), no un texto cualquiera
+
         string uuidQr = fila0.ContainsKey("Uuid") ? S(fila0["Uuid"]).Trim() : "";
         if (uuidQr.Length >= 32)
         {
@@ -271,7 +262,6 @@ string ConstruirHtml(long doc, string archivoFormato)
     return outHtml;
 }
 
-// Nombre del archivo a partir del patrón ([Serie][Folio] - [Modulo], etc.); sin caracteres inválidos
 string NombreDe(Dictionary<string, object> d, string patron)
 {
     long doc = L(d["DocumentID"]);
@@ -291,7 +281,7 @@ string NombreDe(Dictionary<string, object> d, string patron)
 
 string ExeHtmlToPdf()
 {
-    string forzado = Environment.GetEnvironmentVariable("BROSLMV_HTMLTOPDF_EXE");        // desarrollo y pruebas
+    string forzado = Environment.GetEnvironmentVariable("BROSLMV_HTMLTOPDF_EXE");
     if (!string.IsNullOrEmpty(forzado) && File.Exists(forzado)) return forzado;
     foreach (var p in new[] { @"C:\BrosLMV\htmlpdf\BrosLMV.HtmlToPdf.exe", @"C:\MLVTotal\htmlpdf\bin\Release\net8.0-windows\BrosLMV.HtmlToPdf.exe" })
         if (File.Exists(p)) return p;
@@ -308,16 +298,15 @@ bool SoportaLote(string exe)
     catch { return false; }
 }
 
-// ---------- 4) Parámetros del lote ----------
 class Parametros
 {
-    public string Carpeta = "", Patron = "", Modo = "sueltos";            // sueltos | zip | unido | zip+unido
+    public string Carpeta = "", Patron = "", Modo = "sueltos";
     public bool AbrirCarpeta = true;
-    public Dictionary<int, long> Formato = new Dictionary<int, long>();    // módulo -> PrintFormatID
+    public Dictionary<int, long> Formato = new Dictionary<int, long>();
 }
 
 string PatronDe(int mid, Parametros p) => propio.ContainsKey(mid) && !string.IsNullOrWhiteSpace(propio[mid][1]) ? propio[mid][1] : p.Patron;
-// Con PDF sueltos, un tipo de documento personalizado en «Configuración de formato» va a SU carpeta (dentro de ella, la subcarpeta «Lote …»); con ZIP o unido todo va a la carpeta principal
+
 string CarpetaDe(int mid, string principal, Parametros p)
 {
     if (p.Modo != "sueltos" || !propio.ContainsKey(mid) || string.IsNullOrWhiteSpace(propio[mid][0])) return principal;
@@ -371,8 +360,6 @@ string PaginaOpciones(Parametros p, string mensaje)
     return sb.ToString();
 }
 
-// Vista previa: el documento ya resuelto con el formato elegido, tal como se mandará al PDF (aproximada: el PDF respeta los saltos de página del motor).
-// También avisa qué etiquetas del formato NO tienen valor: si se creó una referencia nueva en el Diccionario de referencia de Comercial y aquí sale vacía, se ve al instante.
 string PaginaVista(int mid, long docId, long fid)
 {
     var delModulo = docs.Where(d => I(d["ModuleID"]) == mid).ToList();
@@ -410,7 +397,6 @@ Parametros LeerParametros(Dictionary<string, object> r)
     return p;
 }
 
-// ---------- 5) El lote ----------
 class Resultado { public string Documento, Estado, Motivo, Archivo; }
 
 Dictionary<string, object> Ejecutar(Parametros p, Action<int, int, string> avance, Func<bool> cancelado, Action<Process> registrar)
@@ -428,7 +414,7 @@ Dictionary<string, object> Ejecutar(Parametros p, Action<int, int, string> avanc
     var nombresUsados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     var carpetasUsadas = new List<string>();
     var porPdf = new Dictionary<string, Resultado>(StringComparer.OrdinalIgnoreCase);
-    // 5a) HTML de cada documento (aquí mismo, por SQL: no se puede hacer fuera de Comercial)
+
     int hechos = 0;
     foreach (var d in docs)
     {
@@ -502,7 +488,6 @@ Dictionary<string, object> Ejecutar(Parametros p, Action<int, int, string> avanc
     try { Directory.Delete(temporal, true); } catch { }
     if (sinResolver.Count > 0) ctx.Log("PDF masivo: etiquetas sin resolver -> " + string.Join(", ", sinResolver.OrderBy(x => x)));
 
-    // Si pediste ZIP y/o PDF unido, los PDF sueltos sobran: ya van dentro de lo que pediste. Solo se quitan si TODO lo pedido se creó bien.
     if (p.Modo != "sueltos")
     {
         bool zipOk = zipRuta == null || File.Exists(zipRuta), unidoOk = unidoRuta == null || File.Exists(unidoRuta);
@@ -519,8 +504,7 @@ Dictionary<string, object> Ejecutar(Parametros p, Action<int, int, string> avanc
     };
 }
 
-// ---------- Modo de pruebas: sin ventanas ----------
-if (modoPrueba && parPrueba.ContainsKey("soloHtml"))        // pruebas: escribe el HTML ya resuelto de cada documento y dice qué etiquetas quedaron sin valor
+if (modoPrueba && parPrueba.ContainsKey("soloHtml"))
 {
     var pph = LeerParametros(parPrueba);
     Directory.CreateDirectory(pph.Carpeta);
@@ -551,11 +535,10 @@ if (modoPrueba)
     return json;
 }
 
-// ---------- Interfaz ----------
 Parametros actual = new Parametros { Carpeta = CarpetaSugerida(), Patron = patronConfig, AbrirCarpeta = abrirCarpetaConfig };
 string aviso = null; int vMid = 0; long vDoc = 0, vFmt = 0; string nombreMod = "";
 Dictionary<string, object> ultimoResultado = null;
-// Ventana NO modal (ShowHtmlModeless): se puede minimizar y seguir usando Comercial. Cada clic llega aquí y devuelve la página siguiente.
+
 Func<Dictionary<string, object>, string> alMensaje = (r) =>
 {
     string accion = S(r.ContainsKey("accion") ? r["accion"] : "");
@@ -578,7 +561,6 @@ Func<Dictionary<string, object>, string> alMensaje = (r) =>
     if (accion != "generar") return "__CERRAR__";
     actual = LeerParametros(r);
 
-    // Ventana de avance con «Cancelar»
     bool cancelar = false; Process procActual = null;
     var frm = new Form { Text = "PDF masivo — avance", Width = 560, Height = 300, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = true, ControlBox = false, Font = new Font("Segoe UI", 9f), BackColor = Color.White };
     var lbl = new Label { Left = 20, Top = 20, Width = 510, Height = 40, Text = "Preparando…" };
@@ -589,7 +571,7 @@ Func<Dictionary<string, object>, string> alMensaje = (r) =>
     frm.Controls.AddRange(new Control[] { lbl, barra, registro, btnCancelar });
 
     Dictionary<string, object> resultado = null; Exception fallo = null;
-    // El armado usa ctx.Query (puente COM de Comercial): corre en ESTE hilo; el motor externo corre aparte y se lee sin bloquear (DoEvents)
+
     frm.Show();
     try { resultado = Ejecutar(actual, (a, tt, m) => { barra.Maximum = Math.Max(1, tt); barra.Value = Math.Min(a, barra.Maximum); lbl.Text = m; Application.DoEvents(); }, () => { Application.DoEvents(); return cancelar; }, pr => procActual = pr); }
     catch (Exception ex) { fallo = ex; }

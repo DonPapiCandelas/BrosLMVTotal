@@ -1,15 +1,10 @@
 // lang: csharp
 // AppKey recomendado: COBRO_CLIENTE_WINFORMS
 // Plantilla: Cobro a cliente (C# · ventana Windows Forms)
-// Categoria: Tesorería
-// Documentacion: COBRO_PAGO.html
+// Categoria: Cuentas por cobrar
+// Documentacion: COBRO_CLIENTE.html
 // job: safe-offline
 // ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un cobro a cliente y lo aplica a uno o varios documentos con saldo.
-// Comercial no ofrece una función para esto: la plantilla escribe directo en las tablas de Tesorería (una transacción por documento) y NO genera la póliza contable.
-// Plantilla separada a propósito: solo CUENTAS POR COBRAR (clientes) para que quien la use no vea el otro lado. Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
-//
-// Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
-// el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
 
 using System;
 using System.Collections.Generic;
@@ -28,27 +23,17 @@ long L(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt64(v
 int I(object v) { try { return v == null || v is DBNull ? 0 : Convert.ToInt32(v, ci); } catch { return 0; } }
 double D(object v) { try { return v == null || v is DBNull ? 0.0 : Convert.ToDouble(v, ci); } catch { return 0.0; } }
 bool Nulo(object v) => v == null || v is DBNull;
-string Sq(string s) => (s ?? "").Replace("'", "''");                       // texto para un literal SQL
-string Num(double d) => d.ToString("0.########", ci);                       // número para un literal SQL (siempre con punto)
+string Sq(string s) => (s ?? "").Replace("'", "''");
+string Num(double d) => d.ToString("0.########", ci);
 
 int empresa = ctx.erp.OwnedBusinessEntityId;
 
-// ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
-// El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
 string CarpetaLocal() { string d = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BrosLMV", "borradores"); System.IO.Directory.CreateDirectory(d); return d; }
 string ArchivoBorrador(string que) { int u = 0; try { u = ctx.erp.UserId; } catch { } return System.IO.Path.Combine(CarpetaLocal(), que + "_" + empresa + "_" + u + ".json"); }
 string LeerBorrador(string que, bool vence = true) { try { string a = ArchivoBorrador(que); if (!System.IO.File.Exists(a) || (vence && (DateTime.Now - System.IO.File.GetLastWriteTime(a)).TotalDays > 7)) return null; return System.IO.File.ReadAllText(a, System.Text.Encoding.UTF8); } catch { return null; } }
 void GuardarBorrador(string que, string json) { try { System.IO.File.WriteAllText(ArchivoBorrador(que), json, new System.Text.UTF8Encoding(false)); } catch { } }
 void BorrarBorrador(string que) { try { string a = ArchivoBorrador(que); if (System.IO.File.Exists(a)) System.IO.File.Delete(a); } catch { } }
 
-// ===================================================================================================================================
-// COBRO A CLIENTE / PAGO A PROVEEDOR.
-// ⚠ PLANTILLA AVANZADA, NO NATIVA: Comercial no ofrece ninguna función para aplicar un cobro o un pago (se buscó en el SDK y en el motor, véase MANUAL §10.5).
-// Esta plantilla repite, con SQL directo y en UNA sola transacción por documento, lo que hace la pantalla de Tesorería: la operación financiera, la aplicación al
-// documento, su espejo, la transferencia bancaria, el reparto proporcional de impuestos y el nuevo saldo. La receta se validó contra cobros reales y contra el laboratorio.
-// NO genera la póliza contable del cobro/pago (eso lo hace el Motor de Asientos al contabilizar). Pruébala SIEMPRE primero en una base de pruebas.
-// ===================================================================================================================================
-// Tipos: clave · nombre · lado (C/P) · módulo de la operación (248 cobro, 247 pago) · DocRecipientID · DocumentTypeID de la operación · prefijo de folio
 Dictionary<string, object> TP(string clave, string nombre, string lado, int modOp, int recip, int tipoOp, string prefijo) =>
     new Dictionary<string, object> { ["clave"] = clave, ["nombre"] = nombre, ["lado"] = lado, ["modOp"] = modOp, ["recip"] = recip, ["tipoOp"] = tipoOp, ["prefijo"] = prefijo };
 var TIPOS = new List<Dictionary<string, object>>
@@ -58,9 +43,6 @@ var TIPOS = new List<Dictionary<string, object>>
 var tipoPor = TIPOS.ToDictionary(t => (string)t["clave"]);
 string[] CLAVES = TIPOS.Select(t => (string)t["clave"]).ToArray();
 
-// ---------- Qué módulos generan cuentas por cobrar / por pagar ----------
-// Se leen de los parámetros del módulo (DocRecipient 1 = cliente, 2 = proveedor; FinancialAffectation ≠ 0) por ModuleIDBase, así los módulos clonados cuentan igual.
-// Solo documentos que SUMAN saldo (facturas, notas de cargo, gastos): una nota de crédito no se cobra ni se paga, se aplica.
 var modulos = ctx.Query(
     "SELECT m.ModuleID, m.ModuleName, pv.Rec, pv.Af FROM engModule m JOIN (" +
     "  SELECT ModuleID, MAX(CASE WHEN ParameterKey='DocRecipient' THEN TRY_CONVERT(int, Value) END) AS Rec, MAX(CASE WHEN ParameterKey='DocumentTypeID' THEN TRY_CONVERT(int, Value) END) AS Tipo, " +
@@ -71,17 +53,12 @@ var modulosLado = new Dictionary<string, List<int>> { ["C"] = new List<int>(), [
 var nombreMod = new Dictionary<int, string>();
 foreach (var r in modulos) { modulosLado[I(r["Rec"]) == 1 ? "C" : "P"].Add(I(r["ModuleID"])); nombreMod[I(r["ModuleID"])] = S(r["ModuleName"]); }
 
-// ---------- Monedas ----------
-// La cuenta tiene su moneda y cada documento la suya (0 = sin moneda = pesos). El tipo de cambio de cada moneda sale del catálogo de monedas de Comercial.
 var monedas = ctx.Query("SELECT CurrencyID AS id, IntlSymbol AS simbolo, Currency AS nombre, ISNULL(MoneyLetter,'') AS letra, ISNULL(Rate,1) AS tc FROM vwLBSCurrencyList ORDER BY CurrencyID")
     .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["simbolo"] = S(r["simbolo"]), ["nombre"] = S(r["nombre"]), ["letra"] = S(r["letra"]), ["tc"] = D(r["tc"]) }).ToList();
 var monedaPor = monedas.ToDictionary(m => (int)m["id"]);
 int MonedaDe(object v) { int m = I(v); return m <= 0 ? 3 : m; }
 string SimboloDe(int id) { return monedaPor.ContainsKey(id) ? (string)monedaPor[id]["simbolo"] : "MXN"; }
 
-// ---------- Documentos con saldo pendiente de un lado (C = por cobrar, P = por pagar) ----------
-// Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero). La ventana los pide otra vez después de aplicar, para ver los saldos nuevos.
-// Además del saldo trae lo necesario para decidir: moneda y tipo de cambio del documento, cuántas parcialidades tiene, cuántos cobros/pagos y cuántas notas de crédito ya se le aplicaron.
 List<Dictionary<string, object>> DocsConSaldo(string lado)
 {
     var mods = modulosLado[lado];
@@ -100,8 +77,7 @@ List<Dictionary<string, object>> DocsConSaldo(string lado)
             ["moneda"] = mon, ["simbolo"] = SimboloDe(mon), ["tcDoc"] = tcd, ["saldoMx"] = mon == 3 ? saldo : Math.Round(saldo * tcd, 2),
             ["nParc"] = I(r["nParc"]), ["nAplic"] = I(r["nAplic"]), ["nNotas"] = I(r["nNotas"]) }; }).ToList();
 }
-// Parcialidades de un documento: la agenda de pago (número, vencimiento, importe) menos lo ya aplicado a cada una (los renglones sin número cuentan como la 1).
-// Si la suma de lo pendiente no cuadra con el saldo del documento (intereses, redondeo) la diferencia se carga a la última parcialidad con saldo; sin agenda hay una sola parcialidad con todo el saldo.
+
 List<Dictionary<string, object>> ParcialidadesDe(long doc, double saldo)
 {
     var agenda = ctx.Query("SELECT PartialityNumber AS n, MIN(DatePayment) AS vence, SUM(ISNULL(Amount,0)) AS importe FROM docDocumentPaymentAgenda WHERE DocumentID = " + doc + " AND DeletedOn IS NULL GROUP BY PartialityNumber ORDER BY PartialityNumber");
@@ -128,7 +104,7 @@ List<Dictionary<string, object>> ParcialidadesDe(long doc, double saldo)
     }
     return res;
 }
-// Todo lo que le ha pasado a un documento: sus parcialidades y cada aplicación (cobro, pago o nota de crédito) con folio, fecha, moneda, tipo de cambio y parcialidad. La ventana lo pide al seleccionar el documento.
+
 Dictionary<string, object> DetalleDoc(long doc)
 {
     var res = new Dictionary<string, object>();
@@ -152,7 +128,7 @@ Dictionary<string, object> DetalleDoc(long doc)
     res["aplic"] = aplic;
     return res;
 }
-// Los últimos cobros o pagos de esa persona (los 8 más recientes que no estén cancelados), con la cuenta y a cuántos documentos se aplicaron
+
 List<Dictionary<string, object>> MovimientosDe(long entidad, string clave)
 {
     if (!tipoPor.ContainsKey(clave) || entidad <= 0) return new List<Dictionary<string, object>>();
@@ -163,8 +139,6 @@ List<Dictionary<string, object>> MovimientosDe(long entidad, string clave)
             ["monto"] = D(r["Monto"]), ["cuenta"] = S(r["Cuenta"]), ["docs"] = I(r["Docs"]) }).ToList();
 }
 
-// Comportamiento de pago de una persona: lo cobrado (o pagado) por mes en los últimos 12 meses, los días promedio que tarda desde la fecha del documento, el atraso promedio
-// frente al vencimiento y el porcentaje de pagos a tiempo. Todo sale de Comercial en ese momento.
 Dictionary<string, object> InteligenciaPago(long entidad, string clave)
 {
     var res = new Dictionary<string, object>();
@@ -195,11 +169,10 @@ Dictionary<string, object> InteligenciaPago(long entidad, string clave)
     return res;
 }
 
-// ---------- Catálogos y documentos con saldo para el formulario ----------
 Dictionary<string, object> Catalogos()
 {
     var cat = new Dictionary<string, object>();
-    // Persona con RFC, límite de crédito y su último cobro o pago (fecha e importe), para dar contexto al capturar
+
     string ent(string tabla) =>
         "SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.CreditLimit,0) AS credito, u.DateOperation AS ultFecha, ISNULL(u.Amount,0) AS ultMonto FROM " + tabla + " x " +
         "JOIN orgBusinessEntity be ON be.BusinessEntityID = x.BusinessEntityID LEFT JOIN orgBusinessEntityMainInfo mi ON mi.BusinessEntityID = be.BusinessEntityID " +
@@ -208,7 +181,7 @@ Dictionary<string, object> Catalogos()
     Func<string, List<Dictionary<string, object>>> lista = tabla => ctx.Query(ent(tabla))
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]), ["rfc"] = S(r["rfc"]), ["credito"] = D(r["credito"]),
             ["ultFecha"] = Nulo(r["ultFecha"]) ? "" : Convert.ToDateTime(r["ultFecha"], ci).ToString("yyyy-MM-dd"), ["ultMonto"] = D(r["ultMonto"]) }).ToList();
-    // Solo el lado de esta plantilla: la persona que lleva cuentas por cobrar no ve nada de las cuentas por pagar (y al revés); ni siquiera se cargan sus datos.
+
     bool verC = TIPOS.Any(t => (string)t["lado"] == "C"), verP = TIPOS.Any(t => (string)t["lado"] == "P");
     cat["clientes"] = verC ? lista("orgCustomer") : new List<Dictionary<string, object>>();
     cat["proveedores"] = verP ? lista("orgSupplier") : new List<Dictionary<string, object>>();
@@ -217,7 +190,7 @@ Dictionary<string, object> Catalogos()
     cat["monedas"] = monedas;
     cat["formas"] = ctx.Query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")
         .Select(r => new Dictionary<string, object> { ["id"] = I(r["id"]), ["nombre"] = S(r["nombre"]) }).ToList();
-    // Folio siguiente de cada tipo (el mismo cálculo que usa Aplicar; con otro cobro simultáneo podría variar)
+
     var folios = new Dictionary<string, object>();
     foreach (var t in TIPOS)
         folios[(string)t["clave"]] = L(ctx.Scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + (int)t["modOp"] + " AND FolioPrefix = N'" + (string)t["prefijo"] + "'"));
@@ -227,7 +200,6 @@ Dictionary<string, object> Catalogos()
     return cat;
 }
 
-// ---------- Importe en letra (el mismo estilo del comprobante mexicano) ----------
 string[] LUNI = { "", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE" };
 string[] LDEC = { "", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA" };
 string[] LVEI = { "VEINTIUNO", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO", "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE" };
@@ -254,16 +226,6 @@ string LetraImporte(double v, int moneda)
     return LetraEn(e) + " " + pal + " " + c.ToString("00") + "/100" + (moneda == 3 ? " M.N." : "");
 }
 
-// ---------- Aplicar ----------
-// «spec»: tipo, entidad, cuenta, forma (c_FormaPago), fecha (yyyy-MM-dd), referencia, tc (tipo de cambio, solo si hay moneda extranjera), aplicaciones [{doc, monto, parcialidad}].
-//   «monto» va SIEMPRE en la moneda de la CUENTA (lo que entra o sale del banco); «parcialidad» 0 = automática (en orden), n = esa parcialidad.
-// Igual que Tesorería: UNA operación (un folio) con un renglón por documento (y por parcialidad), todo en una sola transacción: o queda todo o no queda nada.
-// Moneda (verificado contra miles de aplicaciones de una empresa con dólares): el renglón se guarda en la moneda del DOCUMENTO, con su tipo de cambio en Rate y AmountPaidCurrency = Amount × Rate (valor en pesos):
-//   · cuenta y documento en la misma moneda → importe tal cual (Rate = 1 en pesos, o el tipo de cambio en moneda extranjera);
-//   · cuenta en pesos y documento en moneda extranjera → importe del documento = pesos ÷ tipo de cambio (Rate = tipo de cambio);
-//   · cuenta en moneda extranjera y documento en pesos → importe del documento = moneda extranjera × tipo de cambio (Rate = 1; la operación guarda el tipo de cambio).
-//   Cualquier otra combinación (p. ej. cuenta en euros y documento en dólares) se rechaza: usa la pantalla nativa de Tesorería.
-// Regresa un resumen legible con el folio y, por documento, lo aplicado, su equivalente en la moneda del documento y lo que queda.
 string Aplicar(Dictionary<string, object> spec)
 {
     string clave = S(spec["tipo"]);
@@ -287,8 +249,7 @@ string Aplicar(Dictionary<string, object> spec)
     string persona = S(ctx.Scalar("SELECT ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + entidad));
     long owned = empresa;
 
-    // 1) Cada documento: validación, conversión a su moneda y reparto por parcialidades (todo en memoria; no se escribe nada todavía)
-    var lineas = new List<Dictionary<string, object>>();       // un renglón por (documento, parcialidad)
+    var lineas = new List<Dictionary<string, object>>();
     var porDoc = new List<Dictionary<string, object>>();
     double totalCuenta = 0; var monedasForaneas = new HashSet<int>();
     foreach (var a in aps)
@@ -309,16 +270,16 @@ string Aplicar(Dictionary<string, object> spec)
         else throw new Exception("No se pudo aplicar a " + etiqueta + ": la cuenta está en " + SimboloDe(mCuenta) + " y el documento en " + SimboloDe(mDoc) + ". Esa combinación solo se puede registrar en la pantalla nativa de Tesorería.");
         if (mCuenta != 3) monedasForaneas.Add(mCuenta);
         if (mDoc != 3) monedasForaneas.Add(mDoc);
-        // Importe en la moneda del documento y tipo de cambio del renglón
+
         double docAmt, rateLinea;
         if (modo == "igual") { docAmt = monto; rateLinea = mDoc == 3 ? 1 : tc; }
         else if (modo == "cuentaPesos") { if (!(tc > 0)) throw new Exception("Captura el tipo de cambio: " + etiqueta + " está en " + SimboloDe(mDoc) + " y la cuenta en pesos."); docAmt = monto / tc; rateLinea = tc; }
         else { if (!(tc > 0)) throw new Exception("Captura el tipo de cambio: la cuenta está en " + SimboloDe(mCuenta) + " y " + etiqueta + " en pesos."); docAmt = monto * tc; rateLinea = 1; }
         if (modo == "igual" && mDoc != 3 && !(tc > 0)) throw new Exception("Captura el tipo de cambio de " + SimboloDe(mDoc) + ".");
         docAmt = Math.Round(docAmt, 2);
-        if (Math.Abs(docAmt - saldo) <= 0.011) docAmt = saldo;                                          // un residuo de redondeo de la conversión no deja el documento «casi liquidado»
+        if (Math.Abs(docAmt - saldo) <= 0.011) docAmt = saldo;
         if (docAmt > saldo + 0.005) throw new Exception("No se pudo aplicar a " + etiqueta + ": el importe (" + docAmt.ToString("N2") + " " + SimboloDe(mDoc) + ") es mayor que su saldo (" + saldo.ToString("N2") + " " + SimboloDe(mDoc) + ").");
-        // Reparto por parcialidades: la pedida o, en automático, en orden
+
         var parc = ParcialidadesDe(doc, saldo); var reparto = new List<KeyValuePair<int, double>>(); double resto = docAmt;
         if (parcPedida > 0)
         {
@@ -344,12 +305,11 @@ string Aplicar(Dictionary<string, object> spec)
     double rateOp = mCuenta == 3 ? 1 : tc;
     totalCuenta = Math.Round(totalCuenta, 2);
 
-    // 2) Una sola transacción: la operación, sus renglones, los espejos, la transferencia, el reparto de impuestos y los saldos
     var sb = new StringBuilder();
     sb.Append("DECLARE @out TABLE(FinancialOperationID BIGINT); DECLARE @outPay TABLE(DocumentPaymentID BIGINT);\nBEGIN TRY BEGIN TRAN;\n");
     sb.Append("DECLARE @lk INT; EXEC @lk = sp_getapplock @Resource = 'BrosCobroFolio_" + modOp + "_" + pref + "', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000;\n");
     sb.Append("IF @lk < 0 THROW 50001, 'No se pudo obtener el candado del folio (otro cobro/pago en curso).', 1;\n");
-    foreach (var pd in porDoc)       // el saldo se vuelve a comprobar DENTRO de la transacción: si alguien más aplicó algo mientras tanto, no se aplica de más
+    foreach (var pd in porDoc)
         sb.Append("IF (SELECT ISNULL(Balance,0) FROM docDocument WHERE DocumentID=" + (long)pd["doc"] + ") < " + Num((double)pd["docAmt"] - 0.011) + " THROW 50002, 'El saldo de un documento cambió mientras se capturaba.', 1;\n");
     sb.Append("DECLARE @folio BIGINT = ISNULL((SELECT MAX(TRY_CONVERT(BIGINT, Folio)) FROM docFinancialOperation WHERE ModuleID=" + modOp + " AND FolioPrefix=N'" + pref + "'),0)+1;\n");
     sb.Append("DECLARE @f DATETIME = '" + f8 + " 12:00:00'; DECLARE @opId BIGINT, @payId BIGINT;\n");
@@ -363,15 +323,15 @@ string Aplicar(Dictionary<string, object> spec)
         long doc = (long)ln["doc"]; double m = (double)ln["monto"], r = (double)ln["rate"];
         sb.Append("INSERT INTO docDocumentPayment (DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber, SaldoAnterior, SaldoInsoluto) OUTPUT INSERTED.DocumentPaymentID INTO @outPay VALUES (" +
             doc + ",@opId,@f," + Num(m) + "," + Num(r) + "," + Num(m * r) + "," + (int)ln["parc"] + "," + Num((double)ln["sa"]) + "," + Num((double)ln["si"]) + ");\nSELECT @payId = DocumentPaymentID FROM @outPay; DELETE FROM @outPay;\n");
-        // docDocumentPaymentEspejo.DocumentPaymentID NO es identity: espeja el mismo id recién generado
+
         sb.Append("INSERT INTO docDocumentPaymentEspejo (DocumentPaymentID, DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber) VALUES (@payId," + doc + ",@opId,@f," + Num(m) + "," + Num(r) + "," + Num(m * r) + "," + (int)ln["parc"] + ");\n");
     }
-    if (forma != 1)       // efectivo no lleva transferencia; cualquier otra forma deja su registro bancario
+    if (forma != 1)
         sb.Append("INSERT INTO docBankTransfer (FinancialOperationID, FinancialEntityID, TrackingNumber, CreatedOn, CreatedBy) VALUES (@opId," + cuenta + "," + (tracking == "" ? "NULL" : "N'" + Sq(tracking) + "'") + ",GETDATE()," + ctx.erp.UserId + ");\n");
     foreach (var pd in porDoc)
     {
         long doc = (long)pd["doc"]; double prop = (double)pd["docAmt"] / (double)pd["total"];
-        // Reparto proporcional de impuestos: lo aplicado al documento (en su moneda) entre su total
+
         foreach (var tx in ctx.Query("SELECT DocumentTaxDetailID, DocumentItemID, TaxTypeID, Amount, TaxBase, TaxPerc, TaxName, TaxTypeName FROM docDocumentTaxDetail WHERE DocumentID=" + doc))
             sb.Append("INSERT INTO docFinancialOperationTaxDetail (DocumentTaxDetailID, FinancialOperationID, DocumentID, DocumentItemID, Proporcion, Amount, TaxTypeID, TaxName, TaxTypeName, TaxBase, TaxPerc) VALUES (" +
                 L(tx["DocumentTaxDetailID"]) + ",@opId," + doc + "," + (Nulo(tx["DocumentItemID"]) ? "NULL" : L(tx["DocumentItemID"]).ToString()) + "," + Num(prop) + "," + Num(D(tx["Amount"]) * prop) + "," + I(tx["TaxTypeID"]) +
@@ -391,7 +351,6 @@ string Aplicar(Dictionary<string, object> spec)
     return (string)t["nombre"] + " " + pref + "-" + folio + " registrado: " + totalCuenta.ToString("N2") + " " + SimboloDe(mCuenta) + (monedasForaneas.Count > 0 ? " a tipo de cambio " + tc.ToString("0.####") : "") + "\n" + string.Join("\n", resumen);
 }
 
-// ---------- Pruebas automáticas (sin ventanas): BROSLMV_PAGO_TEST = JSON con el «spec»; el resultado va al archivo BROSLMV_PAGO_OUT ----------
 string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_TEST");
 if (!string.IsNullOrEmpty(modoPrueba))
 {
@@ -408,22 +367,14 @@ if (!string.IsNullOrEmpty(modoPrueba))
     return resultado;
 }
 
-// ===================================================================================================================================
-// VENTANA (Windows Forms, NO modal: Show, nunca ShowDialog → se puede minimizar y seguir trabajando en Comercial).
-// Mismo lenguaje visual que «Crear documento»: cinta oscura con las acciones y la información del movimiento (fecha y folio), grupos numerados con una etiqueta
-// arriba de cada campo (nada se encima ni se corta):
-//   1 · Cliente / proveedor (búsqueda por nombre o RFC; las personas con saldo salen primero) · 2 · Datos del movimiento (cuenta, forma de pago, referencia, monto con «Distribuir») ·
-//   3 · Antigüedad de saldos de la persona · 4 · Documentos con saldo (marcables, con lo que se aplica a cada uno) · Resumen con lo que quedaría.
-// Los manejadores llevan try/catch porque, en modeless, el script «ya terminó» cuando se hace clic.
-// ===================================================================================================================================
 class Opcion { public int Id { get; set; } public int Moneda { get; set; } public string Nombre { get; set; } public string Extra { get; set; } public override string ToString() => Nombre; }
 class Pastilla { public string Titulo, Valor; public Color Color; }
 
 var catalogo = Catalogos();
 Func<string, List<Dictionary<string, object>>> cat = k => (List<Dictionary<string, object>>)catalogo[k];
 var folios = (Dictionary<string, object>)catalogo["folios"];
-var seleccion = new Dictionary<long, double>();      // documento → monto a aplicar, SIEMPRE en la moneda de la cuenta (lo que entra o sale del banco)
-var parcSel = new Dictionary<long, int>();            // documento → parcialidad elegida (sin entrada = automática, en orden)
+var seleccion = new Dictionary<long, double>();
+var parcSel = new Dictionary<long, int>();
 int tcMon = -1, mcPrev = -1, mcPrevDocs = -1; bool ajustandoTc = false;
 var pastillas = new List<Pastilla>();
 Dictionary<string, object> entSel = null;
@@ -432,7 +383,6 @@ string quienSoy = "", nombreEmpresa = "";
 try { quienSoy = S(ctx.Scalar("SELECT TOP 1 ISNULL(UserName,'') FROM engUser WHERE UserID = " + ctx.erp.UserId)); } catch { }
 try { nombreEmpresa = S(ctx.Scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + empresa)); } catch { }
 
-// ---------- diseño ----------
 var C_BG = Color.FromArgb(241, 245, 249); var C_LINE = Color.FromArgb(203, 213, 225); var C_TXT = Color.FromArgb(30, 41, 59); var C_MUTED = Color.FromArgb(100, 116, 139);
 var C_HEAD = Color.FromArgb(248, 250, 252); var C_SEL = Color.FromArgb(238, 242, 255); var C_RIB = Color.FromArgb(51, 65, 85); var C_RIB_TX = Color.FromArgb(226, 232, 240); var C_RIB_MU = Color.FromArgb(148, 163, 184);
 var C_COBRO = Color.FromArgb(37, 99, 235); var C_PAGO = Color.FromArgb(15, 118, 110); var C_ROJO = Color.FromArgb(200, 40, 40); var C_AMBAR = Color.FromArgb(180, 83, 9); var C_VERDE = Color.FromArgb(22, 128, 59);
@@ -447,14 +397,12 @@ Color Acento() => EsCobro() ? C_COBRO : C_PAGO;
 List<Dictionary<string, object>> DocsLado() => cat(EsCobro() ? "docsC" : "docsP");
 DateTime? Fe(string s) { DateTime v; return DateTime.TryParse(s, ci, DateTimeStyles.None, out v) ? (DateTime?)v : null; }
 
-// controles declarados de antemano (los manejadores de abajo los usan antes de que se construyan)
 Panel ribbon = null, info = null, pTipos = null, pPie = null, g1 = null, g2 = null, g3 = null, g4 = null, g5 = null, pChips = null, pEdad = null;
 Label lblRibTitulo = null, lblMontoEt = null, lblDocsEst = null, lblN = null, lblSal = null, lblQ = null, lblMon = null, lblTot = null, lblTotEt = null, lblPie = null, lblAvisos = null, lblToast = null, lblBtnReg = null;
 DateTimePicker dtFecha = null; TextBox txtFolio = null, txtEnt = null, txtRfc = null, txtRef = null; ComboBox cmbCta = null, cmbForma = null; NumericUpDown nudMonto = null;
 DataGridView grid = null; ListBox lstEnt = null; Button btnMov = null; NumericUpDown nudTc = null; Label lblTcEt = null, lblInfoPie = null;
 var btnsTipo = new List<Button>();
 
-// ---------- piezas de construcción ----------
 Panel Grupo(Func<string> titulo)
 {
     var p = new Panel { BackColor = Color.White, Size = new Size(600, 120) };
@@ -470,8 +418,7 @@ Panel Grupo(Func<string> titulo)
 Label Et(Control padre, string t, int x, int y) { var l = new Label { Text = t, Location = new Point(x, y), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = Color.Transparent }; padre.Controls.Add(l); return l; }
 TextBox Cuadro(Control padre, string etiqueta, int x, int y, int w, bool soloLectura = false)
 {
-    // Marco de altura fija que dibuja el borde; el TextBox va adentro SIN borde y centrado. Así la altura no depende de cómo calcule Windows la del TextBox
-    // (cambia con el monitor y la escala) y ya no se encima con la etiqueta.
+
     if (etiqueta != "") Et(padre, etiqueta, x, y);
     var marco = new Panel { Location = new Point(x, y + 18), Size = new Size(w, 26), BackColor = soloLectura ? C_HEAD : Color.White };
     marco.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawRectangle(pen, 0, 0, marco.Width - 1, marco.Height - 1); };
@@ -493,7 +440,6 @@ Label Dato(Control padre, string etiqueta, int x, int y)
 }
 void PonerPorId(ComboBox c, int id) { for (int i = 0; i < c.Items.Count; i++) if (((Opcion)c.Items[i]).Id == id) { c.SelectedIndex = i; return; } if (c.Items.Count > 0) c.SelectedIndex = 0; }
 
-// ---------- cinta superior ----------
 ribbon = new Panel { BackColor = C_RIB, Size = new Size(1176, 100) };
 lblRibTitulo = new Label { Text = "Cobro a cliente", Font = F_H2, ForeColor = C_RIB_TX, BackColor = C_RIB, Location = new Point(12, 5), AutoSize = true }; ribbon.Controls.Add(lblRibTitulo);
 int bx = 12;
@@ -525,7 +471,6 @@ EtR("Folio", 146, 20); txtFolio = CajaInfo(146, 38, 110);
 lblInfoPie = EtR("(lo asigna el sistema al registrar)", 14, 70); lblInfoPie.ForeColor = C_RIB_MU;
 lblTcEt = EtR("Tipo de cambio", 270, 20); lblTcEt.Visible = false; nudTc = new NumericUpDown { Width = 120, DecimalPlaces = 4, Maximum = 99999M, Minimum = 0, TextAlign = HorizontalAlignment.Right, Visible = false }; nudTc.Location = new Point(270, 38 + Math.Max(0, (26 - nudTc.Height) / 2)); info.Controls.Add(nudTc);
 
-// ---------- tipos ----------
 pTipos = new Panel { BackColor = Color.White, Size = new Size(1176, 40) };
 pTipos.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawRectangle(pen, 0, 0, pTipos.Width - 1, pTipos.Height - 1); };
 var flTipos = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, AutoScroll = false, BackColor = Color.White, Padding = new Padding(8, 5, 8, 0) }; pTipos.Controls.Add(flTipos);
@@ -536,7 +481,6 @@ for (int i = 0; i < TIPOS.Count; i++)
     b.FlatAppearance.BorderColor = C_LINE; b.Click += (s, e) => Seguro(() => CambiarTipo(idx)); btnsTipo.Add(b); flTipos.Controls.Add(b);
 }
 
-// ---------- 1 · persona ----------
 g1 = Grupo(() => "1. " + (EsCobro() ? "Cliente" : "Proveedor"));
 txtEnt = Cuadro(g1, "Buscar por nombre o RFC  (F2) · las personas con saldo salen primero", 14, 34, 440); txtRfc = Cuadro(g1, "RFC", 466, 34, 140, true); txtRfc.TabStop = false;
 pChips = new Panel { Location = new Point(14, 88), Size = new Size(490, 34), BackColor = Color.White }; g1.Controls.Add(pChips);
@@ -553,7 +497,6 @@ pChips.Paint += (s, e) =>
 };
 btnMov = new Button { Text = "Movimientos", Location = new Point(516, 92), Size = new Size(90, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = C_TXT, Cursor = Cursors.Hand }; btnMov.FlatAppearance.BorderColor = C_LINE; g1.Controls.Add(btnMov);
 
-// ---------- 2 · datos del movimiento ----------
 g2 = Grupo(() => "2. Datos del movimiento");
 cmbCta = Lista(g2, "Cuenta o caja", 14, 34, 240); cmbForma = Lista(g2, "Forma de pago", 266, 34, 230);
 txtRef = Cuadro(g2, "Referencia o número de rastreo (opcional)", 14, 84, 240); txtRef.MaxLength = 60;
@@ -565,7 +508,6 @@ if (cmbCta.SelectedIndex < 0 && cmbCta.Items.Count > 0) cmbCta.SelectedIndex = 0
 foreach (var f in cat("formas")) cmbForma.Items.Add(new Opcion { Id = I(f["id"]), Nombre = S(f["nombre"]) });
 PonerPorId(cmbForma, 3);
 
-// ---------- 3 · antigüedad ----------
 g3 = Grupo(() => "3. Antigüedad de saldos");
 pEdad = new Panel { Location = new Point(14, 36), Size = new Size(1100, 40), BackColor = Color.White }; g3.Controls.Add(pEdad);
 pEdad.Paint += (s, e) =>
@@ -582,7 +524,6 @@ pEdad.Paint += (s, e) =>
     }
 };
 
-// ---------- 4 · documentos ----------
 g4 = Grupo(() => "4. Documentos con saldo");
 lblDocsEst = new Label { Location = new Point(230, 7), AutoSize = true, ForeColor = C_MUTED, Font = F_SM, BackColor = C_HEAD }; g4.Controls.Add(lblDocsEst);
 {
@@ -604,14 +545,12 @@ grid.Columns["Saldo"].DefaultCellStyle.Font = F_B; grid.Columns["Aplicar"].Defau
 grid.Columns["Pagos"].DefaultCellStyle.ForeColor = C_MUTED; grid.Columns["Queda"].DefaultCellStyle.ForeColor = C_MUTED; grid.Columns["Queda"].DefaultCellStyle.Font = F_SM;
 g4.Controls.Add(grid);
 
-// ---------- resumen ----------
 g5 = Grupo(() => "Resumen");
 lblN = Dato(g5, "Documentos marcados", 14, 34); lblSal = Dato(g5, "Saldo (MXN)", 174, 34); lblQ = Dato(g5, "Quedaría", 334, 34); lblMon = Dato(g5, "Monto capturado", 494, 34);
 lblTotEt = new Label { Text = "A APLICAR", Font = F_SM, ForeColor = C_MUTED, AutoSize = false, Size = new Size(240, 16), TextAlign = ContentAlignment.MiddleRight, Location = new Point(560, 32) }; g5.Controls.Add(lblTotEt);
 lblTot = new Label { Text = "0.00", Font = F_TOT, AutoSize = false, Size = new Size(240, 36), TextAlign = ContentAlignment.MiddleRight, Location = new Point(560, 46) }; g5.Controls.Add(lblTot);
 Et(g5, "Se registra una sola operación (un folio) con un renglón por documento y parcialidad. Lo que captures en «Aplicar» va en la moneda de la cuenta. No genera la póliza contable; pruébalo primero en una base de pruebas.", 14, 82);
 
-// ---------- pie ----------
 pPie = new Panel { BackColor = Color.White, Size = new Size(1200, 40) };
 pPie.Paint += (s, e) => { using (var pen = new Pen(C_LINE)) e.Graphics.DrawLine(pen, 0, 0, pPie.Width, 0); };
 lblPie = new Label { Location = new Point(14, 12), AutoSize = true, ForeColor = C_MUTED, Font = F_BASE }; pPie.Controls.Add(lblPie);
@@ -633,12 +572,11 @@ void Aviso(string m, bool mal = false) { lblToast.Text = m; lblToast.BackColor =
 
 foreach (var c in new Control[] { ribbon, pTipos, g1, g2, g3, g4, g5, pPie, lstEnt, lblToast }) frm.Controls.Add(c);
 
-// ---------- distribución (todo a mano: nada se encima y se ajusta al tamaño de la ventana) ----------
 void Acomodar()
 {
     int W = frm.ClientSize.Width, H = frm.ClientSize.Height, m = 12, w = W - 2 * m;
     ribbon.SetBounds(m, 10, w, 100); info.Location = new Point(ribbon.Width - info.Width - 10, 6);
-    bool verTipos = TIPOS.Count > 1; pTipos.Visible = verTipos;      // con un solo tipo (cobro o pago, plantillas separadas) no hace falta la franja
+    bool verTipos = TIPOS.Count > 1; pTipos.Visible = verTipos;
     pTipos.SetBounds(m, 118, w, 40);
     int y = verTipos ? 166 : 118; g1.SetBounds(m, y, 620, 132); g2.SetBounds(m + 632, y, w - 632, 132); y += 140;
     g3.SetBounds(m, y, w, 84); pEdad.SetBounds(14, 36, g3.Width - 28, 40); y += 92;
@@ -650,11 +588,10 @@ void Acomodar()
 }
 frm.Resize += (s, e) => Acomodar();
 
-// ---------- lógica ----------
 string Hoy() => dtFecha.Value.ToString("yyyy-MM-dd");
 int DiasVencido(Dictionary<string, object> d) { var v = Fe(S(d["vence"])); return v == null ? int.MinValue : (int)(dtFecha.Value.Date - v.Value.Date).TotalDays; }
 List<Dictionary<string, object>> DocsDeEnt() => entSel == null ? new List<Dictionary<string, object>>() : DocsLado().Where(d => I(d["ent"]) == I(entSel["id"])).ToList();
-// ---------- moneda, tipo de cambio y parcialidades (lo mismo que la página de WebView2) ----------
+
 int MCta() { var o = cmbCta.SelectedItem as Opcion; return o == null ? 3 : o.Moneda; }
 double Tc() => (double)nudTc.Value;
 bool Compat(Dictionary<string, object> d) { int mc = MCta(), md = I(d["moneda"]); return md == mc || mc == 3 || md == 3; }
@@ -662,7 +599,7 @@ double ADoc(Dictionary<string, object> d, double m) { int mc = MCta(), md = I(d[
 double A2(Dictionary<string, object> d, double sa) { int mc = MCta(), md = I(d["moneda"]); if (md == mc) return Math.Round(sa, 2); if (mc == 3) return Math.Round(sa * Tc(), 2); double v = Tc() > 0 ? sa / Tc() : 0; return Math.Floor(v * 100 + 1e-9) / 100; }
 double Sc(Dictionary<string, object> d) => A2(d, D(d["saldo"]));
 double ValMx(Dictionary<string, object> d, double da) => I(d["moneda"]) == 3 ? da : da * D(d["tcDoc"]);
-int MonedaFx()      // moneda extranjera que interviene (0 = todo en pesos: no se pide tipo de cambio)
+int MonedaFx()
 {
     int mc = MCta(); if (mc != 3) return mc;
     var ds = DocsDeEnt(); foreach (var k in seleccion.Keys) { var d = ds.FirstOrDefault(x => L(x["id"]) == k); if (d != null && I(d["moneda"]) != 3) return I(d["moneda"]); }
@@ -681,7 +618,7 @@ void PintarMon()
         if (tcMon != fx) { tcMon = fx; ajustandoTc = true; nudTc.Value = monedaPor.ContainsKey(fx) ? (decimal)Math.Round(D(monedaPor[fx]["tc"]), 4) : 1M; ajustandoTc = false; }
     }
 }
-string Leyenda(Dictionary<string, object> d)      // resultado en la moneda del documento
+string Leyenda(Dictionary<string, object> d)
 {
     long id = L(d["id"]); double m = seleccion.ContainsKey(id) ? seleccion[id] : 0, sal = D(d["saldo"]), da = Math.Round(ADoc(d, m), 2); if (Math.Abs(da - sal) <= 0.011) da = sal;
     double q = Math.Round(sal - da, 2); string sy = S(d["simbolo"]);
@@ -706,7 +643,7 @@ void CambioCuenta()
     }
     mcPrevDocs = mc; PintarDocs();
 }
-Dictionary<int, double[]> Stats()      // por persona (en pesos): [pendiente, vencido, #docs, v0..v4]
+Dictionary<int, double[]> Stats()
 {
     var m = new Dictionary<int, double[]>();
     foreach (var d in DocsLado()) { int e = I(d["ent"]); if (!m.ContainsKey(e)) m[e] = new double[8]; var a = m[e]; double s = D(d["saldoMx"]); a[0] += s; a[2]++; int dv = DiasVencido(d); if (dv > 0 && dv != int.MinValue) a[1] += s; int b = dv == int.MinValue || dv <= 0 ? 0 : dv <= 30 ? 1 : dv <= 60 ? 2 : dv <= 90 ? 3 : 4; a[3 + b] += s; }
@@ -779,7 +716,6 @@ void Repartir()
     PintarDocs();
 }
 
-// búsqueda de persona (las que tienen saldo, primero)
 IEnumerable<Dictionary<string, object>> FuenteEnt() => cat(EsCobro() ? "clientes" : "proveedores").OrderByDescending(x => ES.ContainsKey(I(x["id"])) ? ES[I(x["id"])][0] : 0).ThenBy(x => S(x["nombre"]));
 void Desplegar()
 {
@@ -819,7 +755,7 @@ grid.CellEndEdit += (_, ev) => grid.BeginInvoke(new Action(() => Seguro(() =>
     string col = ev.ColumnIndex < 0 ? "" : grid.Columns[ev.ColumnIndex].Name;
     if (pintando || ev.RowIndex < 0 || (col != "Aplicar" && col != "Parc")) return;
     long id = (long)grid.Rows[ev.RowIndex].Tag; var d = DocsDeEnt().First(x => L(x["id"]) == id);
-    if (col == "Parc")      // parcialidad: número, o vacío / «auto» para ir en orden; al elegirla se propone el saldo de esa parcialidad
+    if (col == "Parc")
     {
         int pn; int.TryParse(Convert.ToString(grid.Rows[ev.RowIndex].Cells["Parc"].Value), out pn);
         if (pn < 1 || pn > I(d["nParc"])) parcSel.Remove(id);
@@ -832,7 +768,7 @@ grid.CellEndEdit += (_, ev) => grid.BeginInvoke(new Action(() => Seguro(() =>
 grid.DataError += (_, ev) => ev.ThrowException = false;
 grid.CellDoubleClick += (_, ev) => Seguro(() => { if (ev.RowIndex >= 0 && grid.Columns[ev.ColumnIndex].Name != "Marca" && grid.Columns[ev.ColumnIndex].Name != "Aplicar" && grid.Columns[ev.ColumnIndex].Name != "Parc") AbrirDetalle((long)grid.Rows[ev.RowIndex].Tag); });
 void DetalleSel() { if (grid.CurrentRow == null || grid.CurrentRow.Tag == null) { Aviso("Elige un documento de la lista (clic en su renglón).", true); return; } AbrirDetalle((long)grid.CurrentRow.Tag); }
-// parcialidades y pagos aplicados de un documento (cobros, pagos y notas de crédito): ventana aparte, también sin bloquear
+
 void AbrirDetalle(long id)
 {
     var d = DocsDeEnt().FirstOrDefault(x => L(x["id"]) == id); if (d == null) return; var r = DetalleDoc(id); string sy = S(r["simbolo"]); bool ext = I(r["moneda"]) != 3;
@@ -864,7 +800,6 @@ void AbrirDetalle(long id)
     h.Controls.Add(gAp); h.Controls.Add(la); h.Controls.Add(gPa); h.Controls.Add(lp); h.Controls.Add(lt); h.Show(frm);
 }
 
-// últimos movimientos de la persona: ventana aparte, también sin bloquear
 btnMov.Click += (_, __) => Seguro(() =>
 {
     if (entSel == null) return; var mv = MovimientosDe(L(entSel["id"]), (string)TipoActual()["clave"]);
@@ -895,7 +830,7 @@ void Registrar(bool otro)
     if (otro) { var titulo = resumen.Split('\n')[0]; Limpiar(); Aviso(titulo); }
     else { MessageBox.Show(resumen, "Cobro o pago registrado", MessageBoxButtons.OK, MessageBoxIcon.Information); frm.Close(); }
 }
-void RefrescarDocs()      // después de aplicar (bien o mal) los saldos cambiaron
+void RefrescarDocs()
 {
     try { catalogo["docsC"] = DocsConSaldo("C"); catalogo["docsP"] = DocsConSaldo("P"); } catch { }
     seleccion.Clear(); parcSel.Clear(); ES = Stats(); PintarEnt(); PintarDocs();
@@ -908,11 +843,10 @@ frm.KeyDown += (_, ev) =>
     else if (ev.KeyCode == Keys.Escape && !lstEnt.Visible) { frm.Close(); ev.Handled = true; }
 };
 
-// ---------- Arranque: modeless ----------
 mcPrev = MCta(); mcPrevDocs = mcPrev;
 CambiarTipo(0);
 Acomodar();
-string capturaPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_SHOT");        // pruebas: guarda una captura de la ventana (con datos de ejemplo) y no la deja abierta
+string capturaPrueba = Environment.GetEnvironmentVariable("BROSLMV_PAGO_SHOT");
 if (!string.IsNullOrEmpty(capturaPrueba))
 {
     int tipoShot = int.TryParse(Environment.GetEnvironmentVariable("BROSLMV_PAGO_SHOT_TIPO"), out var ts) ? ts : 0; CambiarTipo(tipoShot);

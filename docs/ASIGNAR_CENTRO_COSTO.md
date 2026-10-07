@@ -42,15 +42,3 @@ solo aparece en muy pocos documentos de un solo módulo. Por eso «Encabezado» 
 
 - Hasta **5,000 documentos** por lote; si hay más, se aplica ese lote y se avisa cuántos quedaron fuera para repetir.
 - A partir de **500** documentos la vista previa pide revisar con cuidado los criterios.
-
-## Reglas de BrosLMV que cumple
-
-- **Empresa activa:** el catálogo de centros, los módulos y los documentos salen de `OwnedBusinessEntityID`; nada va escrito a mano.
-- **Transacción y bitácora:** nada queda a medias y todo se puede deshacer.
-- **Conexión propia** (`ctx.OpenConn`) para escribir por lotes; `RefreshGrid` una sola vez al final.
-- **Probada:** `build/humo/casos/36_asignar_centro_costo.ps1` corre la plantilla real contra el laboratorio (`BROSLMV_DESARROLLO`) (vista previa, solo-vacíos, repetir, reemplazar, documento en uso, deshacer en orden inverso, partidas) y lo deja todo como estaba.
-
-## Para desarrolladores
-
-Con la variable de entorno `BROSLMV_CC_TEST` (JSON con `accion` = `previsualizar` | `aplicar` | `deshacer` y los mismos parámetros del formulario) el script no abre ventanas y escribe el resultado en el archivo de
-`BROSLMV_CC_OUT`. Así corre en `BrosLMV.Runner` (lleva `// job: safe-offline`).

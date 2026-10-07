@@ -31,8 +31,11 @@
 | [`PDF_MASIVO_DOCUMENTOS.md`](PDF_MASIVO_DOCUMENTOS.md) | Plantilla de fábrica: PDF de todos los documentos seleccionados (sueltos, ZIP o unidos) y modo lote del motor HtmlToPdf |
 | [`ESTADO_CUENTA_CLIENTES.md`](ESTADO_CUENTA_CLIENTES.md) | Plantilla de fábrica: cuentas por cobrar (solo clientes) con fecha de corte, antigüedad, calendario, detalle del documento y estado de cuenta |
 | [`ESTADO_CUENTA_PROVEEDORES.md`](ESTADO_CUENTA_PROVEEDORES.md) | Plantilla de fábrica: cuentas por pagar (solo proveedores), igual que la de clientes pero separada para que cada usuario vea solo su módulo |
-| [`CREAR_DOCUMENTO.md`](CREAR_DOCUMENTO.md) | Plantillas de fábrica «Crear documento» (C#/Python × HTML/Windows Forms): factura, pedido, remisión, compra, OC y recepción, con documentos derivados |
-| [`COBRO_PAGO.md`](COBRO_PAGO.md) | Plantillas avanzadas «Cobro a cliente» y «Pago a proveedor», separadas (C#/Python × HTML/Windows Forms): la receta de SQL directo, límites y pruebas |
+| [`CREAR_VENTA.md`](CREAR_VENTA.md) | Plantilla de fábrica «Crear documento de venta» (C#/Python × HTML/Windows Forms): factura de cliente, pedido y remisión, con dólares y controles; categoría Ventas |
+| [`CREAR_COMPRA.md`](CREAR_COMPRA.md) | Plantilla de fábrica «Crear documento de compra» (C#/Python × HTML/Windows Forms): orden de compra, recepción y factura de compra, con documentos derivados; categoría Compras |
+| [`COBRO_CLIENTE.md`](COBRO_CLIENTE.md) | Plantilla avanzada «Cobro a cliente» (C#/Python × HTML/Windows Forms): parcialidades, dólares y detalle por factura; categoría Cuentas por cobrar |
+| [`PAGO_PROVEEDOR.md`](PAGO_PROVEEDOR.md) | Plantilla avanzada «Pago a proveedor» (C#/Python × HTML/Windows Forms), separada del cobro; categoría Cuentas por pagar |
+| [`desarrollo/PLANTILLAS_DESARROLLO.md`](desarrollo/PLANTILLAS_DESARROLLO.md) | Para quien programa: cómo se arman, prueban y mantienen las plantillas (las guías de arriba hablan de la plantilla, no del código) |
 | [`CONFIGURACION_FORMATO.md`](CONFIGURACION_FORMATO.md) | Configuración de formato: formatos por tipo de documento, carpeta y nombre de los PDF, correo, y el editor de formato con vista previa |
 | [`LIBRERIAS.md`](LIBRERIAS.md) | **Qué librerías y componentes ya tenemos** (Excel/ClosedXML, Word y PowerPoint/Open XML, QR, JSON, WebView2, SQLite…), ejemplos para copiar, candidatas por agregar, Power BI y cómo sumar una nueva |
 | [`CAPACIDADES.md`](CAPACIDADES.md) | Qué se puede construir: reportes, análisis, integraciones |

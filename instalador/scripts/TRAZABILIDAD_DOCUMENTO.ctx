@@ -1,21 +1,10 @@
 // lang: csharp
 // AppKey recomendado: TRAZABILIDAD_DOCUMENTO
 // Plantilla: Trazabilidad del documento
-// Categoria: Trazabilidad
+// Categoria: Documentos
 // Documentacion: TRAZABILIDAD_DOCUMENTO.html
 // job: safe-offline
 // Trazabilidad del documento: de dónde viene y a dónde fue, en las dos direcciones, para CUALQUIER módulo (incluidos los clones).
-// Selecciona un documento en la lista (o ábrelo) y ejecuta. Solo LEE: no cambia nada. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
-//
-// Lee las cuatro formas en que Comercial (y los scripts) ligan documentos, y las junta en un solo mapa:
-//   · SourceDocumentID del encabezado         (el documento de origen; lo que escribe el sistema nativo)
-//   · DestinationDocumentID del encabezado    (el documento destino; lo leen la globalización, «asignar factura a OC» y lo llenan scripts/personas
-//                                              cuando de VARIOS orígenes sale UN solo documento: el sistema solo guarda UN SourceDocumentID)
-//   · SourceDocumentItemID / SourceDocumentID por partida
-//   · DeliverDocumentItemID por partida       (la «entrega» de una Orden de Compra: así liga la Recepción)
-// Cada flecha dice con qué evidencia existe; si solo existe por DestinationDocumentID se marca como «vínculo manual».
-//
-// Nada va escrito a mano: la empresa activa se toma del contexto; los módulos se clasifican por su ModuleIDBase (los clones se comportan como el original).
 
 using System;
 using System.Collections.Generic;
@@ -37,9 +26,8 @@ double D(object v) { try { return v == null || v is DBNull ? 0.0 : Convert.ToDou
 bool Nulo(object v) => v == null || v is DBNull;
 string FechaTxt(object v) => Nulo(v) ? "" : Convert.ToDateTime(v, ci).ToString("yyyy-MM-dd");
 
-// ---------- 1) ¿De qué documento? ----------
 long raiz = 0;
-string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_TRAZA_DOC");   // solo para pruebas automáticas (sin ventanas)
+string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_TRAZA_DOC");
 if (!string.IsNullOrEmpty(modoPrueba)) long.TryParse(modoPrueba, out raiz);
 if (raiz == 0) { try { raiz = ctx.ObtenerIdDeVentanaActiva() ?? 0; } catch { } }
 if (raiz == 0)
@@ -54,7 +42,7 @@ if (raiz == 0)
 }
 
 int empresa = ctx.erp.OwnedBusinessEntityId;
-const int MaxNodos = 300;      // tope de seguridad: una cadena real rara vez pasa de unas decenas
+const int MaxNodos = 300;
 const int MaxNiveles = 25;
 
 string Lista(IEnumerable<long> ids) => string.Join(",", ids.Select(x => x.ToString(ci)));
@@ -65,9 +53,8 @@ IEnumerable<List<long>> Lotes(IEnumerable<long> ids, int n)
     if (lote.Count > 0) yield return lote;
 }
 
-// ---------- 2) El modelo ----------
 var nodos = new Dictionary<long, Dictionary<string, object>>();
-var aristas = new Dictionary<string, Dictionary<string, object>>();            // "desde>hasta" -> arista
+var aristas = new Dictionary<string, Dictionary<string, object>>();
 var avisos = new List<string>();
 
 Dictionary<string, object> Arista(long desde, long hasta)
@@ -93,7 +80,6 @@ for (int nivel = 0; nivel < MaxNiveles && frontera.Count > 0 && vistos.Count < M
     {
         string ids = Lista(lote);
 
-        // 2a) Encabezados: Source y Destination, hacia los dos lados
         var enc = ctx.Query(
             "SELECT DocumentID, ISNULL(SourceDocumentID,0) AS Src, ISNULL(DestinationDocumentID,0) AS Dst FROM docDocument " +
             "WHERE OwnedBusinessEntityID=" + empresa + " AND DeletedOn IS NULL AND " +
@@ -101,12 +87,11 @@ for (int nivel = 0; nivel < MaxNiveles && frontera.Count > 0 && vistos.Count < M
         foreach (var r in enc)
         {
             long id = L(r["DocumentID"]), src = L(r["Src"]), dst = L(r["Dst"]);
-            Evidencia(src, id, "S");           // Source: origen -> este documento
-            Evidencia(id, dst, "D");           // Destination: este documento -> destino
+            Evidencia(src, id, "S");
+            Evidencia(id, dst, "D");
             foreach (var x in new[] { id, src, dst }) if (x > 0) nuevos.Add(x);
         }
 
-        // 2b) Partidas: SourceDocumentItemID (conversión) y DeliverDocumentItemID (entrega), y SourceDocumentID de la partida
         foreach (var par in new[] { new[] { "SourceDocumentItemID", "P" }, new[] { "DeliverDocumentItemID", "E" } })
         {
             var pr = ctx.Query(
@@ -142,20 +127,16 @@ for (int nivel = 0; nivel < MaxNiveles && frontera.Count > 0 && vistos.Count < M
     if (nuevos.Any(x => !vistos.Contains(x))) avisos.Add("La cadena es muy grande: se muestran los primeros " + MaxNodos + " documentos.");
 }
 
-// ---------- 3) Datos de cada documento ----------
-// Etapa del flujo (columna) y carril (fila) a partir del TIPO de documento y de a quién va dirigido, que se leen del propio módulo (engModuleParameter, por ModuleIDBase):
-// así los módulos clonados se ordenan igual que el original y no hay una lista de módulos escrita a mano. La etapa NO sale de qué documento nació de cuál:
-// una factura hecha directo desde el pedido sigue yendo DESPUÉS de la recepción de mercancía.
 string[] ETAPAS = { "", "Solicitud / Cotización", "Pedido / Orden", "Entrega / Recepción", "Factura", "Nota de crédito / Devolución" };
 int Etapa(int tipo)
 {
     switch (tipo)
     {
-        case 49: case 1: return 1;                                                  // solicitud de compra, cotización
-        case 40: case 21: return 2;                                                 // pedido / orden de compra, pedidos a consignación
-        case 3: case 22: case 16: case 17: case 18: case 20: case 24: case 25: return 3;   // remisión / recepción, entradas, salidas, traspasos, toma de inventario
-        case 6: case 4: case 23: return 5;                                          // nota de crédito, devoluciones
-        default: return 4;                                                          // factura, nota de cargo, venta de mostrador, gastos…
+        case 49: case 1: return 1;
+        case 40: case 21: return 2;
+        case 3: case 22: case 16: case 17: case 18: case 20: case 24: case 25: return 3;
+        case 6: case 4: case 23: return 5;
+        default: return 4;
     }
 }
 string Carril(int rec) => rec == 1 ? "Venta" : rec == 2 ? "Compra" : "Inventario y otros";
@@ -193,7 +174,6 @@ if (!nodos.ContainsKey(raiz))
     return "NO EXISTE";
 }
 
-// Aristas con un extremo que no es un documento válido de la empresa (eliminado, de otra empresa): se quitan y se avisa
 foreach (var k in aristas.Keys.ToList())
 {
     var a = aristas[k];
@@ -204,7 +184,6 @@ foreach (var k in aristas.Keys.ToList())
     }
 }
 
-// Pagos/cobros aplicados a cada documento, con forma de pago, cuenta y la nota de crédito si el «pago» fue una aplicación de NC
 foreach (var lote in Lotes(nodos.Keys, 400))
 {
     var pagos = ctx.Query(
@@ -226,7 +205,6 @@ foreach (var lote in Lotes(nodos.Keys, 400))
     }
 }
 
-// Partidas de los documentos (con tope: si la cadena es enorme, solo las de los documentos más cercanos al elegido; el resto muestra solo su ficha)
 const int MaxPartidas = 3000;
 var conDetalle = new List<long>(); int acumuladas = 0;
 foreach (var lote in Lotes(nodos.Keys.OrderBy(k => k == raiz ? 0 : 1), 400))
@@ -239,7 +217,7 @@ foreach (var lote in Lotes(nodos.Keys.OrderBy(k => k == raiz ? 0 : 1), 400))
         if (acumuladas + n <= MaxPartidas || id == raiz) { conDetalle.Add(id); acumuladas += n; } else avisos.Add("El detalle de partidas del documento " + id + " no se cargó (la cadena es muy grande); selecciónalo como punto de partida para verlo.");
     }
 }
-var partidaPor = new Dictionary<long, Dictionary<string, object>>();         // DocumentItemID → partida
+var partidaPor = new Dictionary<long, Dictionary<string, object>>();
 foreach (var lote in Lotes(conDetalle, 300))
 {
     string ids = Lista(lote);
@@ -270,7 +248,6 @@ foreach (var lote in Lotes(conDetalle, 300))
     }
     foreach (var id in lote) if (nodos.ContainsKey(id)) nodos[id]["detalle"] = true;
 
-    // Lotes (con caducidad)
     foreach (var r in ctx.Query("SELECT DocumentItemID, Lot, Quantity, ExpirationDate, ISNULL(Unit,'') AS Unidad FROM docDocumentLot WHERE DeletedOn IS NULL AND CancelledOn IS NULL AND DocumentID IN (" + ids + ") " +
                                 "UNION ALL SELECT DocumentItemID, Lot, Quantity, ExpirationDate, '' FROM docDocumentItemLot WHERE DocumentID IN (" + ids + ")"))
     {
@@ -279,7 +256,7 @@ foreach (var lote in Lotes(conDetalle, 300))
         if (lote1 == "" || lst.Any(x => S(x["lote"]) == lote1 && M(x["cant"]) == M(r["Quantity"]))) continue;
         lst.Add(new Dictionary<string, object> { ["lote"] = lote1, ["cant"] = M(r["Quantity"]), ["cad"] = FechaTxt(r["ExpirationDate"]), ["uni"] = S(r["Unidad"]) });
     }
-    // Números de serie: individuales y rangos
+
     foreach (var r in ctx.Query("SELECT DocumentItemID, SerialNumber FROM docDocumentSerialNumber WHERE DeletedOn IS NULL AND CancelledOn IS NULL AND DocumentID IN (" + ids + ") " +
                                 "UNION ALL SELECT DocumentItemID, SerialNumberFrom + CASE WHEN ISNULL(SerialNumberTo,'') IN ('', SerialNumberFrom) THEN '' ELSE ' … ' + SerialNumberTo END FROM docDocumentItemSerialNumber WHERE DocumentID IN (" + ids + ")"))
     {
@@ -287,7 +264,7 @@ foreach (var lote in Lotes(conDetalle, 300))
         var lst = (List<string>)p["series"]; p["nSeries"] = I(p["nSeries"]) + 1;
         if (lst.Count < 40 && !lst.Contains(S(r["SerialNumber"]))) lst.Add(S(r["SerialNumber"]));
     }
-    // Pedimentos / importaciones
+
     foreach (var r in ctx.Query("SELECT x.DocumentItemID, x.Quantity, ISNULL(x.Unit,'') AS Unidad, pi.ProductImportNumber AS Numero, ISNULL(pi.Customs,'') AS Aduana, pi.DateImport AS Fecha, ISNULL(pi.ClavePedimento,'') AS Clave " +
                                 "FROM docDocumentProductImport x LEFT JOIN docProductImport pi ON pi.ProductImportID = x.ProductImportID WHERE x.DeletedOn IS NULL AND x.DocumentID IN (" + ids + ")"))
     {
@@ -296,7 +273,6 @@ foreach (var lote in Lotes(conDetalle, 300))
     }
 }
 
-// Vínculo línea por línea: de dónde viene cada partida y a dónde fue (por SourceDocumentItemID y DeliverDocumentItemID)
 foreach (var n in nodos.Values)
     foreach (var p in (List<Dictionary<string, object>>)n["partidas"])
         foreach (var par in new[] { new object[] { p["_src"], "factura" }, new object[] { p["_del"], "entrega" } })
@@ -306,7 +282,7 @@ foreach (var n in nodos.Values)
             ((List<Dictionary<string, object>>)p["orig"]).Add(new Dictionary<string, object> { ["item"] = oi, ["doc"] = od, ["cant"] = po["cant"] });
             ((List<Dictionary<string, object>>)po["dest"]).Add(new Dictionary<string, object> { ["item"] = p["item"], ["doc"] = n["id"], ["cant"] = p["cant"] });
         }
-// Documentos ligados solo por el encabezado (p. ej. una remisión hecha desde un pedido): se enlazan las partidas por producto, y se marca como aproximado
+
 foreach (var n in nodos.Values)
 {
     long src = (long)n["src"]; if (src <= 0 || !nodos.ContainsKey(src)) continue;
@@ -322,7 +298,6 @@ foreach (var n in nodos.Values)
 }
 foreach (var n in nodos.Values) foreach (var p in (List<Dictionary<string, object>>)n["partidas"]) { p.Remove("_src"); p.Remove("_del"); }
 
-// ---------- 4) Avisos sobre la calidad de los vínculos ----------
 foreach (var a in aristas.Values)
 {
     var tipos = (List<string>)a["tipos"];
@@ -337,16 +312,14 @@ foreach (var a in aristas.Values)
 foreach (var n in nodos.Values)
     if ((bool)n["cancelado"]) avisos.Add(S(n["tipoNombre"]) + " " + S(n["folio"]) + " está CANCELADO y sigue ligado en la cadena.");
 
-// ---------- 5) Resultado ----------
-// La pantalla usa d/h (quién es origen de quién) y manual; desde/hasta/tipos (la evidencia técnica) viajan solo para las pruebas automáticas.
 var modelo = new Dictionary<string, object>
 {
     ["raiz"] = raiz, ["etapas"] = ETAPAS, ["avisos"] = avisos.Distinct().ToList(),
     ["nodos"] = nodos.Values.OrderBy(n => (int)n["etapa"]).ThenBy(n => S(n["fecha"])).ThenBy(n => (long)n["id"]).ToList(),
     ["aristas"] = aristas.Values.Select(a => new Dictionary<string, object> { ["d"] = a["desde"], ["h"] = a["hasta"], ["manual"] = a["manual"], ["desde"] = a["desde"], ["hasta"] = a["hasta"], ["tipos"] = a["tipos"] }).ToList()
 };
-string pruebaHtml = Environment.GetEnvironmentVariable("BROSLMV_TRAZA_HTML");        // pruebas: escribe la página en un archivo y no abre ventana
-if (!string.IsNullOrEmpty(modoPrueba) || !string.IsNullOrEmpty(pruebaHtml))                                      // pruebas automáticas: escribe el modelo en un archivo, sin ventanas
+string pruebaHtml = Environment.GetEnvironmentVariable("BROSLMV_TRAZA_HTML");
+if (!string.IsNullOrEmpty(modoPrueba) || !string.IsNullOrEmpty(pruebaHtml))
 {
     string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_TRAZA_OUT");
     string jsonPrueba = ser.Serialize(modelo);
@@ -504,10 +477,6 @@ function exportar(todo){
 })();
 </script></body></html>".Replace("__MODELO__", json);
 
-
-// ---------- 6) Ventana: modeless, se queda abierta mientras la necesites ----------
-// El script termina enseguida y la ventana sigue viva; cada acción llega a este manejador en el hilo de Comercial. Así abrir un documento no choca con XEngine
-// («the other application is busy» pasaba cuando la ventana bloqueaba el hilo mientras Comercial cargaba el documento).
 Func<Dictionary<string, object>, string> alMensaje = r =>
 {
     string accion = r.ContainsKey("accion") ? S(r["accion"]) : "";

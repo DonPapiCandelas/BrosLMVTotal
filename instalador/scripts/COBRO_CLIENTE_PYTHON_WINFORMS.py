@@ -2,15 +2,9 @@
 # timeout: 1800
 # AppKey recomendado: COBRO_CLIENTE_PYTHON_WINFORMS
 # Plantilla: Cobro a cliente (Python · ventana Windows Forms)
-# Categoria: Tesorería
-# Documentacion: COBRO_PAGO.html
+# Categoria: Cuentas por cobrar
+# Documentacion: COBRO_CLIENTE.html
 # ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un cobro a cliente y lo aplica a uno o varios documentos con saldo.
-# Comercial no ofrece una función para esto: la plantilla escribe directo en las tablas de Tesorería (una transacción por documento) y NO genera la póliza contable.
-# Plantilla separada a propósito: solo CUENTAS POR COBRAR (clientes) para que quien la use no vea el otro lado. Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
-#
-# Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
-# el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
-# Windows Forms desde Python (pythonnet): Python corre en su propio proceso, la ventana es automáticamente independiente y un error nunca tumba Comercial.
 
 import pythonnet
 pythonnet.load("netfx")
@@ -40,10 +34,8 @@ import math
 
 from broslmv import ctx
 
-
 def S(v):
     return "" if v is None else str(v)
-
 
 def I(v):
     try:
@@ -51,46 +43,36 @@ def I(v):
     except Exception:
         return 0
 
-
 def D(v):
     try:
         return float(v)
     except Exception:
         return 0.0
 
-
 def Sq(s):
     """Texto para un literal SQL."""
     return S(s).replace("'", "''")
-
 
 def Num(x):
     """Número para un literal SQL (siempre con punto)."""
     t = ("%.8f" % float(x)).rstrip("0").rstrip(".")
     return t if t not in ("", "-") else "0"
 
-
 def fecha_txt(v):
     if v is None:
         return ""
     return v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else S(v)[:10]
 
-
-empresa = I(ctx.erp.OwnedBusinessEntityId())      # en Python ctx.erp.X siempre es una función (relevo al addon): se llama, aunque en C# sea una propiedad
-
+empresa = I(ctx.erp.OwnedBusinessEntityId())
 
 def L(v):
     return I(v)
 
-
-# ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
-# El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
 def carpeta_local():
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
     d = os.path.join(base, "BrosLMV", "borradores")
     os.makedirs(d, exist_ok=True)
     return d
-
 
 def archivo_borrador(que):
     try:
@@ -98,7 +80,6 @@ def archivo_borrador(que):
     except Exception:
         uid = 0
     return os.path.join(carpeta_local(), que + "_" + str(empresa) + "_" + str(uid) + ".json")
-
 
 def leer_borrador(que, vence=True):
     try:
@@ -112,14 +93,12 @@ def leer_borrador(que, vence=True):
     except Exception:
         return None
 
-
 def guardar_borrador(que, obj):
     try:
         with open(archivo_borrador(que), "w", encoding="utf-8") as f:
             json.dump(obj, f, ensure_ascii=False)
     except Exception:
         pass
-
 
 def borrar_borrador(que):
     try:
@@ -129,26 +108,14 @@ def borrar_borrador(que):
     except Exception:
         pass
 
-# ===================================================================================================================================
-# COBRO A CLIENTE / PAGO A PROVEEDOR.
-# ⚠ PLANTILLA AVANZADA, NO NATIVA: Comercial no ofrece ninguna función para aplicar un cobro o un pago (se buscó en el SDK y en el motor, véase MANUAL §10.5).
-# Esta plantilla repite, con SQL directo y en UNA sola transacción por documento, lo que hace la pantalla de Tesorería: la operación financiera, la aplicación al
-# documento, su espejo, la transferencia bancaria, el reparto proporcional de impuestos y el nuevo saldo. La receta se validó contra cobros reales y contra el laboratorio.
-# NO genera la póliza contable del cobro/pago (eso lo hace el Motor de Asientos al contabilizar). Pruébala SIEMPRE primero en una base de pruebas.
-# ===================================================================================================================================
-# Tipos: clave · nombre · lado (C/P) · módulo de la operación (248 cobro, 247 pago) · DocRecipientID · DocumentTypeID de la operación · prefijo de folio
 def TP(clave, nombre, lado, mod_op, recip, tipo_op, prefijo):
     return {"clave": clave, "nombre": nombre, "lado": lado, "modOp": mod_op, "recip": recip, "tipoOp": tipo_op, "prefijo": prefijo}
-
 
 TIPOS = [
     TP("cobro", "Cobro a cliente",  "C", 248, 1, 31, "COB"),
 ]
 TIPO_POR = {t["clave"]: t for t in TIPOS}
 
-# ---------- Qué módulos generan cuentas por cobrar / por pagar ----------
-# Se leen de los parámetros del módulo (DocRecipient 1 = cliente, 2 = proveedor; FinancialAffectation ≠ 0) por ModuleIDBase, así los módulos clonados cuentan igual.
-# Solo documentos que SUMAN saldo (facturas, notas de cargo, gastos): una nota de crédito no se cobra ni se paga, se aplica.
 _modulos = ctx.query(
     "SELECT m.ModuleID, m.ModuleName, pv.Rec, pv.Af FROM engModule m JOIN ("
     "  SELECT ModuleID, MAX(CASE WHEN ParameterKey='DocRecipient' THEN TRY_CONVERT(int, Value) END) AS Rec, MAX(CASE WHEN ParameterKey='DocumentTypeID' THEN TRY_CONVERT(int, Value) END) AS Tipo, "
@@ -161,26 +128,17 @@ for _r in _modulos:
     modulos_lado["C" if I(_r["Rec"]) == 1 else "P"].append(I(_r["ModuleID"]))
     nombre_mod[I(_r["ModuleID"])] = S(_r["ModuleName"])
 
-
-# ---------- Monedas ----------
-# La cuenta tiene su moneda y cada documento la suya (0 = sin moneda = pesos). El tipo de cambio de cada moneda sale del catálogo de monedas de Comercial.
 monedas = [{"id": I(r["id"]), "simbolo": S(r["simbolo"]), "nombre": S(r["nombre"]), "letra": S(r["letra"]), "tc": D(r["tc"]) or 1.0} for r in ctx.query(
     "SELECT CurrencyID AS id, IntlSymbol AS simbolo, Currency AS nombre, ISNULL(MoneyLetter,'') AS letra, ISNULL(Rate,1) AS tc FROM vwLBSCurrencyList ORDER BY CurrencyID")]
 moneda_por = {m["id"]: m for m in monedas}
-
 
 def moneda_de(v):
     m = I(v)
     return 3 if m <= 0 else m
 
-
 def simbolo_de(id_):
     return moneda_por[id_]["simbolo"] if id_ in moneda_por else "MXN"
 
-
-# ---------- Documentos con saldo pendiente de un lado (C = por cobrar, P = por pagar) ----------
-# Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero). La ventana los pide otra vez después de aplicar, para ver los saldos nuevos.
-# Además del saldo trae lo necesario para decidir: moneda y tipo de cambio del documento, cuántas parcialidades tiene, cuántos cobros/pagos y cuántas notas de crédito ya se le aplicaron.
 def docs_con_saldo(lado):
     mods = modulos_lado[lado]
     if not mods:
@@ -206,9 +164,6 @@ def docs_con_saldo(lado):
                     "nParc": I(r["nParc"]), "nAplic": I(r["nAplic"]), "nNotas": I(r["nNotas"])})
     return res
 
-
-# Parcialidades de un documento: la agenda de pago (número, vencimiento, importe) menos lo ya aplicado a cada una (los renglones sin número cuentan como la 1).
-# Si la suma de lo pendiente no cuadra con el saldo del documento (intereses, redondeo) la diferencia se carga a la última parcialidad con saldo; sin agenda hay una sola parcialidad con todo el saldo.
 def parcialidades_de(doc, saldo):
     agenda = ctx.query("SELECT PartialityNumber AS n, MIN(DatePayment) AS vence, SUM(ISNULL(Amount,0)) AS importe FROM docDocumentPaymentAgenda WHERE DocumentID = " + str(doc) + " AND DeletedOn IS NULL GROUP BY PartialityNumber ORDER BY PartialityNumber")
     pagos = {}
@@ -240,8 +195,6 @@ def parcialidades_de(doc, saldo):
                 sobra = round(sobra - q, 2)
     return res
 
-
-# Todo lo que le ha pasado a un documento: sus parcialidades y cada aplicación (cobro, pago o nota de crédito) con folio, fecha, moneda, tipo de cambio y parcialidad. La ventana lo pide al seleccionar el documento.
 def detalle_doc(doc):
     d = ctx.query("SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, ISNULL(d.Total,0) AS Total, ISNULL(d.Balance,0) AS Saldo, ISNULL(d.TotalPaid,0) AS Pagado, ISNULL(d.CurrencyID,0) AS Moneda, ISNULL(d.Rate,1) AS TC FROM docDocument d "
                   "WHERE d.DocumentID = " + str(doc) + " AND d.OwnedBusinessEntityID = " + str(empresa))
@@ -265,7 +218,6 @@ def detalle_doc(doc):
     res["aplic"] = aplic
     return res
 
-
 def movimientos_de(entidad, clave):
     if clave not in TIPO_POR or entidad <= 0:
         return []
@@ -274,9 +226,6 @@ def movimientos_de(entidad, clave):
         "(SELECT COUNT(*) FROM docDocumentPayment p WHERE p.FinancialOperationID = o.FinancialOperationID AND p.DeletedOn IS NULL) AS Docs FROM docFinancialOperation o LEFT JOIN orgFinancialEntity f ON f.FinancialEntityID = o.FinancialEntityID "
         "WHERE o.BusinessEntityID = " + str(entidad) + " AND o.ModuleID = " + str(TIPO_POR[clave]["modOp"]) + " AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL ORDER BY o.DateOperation DESC, o.FinancialOperationID DESC")]
 
-
-# Comportamiento de pago de una persona: lo cobrado (o pagado) por mes en los últimos 12 meses, los días promedio que tarda desde la fecha del documento, el atraso promedio
-# frente al vencimiento y el porcentaje de pagos a tiempo. Todo sale de Comercial en ese momento.
 def inteligencia_pago(entidad, clave):
     res = {}
     if clave not in TIPO_POR or entidad <= 0:
@@ -316,12 +265,9 @@ def inteligencia_pago(entidad, clave):
         res["puntual"] = round(D(e[0]["aTiempo"]) * 100.0 / n) if n > 0 else None
     return res
 
-
-# ---------- Catálogos y documentos con saldo para el formulario ----------
 def catalogos():
     cat = {}
 
-    # Persona con RFC, límite de crédito y su último cobro o pago (fecha e importe), para dar contexto al capturar
     def ent(tabla):
         return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.CreditLimit,0) AS credito, "
                 "CONVERT(VARCHAR(10), u.DateOperation, 23) AS ultFecha, ISNULL(u.Amount,0) AS ultMonto FROM " + tabla + " x "
@@ -332,7 +278,6 @@ def catalogos():
     def lista(tabla):
         return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "credito": D(r["credito"]), "ultFecha": S(r["ultFecha"]), "ultMonto": D(r["ultMonto"])} for r in ctx.query(ent(tabla))]
 
-    # Solo el lado de esta plantilla: la persona que lleva cuentas por cobrar no ve nada de las cuentas por pagar (y al revés); ni siquiera se cargan sus datos.
     ver_c = any(t["lado"] == "C" for t in TIPOS)
     ver_p = any(t["lado"] == "P" for t in TIPOS)
     cat["clientes"] = lista("orgCustomer") if ver_c else []
@@ -341,20 +286,17 @@ def catalogos():
         "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def, ISNULL(CurrencyID,0) AS moneda FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")]
     cat["monedas"] = monedas
     cat["formas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")]
-    # Folio siguiente de cada tipo (el mismo cálculo que usa aplicar)
+
     cat["folios"] = {t["clave"]: I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + str(t["modOp"]) + " AND FolioPrefix = N'" + t["prefijo"] + "'")) for t in TIPOS}
-    # Documentos con saldo pendiente de cada lado (los más antiguos primero)
+
     cat["docsC"] = docs_con_saldo("C") if ver_c else []
     cat["docsP"] = docs_con_saldo("P") if ver_p else []
     return cat
 
-
-# ---------- Importe en letra (el mismo estilo del comprobante mexicano) ----------
 LUNI = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE"]
 LDEC = ["", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"]
 LVEI = ["VEINTIUNO", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO", "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE"]
 LCEN = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
-
 
 def letra_centenas(n):
     if n == 0:
@@ -378,7 +320,6 @@ def letra_centenas(n):
                     r += " Y " + LUNI[u]
     return r.strip()
 
-
 def letra_en(n):
     if n == 0:
         return "CERO"
@@ -398,7 +339,6 @@ def letra_en(n):
         r = r[:-3] + "UN"
     return r
 
-
 def letra_importe(v, moneda):
     v = max(0.0, v)
     e = int(v)
@@ -409,17 +349,6 @@ def letra_importe(v, moneda):
     pal = moneda_por[moneda]["letra"].upper() if moneda in moneda_por and moneda_por[moneda]["letra"] else "PESOS"
     return letra_en(e) + " " + pal + " " + ("%02d" % c) + "/100" + (" M.N." if moneda == 3 else "")
 
-
-# ---------- Aplicar ----------
-# «spec»: tipo, entidad, cuenta, forma (c_FormaPago), fecha (yyyy-MM-dd), referencia, tc (tipo de cambio, solo si hay moneda extranjera), aplicaciones [{doc, monto, parcialidad}].
-#   «monto» va SIEMPRE en la moneda de la CUENTA (lo que entra o sale del banco); «parcialidad» 0 = automática (en orden), n = esa parcialidad.
-# Igual que Tesorería: UNA operación (un folio) con un renglón por documento (y por parcialidad), todo en una sola transacción: o queda todo o no queda nada.
-# Moneda (verificado contra miles de aplicaciones de una empresa con dólares): el renglón se guarda en la moneda del DOCUMENTO, con su tipo de cambio en Rate y AmountPaidCurrency = Amount × Rate (valor en pesos):
-#   · cuenta y documento en la misma moneda → importe tal cual (Rate = 1 en pesos, o el tipo de cambio en moneda extranjera);
-#   · cuenta en pesos y documento en moneda extranjera → importe del documento = pesos ÷ tipo de cambio (Rate = tipo de cambio);
-#   · cuenta en moneda extranjera y documento en pesos → importe del documento = moneda extranjera × tipo de cambio (Rate = 1; la operación guarda el tipo de cambio).
-#   Cualquier otra combinación (p. ej. cuenta en euros y documento en dólares) se rechaza: usa la pantalla nativa de Tesorería.
-# Regresa un resumen legible con el folio y, por documento, lo aplicado, su equivalente en la moneda del documento y lo que queda.
 def aplicar(spec):
     clave = S(spec.get("tipo"))
     if clave not in TIPO_POR:
@@ -455,7 +384,6 @@ def aplicar(spec):
     persona = S(ctx.scalar("SELECT ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + str(entidad)))
     uid = str(ctx.user_id)
 
-    # 1) Cada documento: validación, conversión a su moneda y reparto por parcialidades (todo en memoria; no se escribe nada todavía)
     lineas = []
     por_doc = []
     total_cuenta = 0.0
@@ -492,7 +420,7 @@ def aplicar(spec):
             foraneas.add(m_cuenta)
         if m_doc != 3:
             foraneas.add(m_doc)
-        # Importe en la moneda del documento y tipo de cambio del renglón
+
         if modo == "igual":
             doc_amt = monto
             rate_linea = 1.0 if m_doc == 3 else tc
@@ -510,10 +438,10 @@ def aplicar(spec):
             rate_linea = 1.0
         doc_amt = round(doc_amt, 2)
         if abs(doc_amt - saldo) <= 0.011:
-            doc_amt = saldo                                               # un residuo de redondeo de la conversión no deja el documento «casi liquidado»
+            doc_amt = saldo
         if doc_amt > saldo + 0.005:
             raise Exception("No se pudo aplicar a " + etiqueta + ": el importe (" + "{:,.2f}".format(doc_amt) + " " + simbolo_de(m_doc) + ") es mayor que su saldo (" + "{:,.2f}".format(saldo) + " " + simbolo_de(m_doc) + ").")
-        # Reparto por parcialidades: la pedida o, en automático, en orden
+
         parc = parcialidades_de(doc, saldo)
         reparto = []
         resto = doc_amt
@@ -552,12 +480,11 @@ def aplicar(spec):
     rate_op = 1.0 if m_cuenta == 3 else tc
     total_cuenta = round(total_cuenta, 2)
 
-    # 2) Una sola transacción: la operación, sus renglones, los espejos, la transferencia, el reparto de impuestos y los saldos
     sb = []
     sb.append("DECLARE @out TABLE(FinancialOperationID BIGINT); DECLARE @outPay TABLE(DocumentPaymentID BIGINT);\nBEGIN TRY BEGIN TRAN;\n")
     sb.append("DECLARE @lk INT; EXEC @lk = sp_getapplock @Resource = 'BrosCobroFolio_" + str(mod_op) + "_" + pref + "', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000;\n")
     sb.append("IF @lk < 0 THROW 50001, 'No se pudo obtener el candado del folio (otro cobro/pago en curso).', 1;\n")
-    for pd in por_doc:      # el saldo se vuelve a comprobar DENTRO de la transacción: si alguien más aplicó algo mientras tanto, no se aplica de más
+    for pd in por_doc:
         sb.append("IF (SELECT ISNULL(Balance,0) FROM docDocument WHERE DocumentID=" + str(pd["doc"]) + ") < " + Num(pd["doc_amt"] - 0.011) + " THROW 50002, 'El saldo de un documento cambió mientras se capturaba.', 1;\n")
     sb.append("DECLARE @folio BIGINT = ISNULL((SELECT MAX(TRY_CONVERT(BIGINT, Folio)) FROM docFinancialOperation WHERE ModuleID=" + str(mod_op) + " AND FolioPrefix=N'" + pref + "'),0)+1;\n")
     sb.append("DECLARE @f DATETIME = '" + f8 + " 12:00:00'; DECLARE @opId BIGINT, @payId BIGINT;\n")
@@ -571,14 +498,14 @@ def aplicar(spec):
         m, r = ln["monto"], ln["rate"]
         sb.append("INSERT INTO docDocumentPayment (DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber, SaldoAnterior, SaldoInsoluto) OUTPUT INSERTED.DocumentPaymentID INTO @outPay VALUES (" +
                   str(ln["doc"]) + ",@opId,@f," + Num(m) + "," + Num(r) + "," + Num(m * r) + "," + str(ln["parc"]) + "," + Num(ln["sa"]) + "," + Num(ln["si"]) + ");\nSELECT @payId = DocumentPaymentID FROM @outPay; DELETE FROM @outPay;\n")
-        # docDocumentPaymentEspejo.DocumentPaymentID NO es identity: espeja el mismo id recién generado
+
         sb.append("INSERT INTO docDocumentPaymentEspejo (DocumentPaymentID, DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber) VALUES (@payId," + str(ln["doc"]) + ",@opId,@f," + Num(m) + "," + Num(r) + "," + Num(m * r) + "," + str(ln["parc"]) + ");\n")
-    if forma != 1:          # efectivo no lleva transferencia; cualquier otra forma deja su registro bancario
+    if forma != 1:
         sb.append("INSERT INTO docBankTransfer (FinancialOperationID, FinancialEntityID, TrackingNumber, CreatedOn, CreatedBy) VALUES (@opId," + str(cuenta) + "," + ("NULL" if tracking == "" else "N'" + Sq(tracking) + "'") + ",GETDATE()," + uid + ");\n")
     for pd in por_doc:
         doc = pd["doc"]
         prop = pd["doc_amt"] / pd["total"]
-        # Reparto proporcional de impuestos: lo aplicado al documento (en su moneda) entre su total
+
         for tx in ctx.query("SELECT DocumentTaxDetailID, DocumentItemID, TaxTypeID, Amount, TaxBase, TaxPerc, TaxName, TaxTypeName FROM docDocumentTaxDetail WHERE DocumentID=" + str(doc)):
             item = "NULL" if tx["DocumentItemID"] is None else str(I(tx["DocumentItemID"]))
             sb.append("INSERT INTO docFinancialOperationTaxDetail (DocumentTaxDetailID, FinancialOperationID, DocumentID, DocumentItemID, Proporcion, Amount, TaxTypeID, TaxName, TaxTypeName, TaxBase, TaxPerc) VALUES (" +
@@ -595,8 +522,6 @@ def aplicar(spec):
         resumen.append(pd["etiqueta"] + " · " + "{:,.2f}".format(pd["monto"]) + " " + simbolo_de(m_cuenta) + conv + " · " + reparto + (" · liquidado" if pd["nuevo"] <= 0.0049 else " · queda " + "{:,.2f}".format(pd["nuevo"]) + " " + simbolo_de(pd["m_doc"])))
     return t["nombre"] + " " + pref + "-" + S(folio) + " registrado: " + "{:,.2f}".format(total_cuenta) + " " + simbolo_de(m_cuenta) + ((" a tipo de cambio " + ("%g" % tc)) if foraneas else "") + "\n" + "\n".join(resumen)
 
-
-# ---------- Pruebas automáticas (sin ventanas): variable de entorno BROSLMV_PAGO_TEST (JSON con el «spec»), resultado en BROSLMV_PAGO_OUT ----------
 _modo_prueba = os.environ.get("BROSLMV_PAGO_TEST")
 if _modo_prueba:
     _spec = json.loads(_modo_prueba)
@@ -621,16 +546,8 @@ if _modo_prueba:
             _f.write(_res)
     result = _res
 
-# ===================================================================================================================================
-# VENTANA (Windows Forms desde Python con pythonnet). Es el MISMO diseño que la versión de C# (ui_pagos_winforms.cs.part), con las mismas posiciones, colores y reglas:
-# cinta oscura con las acciones y la información del movimiento (fecha y folio), grupos numerados con la etiqueta arriba de cada campo (nada se encima),
-#   1 · Cliente / proveedor (búsqueda por nombre o RFC; las personas con saldo salen primero) · 2 · Datos del movimiento (cuenta, forma de pago, referencia, monto con «Distribuir») ·
-#   3 · Antigüedad de saldos de la persona · 4 · Documentos con saldo (marcables, con lo que se aplica a cada uno) · Resumen con lo que quedaría.
-# Python corre en su propio proceso: la ventana es independiente y no bloquea a Comercial. Cada manejador va en «seguro» para que un error se explique en vez de dejar la ventana muda.
-# ===================================================================================================================================
 def msg(texto, titulo="Cobro o pago"):
     MessageBox.Show(texto, titulo, MessageBoxButtons.OK, MessageBoxIcon.Warning)
-
 
 def seguro(fn):
     def envuelto(sender=None, args=None):
@@ -641,10 +558,8 @@ def seguro(fn):
             msg(str(ex))
     return envuelto
 
-
 def rgb(r, g, b):
     return Color.FromArgb(r, g, b)
-
 
 C_BG = rgb(241, 245, 249)
 C_LINE = rgb(203, 213, 225)
@@ -670,20 +585,18 @@ F_VAL = Font("Segoe UI Semibold", 11.0)
 
 E = {"ent": None, "guardando": False, "pintando": False, "tipo": 0, "resultado": "CANCELADO", "tc_mon": -1, "mc_prev": -1, "mc_prev_docs": -1, "ajustando": False}
 
-
 def fe(s):
     try:
         return datetime.datetime.strptime(S(s)[:10], "%Y-%m-%d")
     except Exception:
         return None
 
-
 def principal():
     global result
     catalogo = catalogos()
     folios = catalogo["folios"]
-    seleccion = {}        # documento → monto a aplicar, SIEMPRE en la moneda de la cuenta (lo que entra o sale del banco)
-    parc_sel = {}         # documento → parcialidad elegida (sin entrada = automática, en orden)
+    seleccion = {}
+    parc_sel = {}
     pastillas = []
     vis = {"ent": []}
     quien_soy = ""
@@ -706,7 +619,7 @@ def principal():
     frm.Font = F_BASE
     frm.KeyPreview = True
 
-    def al_frente(s, e):             # Python corre en otro proceso: sin esto la ventana puede quedar detrás de Comercial
+    def al_frente(s, e):
         frm.TopMost = True
         frm.Activate()
         frm.BringToFront()
@@ -725,7 +638,6 @@ def principal():
     def docs_lado():
         return catalogo["docsC" if es_cobro() else "docsP"]
 
-    # ---------- piezas de construcción ----------
     def grupo(titulo):
         p = Panel()
         p.BackColor = Color.White
@@ -761,7 +673,7 @@ def principal():
         return l
 
     def cuadro(padre, etiqueta, x, y, w, solo_lectura=False):
-        # Marco de altura fija que dibuja el borde; el TextBox va adentro SIN borde y centrado (la altura no depende de la escala del monitor)
+
         if etiqueta:
             et(padre, etiqueta, x, y)
         marco = Panel()
@@ -833,7 +745,6 @@ def principal():
         i = cmb.SelectedIndex
         return items[i] if 0 <= i < len(items) else None
 
-    # ---------- cinta superior ----------
     ribbon = Panel()
     ribbon.BackColor = C_RIB
     ribbon.Size = Size(1176, 100)
@@ -986,7 +897,6 @@ def principal():
     nud_tc.Visible = False
     info.Controls.Add(nud_tc)
 
-    # ---------- tipos ----------
     p_tipos = Panel()
     p_tipos.BackColor = Color.White
     p_tipos.Size = Size(1176, 40)
@@ -1022,7 +932,6 @@ def principal():
         btns_tipo.append(b)
         fl_tipos.Controls.Add(b)
 
-    # ---------- 1 · persona ----------
     g1 = grupo(lambda: "1. " + ("Cliente" if es_cobro() else "Proveedor"))
     txt_ent, marco_ent = cuadro(g1, "Buscar por nombre o RFC  (F2) · las personas con saldo salen primero", 14, 34, 440)
     txt_rfc, _m = cuadro(g1, "RFC", 466, 34, 140, True)
@@ -1057,7 +966,6 @@ def principal():
     btn_mov = boton_plano("Movimientos", 516, 92, 90, 28)
     g1.Controls.Add(btn_mov)
 
-    # ---------- 2 · datos del movimiento ----------
     g2 = grupo(lambda: "2. Datos del movimiento")
     cmb_cta = lista(g2, "Cuenta o caja", 14, 34, 240)
     cmb_forma = lista(g2, "Forma de pago", 266, 34, 230)
@@ -1089,7 +997,6 @@ def principal():
         cmb_forma.Items.Add(f["nombre"])
     poner_por_id(cmb_forma, forma_items, 3)
 
-    # ---------- 3 · antigüedad ----------
     g3 = grupo(lambda: "3. Antigüedad de saldos")
     p_edad = Panel()
     p_edad.Location = Point(14, 36)
@@ -1127,7 +1034,6 @@ def principal():
     p_edad.Paint += pintar_edad
     p_edad.Resize += lambda s, e: p_edad.Invalidate()
 
-    # ---------- 4 · documentos ----------
     g4 = grupo(lambda: "4. Documentos con saldo")
     lbl_docs_est = Label()
     lbl_docs_est.Location = Point(230, 7)
@@ -1192,7 +1098,6 @@ def principal():
     grid.Columns["Queda"].DefaultCellStyle.Font = F_SM
     g4.Controls.Add(grid)
 
-    # ---------- resumen ----------
     g5 = grupo(lambda: "Resumen")
     lbl_n = dato(g5, "Documentos marcados", 14, 34)
     lbl_sal = dato(g5, "Saldo (MXN)", 174, 34)
@@ -1217,7 +1122,6 @@ def principal():
     g5.Controls.Add(lbl_tot)
     et(g5, "Se registra una sola operación (un folio) con un renglón por documento y parcialidad. Lo que captures en «Aplicar» va en la moneda de la cuenta. No genera la póliza contable; pruébalo primero en una base de pruebas.", 14, 82)
 
-    # ---------- pie ----------
     p_pie = Panel()
     p_pie.BackColor = Color.White
     p_pie.Size = Size(1200, 40)
@@ -1302,7 +1206,6 @@ def principal():
     for c in (ribbon, p_tipos, g1, g2, g3, g4, g5, p_pie, lst_ent, lbl_toast):
         frm.Controls.Add(c)
 
-    # ---------- distribución (todo a mano: nada se encima y se ajusta al tamaño de la ventana) ----------
     def acomodar():
         W = frm.ClientSize.Width
         H = frm.ClientSize.Height
@@ -1311,7 +1214,7 @@ def principal():
         ribbon.SetBounds(m, 10, w, 100)
         info.Location = Point(ribbon.Width - info.Width - 10, 6)
         ver_tipos = len(TIPOS) > 1
-        p_tipos.Visible = ver_tipos      # con un solo tipo (cobro o pago, plantillas separadas) no hace falta la franja
+        p_tipos.Visible = ver_tipos
         p_tipos.SetBounds(m, 118, w, 40)
         y = 166 if ver_tipos else 118
         g1.SetBounds(m, y, 620, 132)
@@ -1334,7 +1237,6 @@ def principal():
         p_edad.Invalidate()
     frm.Resize += lambda s, e: acomodar()
 
-    # ---------- lógica ----------
     def hoy():
         return dt_fecha.Value.ToString("yyyy-MM-dd")
 
@@ -1352,7 +1254,6 @@ def principal():
             return []
         return [d for d in docs_lado() if d["ent"] == E["ent"]["id"]]
 
-    # ---------- moneda, tipo de cambio y parcialidades (lo mismo que la página de WebView2) ----------
     def m_cta():
         i = cmb_cta.SelectedIndex
         return cta_items[i]["moneda"] if 0 <= i < len(cta_items) else 3
@@ -1387,7 +1288,7 @@ def principal():
     def val_mx(d, da):
         return da if d["moneda"] == 3 else da * d["tcDoc"]
 
-    def moneda_fx():       # moneda extranjera que interviene (0 = todo en pesos: no se pide tipo de cambio)
+    def moneda_fx():
         mc = m_cta()
         if mc != 3:
             return mc
@@ -1417,7 +1318,7 @@ def principal():
                 nud_tc.Value = Convert.ToDecimal(round(moneda_por[fx]["tc"], 4)) if fx in moneda_por else Convert.ToDecimal(1)
                 E["ajustando"] = False
 
-    def leyenda(d):        # resultado en la moneda del documento
+    def leyenda(d):
         id_ = d["id"]
         m = seleccion.get(id_, 0.0)
         sal = d["saldo"]
@@ -1459,7 +1360,7 @@ def principal():
         E["mc_prev_docs"] = mc
         pintar_docs()
 
-    def stats():           # por persona (en pesos): [pendiente, vencido, #docs, v0..v4]
+    def stats():
         m = {}
         for d in docs_lado():
             a = m.setdefault(d["ent"], [0.0] * 8)
@@ -1635,7 +1536,6 @@ def principal():
             resto = round(resto - ap, 2)
         pintar_docs()
 
-    # búsqueda de persona (las que tienen saldo, primero)
     def fuente_ent():
         lst = catalogo["clientes"] if es_cobro() else catalogo["proveedores"]
         return sorted(lst, key=lambda x: (-(ES[x["id"]][0] if x["id"] in ES else 0.0), x["nombre"]))
@@ -1745,7 +1645,7 @@ def principal():
             pintar_docs()
         except Exception as ex:
             msg(str(ex))
-    grid.CellContentClick += lambda s, ev: grid.BeginInvoke(System.Action(lambda: clic_celda(s, ev)))      # diferido: repintar la rejilla dentro de su propio evento da «llamada reentrante»
+    grid.CellContentClick += lambda s, ev: grid.BeginInvoke(System.Action(lambda: clic_celda(s, ev)))
 
     def fin_edicion(sender, ev):
         col = grid.Columns[ev.ColumnIndex].Name if ev.ColumnIndex >= 0 else ""
@@ -1754,7 +1654,7 @@ def principal():
         try:
             id_ = grid.Rows[ev.RowIndex].Tag
             d = next(x for x in docs_de_ent() if x["id"] == id_)
-            if col == "Parc":        # parcialidad: número, o vacío / «auto» para ir en orden; al elegirla se propone el saldo de esa parcialidad
+            if col == "Parc":
                 try:
                     pn = int(str(grid.Rows[ev.RowIndex].Cells["Parc"].Value))
                 except Exception:
@@ -1802,7 +1702,6 @@ def principal():
             return
         abrir_detalle(grid.CurrentRow.Tag)
 
-    # parcialidades y pagos aplicados de un documento (cobros, pagos y notas de crédito): ventana aparte, también sin bloquear
     def abrir_detalle(id_):
         d = next((x for x in docs_de_ent() if x["id"] == id_), None)
         if d is None:
@@ -1896,7 +1795,6 @@ def principal():
         h.Controls.Add(lt)
         h.Show(frm)
 
-    # últimos movimientos de la persona: ventana aparte
     def ver_movimientos():
         ent = E["ent"]
         if ent is None:
@@ -1935,7 +1833,7 @@ def principal():
         pintar_docs()
         txt_ent.Focus()
 
-    def refrescar_docs():          # después de aplicar (bien o mal) los saldos cambiaron
+    def refrescar_docs():
         try:
             catalogo["docsC"] = docs_con_saldo("C")
             catalogo["docsP"] = docs_con_saldo("P")
@@ -2011,14 +1909,12 @@ def principal():
             ev.Handled = True
     frm.KeyDown += tecla_forma
 
-    # ---------- Arranque ----------
     E["mc_prev"] = m_cta()
     E["mc_prev_docs"] = E["mc_prev"]
     cambiar_tipo(0)
     acomodar()
     frm.ShowDialog()
     result = E["resultado"]
-
 
 if not _modo_prueba:
     principal()

@@ -162,14 +162,3 @@ Sugerencias, de más a menos específica (se ven con una etiqueta en la pestaña
   muestra el documento creado, así que **si todo salió bien la ventana se cierra sola**; si hubo errores o algún documento quedó sin
   póliza, se queda en la pestaña Resultado. Los avisos informativos (p. ej. redondeo de centavos) van al log de scripts. El perfil
   temporal de WebView2 se borra en segundo plano para no congelar Comercial al cerrar.
-
-## 7. Pruebas antes de operar (sandbox)
-
-Un XML por camino: proveedor existente; proveedor nuevo; producto nuevo con cada opción; gasto con
-retención de ISR; composición fiscal sin tipo de impuesto (debe bloquear); descuento en partida;
-plazo en parcialidades. Comparar contra el mismo documento capturado a mano.
-
-## 8. Registro en la empresa
-
-La plantilla del editor no crea acción por sí sola: se registra con `BrosGuardar` (conserva SHA-256 e
-historial en `zzBrosScriptHist`) y la Consola debe recargar su árbol para mostrarla.

@@ -2,19 +2,10 @@
 // lang: csharp
 // AppKey recomendado: ESTADO_CUENTA_PROVEEDORES
 // Plantilla: Estado de cuenta de proveedores (cuentas por pagar)
-// Categoria: Reportes
+// Categoria: Cuentas por pagar
 // Documentacion: ESTADO_CUENTA_PROVEEDORES.html
 // job: safe-offline
 // Cuentas por pagar y estado de cuenta de cada proveedor, con fecha de corte, antigüedad de saldos, calendario de vencimientos y detalle de cada documento.
-// Solo LEE: no cambia nada. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
-// Este script solo trabaja con proveedores: «Estado de cuenta de clientes» tiene su propio botón, así cada usuario ve únicamente la información del módulo que le corresponde.
-//
-// Cómo calcula (nada va escrito a mano; los módulos se clasifican por los parámetros del propio módulo, así los clones se comportan como el original):
-//   · Qué es de proveedores:               DocRecipient = 2 (engModuleParameter, por ModuleIDBase).
-//   · Qué suma y qué resta:               FinancialAffectation (±1; 0 = no afecta saldos). Una factura suma y una nota de crédito resta.
-//   · Saldo a una fecha de corte:         Total − pagos vigentes con DateOperation ≤ corte − notas de crédito aplicadas (PaymentWithDocumentID). docDocument.Balance es solo la foto de hoy.
-//   · Vencimiento:                        la última fecha de la agenda de pago (docDocumentPaymentAgenda); sin agenda, la fecha del documento. Las notas de crédito no vencen.
-// Los números se calculan en la ventana (navegador): cambiar la fecha de corte es instantáneo y no vuelve a consultar. La ventana NO bloquea Comercial: se puede minimizar.
 
 using System;
 using System.Collections.Generic;
@@ -37,17 +28,13 @@ bool Nulo(object v) => v == null || v is DBNull;
 string FechaTxt(object v) => Nulo(v) ? "" : Convert.ToDateTime(v, ci).ToString("yyyy-MM-dd");
 
 int empresa = ctx.erp.OwnedBusinessEntityId;
-int meses = 12;                                                    // cuánto historial se carga (el saldo de cualquier corte posterior es exacto)
-string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_SALDOS_TEST");    // solo para pruebas automáticas (sin ventanas): JSON {"meses":12}
+int meses = 12;
+string modoPrueba = Environment.GetEnvironmentVariable("BROSLMV_SALDOS_TEST");
 if (!string.IsNullOrEmpty(modoPrueba))
 {
     try { var cfg = ser.Deserialize<Dictionary<string, object>>(modoPrueba); if (cfg.ContainsKey("meses")) meses = Math.Max(1, I(cfg["meses"])); } catch { }
 }
 
-// ---------- Excel ejecutivo (ClosedXML) ----------
-// Se arma aquí, en C#, con lo que la ventana ya calculó (corte, saldos, antigüedad) y las gráficas que dibujó como imagen: así el libro sale igual de preciso
-// que la pantalla, con formato de moneda y fecha reales, filtros, paneles fijos, totales que se ajustan al filtro y configuración de impresión.
-// Con más de 5,000 documentos no hay problema: las filas se escriben en bloque y las gráficas se resumen (no dependen de cuántos documentos haya).
 const string FMT_MON = "\"$\"#,##0.00;[Red]-\"$\"#,##0.00;\"-\"";
 const string FMT_MON0 = "\"$\"#,##0.00;[Red]-\"$\"#,##0.00";
 const string FMT_PCT = "0.0%;-0.0%;\"-\"";
@@ -98,7 +85,7 @@ void Impresion(IXLWorksheet ws, string empresa, string titulo, int filaEnc)
     ws.PageSetup.Footer.Left.AddText("Generado con BrosLMV"); ws.PageSetup.Footer.Right.AddText(XLHFPredefinedText.PageNumber, XLHFOccurrence.AllPages); ws.PageSetup.Footer.Right.AddText(" de "); ws.PageSetup.Footer.Right.AddText(XLHFPredefinedText.NumberOfPages, XLHFOccurrence.AllPages);
     if (filaEnc > 0) ws.PageSetup.SetRowsToRepeatAtTop(filaEnc, filaEnc);
 }
-// Una tarjeta de indicador: etiqueta, valor grande y una línea de apoyo (3 filas; de la columna c1 a la c2)
+
 void Tarjeta(IXLWorksheet ws, int fila, int c1, int c2, string etiqueta, double valor, string apoyo, string color)
 {
     IXLRange F(int f) { var r = ws.Range(f, c1, f, c2); if (c2 > c1) r.Merge(); return r; }
@@ -131,7 +118,6 @@ string ConstruirExcel(Dictionary<string, object> p, string ruta)
         var ents = Lst(p["ents"]); var docs = Lst(p["docs"]);
         Func<double, double> Pc = x => kT > 0 ? x / kT : 0;
 
-        // ===== Hoja 1: Resumen =====
         var wr = wb.Worksheets.Add("Resumen"); wr.TabColor = Col("#2D6FE0"); wr.ShowGridLines = false;
         wr.Column(1).Width = 2; for (int c = 2; c <= 13; c++) wr.Column(c).Width = 13; wr.Column(14).Width = 2;
         Banda(wr, 14, empresa, titulo, sub);
@@ -145,7 +131,6 @@ string ConstruirExcel(Dictionary<string, object> p, string ruta)
         Tarjeta(wr, 5, 12, 13, "SALDO NETO", kT + kM, "facturas menos notas de crédito", "#15324F");
         wr.Row(8).Height = 10;
 
-        // lectura rápida: tres frases generadas con los mismos números
         double topSaldo = ents.Count > 0 ? Nu(((System.Collections.IList)ents[0])[7]) : 0; string topNom = ents.Count > 0 ? S(((System.Collections.IList)ents[0])[0]) : "";
         var frases = new List<string>();
         frases.Add("• " + nV + " documento(s) vencido(s) por " + kV.ToString("$#,##0.00", ci) + ", el " + Pc(kV).ToString("0.0%", ci) + " del saldo de " + (kT).ToString("$#,##0.00", ci) + ".");
@@ -155,7 +140,7 @@ string ConstruirExcel(Dictionary<string, object> p, string ruta)
         for (int i = 0; i < frases.Count; i++) { var rg = wr.Range(10 + i, 2, 10 + i, 13); rg.Merge(); rg.FirstCell().Value = frases[i]; rg.Style.Font.SetFontSize(11); rg.Style.Font.SetFontColor(Col("#16263A")); wr.Row(10 + i).Height = 20; rg.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center; }
         int f0 = 10 + frases.Count + 1;
         Seccion(wr, f0, 2, 13, "GRÁFICAS");
-        int g1 = f0 + 1;                                                        // 15 filas de 20 px = 300 px por gráfica
+        int g1 = f0 + 1;
         Imagen(wr, gr["aging"], "B" + g1, 576, 300); Imagen(wr, gr["top"], "H" + g1, 576, 300);
         int g2 = g1 + 16;
         Imagen(wr, gr["sem"], "B" + g2, 576, 300); Imagen(wr, gr["estado"], "H" + g2, 576, 300);
@@ -194,7 +179,6 @@ string ConstruirExcel(Dictionary<string, object> p, string ruta)
         nota.Style.Font.SetFontSize(9); nota.Style.Font.SetFontColor(Col("#64748B")); nota.Style.Font.Italic = true; nota.Style.Alignment.WrapText = true; nota.Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
         Impresion(wr, empresa, titulo, 0); wr.PageSetup.PagesTall = 0; wr.SheetView.ZoomScale = 100;
 
-        // ===== Hoja 2: Antigüedad por cliente/proveedor =====
         var wa = wb.Worksheets.Add("Antigüedad"); wa.TabColor = Col("#D97706"); wa.ShowGridLines = false;
         wa.Column(1).Width = 2; wa.Column(2).Width = 46; for (int c = 3; c <= 8; c++) wa.Column(c).Width = 15; wa.Column(9).Width = 17; wa.Column(10).Width = 12; wa.Column(11).Width = 9;
         Banda(wa, 11, empresa, "Antigüedad de saldos por " + ent, sub);
@@ -226,7 +210,6 @@ string ConstruirExcel(Dictionary<string, object> p, string ruta)
         }
         wa.SheetView.Freeze(5, 2); Impresion(wa, empresa, titulo, 5);
 
-        // ===== Hoja 3: Documentos con saldo =====
         var wd = wb.Worksheets.Add("Documentos"); wd.TabColor = Col("#15324F"); wd.ShowGridLines = false;
         double[] ancho = { 2, 40, 22, 14, 12, 12, 11, 16, 16, 16, 16, 40 };
         for (int c = 0; c < ancho.Length; c++) wd.Column(c + 1).Width = ancho[c];
@@ -254,7 +237,7 @@ string ConstruirExcel(Dictionary<string, object> p, string ruta)
             rngFila.AddConditionalFormat().WhenIsTrue("=$K6=\"Vence en 7 días\"").Fill.SetBackgroundColor(Col("#FFFBEB"));
             rngFila.AddConditionalFormat().WhenIsTrue("=$K6=\"A favor\"").Fill.SetBackgroundColor(Col("#F3E8FF"));
             wd.Range(6, 11, ultD, 11).AddConditionalFormat().WhenIsTrue("=$K6=\"Vencido\"").Font.SetFontColor(Col("#B91C1C"));
-            // totales que se recalculan con el filtro (SUBTOTAL ignora las filas ocultas)
+
             wd.Cell(4, 2).Value = "Total de lo que ves (se ajusta al filtro)"; wd.Cell(4, 2).Style.Font.SetBold(); wd.Cell(4, 2).Style.Font.SetFontColor(Col("#15324F"));
             wd.Cell(4, 4).FormulaA1 = "=SUBTOTAL(103,D6:D" + ultD + ")"; wd.Cell(4, 4).Style.NumberFormat.Format = "#,##0\" docs.\"";
             foreach (int cc in new[] { 8, 9, 10 }) { string L = XLHelper.GetColumnLetterFromNumber(cc); wd.Cell(4, cc).FormulaA1 = "=SUBTOTAL(109," + L + "6:" + L + ultD + ")"; wd.Cell(4, cc).Style.NumberFormat.Format = FMT_MON; }
@@ -263,7 +246,6 @@ string ConstruirExcel(Dictionary<string, object> p, string ruta)
         }
         wd.SheetView.Freeze(5, 3); Impresion(wd, empresa, titulo, 5);
 
-        // ===== Hoja 4: Vencimientos por semana =====
         var wv = wb.Worksheets.Add("Vencimientos"); wv.TabColor = Col("#7E22CE"); wv.ShowGridLines = false;
         wv.Column(1).Width = 2; wv.Column(2).Width = 22; wv.Column(3).Width = 13; wv.Column(4).Width = 13; wv.Column(5).Width = 11; wv.Column(6).Width = 18; wv.Column(7).Width = 3;
         Banda(wv, 14, empresa, "Vencimientos por semana", sub);
@@ -291,7 +273,6 @@ string ConstruirExcel(Dictionary<string, object> p, string ruta)
     return ruta;
 }
 
-// Estado de cuenta de un solo cliente/proveedor: pensado para mandarlo (encabezado, saldo inicial, movimientos con saldo corriente, totales)
 void ConstruirEdo(XLWorkbook wb, Dictionary<string, object> p, string empresa, string titulo, string Ent1)
 {
     var ws = wb.Worksheets.Add("Estado de cuenta"); ws.TabColor = Col("#2D6FE0"); ws.ShowGridLines = false;
@@ -329,13 +310,10 @@ void ConstruirEdo(XLWorkbook wb, Dictionary<string, object> p, string empresa, s
     ws.SheetView.Freeze(10, 0); Impresion(ws, empresa, titulo + " — " + nombre, 10); ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
 }
 
-// Pruebas automáticas del libro de Excel: BROSLMV_SALDOS_XLSX_TEST = archivo JSON con lo que mandaría la ventana; BROSLMV_SALDOS_XLSX_OUT = dónde escribir el .xlsx
 string xlsxPrueba = Environment.GetEnvironmentVariable("BROSLMV_SALDOS_XLSX_TEST");
 if (!string.IsNullOrEmpty(xlsxPrueba))
     return ConstruirExcel(ser.Deserialize<Dictionary<string, object>>(File.ReadAllText(xlsxPrueba, Encoding.UTF8)), Environment.GetEnvironmentVariable("BROSLMV_SALDOS_XLSX_OUT"));
 
-// ---------- 1) Qué módulos son de proveedores ----------
-// Se pivotean los parámetros por ModuleIDBase y se unen con todos los módulos (clones incluidos). Solo DocRecipient = 2: el otro lado no se carga nunca.
 var modulos = ctx.Query(
     "SELECT m.ModuleID, m.ModuleName, pv.Rec, pv.Tipo, pv.Af FROM engModule m JOIN (" +
     "  SELECT ModuleID, MAX(CASE WHEN ParameterKey='DocRecipient' THEN TRY_CONVERT(int, Value) END) AS Rec, " +
@@ -344,13 +322,13 @@ var modulos = ctx.Query(
     "         MAX(CASE WHEN ParameterKey='TableName' THEN Value END) AS Tabla " +
     "  FROM engModuleParameter WHERE ParameterKey IN ('DocRecipient','DocumentTypeID','FinancialAffectation','TableName') GROUP BY ModuleID" +
     ") pv ON pv.ModuleID = ISNULL(NULLIF(m.ModuleIDBase,0), m.ModuleID) " +
-    "WHERE pv.Tabla = 'docDocument' AND pv.Af IN (1,-1) AND pv.Rec = 2 AND ISNULL(pv.Tipo,0) NOT IN (40,44)");    // 40 = pedido, 44 = carta porte: no son cuentas por cobrar/pagar
-var signo = new Dictionary<int, int>();          // módulo → +1 suma saldo, −1 resta (nota de crédito)
+    "WHERE pv.Tabla = 'docDocument' AND pv.Af IN (1,-1) AND pv.Rec = 2 AND ISNULL(pv.Tipo,0) NOT IN (40,44)");
+var signo = new Dictionary<int, int>();
 var nombreMod = new Dictionary<int, string>();
 foreach (var r in modulos)
 {
     int mid = I(r["ModuleID"]), af = I(r["Af"]);
-    signo[mid] = 2 == 1 ? af : -af;      // cliente: factura (+1) suma, NC (−1) resta · proveedor: factura (−1 → +1) suma, NC (+1 → −1) resta
+    signo[mid] = 2 == 1 ? af : -af;
     nombreMod[mid] = S(r["ModuleName"]);
 }
 if (signo.Count == 0)
@@ -359,26 +337,23 @@ if (signo.Count == 0)
     return "SIN MODULOS";
 }
 
-// ---------- 2) Carga: documentos, pagos, partidas y agenda ----------
 DateTime hoy = DateTime.Today;
 DateTime desde = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-meses);
 string fDesde = desde.ToString("yyyy-MM-dd", ci);
 string listaMod = string.Join(",", signo.Keys.Select(x => x.ToString(ci)));
 
-// Documentos de la ventana de tiempo, más los que siguen con saldo o tuvieron pagos dentro de ella (un documento viejo pagado hoy tenía saldo en cortes recientes).
 string filtroDocs =
     "SELECT d.DocumentID FROM docDocument d WHERE d.ModuleID IN (" + listaMod + ") AND d.OwnedBusinessEntityID = " + empresa +
     " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND (d.DateDocument >= '" + fDesde + "' OR ISNULL(d.Balance,0) <> 0 OR EXISTS " +
     "(SELECT 1 FROM docDocumentPayment p WHERE p.DocumentID = d.DocumentID AND p.DeletedOn IS NULL AND p.DateOperation >= '" + fDesde + "'))";
-// El detalle (partidas y agenda) se carga solo de los documentos que hoy tienen saldo: son los que se consultan; el resto muestra solo sus pagos.
+
 string filtroConSaldo =
     "SELECT d.DocumentID FROM docDocument d WHERE d.ModuleID IN (" + listaMod + ") AND d.OwnedBusinessEntityID = " + empresa +
     " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL AND ISNULL(d.Balance,0) <> 0";
 
 var docsSql = ctx.Query(
     "SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, d.DateDocument, ISNULL(d.Total,0) AS Total, d.BusinessEntityID, " +
-    // Lo ya facturado desde este documento: facturas (DocumentTypeID 5) vigentes cuyo SourceDocumentID es este documento. Es la misma regla que usa Comercial para
-    // «Facturado» en sus ventas (vwLBSDocCustomerSalesTotalInvoiced). Un documento que no es factura ni nota de crédito y ya se facturó NO debe contarse otra vez: lo debe la factura.
+
     "CASE WHEN ISNULL(d.DocumentTypeID,0) IN (5,6) THEN 0 ELSE ISNULL((SELECT SUM(f.Total) FROM docDocument f WHERE f.SourceDocumentID = d.DocumentID AND f.DocumentTypeID = 5 " +
     "AND f.DeletedOn IS NULL AND f.CancelledOn IS NULL AND f.DocRecipientID = d.DocRecipientID), 0) END AS Facturado, " +
     "ISNULL(be.CommercialName, be.OfficialName) AS Entidad, ISNULL(d.Title,'') AS Titulo, " +
@@ -412,7 +387,6 @@ foreach (var r in pagosSql)
         ["op"] = (S(r["OpPref"]) + S(r["OpFolio"])).Trim()
     });
 
-// Partidas y agenda de pago de los documentos con saldo (para «Ver documento»)
 foreach (var r in ctx.Query(
     "SELECT i.DocumentID, ISNULL(i.LineNumber,0) AS Linea, ISNULL(i.Description,'') AS Concepto, ISNULL(i.Quantity,0) AS Cantidad, ISNULL(i.UnitPrice,0) AS Precio, ISNULL(i.Total,0) AS Total " +
     "FROM docDocumentItem i WHERE i.DeletedOn IS NULL AND i.DocumentID IN (" + filtroConSaldo + ") ORDER BY i.DocumentID, i.LineNumber"))
@@ -438,7 +412,6 @@ var modelo = new Dictionary<string, object>
     ["docs"] = docs, ["pagos"] = pagos, ["hoy"] = hoy.ToString("yyyy-MM-dd", ci), ["desde"] = fDesde, ["empresa"] = nombreEmpresa, ["meses"] = meses, ["lado"] = "P"
 };
 
-// ---------- 3) Ventana ----------
 string Html(string json) => @"<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Estado de cuenta de proveedores (cuentas por pagar)</title><style>
 :root{--fondo:#f4f6f9;--tarjeta:#fff;--texto:#16263a;--suave:#64748b;--linea:#d5dde8;--azul:#2d6fe0;--rojo:#c82828;--ambar:#b45309;--verde:#16803b;--morado:#7e22ce;--zebra:#f8fafc}
 *{box-sizing:border-box}body{margin:0;font:13px 'Segoe UI',Arial,sans-serif;background:var(--fondo);color:var(--texto)}
@@ -758,7 +731,6 @@ document.addEventListener('click',function(e){
 cambio();
 </script></body></html>";
 
-// ---------- 4) Pruebas automáticas: escribe el modelo (y el HTML) en archivos, sin ventanas ----------
 if (!string.IsNullOrEmpty(modoPrueba))
 {
     string salidaPrueba = Environment.GetEnvironmentVariable("BROSLMV_SALDOS_OUT");
@@ -769,9 +741,6 @@ if (!string.IsNullOrEmpty(modoPrueba))
     return "OK " + docs.Count + " documentos, " + pagos.Count + " pagos";
 }
 
-// ---------- 5) Ventana: modeless, se queda abierta hasta que la cierren ----------
-// El script termina enseguida y la ventana sigue viva (conserva su pestaña, su corte y su proveedor); cada clic llega a este manejador en el hilo de Comercial.
-// Así se puede minimizar, seguir trabajando en Comercial y abrir un documento sin chocar con XEngine («the other application is busy»).
 Func<Dictionary<string, object>, string> alMensaje = r =>
 {
     string accion = r.ContainsKey("accion") ? S(r["accion"]) : "";

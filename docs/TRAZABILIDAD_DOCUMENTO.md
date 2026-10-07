@@ -72,27 +72,6 @@ Si un vínculo existe **únicamente** por `DestinationDocumentID`, la flecha va 
 - Las partidas se cargan hasta **3,000** en total; en una cadena enorme, los documentos más alejados muestran solo su ficha y se avisa. Se corta en 300 documentos.
 - Las cantidades en otra unidad solo se desglosan cuando el documento guarda un coeficiente distinto de 1.
 
-## Reglas de BrosLMV que cumple
-
-- **Empresa activa:** todas las consultas filtran por `OwnedBusinessEntityID` del contexto.
-- **Módulos por naturaleza:** clasifica con los parámetros del módulo y `ModuleIDBase`; funciona con los clones.
-- **Eliminados:** un documento o partida con `DeletedOn` no se sigue; un documento **cancelado** sí aparece, marcado.
-- **Ventana modeless** (`ctx.ShowHtmlModeless`): abrir un documento no choca con XEngine («the other application is busy»).
-
-## Ver un ejemplo en el laboratorio
-
-En `BROSLMV_DESARROLLO`: los documentos **«DEMO TRAZ»** (tres órdenes de compra → una factura, con el vínculo manual) y los **«DEMO CREAR DOC»** (orden → recepción parcial → factura).
-`build/laboratorio/demo_trazabilidad_detalle.sql` les agrega **lotes con caducidad, series, un pedimento y una conversión de unidad** para ver el detalle completo.
-
-## Para desarrolladores
-
-- El motor arma un modelo (`nodos` con sus `partidas`, `pagos`, etapa y carril; `aristas`; `avisos`) con consultas por lotes y luego se dibuja en el navegador embebido; todo lo demás es JavaScript local.
-- **Probar sin ventanas:** `BROSLMV_TRAZA_DOC=<DocumentID>` hace que el script no abra la ventana y escriba el modelo JSON en `BROSLMV_TRAZA_OUT` y la página en `BROSLMV_TRAZA_HTML`.
-  Corre en `BrosLMV.Runner` (lleva `// job: safe-offline`) y en la prueba de humo `build/humo/casos/35_trazabilidad_documento.ps1`.
-- **Editar sin compilar una versión nueva:** `build/laboratorio/publicar_scripts_lab.ps1` publica las plantillas como **scripts** del laboratorio (con su hash, sin avisos de «modificado por fuera»);
-  se edita el archivo de `instalador/scripts`, se vuelve a correr y se ejecuta otra vez el botón en Comercial.
-- La ventana usa `ctx.ShowHtmlModeless`: el script termina y cada acción (`abrir`, `csv`) llega a un manejador en el hilo de Comercial.
-
 ## Si algo no sale
 
 | Síntoma | Causa probable |

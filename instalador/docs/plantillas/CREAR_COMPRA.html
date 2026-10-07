@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Crear documento de compra</title>
+<style>
+:root { --bg:#ffffff; --tx:#1e293b; --mut:#64748b; --lin:#e2e8f0; --cod:#f1f5f9; --ac:#1d4ed8; --q:#f8fafc; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0f172a; --tx:#e2e8f0; --mut:#94a3b8; --lin:#334155; --cod:#1e293b; --ac:#60a5fa; --q:#111c33; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--tx); font:14px/1.6 system-ui,'Segoe UI',Roboto,Arial,sans-serif; }
+main { max-width:960px; margin:0 auto; padding:24px 28px 60px; }
+h1 { font-size:24px; margin:0 0 8px; } h2 { font-size:18px; margin:32px 0 8px; padding-top:8px; border-top:1px solid var(--lin); }
+h3 { font-size:15px; margin:22px 0 6px; } h4 { font-size:14px; margin:16px 0 4px; }
+p, li { max-width:78ch; } a { color:var(--ac); }
+code { background:var(--cod); padding:1px 5px; border-radius:4px; font:12.5px Consolas,monospace; }
+pre { background:var(--cod); padding:12px 14px; border-radius:8px; overflow:auto; } pre code { background:none; padding:0; }
+blockquote { margin:12px 0; padding:8px 14px; border-left:3px solid var(--ac); background:var(--q); color:var(--mut); }
+.tabla { overflow-x:auto; margin:12px 0; } table { border-collapse:collapse; width:100%; font-size:13px; }
+th, td { border:1px solid var(--lin); padding:6px 10px; text-align:left; vertical-align:top; } th { background:var(--cod); }
+hr { border:0; border-top:1px solid var(--lin); margin:24px 0; }
+</style></head><body><main>
+<h1>Crear documento de compra</h1>
+<p>Captura <strong>órdenes de compra, recepciones y facturas de compra</strong> desde una ventana pensada para capturar rápido, sin tocar la pantalla nativa de Comercial. Al guardar, el documento queda creado de verdad y se <strong>abre en Comercial</strong> para que lo revises como siempre.</p>
+<p><strong>Categoría en la Consola:</strong> Compras. Es una plantilla <strong>separada de las ventas a propósito</strong>: quien captura compras solo ve proveedores y documentos de compra, y nada de clientes. Para ventas existe «Crear documento de venta».</p>
+<h2>Qué versión elegir</h2>
+<p>Hay cuatro versiones, <strong>con las mismas funciones</strong>: elige la que prefieras o la que mejor se lleve con tu equipo.</p>
+<div class="tabla"><table><thead><tr><th>Versión</th><th>Cuándo conviene</th></tr></thead><tbody><tr><td><strong>C# · ventana HTML</strong></td><td>La más completa y moderna (gráficas, paleta de comandos, borrador automático). Recomendada.</td></tr><tr><td><strong>Python · ventana HTML</strong></td><td>Lo mismo que la anterior, para quien trabaja en Python.</td></tr><tr><td><strong>C# · Windows Forms</strong></td><td>Ventana clásica, con el estilo de un documento de Comercial.</td></tr><tr><td><strong>Python · Windows Forms</strong></td><td>Igual que la anterior, para quien trabaja en Python.</td></tr></tbody></table></div>
+<h2>Qué documentos crea</h2>
+<div class="tabla"><table><thead><tr><th>Documento</th><th>Se usa para</th></tr></thead><tbody><tr><td><strong>Orden de compra</strong></td><td>Pedir mercancía al proveedor, con fecha de entrega</td></tr><tr><td><strong>Recepción de compra</strong></td><td>Recibir mercancía de una orden de compra, total o parcialmente</td></tr><tr><td><strong>Factura de compra</strong></td><td>Registrar la factura del proveedor, con su agenda de pago</td></tr></tbody></table></div>
+<h2>Cómo se usa</h2>
+<ol><li>Pulsa el botón de la plantilla. Arriba elige el <strong>tipo de documento</strong>.</li><li>Escribe el <strong>proveedor</strong> (nombre, RFC o clave; tecla F2) y elígelo de la lista. Verás su RFC, saldo abierto y último documento, y se propone su condición de pago.</li><li>Elige <strong>almacén</strong>, <strong>condición de pago</strong> y fechas. Si lo necesitas, pon título y comentarios.</li><li>Agrega <strong>partidas</strong>: busca el producto por nombre, clave o <strong>código de barras</strong> (escanea y Enter; tecla F3). Edita cantidad, precio de compra, descuento (%) e impuesto; el total se recalcula al instante.</li><li>Pulsa <strong>Guardar y abrir</strong> (F5): se crea el documento, se refresca la lista de Comercial y el documento se abre. Con <strong>Guardar y nuevo</strong> (F6) se crea y la ventana queda lista para el siguiente.</li></ol>
+<p>Si algo falla, <strong>no pierdes lo capturado</strong> y el mensaje dice qué corregir.</p>
+<h2>Partir de una orden de compra</h2>
+<p>Para crear una <strong>recepción</strong> o una <strong>factura de compra</strong> a partir de órdenes de compra, elige al proveedor: sus órdenes con pendientes aparecen en el recuadro <strong>«Partir de un documento ya existente»</strong> (también se marcan las que hayas seleccionado en la lista de Comercial antes de pulsar el botón).</p>
+<div class="tabla"><table><thead><tr><th>Quieres crear…</th><th>Se carga…</th></tr></thead><tbody><tr><td>Recepción de compra</td><td>lo que falta por <strong>recibir</strong> de cada partida</td></tr><tr><td>Factura de compra</td><td>lo que falta por <strong>facturar</strong> de cada partida</td></tr></tbody></table></div>
+<p>Puedes combinar <strong>varias órdenes del mismo proveedor</strong> en <strong>un solo</strong> documento: cada partida queda ligada a su partida de origen. Lo pendiente se cuenta <strong>por tipo</strong>: una orden recibida completa sigue pendiente de facturar. La cantidad no puede pasar de lo pendiente.</p>
+<h2>Dólares y pesos</h2>
+<p>Elige la <strong>moneda</strong> del documento. Con pesos el tipo de cambio queda fijo en 1; con otra moneda se sugiere el <strong>tipo de cambio</strong> del día (puedes cambiarlo) y es obligatorio que sea mayor a cero. Los costos del catálogo están en pesos: al elegir dólares se <strong>convierten con el tipo de cambio</strong>, y si cambias de moneda se recalculan. Los precios que escribiste a mano se convierten proporcionalmente y los que vienen de una orden de compra se respetan. La ventana te muestra el <strong>equivalente en pesos</strong> del documento.</p>
+<h2>Controles antes de guardar</h2>
+<p>El documento <strong>no se crea</strong> si algo no cuadra, y el mensaje explica cómo corregirlo: sin partidas, cantidad en cero, descuento fuera de 0 a 100, almacén o proveedor que no existen, producto eliminado, condición de pago que no aplica a compras, fecha de entrega anterior a la del documento, o moneda extranjera sin tipo de cambio. Además verás avisos (sin impedir guardar) cuando hay un <strong>precio en cero</strong>.</p>
+<p>Si algo falla ya creado el documento, el mensaje te dice su número para que lo elimines o canceles: nunca queda un borrador perdido.</p>
+<h2>Extras de la ventana HTML</h2>
+<ul><li><strong>Inteligencia del proveedor:</strong> gráfica de sus últimos 12 meses, días promedio de pago y los productos que más le compras con su último precio (un clic los agrega).</li><li><strong>Repetir último:</strong> carga las partidas del último documento de ese tipo del proveedor.</li><li><strong>Revisión previa</strong> con lo que falta o está mal.</li><li><strong>Paleta de comandos (Ctrl+K)</strong> para acciones, personas y productos.</li><li><strong>Pegar desde Excel (Ctrl+Shift+V)</strong> o arrastrar un CSV: clave o código de barras, cantidad y precio.</li><li><strong>Vista previa imprimible (Ctrl+P)</strong> con el importe en letra.</li><li><strong>Deshacer y rehacer (Ctrl+Z / Ctrl+Y)</strong> sobre las partidas.</li><li><strong>Borrador automático:</strong> si la ventana se cierra o Comercial se cae, al volver te ofrece recuperar lo capturado (7 días).</li><li><strong>Tema claro u oscuro.</strong></li></ul>
+<p>Las versiones de Windows Forms traen el botón <strong>Historial</strong> con los últimos documentos del proveedor (doble clic los abre en Comercial).</p>
+<h2>Qué conviene saber</h2>
+<ul><li><strong>No bloquea Comercial:</strong> puedes minimizar la ventana y seguir trabajando.</li><li>Un documento creado así <strong>no genera póliza contable por sí solo</strong>; la póliza se genera como siempre al contabilizar.</li><li>El inventario lo afecta el módulo de Comercial según su configuración (la recepción de compra entra al almacén).</li></ul>
+<h2>Límites</h2>
+<ul><li>No maneja descuentos globales ni retenciones por partida; usa el impuesto del catálogo del producto.</li><li>Los productos con lote o serie se marcan, pero los lotes y series se asignan en Comercial.</li><li>Se cargan hasta 30,000 productos en la ventana.</li><li>Un proveedor solo aparece si está dado de alta como proveedor y no eliminado.</li></ul>
+<h2>Si algo no sale</h2>
+<div class="tabla"><table><thead><tr><th>Síntoma</th><th>Causa probable</th></tr></thead><tbody><tr><td>El proveedor no aparece</td><td>No está dado de alta como proveedor, o está eliminado.</td></tr><tr><td>«Los documentos de origen son de entidades distintas»</td><td>Seleccionaste órdenes de proveedores distintos; deja las de uno solo.</td></tr><tr><td>Pide el tipo de cambio</td><td>La moneda elegida no es pesos: captura el tipo de cambio del día.</td></tr><tr><td>«Quedó un documento incompleto (id N)»</td><td>Falló un paso después de crearlo (por ejemplo un producto sin impuesto). Elimina o cancela ese borrador y corrige lo que dice el mensaje.</td></tr><tr><td>La recepción o factura no muestra nada pendiente</td><td>La orden de compra ya se recibió o facturó por completo.</td></tr><tr><td>No se abre la ventana (Python)</td><td>Revisa <code>C:\BrosLMV\logs\PythonErp_AAAAMMDD.txt</code>.</td></tr></tbody></table></div>
+</main></body></html>

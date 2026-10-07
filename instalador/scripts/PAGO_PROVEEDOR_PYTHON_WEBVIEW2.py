@@ -2,17 +2,9 @@
 # timeout: 1800
 # AppKey recomendado: PAGO_PROVEEDOR_PYTHON_WEBVIEW2
 # Plantilla: Pago a proveedor (Python · ventana HTML)
-# Categoria: Tesorería
-# Documentacion: COBRO_PAGO.html
+# Categoria: Cuentas por pagar
+# Documentacion: PAGO_PROVEEDOR.html
 # ⚠ PLANTILLA AVANZADA, NO NATIVA. Registra un pago a proveedor y lo aplica a uno o varios documentos con saldo.
-# Comercial no ofrece una función para esto: la plantilla escribe directo en las tablas de Tesorería (una transacción por documento) y NO genera la póliza contable.
-# Plantilla separada a propósito: solo CUENTAS POR PAGAR (proveedores) para que quien la use no vea el otro lado. Léela completa antes de usarla y pruébala primero en una base de pruebas. Documentación: clic secundario sobre la plantilla → «Ver documentación».
-#
-# Qué enseña: la receta de SQL directo de siete tablas (operación financiera, aplicación, espejo, transferencia bancaria, impuestos proporcionales, nuevo saldo),
-# el folio serializado con candado de transacción y la revalidación del saldo dentro de la transacción.
-#   · Ventana HTML «en vivo» desde Python (ctx.show_html(..., modal=False) + un servidor HTTP local que solo escucha en esta computadora; ver ventana_en_vivo más abajo): la página consulta
-#     en vivo a Comercial (movimientos, comportamiento de pago, saldos tras registrar) y el script le contesta con JavaScript. La ventana no bloquea Comercial.
-# Nota: el cuerpo de la página (HTML) es idéntico al de la plantilla de C#; la diferencia está solo en el lenguaje que atiende la ventana y aplica el movimiento.
 
 import json
 import datetime
@@ -21,10 +13,8 @@ import math
 
 from broslmv import ctx
 
-
 def S(v):
     return "" if v is None else str(v)
-
 
 def I(v):
     try:
@@ -32,46 +22,36 @@ def I(v):
     except Exception:
         return 0
 
-
 def D(v):
     try:
         return float(v)
     except Exception:
         return 0.0
 
-
 def Sq(s):
     """Texto para un literal SQL."""
     return S(s).replace("'", "''")
-
 
 def Num(x):
     """Número para un literal SQL (siempre con punto)."""
     t = ("%.8f" % float(x)).rstrip("0").rstrip(".")
     return t if t not in ("", "-") else "0"
 
-
 def fecha_txt(v):
     if v is None:
         return ""
     return v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else S(v)[:10]
 
-
-empresa = I(ctx.erp.OwnedBusinessEntityId())      # en Python ctx.erp.X siempre es una función (relevo al addon): se llama, aunque en C# sea una propiedad
-
+empresa = I(ctx.erp.OwnedBusinessEntityId())
 
 def L(v):
     return I(v)
 
-
-# ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
-# El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
 def carpeta_local():
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
     d = os.path.join(base, "BrosLMV", "borradores")
     os.makedirs(d, exist_ok=True)
     return d
-
 
 def archivo_borrador(que):
     try:
@@ -79,7 +59,6 @@ def archivo_borrador(que):
     except Exception:
         uid = 0
     return os.path.join(carpeta_local(), que + "_" + str(empresa) + "_" + str(uid) + ".json")
-
 
 def leer_borrador(que, vence=True):
     try:
@@ -93,14 +72,12 @@ def leer_borrador(que, vence=True):
     except Exception:
         return None
 
-
 def guardar_borrador(que, obj):
     try:
         with open(archivo_borrador(que), "w", encoding="utf-8") as f:
             json.dump(obj, f, ensure_ascii=False)
     except Exception:
         pass
-
 
 def borrar_borrador(que):
     try:
@@ -110,26 +87,14 @@ def borrar_borrador(que):
     except Exception:
         pass
 
-# ===================================================================================================================================
-# COBRO A CLIENTE / PAGO A PROVEEDOR.
-# ⚠ PLANTILLA AVANZADA, NO NATIVA: Comercial no ofrece ninguna función para aplicar un cobro o un pago (se buscó en el SDK y en el motor, véase MANUAL §10.5).
-# Esta plantilla repite, con SQL directo y en UNA sola transacción por documento, lo que hace la pantalla de Tesorería: la operación financiera, la aplicación al
-# documento, su espejo, la transferencia bancaria, el reparto proporcional de impuestos y el nuevo saldo. La receta se validó contra cobros reales y contra el laboratorio.
-# NO genera la póliza contable del cobro/pago (eso lo hace el Motor de Asientos al contabilizar). Pruébala SIEMPRE primero en una base de pruebas.
-# ===================================================================================================================================
-# Tipos: clave · nombre · lado (C/P) · módulo de la operación (248 cobro, 247 pago) · DocRecipientID · DocumentTypeID de la operación · prefijo de folio
 def TP(clave, nombre, lado, mod_op, recip, tipo_op, prefijo):
     return {"clave": clave, "nombre": nombre, "lado": lado, "modOp": mod_op, "recip": recip, "tipoOp": tipo_op, "prefijo": prefijo}
-
 
 TIPOS = [
     TP("pago",  "Pago a proveedor", "P", 247, 2, 32, "PAG"),
 ]
 TIPO_POR = {t["clave"]: t for t in TIPOS}
 
-# ---------- Qué módulos generan cuentas por cobrar / por pagar ----------
-# Se leen de los parámetros del módulo (DocRecipient 1 = cliente, 2 = proveedor; FinancialAffectation ≠ 0) por ModuleIDBase, así los módulos clonados cuentan igual.
-# Solo documentos que SUMAN saldo (facturas, notas de cargo, gastos): una nota de crédito no se cobra ni se paga, se aplica.
 _modulos = ctx.query(
     "SELECT m.ModuleID, m.ModuleName, pv.Rec, pv.Af FROM engModule m JOIN ("
     "  SELECT ModuleID, MAX(CASE WHEN ParameterKey='DocRecipient' THEN TRY_CONVERT(int, Value) END) AS Rec, MAX(CASE WHEN ParameterKey='DocumentTypeID' THEN TRY_CONVERT(int, Value) END) AS Tipo, "
@@ -142,26 +107,17 @@ for _r in _modulos:
     modulos_lado["C" if I(_r["Rec"]) == 1 else "P"].append(I(_r["ModuleID"]))
     nombre_mod[I(_r["ModuleID"])] = S(_r["ModuleName"])
 
-
-# ---------- Monedas ----------
-# La cuenta tiene su moneda y cada documento la suya (0 = sin moneda = pesos). El tipo de cambio de cada moneda sale del catálogo de monedas de Comercial.
 monedas = [{"id": I(r["id"]), "simbolo": S(r["simbolo"]), "nombre": S(r["nombre"]), "letra": S(r["letra"]), "tc": D(r["tc"]) or 1.0} for r in ctx.query(
     "SELECT CurrencyID AS id, IntlSymbol AS simbolo, Currency AS nombre, ISNULL(MoneyLetter,'') AS letra, ISNULL(Rate,1) AS tc FROM vwLBSCurrencyList ORDER BY CurrencyID")]
 moneda_por = {m["id"]: m for m in monedas}
-
 
 def moneda_de(v):
     m = I(v)
     return 3 if m <= 0 else m
 
-
 def simbolo_de(id_):
     return moneda_por[id_]["simbolo"] if id_ in moneda_por else "MXN"
 
-
-# ---------- Documentos con saldo pendiente de un lado (C = por cobrar, P = por pagar) ----------
-# Tope de seguridad: 30,000 por lado (los más antiguos primero, que son los que se cobran/pagan primero). La ventana los pide otra vez después de aplicar, para ver los saldos nuevos.
-# Además del saldo trae lo necesario para decidir: moneda y tipo de cambio del documento, cuántas parcialidades tiene, cuántos cobros/pagos y cuántas notas de crédito ya se le aplicaron.
 def docs_con_saldo(lado):
     mods = modulos_lado[lado]
     if not mods:
@@ -187,9 +143,6 @@ def docs_con_saldo(lado):
                     "nParc": I(r["nParc"]), "nAplic": I(r["nAplic"]), "nNotas": I(r["nNotas"])})
     return res
 
-
-# Parcialidades de un documento: la agenda de pago (número, vencimiento, importe) menos lo ya aplicado a cada una (los renglones sin número cuentan como la 1).
-# Si la suma de lo pendiente no cuadra con el saldo del documento (intereses, redondeo) la diferencia se carga a la última parcialidad con saldo; sin agenda hay una sola parcialidad con todo el saldo.
 def parcialidades_de(doc, saldo):
     agenda = ctx.query("SELECT PartialityNumber AS n, MIN(DatePayment) AS vence, SUM(ISNULL(Amount,0)) AS importe FROM docDocumentPaymentAgenda WHERE DocumentID = " + str(doc) + " AND DeletedOn IS NULL GROUP BY PartialityNumber ORDER BY PartialityNumber")
     pagos = {}
@@ -221,8 +174,6 @@ def parcialidades_de(doc, saldo):
                 sobra = round(sobra - q, 2)
     return res
 
-
-# Todo lo que le ha pasado a un documento: sus parcialidades y cada aplicación (cobro, pago o nota de crédito) con folio, fecha, moneda, tipo de cambio y parcialidad. La ventana lo pide al seleccionar el documento.
 def detalle_doc(doc):
     d = ctx.query("SELECT d.DocumentID, d.ModuleID, d.FolioPrefix, d.Folio, ISNULL(d.Total,0) AS Total, ISNULL(d.Balance,0) AS Saldo, ISNULL(d.TotalPaid,0) AS Pagado, ISNULL(d.CurrencyID,0) AS Moneda, ISNULL(d.Rate,1) AS TC FROM docDocument d "
                   "WHERE d.DocumentID = " + str(doc) + " AND d.OwnedBusinessEntityID = " + str(empresa))
@@ -246,7 +197,6 @@ def detalle_doc(doc):
     res["aplic"] = aplic
     return res
 
-
 def movimientos_de(entidad, clave):
     if clave not in TIPO_POR or entidad <= 0:
         return []
@@ -255,9 +205,6 @@ def movimientos_de(entidad, clave):
         "(SELECT COUNT(*) FROM docDocumentPayment p WHERE p.FinancialOperationID = o.FinancialOperationID AND p.DeletedOn IS NULL) AS Docs FROM docFinancialOperation o LEFT JOIN orgFinancialEntity f ON f.FinancialEntityID = o.FinancialEntityID "
         "WHERE o.BusinessEntityID = " + str(entidad) + " AND o.ModuleID = " + str(TIPO_POR[clave]["modOp"]) + " AND o.CancelledOn IS NULL AND o.DeletedOn IS NULL ORDER BY o.DateOperation DESC, o.FinancialOperationID DESC")]
 
-
-# Comportamiento de pago de una persona: lo cobrado (o pagado) por mes en los últimos 12 meses, los días promedio que tarda desde la fecha del documento, el atraso promedio
-# frente al vencimiento y el porcentaje de pagos a tiempo. Todo sale de Comercial en ese momento.
 def inteligencia_pago(entidad, clave):
     res = {}
     if clave not in TIPO_POR or entidad <= 0:
@@ -297,12 +244,9 @@ def inteligencia_pago(entidad, clave):
         res["puntual"] = round(D(e[0]["aTiempo"]) * 100.0 / n) if n > 0 else None
     return res
 
-
-# ---------- Catálogos y documentos con saldo para el formulario ----------
 def catalogos():
     cat = {}
 
-    # Persona con RFC, límite de crédito y su último cobro o pago (fecha e importe), para dar contexto al capturar
     def ent(tabla):
         return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.CreditLimit,0) AS credito, "
                 "CONVERT(VARCHAR(10), u.DateOperation, 23) AS ultFecha, ISNULL(u.Amount,0) AS ultMonto FROM " + tabla + " x "
@@ -313,7 +257,6 @@ def catalogos():
     def lista(tabla):
         return [{"id": I(r["id"]), "nombre": S(r["nombre"]), "rfc": S(r["rfc"]), "credito": D(r["credito"]), "ultFecha": S(r["ultFecha"]), "ultMonto": D(r["ultMonto"])} for r in ctx.query(ent(tabla))]
 
-    # Solo el lado de esta plantilla: la persona que lleva cuentas por cobrar no ve nada de las cuentas por pagar (y al revés); ni siquiera se cargan sus datos.
     ver_c = any(t["lado"] == "C" for t in TIPOS)
     ver_p = any(t["lado"] == "P" for t in TIPOS)
     cat["clientes"] = lista("orgCustomer") if ver_c else []
@@ -322,20 +265,17 @@ def catalogos():
         "SELECT FinancialEntityID AS id, FinancialEntityName AS nombre, ISNULL(IsDefault,0) AS def, ISNULL(CurrencyID,0) AS moneda FROM orgFinancialEntity WHERE DeletedOn IS NULL ORDER BY ISNULL(IsDefault,0) DESC, FinancialEntityName")]
     cat["monedas"] = monedas
     cat["formas"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query("SELECT ID AS id, Value AS nombre FROM vwcboCFDPaymentmethod ORDER BY CboOrder")]
-    # Folio siguiente de cada tipo (el mismo cálculo que usa aplicar)
+
     cat["folios"] = {t["clave"]: I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(BIGINT, Folio)),0) + 1 FROM docFinancialOperation WHERE ModuleID = " + str(t["modOp"]) + " AND FolioPrefix = N'" + t["prefijo"] + "'")) for t in TIPOS}
-    # Documentos con saldo pendiente de cada lado (los más antiguos primero)
+
     cat["docsC"] = docs_con_saldo("C") if ver_c else []
     cat["docsP"] = docs_con_saldo("P") if ver_p else []
     return cat
 
-
-# ---------- Importe en letra (el mismo estilo del comprobante mexicano) ----------
 LUNI = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE"]
 LDEC = ["", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"]
 LVEI = ["VEINTIUNO", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO", "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE"]
 LCEN = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
-
 
 def letra_centenas(n):
     if n == 0:
@@ -359,7 +299,6 @@ def letra_centenas(n):
                     r += " Y " + LUNI[u]
     return r.strip()
 
-
 def letra_en(n):
     if n == 0:
         return "CERO"
@@ -379,7 +318,6 @@ def letra_en(n):
         r = r[:-3] + "UN"
     return r
 
-
 def letra_importe(v, moneda):
     v = max(0.0, v)
     e = int(v)
@@ -390,17 +328,6 @@ def letra_importe(v, moneda):
     pal = moneda_por[moneda]["letra"].upper() if moneda in moneda_por and moneda_por[moneda]["letra"] else "PESOS"
     return letra_en(e) + " " + pal + " " + ("%02d" % c) + "/100" + (" M.N." if moneda == 3 else "")
 
-
-# ---------- Aplicar ----------
-# «spec»: tipo, entidad, cuenta, forma (c_FormaPago), fecha (yyyy-MM-dd), referencia, tc (tipo de cambio, solo si hay moneda extranjera), aplicaciones [{doc, monto, parcialidad}].
-#   «monto» va SIEMPRE en la moneda de la CUENTA (lo que entra o sale del banco); «parcialidad» 0 = automática (en orden), n = esa parcialidad.
-# Igual que Tesorería: UNA operación (un folio) con un renglón por documento (y por parcialidad), todo en una sola transacción: o queda todo o no queda nada.
-# Moneda (verificado contra miles de aplicaciones de una empresa con dólares): el renglón se guarda en la moneda del DOCUMENTO, con su tipo de cambio en Rate y AmountPaidCurrency = Amount × Rate (valor en pesos):
-#   · cuenta y documento en la misma moneda → importe tal cual (Rate = 1 en pesos, o el tipo de cambio en moneda extranjera);
-#   · cuenta en pesos y documento en moneda extranjera → importe del documento = pesos ÷ tipo de cambio (Rate = tipo de cambio);
-#   · cuenta en moneda extranjera y documento en pesos → importe del documento = moneda extranjera × tipo de cambio (Rate = 1; la operación guarda el tipo de cambio).
-#   Cualquier otra combinación (p. ej. cuenta en euros y documento en dólares) se rechaza: usa la pantalla nativa de Tesorería.
-# Regresa un resumen legible con el folio y, por documento, lo aplicado, su equivalente en la moneda del documento y lo que queda.
 def aplicar(spec):
     clave = S(spec.get("tipo"))
     if clave not in TIPO_POR:
@@ -436,7 +363,6 @@ def aplicar(spec):
     persona = S(ctx.scalar("SELECT ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + str(entidad)))
     uid = str(ctx.user_id)
 
-    # 1) Cada documento: validación, conversión a su moneda y reparto por parcialidades (todo en memoria; no se escribe nada todavía)
     lineas = []
     por_doc = []
     total_cuenta = 0.0
@@ -473,7 +399,7 @@ def aplicar(spec):
             foraneas.add(m_cuenta)
         if m_doc != 3:
             foraneas.add(m_doc)
-        # Importe en la moneda del documento y tipo de cambio del renglón
+
         if modo == "igual":
             doc_amt = monto
             rate_linea = 1.0 if m_doc == 3 else tc
@@ -491,10 +417,10 @@ def aplicar(spec):
             rate_linea = 1.0
         doc_amt = round(doc_amt, 2)
         if abs(doc_amt - saldo) <= 0.011:
-            doc_amt = saldo                                               # un residuo de redondeo de la conversión no deja el documento «casi liquidado»
+            doc_amt = saldo
         if doc_amt > saldo + 0.005:
             raise Exception("No se pudo aplicar a " + etiqueta + ": el importe (" + "{:,.2f}".format(doc_amt) + " " + simbolo_de(m_doc) + ") es mayor que su saldo (" + "{:,.2f}".format(saldo) + " " + simbolo_de(m_doc) + ").")
-        # Reparto por parcialidades: la pedida o, en automático, en orden
+
         parc = parcialidades_de(doc, saldo)
         reparto = []
         resto = doc_amt
@@ -533,12 +459,11 @@ def aplicar(spec):
     rate_op = 1.0 if m_cuenta == 3 else tc
     total_cuenta = round(total_cuenta, 2)
 
-    # 2) Una sola transacción: la operación, sus renglones, los espejos, la transferencia, el reparto de impuestos y los saldos
     sb = []
     sb.append("DECLARE @out TABLE(FinancialOperationID BIGINT); DECLARE @outPay TABLE(DocumentPaymentID BIGINT);\nBEGIN TRY BEGIN TRAN;\n")
     sb.append("DECLARE @lk INT; EXEC @lk = sp_getapplock @Resource = 'BrosCobroFolio_" + str(mod_op) + "_" + pref + "', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000;\n")
     sb.append("IF @lk < 0 THROW 50001, 'No se pudo obtener el candado del folio (otro cobro/pago en curso).', 1;\n")
-    for pd in por_doc:      # el saldo se vuelve a comprobar DENTRO de la transacción: si alguien más aplicó algo mientras tanto, no se aplica de más
+    for pd in por_doc:
         sb.append("IF (SELECT ISNULL(Balance,0) FROM docDocument WHERE DocumentID=" + str(pd["doc"]) + ") < " + Num(pd["doc_amt"] - 0.011) + " THROW 50002, 'El saldo de un documento cambió mientras se capturaba.', 1;\n")
     sb.append("DECLARE @folio BIGINT = ISNULL((SELECT MAX(TRY_CONVERT(BIGINT, Folio)) FROM docFinancialOperation WHERE ModuleID=" + str(mod_op) + " AND FolioPrefix=N'" + pref + "'),0)+1;\n")
     sb.append("DECLARE @f DATETIME = '" + f8 + " 12:00:00'; DECLARE @opId BIGINT, @payId BIGINT;\n")
@@ -552,14 +477,14 @@ def aplicar(spec):
         m, r = ln["monto"], ln["rate"]
         sb.append("INSERT INTO docDocumentPayment (DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber, SaldoAnterior, SaldoInsoluto) OUTPUT INSERTED.DocumentPaymentID INTO @outPay VALUES (" +
                   str(ln["doc"]) + ",@opId,@f," + Num(m) + "," + Num(r) + "," + Num(m * r) + "," + str(ln["parc"]) + "," + Num(ln["sa"]) + "," + Num(ln["si"]) + ");\nSELECT @payId = DocumentPaymentID FROM @outPay; DELETE FROM @outPay;\n")
-        # docDocumentPaymentEspejo.DocumentPaymentID NO es identity: espeja el mismo id recién generado
+
         sb.append("INSERT INTO docDocumentPaymentEspejo (DocumentPaymentID, DocumentID, FinancialOperationID, DateOperation, Amount, Rate, AmountPaidCurrency, PartialityNumber) VALUES (@payId," + str(ln["doc"]) + ",@opId,@f," + Num(m) + "," + Num(r) + "," + Num(m * r) + "," + str(ln["parc"]) + ");\n")
-    if forma != 1:          # efectivo no lleva transferencia; cualquier otra forma deja su registro bancario
+    if forma != 1:
         sb.append("INSERT INTO docBankTransfer (FinancialOperationID, FinancialEntityID, TrackingNumber, CreatedOn, CreatedBy) VALUES (@opId," + str(cuenta) + "," + ("NULL" if tracking == "" else "N'" + Sq(tracking) + "'") + ",GETDATE()," + uid + ");\n")
     for pd in por_doc:
         doc = pd["doc"]
         prop = pd["doc_amt"] / pd["total"]
-        # Reparto proporcional de impuestos: lo aplicado al documento (en su moneda) entre su total
+
         for tx in ctx.query("SELECT DocumentTaxDetailID, DocumentItemID, TaxTypeID, Amount, TaxBase, TaxPerc, TaxName, TaxTypeName FROM docDocumentTaxDetail WHERE DocumentID=" + str(doc)):
             item = "NULL" if tx["DocumentItemID"] is None else str(I(tx["DocumentItemID"]))
             sb.append("INSERT INTO docFinancialOperationTaxDetail (DocumentTaxDetailID, FinancialOperationID, DocumentID, DocumentItemID, Proporcion, Amount, TaxTypeID, TaxName, TaxTypeName, TaxBase, TaxPerc) VALUES (" +
@@ -576,8 +501,6 @@ def aplicar(spec):
         resumen.append(pd["etiqueta"] + " · " + "{:,.2f}".format(pd["monto"]) + " " + simbolo_de(m_cuenta) + conv + " · " + reparto + (" · liquidado" if pd["nuevo"] <= 0.0049 else " · queda " + "{:,.2f}".format(pd["nuevo"]) + " " + simbolo_de(pd["m_doc"])))
     return t["nombre"] + " " + pref + "-" + S(folio) + " registrado: " + "{:,.2f}".format(total_cuenta) + " " + simbolo_de(m_cuenta) + ((" a tipo de cambio " + ("%g" % tc)) if foraneas else "") + "\n" + "\n".join(resumen)
 
-
-# ---------- Pruebas automáticas (sin ventanas): variable de entorno BROSLMV_PAGO_TEST (JSON con el «spec»), resultado en BROSLMV_PAGO_OUT ----------
 _modo_prueba = os.environ.get("BROSLMV_PAGO_TEST")
 if _modo_prueba:
     _spec = json.loads(_modo_prueba)
@@ -602,26 +525,14 @@ if _modo_prueba:
             _f.write(_res)
     result = _res
 
-
-
-# ===================================================================================================================================
-# VENTANA «EN VIVO» PARA PYTHON.
-# ctx.show_html abre la ventana SIN bloquear a Comercial (modal=False) y este script se queda atendiendo a la página: levanta un servidor HTTP que solo escucha
-# en esta computadora (127.0.0.1, puerto al azar y un token secreto), y la página le manda sus peticiones con fetch. Cada respuesta es un fragmento de
-# JavaScript que la página ejecuta (por ejemplo «respuesta(3, [...])»). Así Python tiene lo mismo que C# con ShowHtmlModeless: consultas en vivo a Comercial,
-# crear documentos sin cerrar la ventana y lo que se te ocurra, con toda la librería de Python a la mano.
-# La página manda un latido cada 3 segundos: si deja de latir (la ventana se cerró) el script termina solo.
-# ===================================================================================================================================
 import http.server
 import secrets
 import time
 import urllib.parse
 
-
 def js_json(o):
     """JSON seguro para incrustarlo en una página o en un fragmento de JavaScript."""
     return json.dumps(o, ensure_ascii=False, default=str).replace("</", "<" + chr(92) + "/")
-
 
 def ventana_en_vivo(armar_pagina, despachar, titulo, ancho, alto):
     """armar_pagina(http) → texto HTML de la página (http = {"url", "token"}); despachar(peticion, estado) → fragmento de JavaScript (o "").
@@ -669,7 +580,7 @@ def ventana_en_vivo(armar_pagina, despachar, titulo, ancho, alto):
 
     class _Servidor(http.server.HTTPServer):
         def handle_error(self, request, client_address):
-            pass                                   # una conexión cortada por el navegador no debe tumbar la ventana
+            pass
 
     servidor = _Servidor(("127.0.0.1", 0), _Manejador)
     servidor.timeout = 1.0
@@ -681,21 +592,13 @@ def ventana_en_vivo(armar_pagina, despachar, titulo, ancho, alto):
             servidor.handle_request()
             ahora = time.time()
             if not estado["visto"] and ahora - inicio > 90:
-                break                              # la ventana nunca llegó a cargar
+                break
             if estado["visto"] and ahora - estado["ultimo"] > 10:
-                break                              # dejó de latir: se cerró
+                break
     finally:
         servidor.server_close()
     return estado
 
-# ===================================================================================================================================
-# VENTANA (WebView2) EN VIVO, sin bloquear Comercial. La página es la estación completa de cobros y pagos (cartera, pronóstico, comportamiento de pago,
-# revisión previa, recibo imprimible…); este script se queda atendiendo lo que la página pide (ver ventana_en_vivo arriba) y contesta con JavaScript:
-#   aplicar     → registra el cobro o pago (una sola operación, un renglón por documento y parcialidad) y devuelve el resumen con el folio; los saldos se vuelven a pedir
-#   movimientos → los últimos cobros o pagos de la persona      docs → documentos con saldo actualizados      inteligencia → su comportamiento de pago      detalle → parcialidades y aplicaciones de un documento
-#   borrador / pref → guarda lo capturado y el tema en disco
-# Si algo falla, la página muestra el mensaje y no se pierde nada de lo capturado.
-# ===================================================================================================================================
 PAGINA = r'''<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Cobro o pago</title><style>
 :root{--marino:#15324F;--marino2:#1d4468;--azul:#2D6FE0;--acc:#2D6FE0;--accsuave:#E8F0FF;--texto:#16263A;--suave:#64748B;--linea:#D8E0EB;--fondo:#EEF2F7;--tarjeta:#fff;--rojo:#C82828;--ambar:#B45309;--verde:#16803B;--zebra:#F8FAFC}
 body.pago{--acc:#0F766E;--accsuave:#E3F5F2}
@@ -739,7 +642,6 @@ b.ver{cursor:pointer;border-bottom:1px dotted var(--suave)}b.ver:hover{color:var
 .kpi3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px}.kpi3 b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--suave);font-weight:600}.kpi3 span{font-variant-numeric:tabular-nums}
 .mini2 th{position:static;padding:4px 6px}.mini2 td{padding:3px 6px;font-size:12px}.ap{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px solid #eef2f7}.ap:last-child{border:0}.ap .im{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}.cx{cursor:pointer;color:var(--suave);font-size:14px}.cx:hover{color:var(--rojo)}.sm{color:var(--suave);font-size:11.5px}
 @media (max-width:1180px){.cinta{flex-wrap:wrap}}@media (max-width:1100px){.cuerpo{flex-direction:column;overflow:auto}.der{width:auto;flex:none}.izq{overflow:visible}}
-/* ---- extras: el poder de WebView2 (gráficas, paleta, vista previa, tema) ---- */
 .cinta{flex-wrap:wrap;row-gap:8px}.marca{min-width:230px;flex:1 1 230px}.ab{min-width:80px}.ab.s{min-width:60px;padding:6px 6px}.info input,.info select{width:128px}
 .ab.s{min-width:64px;padding:6px 8px}.ab.s i{font-size:18px}.ab.s span{font-size:10px}
 .ov{position:fixed;inset:0;background:#0b1220a8;z-index:80;display:none;align-items:flex-start;justify-content:center;padding-top:9vh}.ov.on{display:flex}
@@ -762,7 +664,6 @@ body.oscuro .tipos,body.oscuro .pie,body.oscuro input,body.oscuro select,body.os
 body.oscuro .res{background:linear-gradient(180deg,#162231,#1A2A3C)}body.oscuro .chip{background:#223349;color:#B8C7DA}body.oscuro .info input,body.oscuro .info select{background:#1B2B3F;border-color:#2B3C52;color:#E5ECF5}
 body.oscuro .tipo.on{color:#fff}body.oscuro .aviso.a{background:#3a2c10;color:#f3d08a;border-color:#5b4416}body.oscuro .aviso.r{background:#3d1717;color:#f5b5b5;border-color:#6b2a2a}
 @media print{body>*:not(#ovPrev){display:none!important}#ovPrev{display:block!important;position:static;background:#fff;padding:0}.hoja{box-shadow:none;max-height:none;width:100%}.noprint{display:none!important}}
-/* ---- extras de cobros y pagos ---- */
 .herr select{width:auto;padding:5px 8px;border-radius:8px}
 .edad{background:var(--tarjeta)}body.oscuro .edad,body.oscuro .herr button,body.oscuro .modal,body.oscuro .edad{background:var(--tarjeta);color:var(--texto)}
 .donut{display:flex;gap:14px;align-items:center}.donut svg{flex:0 0 112px}.leyenda{display:flex;flex-direction:column;gap:3px;font-size:11.5px;flex:1}.leyenda div{display:flex;justify-content:space-between;gap:8px}.leyenda i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px}
@@ -836,7 +737,6 @@ tr.on td .mini{display:block;height:4px;border-radius:3px;background:var(--linea
 <div class='vel' id='vel'><div class='modal'><h3 id='mTit'>Registrado</h3><div id='mSub' style='color:var(--suave)'></div><pre id='mPre'></pre><div class='bt'><button onclick='cerrarVentana()'>Cerrar ventana</button><button class='p' onclick='otroMas()'>Registrar otro</button></div></div></div>
 <script>
 var DATOS=__DATOS__;
-// Dos transportes: con C# la página habla por el puente de WebView2 (postMessage); con Python habla por HTTP con un servidor que solo escucha en esta computadora (DATOS.http) y la respuesta es un fragmento de JavaScript.
 function enviar(o){if(DATOS.http){fetch(DATOS.http.url+'?t='+DATOS.http.token,{method:'POST',body:JSON.stringify(o)}).then(function(r){return r.text();}).then(function(t){if(t)(0,eval)(t);}).catch(function(){});}else window.chrome.webview.postMessage(JSON.stringify(o));}
 if(DATOS.http){enviar({accion:'latido'});setInterval(function(){enviar({accion:'latido'});},3000);}
 function esc(s){return String(s==null?'':s).replace(/[&<>']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c];});}
@@ -850,8 +750,6 @@ var ST={tipo:TIPOS[0].clave,ent:null,sel:{},parc:{},det:null,guardando:false};
 function tipoAct(){return TIPOS.filter(function(t){return t.clave===ST.tipo;})[0];}
 function docsLado(){return tipoAct().lado==='C'?CAT.docsC:CAT.docsP;}
 function ENT(){return tipoAct().lado==='C'?CAT.clientes:CAT.proveedores;}
-// ---- moneda, tipo de cambio y parcialidades ----
-// Lo que se captura en «Aplicar» va SIEMPRE en la moneda de la cuenta (lo que entra o sale del banco). Cada documento conserva la suya: se convierte con el tipo de cambio capturado, sin pedirlo si todo es en pesos.
 var MON={};CAT.monedas.forEach(function(m){MON[m.id]=m;});var DET={};
 function simb(id){return (MON[id]||{simbolo:'MXN'}).simbolo;}
 function r2(x){return Math.round(x*100)/100;}
@@ -902,15 +800,12 @@ function pintarDetalle(){var c=$('cardDet'),id=ST.det,d=id?docPor(id):null;if(!d
   h+='<div class=sm style=\'margin-top:9px\'><b>Aplicaciones</b> (cobros, pagos y notas de crédito)</div>';
   h+=r.aplic.length?r.aplic.map(function(a){var ta=TA[a.tipo]||TA.otro;return '<div class=ap><span class=sm>'+fmtF(a.fecha)+'</span><span class=\'chip '+ta[1]+'\'>'+ta[0]+'</span><span>'+esc(a.folio)+'</span><span class=sm>parc. '+a.parc+(r.moneda!==3&&a.tc>0&&a.tipo!=='nota'?' · TC '+f4(a.tc):'')+'</span><span class=im>'+f2(a.monto)+' '+esc(r.simbolo)+'</span></div>';}).join(''):'<div class=sm style=\'padding:4px 0\'>Sin cobros, pagos ni notas de crédito aplicados todavía.</div>';
   $('det').innerHTML=h;}
-// ---- consultas en vivo ----
 var _req=0,_pend={};
 function llamar(accion,datos){return new Promise(function(ok,mal){if(!VIVO){mal(new Error('sin conexión en vivo'));return;}var id=++_req;_pend[id]=ok;enviar(Object.assign({accion:accion,req:id},datos||{}));setTimeout(function(){if(_pend[id]){delete _pend[id];mal(new Error('tiempo agotado'));}},15000);});}
 function respuesta(id,datos){var f=_pend[id];if(f){delete _pend[id];f(datos);}}
 var _t=0;function aviso(m,tipo){var t=$('toast');t.textContent=m;t.className='toast '+(tipo||'');t.style.display='block';clearTimeout(_t);_t=setTimeout(function(){t.style.display='none';},tipo==='mal'?8000:3500);}
-// ---- estadísticas por persona (a partir de los documentos con saldo a la fecha elegida) ----
 function stats(){var hoy=$('fecha').value,m={};docsLado().forEach(function(d){var e=m[d.ent]=m[d.ent]||{pend:0,venc:0,n:0,b:[0,0,0,0,0]};e.pend+=d.saldoMx;e.n++;var dv=d.vence?dias(d.vence,hoy):-1;if(dv>0)e.venc+=d.saldoMx;var i=dv<=0?0:dv<=30?1:dv<=60?2:dv<=90?3:4;e.b[i]+=d.saldoMx;});return m;}
 var ES={};
-// ---- combos ----
 function combo(inp,lst,fuente,fila,elegir,limite,abrirAlFocus){
   var sel=0,vis=[];
   function pintar(){var q=norm(inp.value).split(/\s+/).filter(Boolean);var base=fuente();
@@ -923,11 +818,9 @@ function combo(inp,lst,fuente,fila,elegir,limite,abrirAlFocus){
   lst.addEventListener('mousedown',function(ev){var d=ev.target.closest('div[data-i]');if(d){elegir(vis[+d.getAttribute('data-i')]);lst.style.display='none';ev.preventDefault();}});
   inp.addEventListener('blur',function(){setTimeout(function(){lst.style.display='none';},130);});
 }
-// las personas con saldo salen primero
 combo($('ent'),$('lstEnt'),function(){return ENT().slice().sort(function(a,b){return ((ES[b.id]||{}).pend||0)-((ES[a.id]||{}).pend||0)||(a.nombre<b.nombre?-1:1);});},
   function(x){var e=ES[x.id];return {a:x.nombre,b:x.rfc,c:e?'debe '+f2(e.pend)+' · '+e.n+' doc.':'sin saldo',buscar:x.nombre+' '+x.rfc+' '+x.id};},elegirEnt,60,true);
 $('ent').addEventListener('input',function(){if(ST.ent){ST.ent=null;ST.sel={};ST.parc={};pintarEnt();pintarDocs();}});
-// ---- tipo ----
 function pintarTipos(){$('tipos').style.display=TIPOS.length>1?'':'none';$('tipos').innerHTML=TIPOS.map(function(t){return '<button class=\'tipo '+(t.lado==='C'?'c':'p')+(t.clave===ST.tipo?' on':'')+'\' onclick=\'setTipo(&quot;'+t.clave+'&quot;)\'><i style=font-style:normal>'+(t.lado==='C'?'💰':'💸')+'</i>'+esc(t.nombre)+'</button>';}).join('');}
 function setTipo(c){var antes=tipoAct().lado;ST.tipo=c;var t=tipoAct();if(t.lado!==antes){ST.ent=null;$('ent').value='';}ST.sel={};ST.parc={};
   document.body.classList.remove('cobro','pago');document.body.classList.add(t.lado==='C'?'cobro':'pago');$('ttl').textContent=t.nombre;$('sub').textContent=t.lado==='C'?'Cuentas por cobrar · entra dinero':'Cuentas por pagar · sale dinero';
@@ -935,7 +828,6 @@ function setTipo(c){var antes=tipoAct().lado;ST.tipo=c;var t=tipoAct();if(t.lado
   $('bGTxt').textContent=t.lado==='C'?'Registrar cobro':'Registrar pago';$('pMod').innerHTML='Operación <b>'+t.modOp+'</b> · folio '+esc(t.prefijo)+'-n';
   var f=CAT.folios&&CAT.folios[t.clave];$('folio').innerHTML=(f?esc(t.prefijo)+'-'+f:'—')+'<small>lo asigna el sistema</small>';
   ES=stats();pintarTipos();pintarEnt();pintarDocs();}
-// ---- persona ----
 function elegirEnt(x){ST.ent=x;ST.sel={};ST.parc={};$('ent').value=x.nombre;$('ent').classList.remove('mal');pintarEnt();pintarDocs();cargarMov();$('monto').focus();}
 function pintarEnt(){var x=ST.ent,c=$('entCard'),ed=$('edades'),t=tipoAct();
   if(!x){c.style.display='none';ed.style.display='none';$('cardMov').style.display='none';return;}
@@ -945,7 +837,6 @@ function pintarEnt(){var x=ST.ent,c=$('entCard'),ed=$('edades'),t=tipoAct();
   var nom=['Vigente','1-30 días','31-60 días','61-90 días','Más de 90'];ed.style.display='flex';ed.innerHTML=e.b.map(function(v,i){return '<div class=\'edad '+(i>0&&v>0?'r':'')+'\'><b>'+nom[i]+'</b><span>'+f2(v)+'</span></div>';}).join('');}
 function cargarMov(){var x=ST.ent;if(!x||!VIVO)return;var t=tipoAct();llamar('movimientos',{entidad:x.id,tipo:ST.tipo}).then(function(h){if(!ST.ent||ST.ent.id!==x.id)return;$('cardMov').style.display=h.length?'':'none';$('hMov').textContent=t.lado==='C'?'Últimos cobros':'Últimos pagos';
   $('hist').innerHTML=h.map(function(m){return '<div><span><b>'+esc(m.folio)+'</b> <small>· '+fmtF(m.fecha)+(m.cuenta?' · '+esc(m.cuenta):'')+' · '+m.docs+' doc.</small></span><span>'+f2(m.monto)+'</span></div>';}).join('');}).catch(function(){});}
-// ---- documentos ----
 function docsDeEnt(){return ST.ent?docsLado().filter(function(d){return d.ent===ST.ent.id;}):[];}
 function estadoDoc(d){var hoy=$('fecha').value;if(!d.vence)return '<span class=chip>sin vencimiento</span>';var dv=dias(d.vence,hoy);return dv>0?'<span class=\'chip r\'>vencido '+dv+' d</span>':dv>=-7?'<span class=\'chip a\'>vence en '+(-dv)+' d</span>':'<span class=\'chip v\'>vigente</span>';}
 function pintarDocs(){var ds=docsDeEnt(),t=tipoAct();pintarMon();
@@ -971,7 +862,6 @@ function totales(){var n=0,t=0,pm=0,mc=mCta(),sy=simb(mc);for(var k in ST.sel){n
   var av='';if(m>0&&t>0&&Math.abs(m-t)>0.005)av+='<div class=\'aviso '+(m>t?'a':'r')+'\'>'+(m>t?'Sobran '+f2(m-t)+' '+sy+' del monto: no se aplican (los anticipos no se manejan aquí).':'Faltan '+f2(t-m)+' '+sy+' para cubrir lo marcado.')+'</div>';
   if($('fecha').value>iso(new Date()))av+='<div class=\'aviso a\'>La fecha es posterior a hoy.</div>';
   $('avisosRes').innerHTML=av;}
-// ---- registrar ----
 function validar(){var t=tipoAct();document.querySelectorAll('.mal').forEach(function(e){e.classList.remove('mal');});
   if(!ST.ent){$('ent').classList.add('mal');$('ent').focus();aviso('Elige '+(t.lado==='C'?'el cliente':'el proveedor')+' de la lista (escribe y selecciona).','mal');return false;}
   if(!+$('cta').value){$('cta').classList.add('mal');aviso('Elige la cuenta.','mal');return false;}
@@ -995,7 +885,6 @@ function limpiarPersona(){ST.ent=null;ST.sel={};ST.parc={};$('ent').value='';$('
 function limpiar(){limpiarPersona();$('ent').focus();}
 function cancelar(){if(Object.keys(ST.sel).length&&!confirm('Hay documentos marcados. ¿Cerrar sin registrar?'))return;enviar({accion:'cancelar'});}
 document.addEventListener('keydown',function(e){if(e.key==='F5'){e.preventDefault();aplicar(false);}else if(e.key==='F6'){e.preventDefault();aplicar(true);}else if(e.key==='F2'){e.preventDefault();$('ent').focus();}else if(e.key==='Escape'){if($('vel').className.indexOf('on')>=0)return;var ab=document.querySelector('.lista[style*=block]');if(!ab)cancelar();}});
-// ---- arranque ----
 var iso=function(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);};
 $('fecha').value=iso(new Date());$('tc').addEventListener('input',function(){pintarDocs();});$('cta').addEventListener('change',cambioCuenta);$('fecha').addEventListener('change',function(){ES=stats();pintarEnt();pintarDocs();});$('monto').addEventListener('input',totales);
 $('cta').innerHTML=CAT.cuentas.map(function(c){return '<option value='+c.id+'>'+esc(c.nombre)+'</option>';}).join('');var cd=CAT.cuentas.filter(function(c){return c.def;})[0];if(cd)$('cta').value=cd.id;ST.mcPrev=mCta();
@@ -1006,24 +895,15 @@ setTipo(ST.tipo);
 if(DATOS.inicial){var I2=DATOS.inicial;var en=ENT().filter(function(x){return x.id===I2.entidad;})[0];if(en){ST.ent=en;$('ent').value=en.nombre;}$('cta').value=I2.cuenta;$('forma').value=I2.forma;$('fecha').value=I2.fecha;$('ref').value=I2.referencia||'';
   ST.sel={};ST.parc={};I2.aplicaciones.forEach(function(a){ST.sel[a.doc]=a.monto;if(a.parcialidad)ST.parc[a.doc]=a.parcialidad;});ST.mcPrev=mCta();ES=stats();pintarEnt();pintarDocs();if(I2.tc)$('tc').value=I2.tc;}
 setTimeout(function(){$('ent').focus();},60);
-// =====================================================================================================================================
-// EXTRAS de cobros y pagos: lo que una ventana web puede mostrar que una ventana de formularios no:
-//   cartera completa con dona de antigüedad y principales deudores (un clic abre a la persona), pronóstico de vencimientos por semana,
-//   comportamiento de pago de la persona (consultado en vivo en Comercial), estrategias para repartir el monto, paleta de comandos (Ctrl+K),
-//   revisión previa con avisos fiscales (complemento de pago, efectivo), recibo imprimible, copiar a Excel, deshacer, borrador y tema oscuro.
-// Va al final y «envuelve» las funciones de arriba: si se quita este bloque, la ventana sigue funcionando igual.
-// =====================================================================================================================================
 var EX={hist:[],fut:[],snapT:0,intel:null,bT:0,borr:DATOS.borrador||null,pref:DATOS.pref||{}};
 var TAB=String.fromCharCode(9),NL=String.fromCharCode(10),CR=String.fromCharCode(13);
 function cerrarOv(id){$(id).classList.remove('on');}
 function f0(n){return (n||0).toLocaleString('es-MX',{maximumFractionDigits:1});}
-// ---------- deshacer / rehacer sobre lo marcado ----------
 function snap(){var s=JSON.stringify(ST.sel);if(EX.hist.length&&EX.hist[EX.hist.length-1]===s)return;EX.hist.push(s);if(EX.hist.length>80)EX.hist.shift();EX.fut=[];}
 function deshacer(){if(EX.hist.length<2){aviso('No hay nada que deshacer.');return;}EX.fut.push(EX.hist.pop());ST.sel=JSON.parse(EX.hist[EX.hist.length-1]);pintarDocs();pedirBorrador();aviso('Deshecho · Ctrl+Y lo rehace');}
 function rehacer(){if(!EX.fut.length){aviso('No hay nada que rehacer.');return;}var s=EX.fut.pop();EX.hist.push(s);ST.sel=JSON.parse(s);pintarDocs();pedirBorrador();aviso('Rehecho');}
 ['marca','marcarTodos','marcarVencidos','quitarMarcas'].forEach(function(n){var o=window[n];window[n]=function(){var r=o.apply(null,arguments);snap();pedirBorrador();return r;};});
 var _monto=monto;monto=function(id,v){_monto(id,v);clearTimeout(EX.snapT);EX.snapT=setTimeout(snap,700);pedirBorrador();};
-// ---------- estrategias para repartir el monto ----------
 distribuir=function(){var m=+$('monto').value;if(!ST.ent){aviso('Elige primero la persona.','mal');return;}if(!(m>0)){$('monto').classList.add('mal');$('monto').focus();aviso('Captura el monto que se va a repartir.','mal');return;}$('monto').classList.remove('mal');
   var e=$('estrat').value,hoy=$('fecha').value,ds=docsDeEnt().filter(compat),resto=r2(m),fv=function(d){return d.vence||d.fecha;};
   if(e==='vencidos')ds=ds.filter(function(d){return d.vence&&d.vence<hoy;});
@@ -1034,7 +914,6 @@ distribuir=function(){var m=+$('monto').value;if(!ST.ent){aviso('Elige primero l
   if(e==='prop'){var tot=ds.reduce(function(a,d){return a+sc(d);},0),usado=0;ds.forEach(function(d,i){var ap=i===ds.length-1?r2(Math.min(resto,tot)-usado):r2(Math.min(sc(d),resto*sc(d)/tot));if(ap>0){ST.sel[d.id]=Math.min(ap,sc(d));usado+=ST.sel[d.id];}});}
   else ds.forEach(function(d){if(resto<=0)return;var ap=Math.min(sc(d),resto);if(ap>0){ST.sel[d.id]=r2(ap);resto=r2(resto-ap);}});
   pintarDocs();snap();pedirBorrador();if(e==='vencidos'&&!Object.keys(ST.sel).length)aviso('Esta persona no tiene documentos vencidos.');};
-// ---------- envolver las funciones de la página ----------
 var _pintarDocs=pintarDocs;pintarDocs=function(){_pintarDocs();decorar();};
 function decorar(){docsDeEnt().forEach(function(d){var inp=$('ap'+d.id);if(inp&&ST.sel[d.id]!==undefined&&inp.parentNode){var pct=sc(d)>0?Math.min(100,ST.sel[d.id]/sc(d)*100):0;var m=document.createElement('span');m.className='mini';m.innerHTML='<i style="width:'+pct+'%"></i>';m.title=Math.round(pct)+' % del saldo';inp.parentNode.appendChild(m);}});}
 var _totales=totales;totales=function(){_totales();revisar();};
@@ -1044,7 +923,6 @@ var _limpiarP=limpiarPersona;limpiarPersona=function(){_limpiarP();EX.hist=[];EX
 var _setTipo=setTipo;setTipo=function(c){_setTipo(c);pintarCartera();pintarPron();};
 var _aplicado=aplicado;aplicado=function(i){_aplicado(i);if(VIVO)enviar({accion:'borradorBorrar'});$('bdr').textContent='';};
 var _refr=refrescarDocs;refrescarDocs=function(){var r=_refr();if(r&&r.then)r.then(function(){pintarCartera();pintarPron();});return r;};
-// ---------- gráficas (SVG a mano: sin librerías) ----------
 var COL=['#16803B','#65A30D','#D97706','#EA580C','#C82828'],NOMB=['Vigente','1-30 días','31-60 días','61-90 días','Más de 90'];
 function svgDona(b,total){var R=42,C=2*Math.PI*R,off=0,s='<svg viewBox="0 0 112 112" width="112" height="112" role="img" aria-label="Antigüedad de saldos"><circle cx="56" cy="56" r="'+R+'" fill="none" stroke="var(--linea)" stroke-width="16"/>';
   b.forEach(function(v,i){if(v<=0)return;var l=v/total*C;s+='<circle cx="56" cy="56" r="'+R+'" fill="none" stroke="'+COL[i]+'" stroke-width="16" stroke-dasharray="'+l+' '+(C-l)+'" stroke-dashoffset="'+(-off)+'" transform="rotate(-90 56 56)"><title>'+NOMB[i]+': '+f2(v)+' ('+Math.round(v/total*100)+' %)</title></circle>';off+=l;});
@@ -1066,7 +944,6 @@ function pintarPron(){var ds=ST.ent?docsDeEnt():docsLado(),hoy=$('fecha').value,
   vals.forEach(function(v,i){var h=v/mx*(H-base-14),x=4+i*bw,y=H-base-h,lbl=i===0?'vencido':new Date(t0+(i-1)*7*864e5).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit'});
     s+='<g><title>'+(i===0?'Ya vencido: ':'Semana del '+lbl+': ')+f2(v)+'</title><rect x="'+(x+2)+'" y="'+(v>0?y:H-base-1)+'" width="'+(bw-4)+'" height="'+(v>0?Math.max(h,1.5):1)+'" rx="3" fill="'+(i===0?'var(--rojo)':'var(--acc)')+'" opacity="'+(i===0?.85:.6)+'"/><text x="'+(x+bw/2)+'" y="'+(H-5)+'" font-size="7.5" text-anchor="middle" fill="var(--suave)">'+lbl+'</text></g>';});
   $('pron').innerHTML=s+'</svg>'+(ven>0?'<div class=txsm style="color:var(--rojo)">Ya vencido: <b>'+f2(ven)+'</b></div>':'');}
-// ---------- comportamiento de pago (en vivo desde Comercial) ----------
 function mesCorto(m){return ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][+m.slice(5,7)-1];}
 function svgBarras(ms){var W=310,H=112,base=16,mx=Math.max.apply(null,ms.map(function(m){return m.total;}).concat([1])),bw=(W-8)/ms.length,s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Movimientos por mes"><line x1="4" x2="'+(W-4)+'" y1="'+(H-base)+'" y2="'+(H-base)+'" stroke="var(--linea)"/>';
   ms.forEach(function(m,i){var h=m.total/mx*(H-base-12),x=4+i*bw,y=H-base-h;s+='<g><title>'+mesCorto(m.mes)+' '+m.mes.slice(0,4)+': '+f2(m.total)+' · '+m.n+' mov.</title><rect x="'+(x+1.5)+'" y="'+(m.total>0?y:H-base-1)+'" width="'+(bw-3)+'" height="'+(m.total>0?Math.max(h,1.5):1)+'" rx="3" fill="var(--acc)" opacity="'+(i===ms.length-1?1:.55)+'"/><text x="'+(x+bw/2)+'" y="'+(H-4)+'" font-size="8" text-anchor="middle" fill="var(--suave)">'+mesCorto(m.mes)+'</text></g>';});return s+'</svg>';}
@@ -1074,7 +951,6 @@ function cargarComp(){var x=ST.ent;if(!x||!VIVO)return;var t=tipoAct();$('cardCo
   llamar('inteligencia',{entidad:x.id,tipo:ST.tipo}).then(function(d){if(!ST.ent||ST.ent.id!==x.id)return;EX.intel=d;var p=d.puntual;
     $('compSub').innerHTML=p==null?'':'<span class="chip '+(p>=80?'v':p>=50?'a':'r')+'">'+p+' % a tiempo</span>';
     $('comp').innerHTML=svgBarras(d.meses)+'<div class=kpi><div><b>'+(t.lado==='C'?'Cobrado 12 meses':'Pagado 12 meses')+'</b><span>'+f2(d.total12)+'</span></div><div><b>Movimientos</b><span>'+d.mov12+'</span></div><div><b>Días promedio de pago</b><span>'+(d.dias==null?'—':f0(d.dias))+'</span></div><div><b>Atraso promedio</b><span style="color:'+(d.atraso>0?'var(--rojo)':'var(--verde)')+'">'+(d.atraso==null?'—':(d.atraso>0?'+':'')+f0(d.atraso)+' d')+'</span></div></div>';}).catch(function(){$('comp').innerHTML='<div class=txsm>No se pudo consultar el historial.</div>';});}
-// ---------- revisión previa ----------
 function revisar(){var t=tipoAct(),it=[],x=ST.ent,sel=ST.sel,n=0,tot=0,ppd=0;function ok(s){it.push(['v','✓',s]);}function av(s){it.push(['a','!',s]);}function ma(s){it.push(['r','✕',s]);}
   for(var k in sel){if(sel[k]>0){n++;tot+=sel[k];var d=docPor(+k);if(d&&d.metodo==='PPD')ppd++;}}tot=Math.round(tot*100)/100;
   x?ok((t.lado==='C'?'Cliente':'Proveedor')+': '+x.nombre):ma('Falta elegir '+(t.lado==='C'?'el cliente':'el proveedor'));
@@ -1092,7 +968,6 @@ function revisar(){var t=tipoAct(),it=[],x=ST.ent,sel=ST.sel,n=0,tot=0,ppd=0;fun
   $('revis').innerHTML=it.map(function(a){return '<div class='+a[0]+'><i>'+a[1]+'</i><span>'+esc(a[2])+'</span></div>';}).join('');}
 ['cta','forma','ref','fecha','tc'].forEach(function(i){$(i).addEventListener('input',revisar);$(i).addEventListener('change',revisar);});
 $('fecha').addEventListener('change',function(){pintarCartera();pintarPron();});
-// ---------- paleta de comandos (Ctrl+K) ----------
 var PAL={sel:0,vis:[]};
 function comandos(){var c=[{g:'Acciones',a:'Registrar y abrir resumen',b:'F5',f:function(){aplicar(false);}},{g:'Acciones',a:'Registrar y capturar otro',b:'F6',f:function(){aplicar(true);}},{g:'Acciones',a:'Marcar todos los documentos',f:marcarTodos},{g:'Acciones',a:'Marcar solo los vencidos',f:marcarVencidos},{g:'Acciones',a:'Quitar marcas',f:quitarMarcas},
   {g:'Acciones',a:'Vista previa del recibo',b:'Ctrl+P',f:vistaPrevia},{g:'Acciones',a:'Copiar documentos a Excel',f:copiarDocs},{g:'Acciones',a:'Deshacer',b:'Ctrl+Z',f:deshacer},{g:'Acciones',a:'Rehacer',b:'Ctrl+Y',f:rehacer},{g:'Acciones',a:'Cambiar tema claro/oscuro',f:alternarTema},{g:'Acciones',a:'Cancelar y cerrar',b:'Esc',f:cancelar}];
@@ -1108,13 +983,11 @@ function ejecutarPaleta(i){var c=PAL.vis[i];if(!c)return;cerrarOv('ovPal');setTi
 $('palq').addEventListener('input',function(){PAL.sel=0;pintarPaleta();});
 $('palq').addEventListener('keydown',function(e){if(e.key==='ArrowDown'){PAL.sel=Math.min(PAL.vis.length-1,PAL.sel+1);pintarPaleta();var s=document.querySelector('#pall .sel');if(s)s.scrollIntoView({block:'nearest'});e.preventDefault();}else if(e.key==='ArrowUp'){PAL.sel=Math.max(0,PAL.sel-1);pintarPaleta();var s2=document.querySelector('#pall .sel');if(s2)s2.scrollIntoView({block:'nearest'});e.preventDefault();}else if(e.key==='Enter'){ejecutarPaleta(PAL.sel);e.preventDefault();}});
 $('pall').addEventListener('mousedown',function(e){var d=e.target.closest('div[data-i]');if(d){ejecutarPaleta(+d.getAttribute('data-i'));e.preventDefault();}});
-// ---------- copiar a Excel ----------
 function copiarDocs(){var ds=ST.ent?docsDeEnt():docsLado();if(!ds.length){aviso('No hay documentos con saldo que copiar.');return;}
   var tx=['Documento','Persona','Moneda','Fecha','Vence','Total','Pagado','Saldo','Parcialidades','Aplicar'].join(TAB)+NL+ds.map(function(d){var p=ENT().filter(function(e){return e.id===d.ent;})[0];return [d.tipo+' '+d.folio,p?p.nombre:d.ent,d.simbolo,d.fecha,d.vence||'',d.total,d.pagado,d.saldo,d.nParc,ST.sel[d.id]!==undefined?ST.sel[d.id]:''].join(TAB);}).join(NL);
   function listo(){aviso(ds.length+' documento(s) copiados: pégalos en Excel con Ctrl+V.','bien');}
   function plan(){var a=document.createElement('textarea');a.value=tx;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();try{document.execCommand('copy');listo();}catch(e){aviso('No se pudo copiar al portapapeles.','mal');}document.body.removeChild(a);}
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(tx).then(listo).catch(plan);else plan();}
-// ---------- recibo imprimible ----------
 var U1=['','UNO','DOS','TRES','CUATRO','CINCO','SEIS','SIETE','OCHO','NUEVE','DIEZ','ONCE','DOCE','TRECE','CATORCE','QUINCE','DIECISÉIS','DIECISIETE','DIECIOCHO','DIECINUEVE','VEINTE'],D1=['','','VEINTE','TREINTA','CUARENTA','CINCUENTA','SESENTA','SETENTA','OCHENTA','NOVENTA'],V1=['VEINTIUNO','VEINTIDÓS','VEINTITRÉS','VEINTICUATRO','VEINTICINCO','VEINTISÉIS','VEINTISIETE','VEINTIOCHO','VEINTINUEVE'],C1=['','CIENTO','DOSCIENTOS','TRESCIENTOS','CUATROCIENTOS','QUINIENTOS','SEISCIENTOS','SETECIENTOS','OCHOCIENTOS','NOVECIENTOS'];
 function cent(n){if(n===0)return '';if(n===100)return 'CIEN';var r='',c=Math.floor(n/100),d=n%100;if(c>0)r+=C1[c]+' ';if(d>0){if(d<=20)r+=U1[d];else{var a=Math.floor(d/10),u=d%10;if(a===2&&u>0)r+=V1[u-1];else{r+=D1[a];if(u>0)r+=' Y '+U1[u];}}}return r.trim();}
 function enLetras(n){if(n===0)return 'CERO';var r='',mi=Math.floor(n/1000000);n%=1000000;var m=Math.floor(n/1000);n%=1000;if(mi>0)r+=mi===1?'UN MILLÓN ':cent(mi)+' MILLONES ';if(m>0)r+=m===1?'MIL ':cent(m)+' MIL ';if(n>0)r+=cent(n);r=r.trim();if(/UNO$/.test(r))r=r.slice(0,-3)+'UN';return r;}
@@ -1127,7 +1000,6 @@ function vistaPrevia(){var t=tipoAct(),x=ST.ent,f=CAT.folios&&CAT.folios[t.clave
   h+='<div class=tot2><div class=g><span>Total</span><span>'+f2(tot)+' '+esc(simb(mCta()))+'</span></div></div><div class=letra>SON: '+aLetras(tot)+'</div>';
   h+='<div style="display:flex;gap:60px;margin-top:46px;font-size:12px"><div style="flex:1;border-top:1px solid #16263A;text-align:center;padding-top:4px">'+(t.lado==='C'?'Recibí':'Entregué')+'</div><div style="flex:1;border-top:1px solid #16263A;text-align:center;padding-top:4px">'+(t.lado==='C'?'Entregó':'Recibió')+'</div></div><div style="margin-top:14px;color:#94A3B8;font-size:10.5px">Vista previa generada por BrosLMV. Los folios definitivos los asigna Comercial al registrar (una sola operación con un renglón por documento).</div>';
   $('hoja').innerHTML=h;$('ovPrev').classList.add('on');}
-// ---------- borrador automático ----------
 function extrasSpec(){var aps={};for(var k in ST.sel){aps[k]=ST.sel[k];}return {tipo:ST.tipo,entidad:ST.ent?ST.ent.id:0,cuenta:+$('cta').value,forma:+$('forma').value,fecha:$('fecha').value,referencia:$('ref').value,monto:+$('monto').value||0,tc:tcAct(),parc:ST.parc,sel:aps};}
 function pedirBorrador(){if(!VIVO||ST.guardando)return;clearTimeout(EX.bT);EX.bT=setTimeout(function(){if(!ST.ent)return;enviar({accion:'borrador',spec:JSON.stringify(extrasSpec())});var d=new Date();$('bdr').textContent='Borrador guardado '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);},1500);}
 document.addEventListener('change',pedirBorrador);
@@ -1139,22 +1011,18 @@ function restaurar(sp){setTipo(sp.tipo);var en=ENT().filter(function(x){return x
       b.innerHTML='<span>Hay un <b>borrador sin registrar</b>'+(min?' de hace '+(min<90?min+' min':Math.round(min/60)+' h'):'')+' ('+n+' documento(s) marcados). ¿Lo recuperas?</span><button class=btn onclick="descartarBorrador()">Descartar</button><button class="btn p" onclick="recuperarBorrador()">Recuperar</button>';b.classList.add('on');EX.borrSpec=sp;}}})();
 function recuperarBorrador(){$('banBorr').classList.remove('on');restaurar(EX.borrSpec);aviso('Borrador recuperado.','bien');}
 function descartarBorrador(){$('banBorr').classList.remove('on');if(VIVO)enviar({accion:'borradorBorrar'});}
-// ---------- tema ----------
 function ponerTema(o){document.body.classList.toggle('oscuro',!!o);}
 function alternarTema(){var o=!document.body.classList.contains('oscuro');ponerTema(o);if(VIVO)enviar({accion:'pref',tema:o?'oscuro':'claro'});}
 if(EX.pref.tema==='oscuro')ponerTema(true);
-// ---------- atajos ----------
 document.addEventListener('keydown',function(e){var k=e.key.toLowerCase(),en=/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
   if(e.ctrlKey&&k==='k'){e.preventDefault();abrirPaleta();}
   else if(e.ctrlKey&&k==='p'){e.preventDefault();vistaPrevia();}
   else if(e.ctrlKey&&k==='z'&&!en){e.preventDefault();deshacer();}
   else if(e.ctrlKey&&k==='y'&&!en){e.preventDefault();rehacer();}
   else if(e.key==='Escape'){var o=document.querySelector('.ov.on');if(o){o.classList.remove('on');e.stopPropagation();}}},true);
-// ---------- arranque de los extras ----------
 snap();pintarCartera();pintarPron();revisar();
 </script></body></html>
 '''
-
 
 def principal():
     global result
@@ -1170,7 +1038,7 @@ def principal():
     except Exception:
         pass
 
-    html_prueba = os.environ.get("BROSLMV_PAGO_HTML")   # pruebas: escribe la página (con sus datos) en un archivo y no abre ventana
+    html_prueba = os.environ.get("BROSLMV_PAGO_HTML")
     if html_prueba:
         d0 = {"tipos": TIPOS, "cat": catalogo, "inicial": None, "usuario": usuario, "empresa": nombre_empresa}
         with open(html_prueba, "w", encoding="utf-8") as f:
@@ -1215,7 +1083,7 @@ def principal():
         try:
             resumen = aplicar(spec)
         except Exception as ex:
-            return "falloAplicar(" + js_json(S(ex)) + ")"                    # la ventana sigue con todo lo capturado
+            return "falloAplicar(" + js_json(S(ex)) + ")"
         borrar_borrador("cobropago")
         try:
             ctx.erp.RefreshGrid()
@@ -1225,7 +1093,6 @@ def principal():
 
     ventana_en_vivo(pagina, despachar, "Cobros y pagos · BrosLMV", 1280, 900)
     result = "OK"
-
 
 if not _modo_prueba:
     principal()

@@ -3,6 +3,8 @@
 # Las piezas comunes (núcleo, formulario HTML) viven una sola vez en esta carpeta; los .ctx / .py de instalador/scripts son el resultado y SE COMITEAN.
 # Uso:  python build/plantillas_documentos/generar.py      (desde la raíz del repositorio)
 import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sin_comentarios
 AQUI = os.path.dirname(os.path.abspath(__file__))
 SALIDA = os.path.abspath(os.path.join(AQUI, '..', '..', 'instalador', 'scripts'))
 def leer(n): return open(os.path.join(AQUI, n), encoding='utf-8').read().replace('\r\n', '\n')
@@ -23,6 +25,8 @@ def armar(cabecera, nucleo, ui, html, destino, helpers=None, intermedio=None, la
         destino = destino.replace('CREAR_DOCUMENTO_', 'CREAR_VENTA_' if lado == 'C' else 'CREAR_COMPRA_')
     elif lado:
         t = solo_lado(t, lado)
+    # La documentación de una plantilla va en su guía, no en el código: se entrega sin comentarios (las piezas .part sí los conservan para quien programa)
+    t = sin_comentarios.sin_comentarios_py(t) if destino.endswith('.py') else sin_comentarios.sin_comentarios_cs(t)
     escribir(destino, t)
 
 SALTO = chr(10)
@@ -34,6 +38,7 @@ def solo_lado(t, lado):
     otro = 'pago' if cobro else 'cobro'
     t = SALTO.join(l for l in t.split(SALTO) if not l.lstrip().startswith('TP("' + otro + '"'))
     t = t.replace('COBRO_PAGO_', 'COBRO_CLIENTE_' if cobro else 'PAGO_PROVEEDOR_')
+    t = t.replace('Categoria: Tesorería', 'Categoria: ' + ('Cuentas por cobrar' if cobro else 'Cuentas por pagar')).replace('Documentacion: COBRO_PAGO.html', 'Documentacion: ' + ('COBRO_CLIENTE.html' if cobro else 'PAGO_PROVEEDOR.html'))
     t = t.replace('Plantilla: Cobro a cliente / Pago a proveedor (', 'Plantilla: ' + ('Cobro a cliente' if cobro else 'Pago a proveedor') + ' (')
     t = t.replace('Registra un cobro a cliente o un pago a proveedor y lo aplica', ('Registra un cobro a cliente y lo aplica' if cobro else 'Registra un pago a proveedor y lo aplica'))
     marca = 'Léela completa antes de usarla'
@@ -47,6 +52,7 @@ def solo_lado_doc(t, lado):
     otro = '"P"' if venta else '"C"'
     t = SALTO.join(l for l in t.split(SALTO) if not (l.lstrip().startswith('T("') and l.split(',')[3].strip() == otro))
     t = t.replace('CREAR_DOCUMENTO_', 'CREAR_VENTA_' if venta else 'CREAR_COMPRA_')
+    t = t.replace('Categoria: Documentos', 'Categoria: ' + ('Ventas' if venta else 'Compras')).replace('Documentacion: CREAR_DOCUMENTO.html', 'Documentacion: ' + ('CREAR_VENTA.html' if venta else 'CREAR_COMPRA.html'))
     t = t.replace('Plantilla: Crear documento (', 'Plantilla: ' + ('Crear documento de venta' if venta else 'Crear documento de compra') + ' (')
     t = t.replace('factura de cliente, pedido, remisión, factura de compra, orden de compra o recepción.',
                   ('factura de cliente, pedido o remisión (ventas).' if venta else 'factura de compra, orden de compra o recepción (compras).') +
@@ -65,7 +71,7 @@ def inyectar(html, ex):
         assert marca in html, marca
         html = html.replace(marca, ex[clave])
     return html
-html_doc = inyectar(leer('formulario.html.part'), extras('extras_documento.html.part'))
+html_doc = sin_comentarios.sin_comentarios_html(inyectar(leer('formulario.html.part'), extras('extras_documento.html.part')))
 print('Documentos:')
 DOCS = [('cabecera_doc_cs_webview2.part', 'nucleo.cs.part', 'ui_webview2.cs.part', 'CREAR_DOCUMENTO_CSHARP_WEBVIEW2.ctx', None),
         ('cabecera_doc_cs_winforms.part', 'nucleo.cs.part', 'ui_winforms.cs.part', 'CREAR_DOCUMENTO_CSHARP_WINFORMS.ctx', None),
@@ -91,7 +97,7 @@ def inyectar_pago(html, ex):
         assert marca in html, marca
         html = html.replace(marca, ex[clave])
     return html
-html_pago = inyectar_pago(leer('formulario_pagos.html.part'), ex_pago)
+html_pago = sin_comentarios.sin_comentarios_html(inyectar_pago(leer('formulario_pagos.html.part'), ex_pago))
 FAMILIAS = [('cabecera_pago_cs_webview2.part', 'nucleo_pagos.cs.part', 'ui_pagos_webview2.cs.part', 'COBRO_PAGO_CSHARP_WEBVIEW2.ctx', None),
             ('cabecera_pago_cs_winforms.part', 'nucleo_pagos.cs.part', 'ui_pagos_winforms.cs.part', 'COBRO_PAGO_CSHARP_WINFORMS.ctx', None),
             ('cabecera_pago_py_webview2.part', 'nucleo_pagos.py.part', 'ui_pagos_webview2.py.part', 'COBRO_PAGO_PYTHON_WEBVIEW2.py', 'servidor_local.py.part'),

@@ -5,12 +5,6 @@
 // Documentacion: ASIGNAR_CENTRO_COSTO.html
 // job: safe-offline
 // Asignar centro de costo de forma masiva: pone un centro de costo (ya dado de alta en tu catálogo) a muchos documentos de una vez.
-// Elige los documentos con la selección de la lista de Comercial o con filtros (fechas, módulos, cliente/proveedor, centro actual), mira la vista previa y confirma.
-// Cada lote queda en la bitácora zzBrosCentroCostoLog y se puede DESHACER. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
-//
-// Qué escribe (igual que la pantalla de Comercial): docDocument.CostCenterID (encabezado) y, si lo pides, docDocumentItem.CostCenterID (partidas).
-// Qué NO toca: documentos cancelados o eliminados, documentos que otro usuario tiene abiertos, pólizas ya generadas (guardan su propio centro de costo) ni cobros/pagos.
-// Nada va escrito a mano: el catálogo de centros y los módulos salen de la empresa activa.
 
 using System;
 using System.Collections.Generic;
@@ -30,10 +24,9 @@ string FechaTxt(object v) => v == null || v is DBNull ? "" : Convert.ToDateTime(
 
 int empresa = ctx.erp.OwnedBusinessEntityId;
 int usuario = ctx.erp.UserId;
-const int MaxDocs = 5000;            // tope duro por lote
-const int AvisoDocs = 500;           // a partir de aquí se pide confirmación expresa
+const int MaxDocs = 5000;
+const int AvisoDocs = 500;
 
-// ---------- Bitácora (una por empresa): permite deshacer ----------
 void AsegurarBitacora()
 {
     using (var cn = ctx.OpenConn())
@@ -50,7 +43,6 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_zzBrosCentroCostoLog_Lot
     }
 }
 
-// ---------- Catálogos de la empresa ----------
 List<Dictionary<string, object>> Centros() => ctx.Query(
     "SELECT CostCenterID, CostCenterName, ISNULL(Segmento,'') AS Segmento FROM orgCostCenter WHERE DeletedOn IS NULL AND OwnedBusinessEntityID IN (0, " + empresa + ") ORDER BY CostCenterName");
 
@@ -58,17 +50,16 @@ List<Dictionary<string, object>> Modulos() => ctx.Query(
     "SELECT m.ModuleID, m.ModuleName, COUNT(*) AS N FROM docDocument d JOIN engModule m ON m.ModuleID=d.ModuleID " +
     "WHERE d.OwnedBusinessEntityID=" + empresa + " AND d.DeletedOn IS NULL GROUP BY m.ModuleID, m.ModuleName ORDER BY m.ModuleName");
 
-// ---------- Parámetros ----------
 class Pars
 {
-    public string Alcance = "seleccion";         // seleccion | filtro
+    public string Alcance = "seleccion";
     public List<long> Ids = new List<long>();
     public string Desde = "", Hasta = "", Entidad = "", Titulo = "";
     public List<int> Modulos = new List<int>();
-    public string CcActual = "cualquiera";        // cualquiera | vacio | <id>
+    public string CcActual = "cualquiera";
     public long CcNuevo;
-    public string Donde = "encabezado";           // encabezado | partidas | ambos
-    public string Modo = "vacios";                // vacios | todos
+    public string Donde = "encabezado";
+    public string Modo = "vacios";
 }
 
 Pars LeerPars(Dictionary<string, object> r, List<long> seleccion)
@@ -91,7 +82,6 @@ class DocFila
     public long Id; public int Modulo; public string ModuloNombre, Folio, Fecha, Entidad, CcNombre; public long Cc; public int EnUso, Partidas;
 }
 
-// Documentos candidatos: vigentes (ni cancelados ni eliminados) de la empresa activa
 List<DocFila> BuscarDocs(Pars p, out int excedido)
 {
     excedido = 0;
@@ -112,7 +102,7 @@ List<DocFila> BuscarDocs(Pars p, out int excedido)
         if (p.CcActual == "vacio") w.Add("ISNULL(d.CostCenterID,0)=0");
         else if (long.TryParse(p.CcActual, out var cca) && cca > 0) w.Add("d.CostCenterID=" + cca);
     }
-    // Modo «solo vacíos»: en encabezado, el documento debe tener el suyo vacío; en partidas, basta con que alguna partida lo tenga vacío
+
     if (p.Modo == "vacios")
     {
         if (p.Donde == "encabezado") w.Add("ISNULL(d.CostCenterID,0)=0");
@@ -134,7 +124,6 @@ List<DocFila> BuscarDocs(Pars p, out int excedido)
     return res;
 }
 
-// ---------- Aplicar y deshacer (todo en una transacción) ----------
 Dictionary<string, object> Aplicar(Pars p, List<DocFila> docs)
 {
     var libres = docs.Where(d => d.EnUso == 0 || d.EnUso == usuario).ToList();
@@ -204,7 +193,7 @@ Dictionary<string, object> DeshacerUltimo()
             }
             if (lote == null) { tx.Rollback(); return new Dictionary<string, object> { ["lote"] = "", ["encabezados"] = 0, ["partidas"] = 0 }; }
             int enc = 0, par = 0;
-            // Solo se restaura lo que SIGUE valiendo lo que puso el lote: si alguien lo cambió después, no se pisa
+
             using (var cmd = cn.CreateCommand())
             {
                 cmd.Transaction = tx;
@@ -234,7 +223,6 @@ Dictionary<string, object> DeshacerUltimo()
 
 AsegurarBitacora();
 
-// ---------- Modo de pruebas (sin ventanas): BROSLMV_CC_TEST = JSON con {accion: previsualizar|aplicar|deshacer, ...} ----------
 string prueba = Environment.GetEnvironmentVariable("BROSLMV_CC_TEST");
 if (!string.IsNullOrEmpty(prueba))
 {
@@ -256,7 +244,6 @@ if (!string.IsNullOrEmpty(prueba))
     return json;
 }
 
-// ---------- Interfaz ----------
 var seleccionLista = ctx.GetSelectedIds() ?? new List<long>();
 var centros = Centros();
 if (centros.Count == 0)
@@ -270,7 +257,7 @@ if (seleccionLista.Count == 0)
     return "SIN SELECCION";
 }
 int excSel;
-var docsSel = BuscarDocs(new Pars { Alcance = "seleccion", Ids = seleccionLista }, out excSel);          // los documentos seleccionados en el grid (cancelados y eliminados no entran)
+var docsSel = BuscarDocs(new Pars { Alcance = "seleccion", Ids = seleccionLista }, out excSel);
 
 string Esc(string s) => (s ?? "").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 string Css() => @"<style>:root{--f:#f4f6f9;--t:#fff;--x:#16263a;--s:#64748b;--l:#cbd5e1;--a:#2d6fe0;--r:#c82828;--am:#b45309;--v:#16803b}*{box-sizing:border-box}
@@ -339,7 +326,6 @@ string PaginaResultado(string titulo, string detalle, List<string> avisos)
     return sb.ToString();
 }
 
-// Ventana NO modal (ShowHtmlModeless): se puede minimizar y seguir usando Comercial. Cada clic llega a este manejador y devuelve la página siguiente.
 Pars actual = null; List<DocFila> docsPrev = null;
 Func<Dictionary<string, object>, string> alMensaje = (r) =>
 {

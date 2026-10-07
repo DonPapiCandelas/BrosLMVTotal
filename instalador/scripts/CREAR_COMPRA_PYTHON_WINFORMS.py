@@ -2,16 +2,9 @@
 # timeout: 1800
 # AppKey recomendado: CREAR_COMPRA_PYTHON_WINFORMS
 # Plantilla: Crear documento de compra (Python · ventana Windows Forms)
-# Categoria: Documentos
-# Documentacion: CREAR_DOCUMENTO.html
+# Categoria: Compras
+# Documentacion: CREAR_COMPRA.html
 # Crea un documento de Comercial desde una ventana de Windows Forms (pythonnet): factura de compra, orden de compra o recepción (compras). Plantilla separada a propósito: solo COMPRAS (proveedores), para que quien la use no vea el otro lado.
-# Es una plantilla de EJEMPLO funcional: ábrela, pruébala, y copia lo que necesites. Documentación: clic secundario sobre la plantilla → «Ver documentación».
-#
-# Qué enseña:
-#   · El patrón completo de creación: NuevoDocumento → perfil del módulo → AgregarArticulo × N → RecalcCompleto → AffectStockNEW (solo si el módulo lo pide) → Save → agenda de pago.
-#   · Documentos DERIVADOS: selecciona antes una o varias órdenes de compra (o un pedido) en la lista y la ventana ofrece partir de ellas con lo que aún falta por surtir.
-#   · Windows Forms desde Python (pythonnet). Python corre en su propio proceso: la ventana es automáticamente independiente y un error nunca tumba Comercial.
-# Para un botón de un solo tipo (por ejemplo solo «Orden de compra») deja esa fila en la tabla TIPOS y borra las demás.
 
 import pythonnet
 pythonnet.load("netfx")
@@ -41,10 +34,8 @@ import math
 
 from broslmv import ctx
 
-
 def S(v):
     return "" if v is None else str(v)
-
 
 def I(v):
     try:
@@ -52,46 +43,36 @@ def I(v):
     except Exception:
         return 0
 
-
 def D(v):
     try:
         return float(v)
     except Exception:
         return 0.0
 
-
 def Sq(s):
     """Texto para un literal SQL."""
     return S(s).replace("'", "''")
-
 
 def Num(x):
     """Número para un literal SQL (siempre con punto)."""
     t = ("%.8f" % float(x)).rstrip("0").rstrip(".")
     return t if t not in ("", "-") else "0"
 
-
 def fecha_txt(v):
     if v is None:
         return ""
     return v.strftime("%Y-%m-%d") if hasattr(v, "strftime") else S(v)[:10]
 
-
-empresa = I(ctx.erp.OwnedBusinessEntityId())      # en Python ctx.erp.X siempre es una función (relevo al addon): se llama, aunque en C# sea una propiedad
-
+empresa = I(ctx.erp.OwnedBusinessEntityId())
 
 def L(v):
     return I(v)
 
-
-# ---------- Borrador y preferencias (archivos en la carpeta local de datos de la persona) ----------
-# El borrador guarda lo capturado cada vez que cambia algo: si la ventana se cierra sin querer (o Comercial se cae) se puede recuperar al abrirla de nuevo.
 def carpeta_local():
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
     d = os.path.join(base, "BrosLMV", "borradores")
     os.makedirs(d, exist_ok=True)
     return d
-
 
 def archivo_borrador(que):
     try:
@@ -99,7 +80,6 @@ def archivo_borrador(que):
     except Exception:
         uid = 0
     return os.path.join(carpeta_local(), que + "_" + str(empresa) + "_" + str(uid) + ".json")
-
 
 def leer_borrador(que, vence=True):
     try:
@@ -113,14 +93,12 @@ def leer_borrador(que, vence=True):
     except Exception:
         return None
 
-
 def guardar_borrador(que, obj):
     try:
         with open(archivo_borrador(que), "w", encoding="utf-8") as f:
             json.dump(obj, f, ensure_ascii=False)
     except Exception:
         pass
-
 
 def borrar_borrador(que):
     try:
@@ -130,16 +108,9 @@ def borrar_borrador(que):
     except Exception:
         pass
 
-# ===================================================================================================================================
-# TIPOS DE DOCUMENTO. Cada fila es el «perfil» que Comercial espera de ese módulo (confirmado contra capturas del documento nativo).
-# Para quitar un tipo del formulario borra su fila; para agregar otro, copia una fila y ajusta sus datos. Nada más depende de esta tabla.
-#   clave · nombre · módulo · lado (C = cliente, P = proveedor) · de dónde sale el precio (venta/compra) · perfil SQL de encabezado ·
-#   ¿lleva condición de pago? · ¿lleva fecha de entrega? · cómo se liga al origen (""/cabecera/partida/entrega) · módulo de origen
-# ===================================================================================================================================
 def T(clave, nombre, modulo, lado, precio, perfil, condicion, entrega, vinculo, origen):
     return {"clave": clave, "nombre": nombre, "modulo": modulo, "lado": lado, "precio": precio, "perfil": perfil,
             "condicion": condicion, "entrega": entrega, "vinculo": vinculo, "origen": origen}
-
 
 TIPOS = [
     T("factura_compra",  "Factura de compra",   152, "P", "compra", "DepotIDFrom=0, StatusPaidID=3",                                True,  False, "partida",  183),
@@ -149,15 +120,11 @@ TIPOS = [
 TIPO_POR = {t["clave"]: t for t in TIPOS}
 CLAVES = [t["clave"] for t in TIPOS]
 
-
-# ---------- Catálogos para el formulario ----------
 def catalogos(claves):
     cat = {}
     cat["almacenes"] = [{"id": I(r["id"]), "nombre": S(r["nombre"])} for r in ctx.query(
         "SELECT DepotID AS id, DepotName AS nombre FROM orgDepot WHERE DeletedOn IS NULL AND OwnedBusinessEntityID = " + str(empresa) + " ORDER BY DepotName")]
 
-    # Persona con lo que ayuda a decidir al capturar: RFC, condición de pago y descuento habituales, límite de crédito, saldo abierto y fecha de su último documento.
-    # Saldo = facturas, notas de cargo, recibos y gastos con saldo menos notas de crédito con saldo (docDocument.Balance; es la foto de hoy).
     def ent(tabla):
         return ("SELECT be.BusinessEntityID AS id, ISNULL(be.CommercialName, be.OfficialName) AS nombre, ISNULL(mi.OfficialNumber,'') AS rfc, ISNULL(x.PaymentTermID,0) AS cond, ISNULL(x.Discount,0) AS descto, "
                 "ISNULL(x.CreditLimit,0) AS credito, ISNULL(sd.Saldo,0) AS saldo, sd.Ultimo AS ultimo, ISNULL(x.CurrencyID,0) AS moneda, " + ("ISNULL(x.ReceptorUsoCFDI,'')" if tabla == "orgCustomer" else "''") + " AS uso FROM " + tabla + " x "
@@ -175,7 +142,7 @@ def catalogos(claves):
     cat["proveedores"] = lista("orgSupplier") if "P" in lados else []
     cat["condiciones"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "venta": I(r["v"]) == 1, "compra": I(r["c"]) == 1} for r in ctx.query(
         "SELECT PaymentTermID AS id, PaymentTermName AS nombre, Sales AS v, Buys AS c FROM engPaymentTerm WHERE DeletedOn IS NULL ORDER BY PaymentTermID")]
-    # Moneda con su tipo de cambio; catálogos del SAT (forma de pago, método de pago, uso del CFDI) tal como los guarda Comercial; centros de costo
+
     cat["monedas"] = [{"id": I(r["id"]), "simbolo": S(r["simbolo"]), "nombre": S(r["nombre"]), "tc": D(r["tc"])} for r in ctx.query(
         "SELECT CurrencyID AS id, IntlSymbol AS simbolo, Currency AS nombre, Rate AS tc FROM vwLBSCurrencyList ORDER BY CurrencyID")]
 
@@ -192,13 +159,13 @@ def catalogos(claves):
         "SELECT CostCenterID AS id, CostCenterName AS nombre FROM orgCostCenter WHERE DeletedOn IS NULL AND OwnedBusinessEntityID IN (0, " + str(empresa) + ") ORDER BY CostCenterName")]
     cat["impuestos"] = [{"id": I(r["id"]), "nombre": S(r["nombre"]), "perc": D(r["perc"])} for r in ctx.query(
         "SELECT t.TaxTypeID AS id, t.TaxTypeName AS nombre, ISNULL(tp.IVA_Perc,0) AS perc FROM vwLBSTaxType t LEFT JOIN vwLBSTaxPerc tp ON tp.TaxTypeID = t.TaxTypeID ORDER BY t.TaxTypeName")]
-    # Productos: lo mínimo para buscar y poner precio. Tope de seguridad de 30,000.
+
     cat["productos"] = [{"id": I(r["id"]), "clave": S(r["clave"]), "nombre": S(r["nombre"]), "unidad": S(r["unidad"]), "imp": I(r["imp"]),
                          "venta": D(r["venta"]), "costo": D(r["costo"]), "barras": S(r["barras"]), "lote": I(r["lote"]) == 1, "serie": I(r["serie"]) == 1, "servicio": I(r["servicio"]) == 1} for r in ctx.query(
         "SELECT TOP 30000 ProductID AS id, ISNULL(ProductKey,'') AS clave, ProductName AS nombre, ISNULL(Unit,'') AS unidad, ISNULL(TaxTypeID,0) AS imp, "
         "ISNULL(PriceList,0) AS venta, ISNULL(CostPrice,0) AS costo, ISNULL(BarCode,'') AS barras, ISNULL(UseLot,0) AS lote, ISNULL(UseSerialNumber,0) AS serie, ISNULL(ProductIsService,0) AS servicio "
         "FROM orgProduct WHERE DeletedOn IS NULL ORDER BY ProductName")]
-    # Existencias por almacén (suma del kardex): {productoId: {almacenId: cantidad}}
+
     exist = {}
     try:
         for r in ctx.query("SELECT ProductID, DepotID, SUM(Quantity) AS Q FROM orgProductKardex WHERE ISNULL(Cancelled,0) = 0 GROUP BY ProductID, DepotID HAVING ABS(SUM(Quantity)) > 0.00001"):
@@ -206,7 +173,7 @@ def catalogos(claves):
     except Exception:
         pass
     cat["existencias"] = exist
-    # Siguiente folio probable de cada tipo (lo asigna Comercial al guardar; aquí solo se muestra)
+
     folios = {}
     for t in TIPOS:
         if t["clave"] in claves:
@@ -214,11 +181,6 @@ def catalogos(claves):
     cat["folios"] = folios
     return cat
 
-
-# ---------- Documentos de origen (los que estaban seleccionados al lanzar el botón) ----------
-# Para cada documento seleccionado cuyo módulo sirve de origen de algún tipo: sus partidas con lo que AÚN falta por surtir PARA CADA TIPO DERIVADO
-# (una orden de compra puede estar toda recibida y aún sin facturar). «Lo ya surtido» se cuenta por la columna de vínculo propia de cada tipo:
-#   Recepción → DeliverDocumentItemID · Factura de compra → SourceDocumentItemID · Remisión → por producto, dentro de las remisiones que apuntan al pedido (SourceDocumentID).
 def origenes_de(ids):
     res = []
     if not ids:
@@ -260,9 +222,6 @@ def origenes_de(ids):
                     "entidadNombre": S(d["Entidad"]), "almacen": I(d["DepotID"]), "fecha": fecha_txt(d["DateDocument"]), "total": D(d["Total"]), "partidasPor": por_tipo})
     return res
 
-
-# ---------- Consultas en vivo (las pide la ventana mientras se captura) ----------
-# Documentos que sirven de origen para el tipo elegido y que pertenecen a esa persona: los 40 más recientes del módulo de origen con partidas que aún faltan por surtir.
 def pendientes_de(entidad, clave_tipo):
     if clave_tipo not in TIPO_POR or entidad <= 0:
         return []
@@ -273,17 +232,12 @@ def pendientes_de(entidad, clave_tipo):
                                                  " AND DeletedOn IS NULL AND CancelledOn IS NULL ORDER BY DateDocument DESC, DocumentID DESC")]
     return [o for o in origenes_de(ids) if len(o["partidasPor"].get(clave_tipo, [])) > 0]
 
-
-# Los últimos documentos de esa persona (cualquier módulo), para tener contexto antes de capturar
 def ultimos_de(entidad):
     return [{"id": I(r["DocumentID"]), "modulo": I(r["ModuleID"]), "tipo": S(r["Modulo"]), "folio": (S(r["FolioPrefix"]) + S(r["Folio"])).strip(), "fecha": fecha_txt(r["DateDocument"]),
              "total": D(r["Total"]), "saldo": D(r["Saldo"])} for r in ctx.query(
         "SELECT TOP 6 d.DocumentID, d.ModuleID, ISNULL(m.ModuleName,'') AS Modulo, d.FolioPrefix, d.Folio, d.DateDocument, ISNULL(d.Total,0) AS Total, ISNULL(d.Balance,0) AS Saldo FROM docDocument d "
         "LEFT JOIN engModule m ON m.ModuleID = d.ModuleID WHERE d.BusinessEntityID = " + str(entidad) + " AND d.OwnedBusinessEntityID = " + str(empresa) + " AND d.DeletedOn IS NULL AND d.CancelledOn IS NULL ORDER BY d.DateDocument DESC, d.DocumentID DESC")]
 
-
-# Inteligencia de una persona: facturado (o comprado) por mes en los últimos 12 meses, los productos que más maneja con su último precio, los días promedio que tarda en pagar y el
-# último documento de ese tipo con sus partidas (para «Repetir último»). Todo sale de Comercial en ese momento; nada se guarda.
 def inteligencia_de(entidad, clave_tipo):
     res = {}
     if clave_tipo not in TIPO_POR or entidad <= 0:
@@ -333,10 +287,6 @@ def inteligencia_de(entidad, clave_tipo):
         res["ultimo"] = None
     return res
 
-
-# ---------- Agenda de pago ----------
-# NuevoDocumento deja una parcialidad «de relleno» con importe 0; después de guardar hay que rehacerla con el total real y la condición de pago elegida.
-# Cada renglón de engPaymentTermDetail vence en (fecha + PaymentUnit × días del periodo) y lleva su porcentaje; el último absorbe el redondeo.
 def armar_agenda(doc, condicion, fecha):
     total = D(ctx.scalar("SELECT Total FROM docDocument WHERE DocumentID=" + str(doc)))
     det = ctx.query("SELECT d.PaymentPerc, d.PaymentUnit, ISNULL(p.Dias,1) AS Dias, ISNULL(d.ForceEndOfMonth,0) AS FinMes FROM engPaymentTermDetail d "
@@ -359,17 +309,12 @@ def armar_agenda(doc, condicion, fecha):
         ctx.execute("INSERT INTO docDocumentPaymentAgenda (DocumentID, DatePayment, TotalPerc, Amount, PartialityNumber, CreatedOn, CreatedBy) VALUES (" + str(doc) + ", '"
                     + vence.strftime("%Y%m%d") + "', " + Num(perc) + ", " + Num(monto) + ", " + str(n) + ", GETDATE(), " + uid + ")")
 
-
 def _error_erp():
     try:
         return ctx.erp.LastError()
     except Exception:
         return ""
 
-
-# ---------- Crear el documento ----------
-# «spec»: tipo, almacen, entidad, condicion, fecha (yyyy-MM-dd), entrega (yyyy-MM-dd), titulo, comentarios, origenes [ids], partidas [{id, cant, precio, desc (0-100), imp, origenItem}]
-# Regresa el DocumentID. Si algo no es válido lanza una excepción con un mensaje que se le puede mostrar a la persona.
 def crear_documento(spec):
     clave = S(spec.get("tipo"))
     if clave not in TIPO_POR:
@@ -396,7 +341,7 @@ def crear_documento(spec):
             raise Exception("La partida " + str(n) + " tiene precio negativo.")
         if D(p.get("desc")) < 0 or D(p.get("desc")) > 100:
             raise Exception("El descuento de la partida " + str(n) + " debe estar entre 0 y 100.")
-    # Controles previos: nada se escribe en Comercial hasta que todo esto pasa (un documento a medias es peor que un error claro)
+
     lado = t["lado"]
     if I(ctx.scalar("SELECT COUNT(*) AS n FROM orgDepot WHERE DepotID = " + str(almacen) + " AND DeletedOn IS NULL AND OwnedBusinessEntityID = " + str(empresa))) == 0:
         raise Exception("El almacén elegido no existe en esta empresa.")
@@ -438,13 +383,13 @@ def crear_documento(spec):
         raise Exception("No se pudo crear el documento: " + S(_error_erp()))
 
     try:
-        # Encabezado: perfil del módulo + lo que capturó la persona
+
         centro = I(spec.get("centro"))
         sets = [t["perfil"], "CampaignID=NULL", "CostCenterID=" + (str(centro) if centro > 0 else "NULL"), "ProjectID=NULL"]
         moneda = I(spec.get("moneda"))
         tc = D(spec.get("tc"))
         if moneda > 0:
-            sets.append("CurrencyID=" + str(moneda) + ", Rate=" + Num(1 if simbolo_mon == "MXN" else tc))          # en pesos el tipo de cambio siempre es 1
+            sets.append("CurrencyID=" + str(moneda) + ", Rate=" + Num(1 if simbolo_mon == "MXN" else tc))
         if t["condicion"]:
             sets.append("PaymentTermID=" + str(I(spec.get("condicion"))))
         fecha = S(spec.get("fecha"))
@@ -461,7 +406,7 @@ def crear_documento(spec):
         if coment:
             sets.append("Comments=N'" + Sq(coment) + "'")
         if origenes:
-            sets.append("SourceDocumentID=" + str(origenes[0]))   # el sistema solo guarda UN origen en el encabezado; cada partida liga el suyo
+            sets.append("SourceDocumentID=" + str(origenes[0]))
         ctx.execute("UPDATE docDocument SET " + ", ".join(sets) + " WHERE DocumentID=" + str(doc))
 
         for p in partidas:
@@ -470,7 +415,7 @@ def crear_documento(spec):
             precio = D(p.get("precio"))
             imp = I(p.get("imp"))
             origen_item = I(p.get("origenItem"))
-            # Costo: compra → el precio pactado; remisión → costo promedio del producto; el resto de ventas no lleva costo
+
             costo = -1
             if not venta:
                 costo = precio
@@ -483,7 +428,7 @@ def crear_documento(spec):
                 ctx.execute("UPDATE docDocumentItem SET SourceDocumentItemID=" + str(origen_item) + " WHERE DocumentItemID=" + str(item))
 
         ctx.erp.RecalcCompleto(doc)
-        # ¿Mueve o compromete inventario? Lo decide el módulo (StockAffectation ≠ 0), no el tipo de documento
+
         if I(ctx.scalar("SELECT ISNULL(MAX(TRY_CONVERT(int, Value)),0) FROM engModuleParameter WHERE ParameterKey='StockAffectation' AND ModuleID=" + str(modulo))) != 0:
             ctx.erp.AffectStockNEW(doc)
             if _error_erp():
@@ -491,7 +436,7 @@ def crear_documento(spec):
         ctx.erp.Save(doc)
         if _error_erp():
             raise Exception("Save: " + S(_error_erp()))
-        if clave == "factura_cliente":                     # datos del comprobante: el motor deja la fila de docDocumentCFD con valores por omisión (G03 / PPD / 99)
+        if clave == "factura_cliente":
             cf = []
             for col, llave in (("ReceptorUsoCFDI", "uso"), ("FormaPago", "forma"), ("MetodoPago", "metodo")):
                 if S(spec.get(llave)) != "":
@@ -503,29 +448,26 @@ def crear_documento(spec):
                 base = datetime.datetime.strptime(fecha[:10], "%Y-%m-%d") if len(fecha) >= 10 else datetime.datetime.today()
             except Exception:
                 base = datetime.datetime.today()
-            armar_agenda(doc, I(spec.get("condicion")), base)   # agenda de pago con los montos reales
+            armar_agenda(doc, I(spec.get("condicion")), base)
             try:
-                ctx.erp.UpdateDocumentPaidInfo(doc)              # saldo y balance
+                ctx.erp.UpdateDocumentPaidInfo(doc)
             except Exception:
                 pass
         if vinculo != "":
             try:
-                ctx.erp.UpdateStatusDelivery(doc)                # estado de entrega del documento de origen
+                ctx.erp.UpdateStatusDelivery(doc)
             except Exception:
                 pass
         return doc
     except Exception as ex:
-        # El documento ya existe como borrador: se avisa su número para que no quede perdido
+
         raise Exception(S(ex) + "\n\nQuedó un documento incompleto (id " + str(doc) + "): elimínalo o cancélalo desde Comercial.")
 
-
-# ---------- Qué documentos seleccionados sirven de origen ----------
 try:
     seleccion = [int(x) for x in (ctx.get_selected_ids() or [])]
 except Exception:
     seleccion = []
 
-# ---------- Pruebas automáticas (sin ventanas): variable de entorno BROSLMV_DOC_TEST (JSON con el «spec»), resultado en BROSLMV_DOC_OUT ----------
 _modo_prueba = os.environ.get("BROSLMV_DOC_TEST")
 if _modo_prueba:
     _spec = json.loads(_modo_prueba)
@@ -552,18 +494,8 @@ if _modo_prueba:
             _f.write(_res)
     result = _res
 
-# ===================================================================================================================================
-# VENTANA (Windows Forms desde Python con pythonnet). Es el MISMO diseño que la versión de C# (ui_winforms.cs.part), con las mismas posiciones, colores y reglas:
-# cinta oscura con las acciones y la información del documento (fecha, serie, folio, entrega), grupos numerados con la etiqueta arriba de cada campo (nada se encima),
-#   1 · Cliente / proveedor (búsqueda por nombre o RFC, saldo, crédito) · 2 · Almacén, centro de costo y moneda con tipo de cambio ·
-#   3 · Datos fiscales del CFDI (uso, forma y método de pago; solo la factura de cliente) · 4 · Documento de origen (si el tipo parte de otro) ·
-#   Partidas con captura rápida y tabla editable · Comentarios · Totales con importe en letra.
-# Python corre en su propio proceso: la ventana es independiente y no bloquea a Comercial. Cada manejador va en «seguro» para que un error se explique en vez de dejar la ventana muda.
-# Al guardar SIEMPRE se abre el documento nativo de Comercial.
-# ===================================================================================================================================
 def msg(texto, titulo="Crear documento"):
     MessageBox.Show(texto, titulo, MessageBoxButtons.OK, MessageBoxIcon.Warning)
-
 
 def seguro(fn):
     def envuelto(sender=None, args=None):
@@ -574,11 +506,8 @@ def seguro(fn):
             msg(str(ex))
     return envuelto
 
-
-# ---------- diseño (los mismos colores y fuentes que en C#) ----------
 def rgb(r, g, b):
     return Color.FromArgb(r, g, b)
-
 
 C_BG = rgb(241, 245, 249)
 C_LINE = rgb(203, 213, 225)
@@ -605,12 +534,10 @@ F_ITAL = Font("Segoe UI", 9.0, FontStyle.Italic)
 
 E = {"ent": None, "prod": None, "guardando": False, "suspender": False, "metodo_manual": False, "ver_g3": True, "ver_g4": False, "tipo": 0, "resultado": "CANCELADO", "tc_prev": 1.0, "en_cambio_mon": False}
 
-# ---------- importe en letra (el mismo que en C#) ----------
 UNI = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE"]
 DEC = ["", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"]
 VEI = ["VEINTIUNO", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO", "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE"]
 CEN = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
-
 
 def centenas(n):
     if n == 0:
@@ -634,7 +561,6 @@ def centenas(n):
                     r += " Y " + UNI[u]
     return r.strip()
 
-
 def en_letras(n):
     if n == 0:
         return "CERO"
@@ -654,7 +580,6 @@ def en_letras(n):
         r = r[:-3] + "UN"
     return r
 
-
 def a_letras(v, moneda, mn):
     v = max(0.0, v)
     e = int(v)
@@ -663,7 +588,6 @@ def a_letras(v, moneda, mn):
         e += 1
         c = 0
     return en_letras(e) + " " + moneda + " " + ("%02d" % c) + "/100" + (" M.N." if mn else "")
-
 
 def principal():
     global result
@@ -677,10 +601,10 @@ def principal():
     monedas = catalogo["monedas"]
     existencias = catalogo["existencias"]
     folios = catalogo["folios"]
-    filas = []            # cada partida: dict(id, clave, nombre, unidad, cant, max, precio, desc, imp, origenItem, origen)
+    filas = []
     origen_sel = []
     pendientes = []
-    pastillas = []        # (título, valor, color) del renglón de datos de la persona
+    pastillas = []
     vis = {"ent": [], "prod": [], "origen": []}
     quien_soy = ""
     nombre_empresa = ""
@@ -702,7 +626,7 @@ def principal():
     frm.Font = F_BASE
     frm.KeyPreview = True
 
-    def al_frente(s, e):             # Python corre en otro proceso: sin esto la ventana puede quedar detrás de Comercial
+    def al_frente(s, e):
         frm.TopMost = True
         frm.Activate()
         frm.BringToFront()
@@ -721,7 +645,6 @@ def principal():
     def acento():
         return C_VENTA if es_venta() else C_COMPRA
 
-    # ---------- piezas de construcción ----------
     def grupo(titulo):
         p = Panel()
         p.BackColor = Color.White
@@ -757,7 +680,7 @@ def principal():
         return l
 
     def cuadro(padre, etiqueta, x, y, w, solo_lectura=False):
-        # Marco de altura fija que dibuja el borde; el TextBox va adentro SIN borde y centrado (la altura no depende de la escala del monitor)
+
         if etiqueta:
             et(padre, etiqueta, x, y)
         marco = Panel()
@@ -839,7 +762,6 @@ def principal():
         i = cmb.SelectedIndex
         return items[i] if 0 <= i < len(items) else None
 
-    # ---------- cinta superior ----------
     ribbon = Panel()
     ribbon.BackColor = C_RIB
     ribbon.Size = Size(1176, 100)
@@ -987,7 +909,6 @@ def principal():
     nota = et_r("(el folio definitivo lo asigna Comercial al guardar)", 14, 70)
     nota.ForeColor = C_RIB_MU
 
-    # ---------- tipos de documento ----------
     p_tipos = Panel()
     p_tipos.BackColor = Color.White
     p_tipos.Size = Size(1176, 40)
@@ -1036,7 +957,6 @@ def principal():
         btns_tipo.append(b)
         fl_tipos.Controls.Add(b)
 
-    # ---------- 1 · persona ----------
     g1 = grupo(lambda: str(numero_grupo(g1)) + ". " + ("Cliente" if es_venta() else "Proveedor"))
     txt_ent, marco_ent = cuadro(g1, "Buscar por nombre o RFC  (F2)", 14, 34, 320)
     txt_rfc, _m = cuadro(g1, "RFC", 346, 34, 130, True)
@@ -1073,7 +993,6 @@ def principal():
     btn_hist = boton_plano("Historial", 526, 92, 80, 28)
     g1.Controls.Add(btn_hist)
 
-    # ---------- 2 · almacén, centro de costo y moneda ----------
     g2 = grupo(lambda: str(numero_grupo(g2)) + ". Almacén, centro de costo y moneda")
     cmb_alm = lista(g2, "Almacén", 14, 34, 230)
     cmb_cc = lista(g2, "Centro de costo", 256, 34, 210)
@@ -1093,7 +1012,6 @@ def principal():
         cmb_mon.Items.Add(m["nombre"])
     poner_por_id(cmb_mon, mon_items, 3)
 
-    # ---------- 3 · datos fiscales (solo la factura de cliente) ----------
     g3 = grupo(lambda: str(numero_grupo(g3)) + ". Datos fiscales del CFDI")
     cmb_uso = lista(g3, "Uso del CFDI", 14, 34, 410, 640)
     cmb_forma = lista(g3, "Forma de pago", 436, 34, 330, 520)
@@ -1115,7 +1033,6 @@ def principal():
         i = cmb.SelectedIndex
         return items[i]["clave"] if 0 <= i < len(items) else ""
 
-    # ---------- 4 · documento de origen ----------
     g4 = grupo(lambda: str(numero_grupo(g4)) + ". Partir de un documento existente")
     lbl_origen_est = Label()
     lbl_origen_est.Location = Point(330, 7)
@@ -1132,7 +1049,6 @@ def principal():
     clb_origen.BackColor = Color.White
     g4.Controls.Add(clb_origen)
 
-    # ---------- partidas ----------
     g5 = grupo(lambda: str(numero_grupo(g5)) + ". Partidas")
     txt_prod, marco_prod = cuadro(g5, "Producto: nombre, clave o código de barras  (F3)", 14, 34, 340)
     btn_busca_prod = boton_plano("Ver todos", 360, 52, 80, 26)
@@ -1224,7 +1140,6 @@ def principal():
     grid.Columns["Importe"].DefaultCellStyle.Font = F_B
     g5.Controls.Add(grid)
 
-    # ---------- comentarios ----------
     g6 = grupo(lambda: "Referencia y comentarios")
     txt_titulo, _m1 = cuadro(g6, "Título (opcional)", 14, 34, 190)
     txt_titulo.MaxLength = 120
@@ -1232,7 +1147,6 @@ def principal():
     txt_coment.MaxLength = 250
     et(g6, "Ambos se guardan en el encabezado del documento.", 14, 80)
 
-    # ---------- totales ----------
     g7 = grupo(lambda: "Totales")
 
     def dato_total(cap, x):
@@ -1277,7 +1191,6 @@ def principal():
     lbl_letra.AutoEllipsis = True
     g7.Controls.Add(lbl_letra)
 
-    # ---------- pie ----------
     p_pie = Panel()
     p_pie.BackColor = Color.White
     p_pie.Size = Size(1200, 40)
@@ -1302,7 +1215,6 @@ def principal():
     lbl_avisos.AutoEllipsis = True
     p_pie.Controls.Add(lbl_avisos)
 
-    # ---------- listas desplegables (persona y producto), con dos renglones por elemento ----------
     def hacer_lista(ancho, alto, renglones2):
         lb = ListBox()
         lb.Visible = False
@@ -1365,7 +1277,6 @@ def principal():
     for c in (ribbon, p_tipos, g1, g2, g3, g4, g5, g6, g7, p_pie, lst_ent, lst_prod, lbl_toast):
         frm.Controls.Add(c)
 
-    # ---------- distribución (todo a mano: nada se encima y se ajusta al tamaño de la ventana) ----------
     def numero_grupo(g):
         n = 0
         for x in (g1, g2, g3, g4, g5):
@@ -1412,7 +1323,6 @@ def principal():
             g.Invalidate()
     frm.Resize += lambda s, e: distribuir()
 
-    # ---------- lógica ----------
     def prod_por(id_):
         for x in productos:
             if x["id"] == id_:
@@ -1423,7 +1333,7 @@ def principal():
         p = prod_por(id_)
         if p is None:
             return 0.0
-        # Los precios y costos del catálogo están en pesos: en un documento en otra moneda se convierten con el tipo de cambio capturado
+
         return round((p["costo"] if not es_venta() else p["venta"]) / tc_pesos(), 4)
 
     def tc_pesos():
@@ -1551,7 +1461,7 @@ def principal():
                                  ("  ·  total " + "{:,.2f}".format(o["total"]) if o.get("total") else ""), o["id"] in origen_sel)
 
     def auto_metodo():
-        # El método de pago sigue a la condición (contado → una sola exhibición; crédito → parcialidades, forma 99) mientras la persona no lo cambie a mano
+
         if not con_cfdi() or E["metodo_manual"]:
             return
         c = seleccionado(cmb_cond, conds_vis)
@@ -1635,7 +1545,6 @@ def principal():
         if E["ent"] is not None:
             elegir_entidad(E["ent"])
 
-    # ---------- búsqueda con lista desplegable (persona y producto) ----------
     def desplegar(txt, marco, lst, renglones2, fuente, linea1, linea2, buscar_en, maximo, destino):
         q = txt.Text.lower().split()
         vis_ = []
@@ -1769,7 +1678,7 @@ def principal():
         if v:
             p = next((x for x in productos if (x["barras"] and x["barras"] == v) or x["clave"].lower() == v.lower()), None)
         if p is not None:
-            elegir_producto(p)         # código de barras o clave exacta: se agrega directo (flujo de lector)
+            elegir_producto(p)
             agregar_captura()
             return
         i = lst_prod.SelectedIndex
@@ -1885,8 +1794,6 @@ def principal():
         E["en_cambio_mon"] = False
         repreciar(True)
 
-    # Al cambiar de moneda: los precios del catálogo (automáticos) se recalculan desde su precio en pesos; los que la persona escribió se convierten proporcionalmente;
-    # los de un documento de origen se respetan. Al ajustar solo el tipo de cambio: se recalculan los automáticos.
     def repreciar(cambio_moneda):
         ahora = tc_pesos()
         antes = E["tc_prev"]
@@ -1950,7 +1857,6 @@ def principal():
             msg(str(ex))
     clb_origen.ItemCheck += cambio_origen
 
-    # historial de la persona: ventana aparte
     def ver_historial():
         ent = E["ent"]
         if ent is None:
@@ -2059,7 +1965,7 @@ def principal():
             pass
         abrir_mal = None
         try:
-            ctx.erp.AbrirDocumento(doc, t["modulo"])            # SIEMPRE se abre el documento nativo del sistema
+            ctx.erp.AbrirDocumento(doc, t["modulo"])
         except Exception as ex:
             abrir_mal = str(ex)
         if abrir_mal is not None:
@@ -2089,13 +1995,12 @@ def principal():
             ev.Handled = True
     frm.KeyDown += tecla_forma
 
-    # ---------- Arranque ----------
     m0 = moneda_sel()
     if m0:
         nud_tc.Value = Convert.ToDecimal(max(0.0001, m0["tc"]))
         nud_tc.Enabled = m0["simbolo"] != "MXN"
     cambiar_tipo(0)
-    if origenes:                   # seleccionados en la lista de Comercial: se propone el tipo que parte de ellos y se marcan
+    if origenes:
         ti = next((i for i, t in enumerate(TIPOS) if t["origen"] == origenes[0]["modulo"]), -1)
         if ti >= 0:
             cambiar_tipo(ti)
@@ -2104,7 +2009,6 @@ def principal():
     distribuir()
     frm.ShowDialog()
     result = E["resultado"]
-
 
 if not _modo_prueba:
     principal()

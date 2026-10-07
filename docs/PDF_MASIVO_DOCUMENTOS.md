@@ -45,21 +45,3 @@ con el formato HTML de cada módulo. Antes, los botones de PDF procesaban única
 | «No se encontró BrosLMV.HtmlToPdf.exe» | No está instalado el motor (`C:\\BrosLMV\\htmlpdf`) o el instalador no lo copió. |
 | Un tipo de documento sale «OMITIDO: su módulo no tiene un formato HTML» | Asígnale un formato en *Configuración de formato* o instala los formatos de BrosLMV. |
 | Un documento sale «tiempo agotado» | Su formato tarda demasiado en armarse (p. ej. un script de la plantilla). Pruébalo solo con *Generar documento (PDF)*. |
-
-## Para desarrolladores
-
-**Modo lote del motor (`BrosLMV.HtmlToPdf.exe`).**
-
-```
-BrosLMV.HtmlToPdf.exe --lote <manifiesto.txt> [--timeout-doc <seg>] [--unir <salida.pdf>] [--zip <salida.zip>]
-```
-
-- El manifiesto tiene una línea por documento: `<entrada.html><TAB><salida.pdf>`.
-- Una sola instancia de WebView2 para todo el lote; un documento que falla no detiene a los demás.
-- La salida estándar (UTF-8) trae una línea por documento: `n/total<TAB>OK|ERR<TAB>pdf[<TAB>motivo]`, y al final `UNIDO<TAB>ruta` y/o `ZIP<TAB>ruta` (o `ERRUNIR`/`ERRZIP`).
-- Códigos de salida: `0` todo bien · `7` hubo documentos con fallo · `1`, `3`, `5`, `6` como en el modo normal.
-- `--soporta-lote` imprime `lote=1` y sale con 0: así una plantilla sabe si el motor instalado admite lotes.
-- Unir usa PDFsharp (MIT); comprimir, `System.IO.Compression`.
-
-**Modo de pruebas de la plantilla (sin ventanas).** Con `BROSLMV_PDFM_TEST` (JSON con `ids`, `modo`, `carpeta`, `patron`) y `BROSLMV_PDFM_OUT` (archivo de resultados) corre en `BrosLMV.Runner` (lleva `// job: safe-offline`).
-`BROSLMV_HTMLTOPDF_EXE` fuerza qué motor usar. Prueba de humo: `build/humo/casos/37_pdf_masivo.ps1`.

@@ -8,6 +8,13 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.1.0] — 2026-10-07 — Plantillas clasificadas y con guía propia (requiere instalar)
+
+### Cambiado
+- **Clasificación de las plantillas de fábrica** por área de trabajo (campo `Categoria:` de la cabecera): **Ventas** (Crear documento de venta ×4), **Compras** (Crear documento de compra ×4), **Cuentas por cobrar** (Cobro a cliente ×4 y Estado de cuenta de clientes), **Cuentas por pagar** (Pago a proveedor ×4 y Estado de cuenta de proveedores) y **Documentos** (Trazabilidad, Asignar centro de costo, PDF masivo, Crear documentos desde XML y Configuración de formato). Antes: Documentos, Reportes, Tesorería y Trazabilidad.
+- **Documentación sobre la plantilla, no sobre el código:** cada plantilla declara su propia guía (`Documentacion:`). Guías nuevas `CREAR_VENTA`, `CREAR_COMPRA`, `COBRO_CLIENTE` y `PAGO_PROVEEDOR` (reemplazan a `CREAR_DOCUMENTO` y `COBRO_PAGO`); las demás guías pierden las secciones para desarrolladores. Todo lo de mantenimiento y pruebas pasó a `docs/desarrollo/PLANTILLAS_DESARROLLO.md` (no se distribuye).
+- **El código de las plantillas se entrega sin comentarios** (queda la cabecera con nombre, categoría, guía y una línea de descripción). Las piezas de `build/plantillas_documentos/` conservan sus comentarios para quien programa; `generar.py` los quita al armar (`sin_comentarios.py`).
+
 ## [3.0.3] — 2026-10-03 — Crear documento separado en ventas y compras (requiere instalar)
 
 ### Cambiado

@@ -69,11 +69,3 @@ Se excluyen los documentos eliminados y cancelados.
 | Un documento no aparece | Está cancelado o eliminado, es anterior a la ventana de 12 meses y sin saldo, o su módulo no afecta saldos (`FinancialAffectation = 0`). |
 | El total no coincide con el reporte nativo | Compara la fecha de corte y la moneda; el reporte nativo puede incluir anticipos. |
 | «No se pudo generar el Excel» | Falta `C:\BrosLMV\lib\ClosedXML.dll` (la pone el instalador; reinstala BrosLMV) o el archivo está abierto en Excel. |
-
-## Para desarrolladores
-
-Las dos plantillas se **generan** de una sola fuente: `build/saldos/estado_cuenta.tpl.ctx` con `python build/saldos/generar.py` (no se editan a mano los `.ctx` generados).
-**Prueba de humo #42** (`build/humo/casos/42_estado_cuenta_excel.ps1`): genera el libro con 6,000 documentos sintéticos (o los que pidas con `-Documentos`) en las dos plantillas, lo valida con el validador oficial de Open XML y comprueba hojas, gráficas y filas. Variables: `BROSLMV_SALDOS_XLSX_TEST` (JSON que mandaría la ventana) y `BROSLMV_SALDOS_XLSX_OUT`.
-**Modo de pruebas (sin ventanas).** Con `BROSLMV_SALDOS_TEST` (JSON, por ejemplo `{"meses":12}`) corre en `BrosLMV.Runner` (lleva `// job: safe-offline`) y escribe el modelo completo (documentos y pagos) en el archivo de `BROSLMV_SALDOS_OUT`
-y el HTML de la ventana en `BROSLMV_SALDOS_HTML`. Prueba de humo: `build/humo/casos/38_saldos_estados_cuenta.ps1` (corre las dos plantillas).
-Datos de demostración en el laboratorio: `build/laboratorio/sembrar_demo_saldos.ps1` (10 facturas «DEMO SALDOS…» con cobros y pagos aplicados, en `BROSLMV_DESARROLLO`).
