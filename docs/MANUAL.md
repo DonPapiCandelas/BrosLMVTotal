@@ -417,7 +417,7 @@ documento requiere:
 **Campos que ya setea (no repetir):**
 - `ModuleID`, `DocumentTypeID`, `DocRecipientID` (leídos de `engModuleParameter`)
 - `OwnedBusinessEntityID`, `BusinessEntityID`, `DepotID`
-- `FolioPrefix`, `Folio` (vía `LBS.GetNextFolio`)
+- `FolioPrefix`, `Folio` (vía `LBS.GetNextFolio` por omisión; candidato2.98.1 acepta folioPrefixOverride/folioOverride para numeración externa SIN llamar al consecutivo nativo; ver NUMERACION_EXTERNA.md. Validación/publicación pendientes.)
 - `DateDocument`, `LanguageID=3`, `CurrencyID=3`, `Rate=1`
 - `MustBeSynchronized=1`, `ExportID=1`
 - `DateCost`, `DateDocDelivery`, `DateFrom`, `DateTo`, `DateLastPayment` = fecha actual
@@ -1345,6 +1345,22 @@ operaciones de una empresa en producción. Identifica el tipo de operación por
 - La **aplicación** de un cobro/pago a documentos vive en `docDocumentPayment`
   (`FinancialOperationID` → `DocumentID`, ver §10.5); >99% de los cobros y pagos medidos tenían
   al menos una aplicación. Los traspasos y "otros ingresos" nunca la tienen.
+- **Divisas de la aplicación (verificado en consulta de compras multi-moneda):**
+  `docDocumentPayment.Amount` está en la moneda del documento receptor (`docDocument.CurrencyID`);
+  `AmountPaidCurrency` está en la moneda de la operación financiera (`docFinancialOperation.CurrencyID`).
+  Una factura en USD pagada desde MXN puede tener importes numéricos muy diferentes en esas columnas.
+  Mostrarlas con su moneda explícita y sumar solo `Amount` para aplicaciones al documento.
+  No repetir `docFinancialOperation.Amount` en cada factura que una misma operación liquide.
+- **No usar la parcialidad del pago como FK de agenda:** se observaron pagos con
+  `docDocumentPayment.PartialityNumber` mayor que uno en documentos cuya agenda contiene solo
+  la parcialidad 1. Además, filas de agenda de documentos ya pagados pueden conservar
+  `StatusID=0` y `PaidWithDocumentID=0`. Esas columnas por sí solas NO prueban saldo pendiente
+  por parcialidad; no asignar un saldo completo a una fecha ni restar pagos arbitrariamente.
+  Con varias parcialidades y pagos, declarar la distribución no conciliada hasta validar el vínculo.
+- **Conciliar cada instalación, no extrapolar una muestra:** una consulta posterior encontró
+  diferencia entre `TotalPaid` y `SUM(docDocumentPayment.Amount)` vigente en un documento.
+  Conservar y rotular el saldo nativo, advertir la discrepancia y revisar aplicaciones/cancelaciones
+  con el responsable; no corregir automáticamente ni afirmar que todos los saldos siempre coinciden.
 - **No crees un pago insertando solo `docFinancialOperation`.** Se vio en producción un script
   que lo hacía (el encabezado con `ModuleID`/`DocumentTypeID`/`Amount`/fechas, nada más): el
   pago queda sin aplicar a facturas, sin actualizar `Balance`/`StatusPaidID` de los documentos
@@ -2222,3 +2238,12 @@ Datos fijos del componente:
 > [`XENGINE_FUNCIONES.md`](XENGINE_FUNCIONES.md) — catálogo completo de funciones XEngine.
 > [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) — cómo construir un dashboard rápido y
 > portable (`ctx.dashboard()`, agregación en SQL, patrón de assets incrustados).
+### Corrección de precio por presentación en documentos existentes (2026-10-01)
+
+Un precio por paquete capturado como precio por pieza puede conservar una cantidad de existencia correcta y, aun así, inflar el costo y los totales. Antes de corregir, confirmar presentación, cantidad real e inclusión de IVA; respaldar bases y registros, conservar vínculos y comprobar que el documento fiscal correcto no cambie. No cambiar cantidad a «un paquete» si el inventario se maneja por piezas.
+
+Hallazgo comprobado en una corrección real: modificar UnitPrice y ejecutar RecalcDocument corrigió el encabezado, pero **docDocumentItem.Total permaneció con el importe anterior**. Verificar ambos niveles; dejar coherentes los campos de captura de la partida antes del recálculo/guardado nativo. No afirmar que el recálculo resuelve todos los campos ni generalizar el patrón a todos los módulos sin validar sus reglas.
+
+Usar afectación y costeo nativos según configuración del módulo, revisar LastError inmediatamente después de cada llamada y verificar después cantidad, compromisos, valor, impuestos, folio y vínculos. El recosteo puede reconstruir un registro del libro de costos con otro ID sin crear una entrada adicional: comprobar el kardex y los valores, no solo el ID. No editar directamente kardex, pólizas ni libros de costo para aparentar conciliación. Guardar evidencia anterior/posterior, desactivar scripts puntuales y evitar reintentos automáticos ante resultado incierto.
+
+Los adjuntos históricos ya enviados deben conservarse; un PDF nuevo reflejará los datos corregidos, pero no cambia los PDF enviados anteriormente. Corregir una operación no equivale a implementar una validación global de pieza/paquete en el consumidor.

@@ -8,6 +8,19 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## Runner 0.4.0 — 2026-10-01 — Conexión protegida
+
+- Canal --conn-stdin con entrada acotada y rechazo de argv simultáneo; --check-connection valida SQL con SELECT sin COM/scripts.
+- Error de bootstrap censurado; consumidores separan cuentas CRM/catálogos/finanzas/ejecutor y eliminan secretos SQL de env/cache/argv.
+- Versión independiente del addon. Compilación y pruebas SELECT realizadas; no reemplaza humo ni validación de escrituras nativas. Contrato/límites en RUNNER_SEGURIDAD.md.
+
+## [2.98.1] — 2026-10-01 — Numeración externa opcional
+
+### Agregado
+- NuevoDocumento acepta folioPrefixOverride/folioOverride opcionales y juntos: utiliza identidad reservada por consumidor SIN invocar GetFolioPrefix/GetNextFolio. Valida entero positivo y rechaza identidad existente (incluye documentos cancelados/eliminados).
+- Compatibilidad conservada: omitir ambos mantiene numeración automática anterior. El consumidor es responsable de exclusividad de serie, reserva atómica e idempotencia.
+- Implementación preparada; validación nativa en laboratorio/operación autorizada, humo y empaquetado de publicación pendientes. No se declara release validado.
+
 ## [2.98.0] — 2026-09-29 — Manual y catálogo del SDK
 
 ### Agregado

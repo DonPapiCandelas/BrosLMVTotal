@@ -173,3 +173,30 @@ plazo en parcialidades. Comparar contra el mismo documento capturado a mano.
 
 La plantilla del editor no crea acción por sí sola: se registra con `BrosGuardar` (conserva SHA-256 e
 historial en `zzBrosScriptHist`) y la Consola debe recargar su árbol para mostrarla.
+
+## 9. Repartir gastos entre proyectos
+
+En **Partidas**, usar **Repartir** para un concepto o **Repartir todo el gasto** para todas
+las partidas. Seleccionar proyectos vigentes de la empresa y capturar porcentajes que sumen
+100%, o importes que sumen la base neta después del descuento. La pantalla muestra el
+importe por proyecto y permite quitar o editar el reparto antes de crear documentos.
+
+Disponible solo para destinos de tipo Gasto, sin afectación de inventario y sin productos
+asignados a los conceptos repartidos. Para materiales, asignar el proyecto en su consumo.
+El reparto conserva un documento y su UUID; crea renglones descriptivos con `Proyecto`
+igual al identificador del proyecto y comentarios con UUID, concepto origen y porcentaje.
+Las partidas no repartidas mantienen su comportamiento anterior. No registra pagos.
+
+Los importes se distribuyen en centavos por mayor residuo. Los conceptos con el mismo
+plan se equilibran para conservar tanto sus bases como el total por proyecto del documento.
+Se conservan el tipo de gasto y la composición fiscal; el motor nativo recalcula impuestos
+y guarda el documento. La validación se repite antes de crear: proyectos repetidos,
+inactivos, de otra empresa, planes incompletos y conceptos que quedarían con base cero
+se rechazan. El reparto se conserva únicamente durante la sesión del importador hasta
+crear el documento.
+
+Verificación de esta ampliación: compilación con el runtime instalado 3.0.3, pruebas
+aisladas de descuentos, IVA, IEPS, retenciones, conservación de centavos y reparto de
+1,000 documentos con siete conceptos, y revisión de la interfaz. No se creó un documento
+de negocio para estas pruebas; queda por contrastar un gasto generado con el resultado
+del motor nativo al operar el importador.

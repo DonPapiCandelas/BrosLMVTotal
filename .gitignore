@@ -98,3 +98,6 @@ __pycache__/
 /instalador/iconos/
 /descargas-pruebas/obj/
 /descargas-pruebas/bin/
+
+# salida de compilaciones de prueba del Runner
+/build/runner-security/

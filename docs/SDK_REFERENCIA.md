@@ -1045,12 +1045,12 @@ ctx.erp.RefreshDocumento(id);
 ### `erp.NuevoDocumento` (C#)
 
 ```
-ctx.erp.NuevoDocumento(moduleId, depotId, businessEntityId?, rate?, paymentTermId?, currencyId?, title?, sourceDocumentId?) : int
+ctx.erp.NuevoDocumento(moduleId, depotId, businessEntityId?, rate?, paymentTermId?, currencyId?, title?, sourceDocumentId?, folioPrefixOverride?, folioOverride?) : int
 ```
 
 Crea el encabezado de un documento con los defaults del módulo (folio, tipo, moneda) y devuelve el DocumentID.
 
-Crea el encabezado de un documento nuevo (folio automático) y devuelve su DocumentID. Después se le agregan partidas con AgregarArticulo.
+Crea el encabezado y devuelve DocumentID. Por omisión usa folio automático. Con folioPrefixOverride y folioOverride juntos usa numeración externa sin calcular consecutivo nativo; consumidor debe reservar atómicamente y controlar reintentos/serie exclusiva. Rechaza identidad existente, no renumera ni rellena automáticamente un documento parcial.
 
 | Parámetro | Tipo | Qué es |
 |---|---|---|
@@ -1062,6 +1062,8 @@ Crea el encabezado de un documento nuevo (folio automático) y devuelve su Docum
 | `currencyId` | int | Moneda. |
 | `title` | string | Título opcional. |
 | `sourceDocumentId` | int | Documento de origen (0 = ninguno). |
+| `folioPrefixOverride` | string | Serie externa (máximo 20 caracteres; vacío válido), null conserva comportamiento anterior. Requiere folioOverride. |
+| `folioOverride` | string | Entero positivo externo de hasta 18 dígitos; requiere serie. No invoca GetNextFolio. |
 
 **Devuelve:** int: DocumentID del nuevo documento.
 

@@ -9,6 +9,10 @@
 
 ## Dónde vamos
 
+Recepción física y protección de integraciones: [RECEPCIONES_Y_COLAS.md](RECEPCIONES_Y_COLAS.md).
+
+Conexión protegida del ejecutor y límites de los consumidores: [RUNNER_SEGURIDAD.md](RUNNER_SEGURIDAD.md), Runner 0.4.0 independiente del addon.
+
 | Documento | Qué encontrarás |
 |---|---|
 | [`ESTADO.md`](ESTADO.md) | Estado de cada pieza, hoy. Punto de entrada al retomar |
@@ -27,6 +31,7 @@
 | [`CREAR_BOTON.md`](CREAR_BOTON.md) | Asistente «Crear botón…»: pestañas, módulos, usuarios, íconos, editar botones existentes |
 | [`CAPACIDADES.md`](CAPACIDADES.md) | Qué se puede construir: reportes, análisis, integraciones |
 | [`DASHBOARDS_HTML.md`](DASHBOARDS_HTML.md) | Reportes HTML rápidos y portables (`ctx.dashboard()`, `ctx.show_html`) |
+| [`RENTABILIDAD_SIN_FACTURA.md`](RENTABILIDAD_SIN_FACTURA.md) | Ingreso de proyectos sin factura, sustitución por partidas, conversiones parciales y consistencia del resumen/detalle |
 
 ## Escribir scripts
 

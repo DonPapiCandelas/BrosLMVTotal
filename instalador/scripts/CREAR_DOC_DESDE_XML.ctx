@@ -2,6 +2,10 @@
 #r "C:\BrosLMV\bin\Microsoft.Web.WebView2.WinForms.dll"
 // lang: csharp
 // AppKey recomendado: CREAR_DOC_DESDE_XML
+// Plantilla: Crear documentos desde XML
+// Categoria: Documentos
+// Prorrateo de gastos por proyecto: 2026-10-06
+// Documentacion: CREAR_DOC_DESDE_XML.html
 // Crear documentos desde XML: convierte los CFDI recibidos seleccionados en Facturas de Compra, Gastos y demás módulos que reciben XML.
 // Selecciona los XML en la lista de Comercial y ejecuta. Documentación completa: clic secundario sobre la plantilla → «Ver documentación».
 
@@ -74,8 +78,17 @@ class TaxRow
     public bool EsNA { get { return Nombre != null && Nombre.ToUpperInvariant().Contains("N/A"); } }
 }
 
+class RepartoProyecto
+{
+    public int ProjectId { get; set; }
+    public decimal Porcentaje { get; set; }
+}
 class ItemXml
 {
+    public int ProjectId { get; set; }
+    public List<RepartoProyecto> Reparto { get; set; } = new List<RepartoProyecto>();
+    public ItemXml Copia() { return (ItemXml)MemberwiseClone(); }
+
     public long ItemId { get; set; }
     public long SatId { get; set; }
     public string Rfc { get; set; }
@@ -154,6 +167,7 @@ class DocXml
 }
 
 // ── 3. Catálogos (una sola función; se usa al abrir y en "Recargar catálogos") ────────────────────────────
+List<Dictionary<string, object>> proyectos = null;
 List<Dictionary<string, object>> provs = null, prods = null, exps = null, terms = null, depots = null, curs = null;
 List<Dictionary<string, object>> mapasProd = null, mapasGasto = null;
 var taxRows = new List<TaxRow>();
@@ -691,6 +705,11 @@ void EvaluarEstados()
             int sinGasto = d.Partidas.Count(l => l.ProdId == 0 && l.ExpId == 0);
             if (sinGasto > 0) { d.Avisos.Add(sinGasto + " partida(s) sin tipo de gasto"); d.Tags.Add(sinGasto + " sin tipo de gasto"); }
         }
+        if (d.Partidas.Any(x => x.Reparto.Count > 0))
+        {
+            try { ValidarReparto(d); d.Tags.Add("por proyectos"); }
+            catch (Exception ex) { d.Estado = ex.Message; d.EstadoTipo = "blocked"; continue; }
+        }
         if (pendiente) { d.Estado = "Pendiente"; d.EstadoTipo = "pending"; }
         else if (d.Avisos.Count > 0) { d.Estado = "Listo"; d.EstadoTipo = "warn"; }
         else { d.Estado = "Listo"; d.EstadoTipo = "ok"; }
@@ -701,8 +720,10 @@ EvaluarEstados();
 // ── 10. Estado hacia la interfaz ─────────────────────────────────────────────────────────────────────────
 object GenerarCatalogos()
 {
+    proyectos = ctx.Query("SELECT ProjectID, ProjectName FROM orgProject WHERE DeletedOn IS NULL AND OwnedBusinessEntityID=" + ownEntityId + " ORDER BY ProjectName");
     return new
     {
+        projects = proyectos.Select(x => new { id = I(x["ProjectID"]), nombre = S(x["ProjectName"]) }).ToArray(),
         depots = depots.Select(x => new { id = I(x["DepotID"]), nombre = S(x["DepotName"]) }).ToArray(),
         terms = terms.Select(x => new { id = I(x["PaymentTermID"]), nombre = S(x["PaymentTermName"]) }).ToArray(),
         taxes = taxRows.Select(x => new { id = x.Id, nombre = x.Nombre, iva = x.Iva, ieps = x.Ieps, retIva = x.RetIva, retIsr = x.RetIsr }).ToArray(),
@@ -737,6 +758,7 @@ object GenerarEstado()
         estado = d.Estado, estadoTipo = d.EstadoTipo, avisos = d.Avisos.ToArray(), tags = d.Tags.ToArray(),
         partidas = d.Partidas.Select(p => new
         {
+            reparto = p.Reparto.Select(r => new { projectId = r.ProjectId, porcentaje = r.Porcentaje }).ToArray(),
             itemId = p.ItemId, clave = p.Clave, desc = p.Desc, cantidad = p.Cantidad, precio = p.Precio, importe = p.Importe, descuento = p.Descuento,
             ivaTrasladado = p.IvaTrasladado, iepsTrasladado = p.IepsTrasladado, ivaRetenido = p.IvaRetenido, isrRetenido = p.IsrRetenido,
             taxTypeId = p.TaxTypeId, comp = p.CompTxt, manual = p.TaxTypeManual, unit = p.Unit, claveSat = p.ClaveProdServ, claveUn = p.ClaveUn, objeto = p.Objeto,
@@ -1063,8 +1085,102 @@ string RutaXmlCompleta(DocXml d)
     return d.XmlFileName;
 }
 
+// Amounts are allocated in integer cents by largest remainder, never floating-point money.
+class RepartidorProyecto
+{
+    public static decimal[] Distribuir(decimal total, List<RepartoProyecto> plan)
+    {
+        if (plan == null || plan.Count == 0 || plan.Any(p => p.Porcentaje <= 0) || Math.Abs(plan.Sum(p => p.Porcentaje) - 100m) > 0.000001m)
+            throw new Exception("El reparto debe sumar exactamente 100% y no tener porcentajes vacíos o negativos.");
+        long centavos = checked((long)Math.Round(total * 100m, 0, MidpointRounding.AwayFromZero));
+        decimal suma = plan.Sum(p => p.Porcentaje);
+        decimal[] exactos = plan.Select(p => Math.Abs(centavos) * p.Porcentaje / suma).ToArray();
+        long[] partes = exactos.Select(x => (long)Math.Floor(x)).ToArray();
+        long faltan = Math.Abs(centavos) - partes.Sum();
+        var orden = Enumerable.Range(0, plan.Count).OrderByDescending(i => exactos[i] - partes[i]).ThenBy(i => i).ToArray();
+        for (long n = 0; n < faltan; n++) partes[orden[(int)(n % orden.Length)]]++;
+        return partes.Select(x => (centavos < 0 ? -x : x) / 100m).ToArray();
+    }
+}
+List<ItemXml> ExpandirPartida(ItemXml original)
+{
+    if (original.Reparto.Count == 0) return new List<ItemXml> { original };
+    var plan = original.Reparto;
+    decimal[] bases = RepartidorProyecto.Distribuir((decimal)(original.Importe - original.Descuento), plan);
+    decimal[] descuentos = RepartidorProyecto.Distribuir((decimal)original.Descuento, plan);
+    decimal[] iva = RepartidorProyecto.Distribuir((decimal)original.IvaTrasladado, plan);
+    decimal[] ieps = RepartidorProyecto.Distribuir((decimal)original.IepsTrasladado, plan);
+    decimal[] retIva = RepartidorProyecto.Distribuir((decimal)original.IvaRetenido, plan);
+    decimal[] retIsr = RepartidorProyecto.Distribuir((decimal)original.IsrRetenido, plan);
+    var result = new List<ItemXml>();
+    for (int n = 0; n < plan.Count; n++)
+    {
+        if (bases[n] <= 0) throw new Exception("Un proyecto quedaría con base cero: ajusta el reparto de «" + original.Desc + "».");
+        var item = original.Copia(); item.ProjectId = plan[n].ProjectId;
+        item.Cantidad = 1; item.Precio = (double)(bases[n] + descuentos[n]);
+        item.Importe = (double)(bases[n] + descuentos[n]); item.Descuento = (double)descuentos[n];
+        item.IvaTrasladado = (double)iva[n]; item.IepsTrasladado = (double)ieps[n];
+        item.IvaRetenido = (double)retIva[n]; item.IsrRetenido = (double)retIsr[n];
+        result.Add(item);
+    }
+    return result;
+}
+List<ItemXml> ExpandirDocumento(DocXml doc)
+{
+    var result = new List<ItemXml>();
+    foreach (var group in doc.Partidas.GroupBy(x => string.Join("|", x.Reparto.Select(r => r.ProjectId + ":" + r.Porcentaje.ToString(CultureInfo.InvariantCulture)))))
+    {
+        var items = group.ToList();
+        if (items[0].Reparto.Count == 0) { result.AddRange(items); continue; }
+        var plan = items[0].Reparto;
+        decimal total = items.Sum(x => (decimal)(x.Importe - x.Descuento));
+        var targets = RepartidorProyecto.Distribuir(total, plan).Select(x => (long)(x * 100m)).ToArray();
+        for (int n = 0; n < items.Count; n++)
+        {
+            var original = items[n]; var splits = ExpandirPartida(original);
+            long row = (long)Math.Round((decimal)(original.Importe - original.Descuento) * 100m, 0, MidpointRounding.AwayFromZero);
+            long[] cents = new long[plan.Count];
+            decimal[] ideal = plan.Select(x => row * x.Porcentaje / 100m).ToArray();
+            for (int i = 0; i < cents.Length; i++) cents[i] = Math.Min(targets[i], (long)Math.Floor(ideal[i]));
+            long left = row - cents.Sum();
+            while (left > 0)
+            {
+                int i = Enumerable.Range(0,cents.Length).Where(k => targets[k] > cents[k]).OrderByDescending(k => ideal[k]-cents[k]).ThenBy(k=>k).First();
+                long wanted = ideal[i] > cents[i] ? Math.Max(1,(long)Math.Ceiling(ideal[i]-cents[i])) : left;
+                long take = Math.Min(left,Math.Min(targets[i]-cents[i],wanted)); cents[i]+=take; left-=take;
+            }
+            for (int i = 0; i < cents.Length; i++)
+            {
+                if(cents[i] <= 0) throw new Exception("Un concepto quedaría sin importe en un proyecto; ajusta el reparto.");
+                targets[i]-=cents[i]; splits[i].Importe=(double)(cents[i]/100m)+(double)splits[i].Descuento;
+                splits[i].Precio=splits[i].Importe; result.Add(splits[i]);
+            }
+        }
+        if(targets.Any(x=>x!=0))throw new Exception("El reparto por proyecto no conserva los importes del documento.");
+    }
+    return result;
+}
+
+void ValidarReparto(DocXml doc)
+{
+    var items = doc.Partidas.Where(x => x.Reparto.Count > 0).ToList();
+    if (items.Count == 0) return;
+    if (!EsGasto(doc.DestinoModulo) || DestinoDe(doc.DestinoModulo).Stock != 0 || items.Any(x => x.ProdId > 0))
+        throw new Exception("El reparto entre proyectos es para Gastos sin producto ni movimiento de inventario. Para materiales, asigna el proyecto al registrar el consumo.");
+    var validos = new HashSet<int>(ctx.Query("SELECT ProjectID FROM orgProject WHERE DeletedOn IS NULL AND OwnedBusinessEntityID=" + ownEntityId).Select(x => I(x["ProjectID"])));
+    foreach (var it in items)
+    {
+        if (it.Reparto.Select(x => x.ProjectId).Distinct().Count() != it.Reparto.Count || it.Reparto.Any(x => !validos.Contains(x.ProjectId)))
+            throw new Exception("Elige proyectos vigentes de esta empresa, sin repetirlos.");
+        ExpandirPartida(it); // Validate cent-level splits before creating any document.
+    }
+}
+
 int CrearUnDocumento(DocXml d, List<string> notas)
 {
+    ValidarReparto(d);
+    var partidasCrear = ExpandirDocumento(d);
+    bool tieneProrrateo = d.Partidas.Any(x => x.Reparto.Count > 0);
     int yaUsado = I(ctx.Scalar("SELECT ISNULL(DocumentID,0) FROM docDocumentCFDiSAT WHERE DocSATID=" + d.SatId));
     if (yaUsado > 0) throw new Exception("ya estaba vinculado al documento #" + yaUsado);
 
@@ -1084,7 +1200,7 @@ int CrearUnDocumento(DocXml d, List<string> notas)
 
     int ln = 1;
     int conDescuento = 0;
-    foreach (var it in d.Partidas)
+    foreach (var it in partidasCrear)
     {
         var tr = TaxDe(it.TaxTypeId);
         double iva = tr != null ? tr.Iva : 0;
@@ -1092,24 +1208,27 @@ int CrearUnDocumento(DocXml d, List<string> notas)
         double neto = it.Importe - it.Descuento;
         double precio = it.Descuento > 0 && it.Cantidad > 0 ? neto / it.Cantidad : it.Precio;
         if (it.Descuento > 0) conDescuento++;
+        string proyectoSql = it.ProjectId > 0 ? ", Proyecto=" + Q(it.ProjectId.ToString()) : "";
+        string comentario = it.ProjectId > 0 ? "Prorrateo XML " + d.Uuid + " | concepto " + it.ItemId + " | proyecto " + it.ProjectId + " | " + it.Reparto.First(x=>x.ProjectId==it.ProjectId).Porcentaje.ToString("0.######", ci) + "%" : "";
         string expSql = EsGasto(d.DestinoModulo) && it.ExpId > 0 ? ", ExpenseTypeID=" + it.ExpId : "";
         if (it.ProdId > 0)
         {
             int itemId = ctx.erp.AgregarArticulo(docId, it.ProdId, it.Cantidad, precio);
-            lote1.Add("UPDATE docDocumentItem SET LineNumber=" + ln + ", TaxTypeID=" + it.TaxTypeId + ", TaxPerc=" + Num(iva) + ", RetentionPerc=" + Num(ret) + expSql + " WHERE DocumentItemID=" + itemId);
+            lote1.Add("UPDATE docDocumentItem SET LineNumber=" + ln + ", TaxTypeID=" + it.TaxTypeId + ", TaxPerc=" + Num(iva) + ", RetentionPerc=" + Num(ret) + expSql + proyectoSql + " WHERE DocumentItemID=" + itemId);
         }
         else
         {
             lote1.Add(
                 "INSERT INTO docDocumentItem(DocumentID, ProductID, ProductKey, Description, Unit, Quantity, UnitPrice, Total, TaxTypeID, TaxPerc, RetentionPerc, DiscountPerc, LineNumber, DateItem, " +
-                "ApplyGlobalDiscount, DeductiblePerc, IsBusinessOperation, MustBeDelivered, CoefUnit, ExpenseTypeID, ClaveUnidad, ObjetoImpuesto) VALUES(" +
+                "ApplyGlobalDiscount, DeductiblePerc, IsBusinessOperation, MustBeDelivered, CoefUnit, ExpenseTypeID, ClaveUnidad, ObjetoImpuesto, Proyecto, Comments) VALUES(" +
                 docId + ", 0, N'', " + Q(it.Desc) + ", " + Q(string.IsNullOrEmpty(it.Unit) ? "SERVICIO" : it.Unit) + ", " + Num(it.Cantidad) + ", " + Num(precio) + ", " + Num(neto > 0 ? neto : it.Cantidad * precio) + ", " +
                 it.TaxTypeId + ", " + Num(iva) + ", " + Num(ret) + ", 0, " + ln + ", GETDATE(), 1, 1, 1, 0, 1, " +
-                (EsGasto(d.DestinoModulo) && it.ExpId > 0 ? it.ExpId.ToString() : "NULL") + ", " + Q(ClaveDe(it.ClaveUn, 10)) + ", " + Q(ClaveDe(it.Objeto, 2)) + ")");
+                (EsGasto(d.DestinoModulo) && it.ExpId > 0 ? it.ExpId.ToString() : "NULL") + ", " + Q(ClaveDe(it.ClaveUn, 10)) + ", " + Q(ClaveDe(it.Objeto, 2)) + ", " + (it.ProjectId > 0 ? Q(it.ProjectId.ToString()) : "NULL") + ", " + Q(comentario) + ")");
         }
         ln++;
     }
     ctx.NonQuery(string.Join(";\n", lote1));
+    if (tieneProrrateo) notas.Add("Gasto distribuido en " + partidasCrear.Count + " partidas por proyecto, conservando el XML y su importe total.");
     if (conDescuento > 0) notas.Add(conDescuento + " partida(s) con descuento: se capturó el precio neto.");
 
     ctx.erp.RecalcCompleto(docId);                  // totales + costos + saldo pagado
@@ -1126,7 +1245,7 @@ int CrearUnDocumento(DocXml d, List<string> notas)
     // Comprobación contra el XML: los impuestos los calcula Comercial con el compuesto; solo se corrige si no cuadra.
     var tot = ctx.Query("SELECT Total, ISNULL(TotalRetention,0) AS Ret FROM docDocument WHERE DocumentID=" + docId);
     bool ajustado = false;
-    if (tot.Count > 0 && Math.Abs(D(tot[0]["Total"]) - d.Total) > 0.02)
+    if (tot.Count > 0 && Math.Abs(D(tot[0]["Total"]) - d.Total) > (tieneProrrateo ? 0.000001 : 0.02))
     {
         double calculado = D(tot[0]["Total"]);
         double totalRet = d.IvaRet + d.IsrRet;
@@ -1356,6 +1475,28 @@ object Despachar(string accion, Dictionary<string, object> p)
 {
     switch (accion)
     {
+        case "repartirProyectos":
+        {
+            var doc = docs[L(p["satId"])];
+            long itemId = p.ContainsKey("itemId") ? L(p["itemId"]) : 0;
+            var items = doc.Partidas.Where(x => itemId == 0 || x.ItemId == itemId).ToList();
+            if (items.Count == 0 || doc.DocIdVinculado > 0) throw new Exception("Elige un concepto de un XML que aún no tenga documento.");
+            if (B(p["quitar"])) { foreach (var it in items) it.Reparto.Clear(); break; }
+            if (!EsGasto(doc.DestinoModulo) || DestinoDe(doc.DestinoModulo).Stock != 0 || items.Any(x => x.ProdId > 0))
+                throw new Exception("Selecciona destino Gasto y partidas sin producto para repartir por proyectos.");
+            var filas = ((System.Collections.IEnumerable)p["filas"]).Cast<object>().Select(x => (Dictionary<string, object>)x).ToList();
+            if (filas.Count == 0) throw new Exception("Agrega al menos un proyecto.");
+            bool importes = S(p["modo"]) == "importe";
+            decimal totalBase = items.Sum(x => (decimal)(x.Importe - x.Descuento));
+            decimal suma = filas.Sum(x => Convert.ToDecimal(x["valor"], ci));
+            if (totalBase <= 0 || filas.Any(x => Convert.ToDecimal(x["valor"], ci) <= 0)) throw new Exception("Los importes y porcentajes deben ser positivos.");
+            if (Math.Abs(suma - (importes ? totalBase : 100m)) > (importes ? 0.000001m : 0.000001m)) throw new Exception(importes ? "Los importes deben sumar la base neta del gasto." : "Los porcentajes deben sumar 100%.");
+            var plan = filas.Select(x => new RepartoProyecto { ProjectId = I(x["projectId"]), Porcentaje = Convert.ToDecimal(x["valor"], ci) * 100m / suma }).ToList();
+            var previous = items.Select(x => x.Reparto).ToList();
+            try { foreach (var it in items) it.Reparto = plan.Select(x => new RepartoProyecto { ProjectId=x.ProjectId, Porcentaje=x.Porcentaje }).ToList(); ValidarReparto(doc); }
+            catch { for(int n=0;n<items.Count;n++) items[n].Reparto=previous[n]; throw; }
+            break;
+        }
         case "opciones":
             if (p.ContainsKey("crearProv")) optCrearProv = B(p["crearProv"]);
             if (p.ContainsKey("productos")) { string v = S(p["productos"]); if (v == "sin" || v == "crear" || v == "exigir") optProductos = v; }
@@ -1780,6 +1921,17 @@ string GENERAR_HTML_INTERFAZ()
   <div class='ft'><span class='mono mut sm' id='dArch'></span><button class='btn' onclick='cerrarDet()'>Cerrar</button></div>
 </div></div>
 
+<div class='modal' id='mReparto' style='z-index:110'><div class='card' style='max-width:900px'>
+<div class='hd'><b>Repartir gasto entre proyectos</b><button class='btn sm' onclick='cerrarReparto()'>Cerrar</button></div>
+<div class='bd'><p id='prConcepto' class='b'></p><p class='mut'>Un documento y un XML. El reparto crea partidas de gasto por proyecto; no registra pagos.</p>
+<div style='display:flex;gap:24px;align-items:center;margin-bottom:16px'><div>Base neta: <b id='prBase'></b></div>
+<label>Repartir por <select id='prModo' onchange='cambiarModoReparto()'><option value='porcentaje'>Porcentaje</option><option value='importe'>Importe</option></select></label></div>
+<table><thead><tr><th>Proyecto</th><th style='width:150px'>Valor</th><th class='r'>Importe asignado</th><th></th></tr></thead><tbody id='prFilas'></tbody></table>
+<button class='btn sm' style='margin-top:12px' onclick='agregarReparto()'>+ Agregar proyecto</button>
+<div id='prEstado' class='box' style='margin-top:16px'></div>
+<p class='mut sm'>Se reparte la base después del descuento. Los centavos se distribuyen para conservar el total. Si eliges todo el documento, cada concepto se reparte con esos porcentajes.</p>
+</div><div class='ft'><button class='btn' onclick='quitarReparto()'>Quitar reparto</button><button class='btn primary' id='prAplicar' onclick='guardarReparto()'>Aplicar reparto</button></div>
+</div></div>
 <div id='prog'><div class='in'><b id='progMsg'>Trabajando…</b><div class='barra'><i id='progBar'></i></div></div></div>
 <div id='toast'></div>
 <datalist id='dlProv'></datalist><datalist id='dlProd'></datalist><datalist id='dlGasto'></datalist>
@@ -2024,6 +2176,53 @@ function renderRes() {
 }
 function abrirDoc(docId, modulo) { call('abrirDocumento', { docId: docId, modulo: modulo }); }
 
+let PR = null;
+function centavosReparto(total, filas, modo) {
+  const pesos=filas.map(f=>Number(f.valor)||0), suma=pesos.reduce((a,b)=>a+b,0);
+  if(!(suma>0)) return filas.map(()=>0);
+  const cents=Math.round(total*100), exactos=pesos.map(v=>cents*v/suma), partes=exactos.map(Math.floor);
+  const orden=partes.map((v,i)=>i).sort((a,b)=>(exactos[b]-partes[b])-(exactos[a]-partes[a])||a-b);
+  for(let n=0,left=cents-partes.reduce((a,b)=>a+b,0);n<left;n++)partes[orden[n%orden.length]]++;
+  return partes.map(v=>v/100);
+}
+function abrirReparto(satId,itemId) {
+ const d=DATA.docs.find(x=>x.satId===satId), dest=CAT.destinos.find(x=>x.id===d.destinoModulo);
+ const items=d.partidas.filter(x=>!itemId || x.itemId===itemId);
+ if(!dest || dest.tipo!=='gasto' || items.some(x=>x.prodId>0)){toast('Elige destino Gasto y partidas sin producto para repartir.', 'bad');return;}
+ if(!CAT.projects.length){toast('No hay proyectos disponibles en esta empresa.', 'bad');return;}
+ const base=items.reduce((a,x)=>a+Number(x.importe)-Number(x.descuento),0);
+ PR={satId,itemId,base,filas:(items[0].reparto||[]).map(x=>({projectId:x.projectId,valor:x.porcentaje}))};
+ if(!PR.filas.length)PR.filas=[{projectId:0,valor:100}];
+ document.getElementById('prModo').value='porcentaje';
+ document.getElementById('prConcepto').textContent=itemId?items[0].desc:'Todo el gasto: '+(d.serie||'')+' '+(d.folio||'');
+ document.getElementById('prBase').textContent='$'+money(base);
+ pintarReparto();document.getElementById('mReparto').classList.add('on');
+}
+function cerrarReparto(){document.getElementById('mReparto').classList.remove('on');PR=null;}
+function pintarReparto(){
+ document.getElementById('prFilas').innerHTML=PR.filas.map((f,i)=>`<tr><td><select style='width:100%' onchange='PR.filas[${i}].projectId=+this.value;actualizarReparto()'><option value='0'>Elegir proyecto...</option>${CAT.projects.map(p=>`<option value='${p.id}' ${p.id===f.projectId?'selected':''}>${esc(p.nombre)}</option>`).join('')}</select></td><td><input type='number' min='0' step='0.01' style='width:120px' value='${f.valor}' oninput='PR.filas[${i}].valor=+this.value;actualizarReparto()'></td><td class='r mono' id='prImporte${i}'></td><td><button class='btn sm' onclick='PR.filas.splice(${i},1);pintarReparto()'>Quitar</button></td></tr>`).join('');
+ actualizarReparto();
+}
+function actualizarReparto(){
+ const modo=document.getElementById('prModo').value, suma=PR.filas.reduce((a,f)=>a+Number(f.valor||0),0), esperado=modo==='importe'?PR.base:100;
+ const importes=centavosReparto(PR.base,PR.filas,modo), proyectos=PR.filas.map(f=>f.projectId);
+ const ok=PR.filas.length>0 && Math.abs(suma-esperado)<0.000001 && PR.filas.every(f=>f.projectId>0&&f.valor>0)&&new Set(proyectos).size===proyectos.length && importes.every(v=>v>0);
+ PR.filas.forEach((f,i)=>{document.getElementById('prImporte'+i).textContent='$'+money(importes[i]);});
+ const faltante=esperado-suma;
+ document.getElementById('prEstado').textContent=ok?'Reparto completo. Se asignarán $'+money(PR.base)+' a los proyectos elegidos.':'Asignado: '+money(suma)+(modo==='importe'?' pesos':'%')+' · '+(faltante>=0?'Falta: ':'Exceso: ')+money(Math.abs(faltante))+(modo==='importe'?' pesos':'%')+'. Elige proyectos diferentes y valores positivos.';
+ document.getElementById('prAplicar').disabled=!ok;
+}
+function agregarReparto(){PR.filas.push({projectId:0,valor:0});pintarReparto();}
+function cambiarModoReparto(){
+ const modo=document.getElementById('prModo').value, suma=PR.filas.reduce((a,f)=>a+Number(f.valor||0),0);
+ if(suma>0){if(modo==='importe'){const vals=centavosReparto(PR.base,PR.filas,modo);PR.filas.forEach((f,i)=>f.valor=vals[i]);}else{PR.filas.forEach(f=>f.valor=Number((f.valor/suma*100).toFixed(6)));if(PR.filas.length)PR.filas[PR.filas.length-1].valor+=100-PR.filas.reduce((a,f)=>a+f.valor,0);}}
+ pintarReparto();
+}
+async function guardarReparto(){
+ const r=await act('repartirProyectos',{satId:PR.satId,itemId:PR.itemId,modo:document.getElementById('prModo').value,filas:PR.filas,quitar:false},'Reparto asignado. El documento aún no se ha creado.');if(r){cerrarReparto();pintaDet();}
+}
+async function quitarReparto(){const r=await act('repartirProyectos',{satId:PR.satId,itemId:PR.itemId,quitar:true},'Reparto eliminado');if(r){cerrarReparto();pintaDet();}}
+
 // ── Crear ──
 async function crearTodo() {
   const bc = document.getElementById('btnCrear');
@@ -2061,7 +2260,7 @@ function pintaDet() {
     <td><select onchange='cambiaImp(${d.satId},${p.itemId},this.value)' style='max-width:230px'>${taxOpts(p.taxTypeId, true)}</select></td>
     <td><input type='text' list='dlGasto' value='${esc(p.expNombre)}' placeholder='Tipo de gasto…' style='width:210px' onchange='setGastoLin(${d.satId},${p.itemId},this)'> ${origen(p.expOrigen)}</td>
     <td><input type='text' list='dlProd' value='${esc(p.prodNombre)}' placeholder='Sin producto' style='width:210px' onchange='setProdLin(${d.satId},${p.itemId},this)'> ${origen(p.prodOrigen)}</td>
-    <td class='r mono b'>$${money(p.importe)}</td></tr>`).join('');
+    <td class='r mono b'>$${money(p.importe)}</td><td><button class='btn sm' onclick='abrirReparto(${d.satId},${p.itemId})'>${p.reparto && p.reparto.length ? 'Editar reparto' : 'Repartir'}</button><div class='mut sm'>${(p.reparto || []).map(r => esc((CAT.projects.find(x=>x.id===r.projectId)||{}).nombre || '')+' '+Number(r.porcentaje).toFixed(2)+'%').join('<br>')}</div></td></tr>`).join('');
   document.getElementById('dBody').innerHTML = `
     <div class='box' style='margin:0 0 12px'><div class='grid4'>
       <div><span class='mut'>Emisor</span><br><b>${esc(d.razonSocial)}</b><br><span class='mono'>${esc(d.rfc)}</span></div>
@@ -2074,10 +2273,10 @@ function pintaDet() {
       <div><span class='mut'>Forma de pago</span><br><select onchange=""cambiaFis(${d.satId},'formaPago',this.value)"">${optsClave(CAT.formas, d.formaPago)}</select></div>
       <div style='grid-column:span 2'><span class='mut'>Uso del CFDI</span><br><select onchange=""cambiaFis(${d.satId},'usoCfdi',this.value)"" style='max-width:100%'>${optsClave(CAT.usos, d.usoCfdi)}</select></div>
     </div></div>
-    <div class='box' style='margin:0 0 12px;padding:0;overflow:auto'><table><thead><tr><th>#</th><th>Clave SAT</th><th>Clave</th><th>Concepto</th><th class='r'>Cant.</th><th class='r'>P. unit.</th><th class='r'>Desc.</th><th>Impuesto XML</th><th>Tipo de impuesto</th><th>Tipo de gasto</th><th>Producto</th><th class='r'>Importe</th></tr></thead><tbody>${filas}</tbody></table></div>
+    <div class='box' style='margin:0 0 12px;padding:0;overflow:auto'><table><thead><tr><th>#</th><th>Clave SAT</th><th>Clave</th><th>Concepto</th><th class='r'>Cant.</th><th class='r'>P. unit.</th><th class='r'>Desc.</th><th>Impuesto XML</th><th>Tipo de impuesto</th><th>Tipo de gasto</th><th>Producto</th><th class='r'>Importe</th><th>Proyecto / reparto</th></tr></thead><tbody>${filas}</tbody></table></div>
     <div style='display:flex;justify-content:space-between;align-items:center'>
       <div><span class='mut'>Aplicar a todas las partidas:</span> <select onchange='cambiaImpDoc(${d.satId},this.value)'><option value=''>— elegir tipo de impuesto —</option>${taxOpts(-1, false)}</select></div>
-      <div class='b'>Total XML: $${money(d.total)}</div></div>`;
+      <div><button class='btn' onclick='abrirReparto(${d.satId},0)'>Repartir todo el gasto</button> <span class='b'>Total XML: $${money(d.total)}</span></div></div>`;
 }
 function lineaDe(satId, itemId) { const d = DATA.docs.find(x => x.satId === satId); return d ? d.partidas.find(x => x.itemId === itemId) : null; }
 async function setGastoLin(satId, itemId, el) {
