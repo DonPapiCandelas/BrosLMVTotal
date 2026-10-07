@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("3.1.1.0")]
+[assembly: AssemblyVersion("3.1.2.0")]
 [assembly: AssemblyTitle("BrosLMV - Botones CONTPAQi")]
 
 namespace BrosLMV

@@ -8,6 +8,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.1.2] — 2026-10-07 — El instalador ya no se queda en «Instalando» (requiere instalar)
+
+### Corregido
+- **Instalador y desinstalador atorados en «Instalando».** Al registrar el componente COM se lanzaba `reg.exe` y se leían sus dos salidas una después de la otra; `reg query` lista un subárbol por cada versión de BrosLMV que se ha registrado en el equipo y, con muchas versiones, llenaba el buffer de la primera salida y el instalador esperaba para siempre. Ahora se leen a la vez y cada paso externo tiene un límite de dos minutos. Si ya tienes un instalador atorado: termina el proceso `reg.exe` desde el Administrador de tareas (como administrador) o reinicia, y vuelve a instalar la 3.1.2.
+
 ## [3.1.1] — 2026-10-07 — Numeración externa opcional y Runner con conexión protegida (requiere instalar)
 
 ### Agregado

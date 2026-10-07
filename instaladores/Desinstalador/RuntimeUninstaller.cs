@@ -72,7 +72,11 @@ namespace BrosLMV.Desinstalador
                 var psi = new ProcessStartInfo(exe, args)
                 { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
                 var p = Process.Start(psi);
-                p.StandardError.ReadToEnd(); p.StandardOutput.ReadToEnd(); p.WaitForExit();
+                p.OutputDataReceived += (s, e) => { };
+                p.ErrorDataReceived += (s, e) => { };
+                p.BeginOutputReadLine(); p.BeginErrorReadLine();
+                if (!p.WaitForExit(120000)) { try { p.Kill(); } catch { } return -2; }
+                p.WaitForExit();
                 return p.ExitCode;
             }
             catch { return -1; }
