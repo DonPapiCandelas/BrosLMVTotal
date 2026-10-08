@@ -680,7 +680,7 @@ function repetirUltimo(){var u=EX.intel&&EX.intel.ultimo;if(!u){aviso('No hay un
   if(ST.partidas.length&&!confirm('Se reemplazarán las partidas capturadas por las de '+u.folio+'. ¿Continuar?'))return;
   ST.partidas=(u.partidas||[]).filter(function(p){return prodPor(p.id);}).map(function(p){var pr=prodPor(p.id);return {id:p.id,clave:pr.clave,nombre:pr.nombre,unidad:pr.unidad,cant:p.cant,precio:p.precio,desc:p.desc,imp:p.imp||pr.imp,origenItem:0,orig:0};});
   pintarPartidas();snap();pedirBorrador();aviso('Se cargaron '+ST.partidas.length+' partida(s) de '+u.folio+'.','bien');}
-function calc(){var s=0,d=0,im=0,cos=0,bajo=0,sinCosto=0;ST.partidas.forEach(function(p){var pr=prodPor(p.id)||{},bruto=p.cant*p.precio,dd=bruto*p.desc/100,neto=bruto-dd;s+=bruto;d+=dd;im+=neto*(percImp[p.imp]||0);var c=p.cant*(pr.costo||0);cos+=c;if(!(pr.costo>0))sinCosto++;if(neto<c)bajo++;});return {sub:s,desc:d,imp:im,tot:s-d+im,neto:s-d,costo:cos,bajo:bajo,sinCosto:sinCosto};}
+function calc(){var s=0,d=0,im=0,cos=0,bajo=0,sinCosto=0;ST.partidas.forEach(function(p){var pr=prodPor(p.id)||{},bruto=p.cant*p.precio,dd=bruto*p.desc/100,neto=bruto-dd;s+=bruto;d+=dd;im+=neto*(percImp[p.imp]||0);var c=p.cant*(pr.costo||0)/tcPesos();cos+=c;if(!(pr.costo>0))sinCosto++;if(neto<c)bajo++;});return {sub:s,desc:d,imp:im,tot:s-d+im,neto:s-d,costo:cos,bajo:bajo,sinCosto:sinCosto};}
 function extrasTotales(){var t=tipoAct(),c=calc(),box=$('cardMgn');
   if(t.precio!=='venta'||!ST.partidas.length)box.style.display='none';
   else{box.style.display='';var ut=c.neto-c.costo,pc=c.neto>0?ut/c.neto*100:0,cls=pc<0?'r':pc<15?'a':'';
