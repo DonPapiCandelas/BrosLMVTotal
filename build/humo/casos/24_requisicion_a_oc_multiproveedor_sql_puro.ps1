@@ -51,7 +51,7 @@ function Exec-Q([string]$q) {
 # v2.77.0: @requisicionID ahora es un token {DATOS:docDocument.DocumentID:*} (formulario
 # automatico) -- el Runner headless no lo resuelve, se sustituye a mano.
 function Build-CodigoPlantilla([int]$requisicionID) {
-    $plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_REQUISICION_A_OC_MULTIPROVEEDOR_SQL_PURO.sql") -Raw
+    $plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_REQUISICION_A_OC_MULTIPROVEEDOR_SQL_PURO.sql") -Raw
     $plantilla = $plantilla -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$requisicionID"
     return "-- job: safe-offline`n" + $plantilla
 }

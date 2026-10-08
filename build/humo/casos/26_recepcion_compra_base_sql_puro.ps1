@@ -69,7 +69,7 @@ EXEC sp_executesql @sql;
 # v2.77.0: los parametros de la plantilla ahora son tokens {DATOS:Tabla.Columna:*} (formulario
 # automatico) -- el Runner headless no los resuelve, se sustituyen a mano por los MISMOS
 # valores default que antes traia el archivo.
-$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
+$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
 $codigoOC = $codigoOC -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoOC = $codigoOC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoOC = $codigoOC -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'
@@ -102,7 +102,8 @@ Write-Host "  OC #2 (SQL puro): DocumentID=$docOC2, partida=$itemOC2"
 $codigoNativo = @"
 // job: safe-offline
 int doc = ctx.erp.NuevoDocumento(184, 1, $beOC1);
-ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=0, UserID=0, PaymentTermID=0, SourceDocumentID=$docOC1 WHERE DocumentID=" + doc);
+// Mismos datos de entrada que el fixture SQL; Title sigue comparandose campo por campo.
+ctx.NonQuery("UPDATE docDocument SET Title=NULL, DepotIDFrom=0, UserID=0, PaymentTermID=0, SourceDocumentID=$docOC1 WHERE DocumentID=" + doc);
 int itemId = ctx.erp.AgregarArticulo(doc, 1, 2, 80, 80, 5, 0, $itemOC1);
 if (!string.IsNullOrEmpty(ctx.erp.LastError)) throw new Exception("AgregarArticulo: " + ctx.erp.LastError);
 ctx.erp.RecalcCompleto(doc);
@@ -120,7 +121,7 @@ Write-Host "  Recepcion nativa de referencia: DocumentID=$docNativo"
 
 # 4) Documento con la plantilla SQL puro real (camino BASE -- primera y unica corrida para
 #    la OC #2, sin Recepcion previa que consolidar).
-$plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
+$plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
 $plantilla = $plantilla -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$docOC2"
 $plantilla = $plantilla -replace '\{DATOS:docDocumentItem\.DocumentItemID[^}]*\}', "$itemOC2"
 $plantilla = $plantilla -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'

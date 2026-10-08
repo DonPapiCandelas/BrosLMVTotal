@@ -65,7 +65,18 @@ namespace BrosLMV
         private Label        _lblCtx;
         private CheckBox     _chkSoloLectura;
         private ToolStripStatusLabel _status, _statusTiempo, _statusScript, _statusLang, _statusPos, _statusVer;
-        private IconButton _btnLang;
+        private readonly Dictionary<string, IconButton> _botonesLenguaje = new Dictionary<string, IconButton>();
+        private IconButton _btnContexto;
+        private FlowLayoutPanel _herramientasEditor;
+        private bool _contextoVisible = true;
+        private Action<int> _activarReferencia;
+        private TextBox _txtSdk;
+        private CheckBox _chkWrap;
+        private static readonly Color ConsolaChrome = Color.FromArgb(220, 224, 229);
+        private static readonly Color ConsolaSuperficie = Color.FromArgb(235, 237, 240);
+        private static readonly Color ConsolaEditor = Color.FromArgb(232, 234, 237);
+        private static readonly Color ConsolaCodigo = Color.FromArgb(38, 44, 53);
+        private static readonly Color ConsolaMarca = Color.FromArgb(187, 195, 205);
         // private string _appKey
 
         // Versión del addon (de AssemblyVersion). Se lee de memoria una vez: costo cero.
@@ -79,12 +90,13 @@ namespace BrosLMV
         private Label        _lblEstadoDoc, _lblErrCount;
         private ToolTip      _tips;
         private ComboBox     _cboFontSize;
-        private int          _fontSize = 11;
+        private int          _fontSize = 12;
         private ListView     _lstCtx;   // Contexto actual en forma de lista (Campo / Valor)
 
         // --- Buscar en el editor ---
         private Panel        _findBar;
         private TextBox      _txtFind;
+        private CheckBox _findMayusculas, _findPalabra;
         private Label        _lblFindCount;
         private readonly List<int> _findHits = new List<int>();
         private int          _findIdx = -1;
@@ -426,11 +438,11 @@ namespace BrosLMV
         private void BuildUI()
         {
             Text = "BrosLMV — Consola de scripts";
-            Size = new Size(1240, 800);
+            Size = new Size(1280, 840);
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(1040, 660);
             Font = AppTheme.FontMain;
-            BackColor = AppTheme.BgMain;
+            BackColor = AppTheme.BgSurface;
             try { var si = Recurso("BrosLMV.ico"); if (si != null) using (si) Icon = new System.Drawing.Icon(si); } catch { }
 
             _tips = new ToolTip { InitialDelay = 350, ReshowDelay = 120, AutoPopDelay = 9000, ShowAlways = true };
@@ -439,7 +451,7 @@ namespace BrosLMV
             //   Cabecera: logo + wordmark + subtítulo + estado del doc
             //   (TableLayoutPanel => alineación robusta a cualquier DPI)
             // =========================================================
-            var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 60, BackColor = AppTheme.BgChrome };
+            var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 52, BackColor = ConsolaChrome };
             pnlHeader.Paint += (s, e) => BordeInferior(e.Graphics, pnlHeader);
 
             var tlHeader = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 6, RowCount = 1, BackColor = Color.Transparent, Padding = new Padding(18, 0, 18, 0) };
@@ -468,12 +480,12 @@ namespace BrosLMV
             // =========================================================
             // WrapContents = true: si la ventana es angosta, la barra reacomoda los botones
             // en una segunda fila en lugar de recortarlos. AutoSize ajusta la altura.
-            var pnlToolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(0, 52), BackColor = AppTheme.BgChrome, Padding = new Padding(12, 9, 12, 9), WrapContents = true };
+            var pnlToolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(0, 52), BackColor = AppTheme.BgSurface, Padding = new Padding(12, 9, 12, 9), WrapContents = true };
             pnlToolbar.Paint += (s, e) => BordeInferior(e.Graphics, pnlToolbar);
 
             Action<string, string, string, EventHandler, BtnKind, Color> AddTB = (glyph, text, tip, onClick, kind, accent) =>
             {
-                var btn = new IconButton { Glyph = glyph, Text = text, Kind = kind, Accent = accent, PadX = 12, MinH = 34, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(3, 1, 3, 1) };
+                var btn = new IconButton { Glyph = glyph, Text = text, AccessibleName = string.IsNullOrEmpty(text) ? tip : text, Kind = kind, Accent = accent, PadX = 8, MinH = 34, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(3, 1, 3, 1) };
                 btn.Click += onClick;
                 if (!string.IsNullOrEmpty(tip)) _tips.SetToolTip(btn, tip);
                 pnlToolbar.Controls.Add(btn);
@@ -481,16 +493,15 @@ namespace BrosLMV
             Action AddSep = () =>
                 pnlToolbar.Controls.Add(new Panel { Width = 1, Height = 24, BackColor = AppTheme.Border, Margin = new Padding(7, 6, 7, 6) });
 
-            AddTB(Glyph.Play,    "Ejecutar (F5)",       "Ejecutar el script completo (F5)",        (s, e) => Ejecutar(false), BtnKind.Primary, AppTheme.Success);
-            AddTB(Glyph.PlaySel, "Ejecutar selección",  "Ejecutar solo el texto seleccionado",     (s, e) => Ejecutar(true),  BtnKind.Toolbar, Color.Empty);
+            AddTB(Glyph.Play,    "Ejecutar",            "Ejecutar el script completo (F5)",        (s, e) => Ejecutar(false), BtnKind.Primary, AppTheme.Primary);
+            AddTB(Glyph.PlaySel, "",                   "Ejecutar solo el texto seleccionado",     (s, e) => Ejecutar(true),  BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Check,   "Verificar",           "Compilar/verificar sin ejecutar",         (s, e) => Verificar(),     BtnKind.Toolbar, Color.Empty);
             AddSep();
             AddTB(Glyph.Open,    "Abrir",               "Importar script desde archivo",           (s, e) => Abrir(),         BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.Save,    "Guardar",             "Guardar en la empresa activa",            (s, e) => Guardar(false),  BtnKind.Toolbar, Color.Empty);
             AddTB(Glyph.SaveAs,  "Guardar como",        "Guardar con otro nombre (AppKey)",        (s, e) => Guardar(true),   BtnKind.Toolbar, Color.Empty);
-            AddTB(Glyph.Folder,  "Importar paquete…",   "Importar un botón (.bros) exportado de otra empresa/equipo", (s, e) => ImportarPaquete(), BtnKind.Toolbar, Color.Empty);
             
-            var btnMore = new IconButton { Glyph = Glyph.Down, Text = "Más opciones", Kind = BtnKind.Toolbar, Accent = Color.Empty, PadX = 12, MinH = 34, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(3, 1, 3, 1) };
+            var btnMore = new IconButton { Glyph = Glyph.Down, Text = "Más opciones", Kind = BtnKind.Toolbar, Accent = Color.Empty, PadX = 8, MinH = 34, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(3, 1, 3, 1) };
             var ctxMore = new ContextMenuStrip { Font = AppTheme.FontMain };
             ctxMore.Items.Add(new ToolStripMenuItem("Nueva acción", null, (s, e) => { using (var f = new NuevaAccionForm(_ctx)) f.ShowDialog(this); }));
             ctxMore.Items.Add(new ToolStripMenuItem("Nuevo script", null, (s, e) => NuevoScript()));
@@ -501,6 +512,7 @@ namespace BrosLMV
             ctxMore.Items.Add(new ToolStripMenuItem("Aprobar", null, (s, e) => Aprobar()));
             ctxMore.Items.Add(new ToolStripSeparator());
             ctxMore.Items.Add(new ToolStripMenuItem("Historial", null, (s, e) => VerHistorial()));
+            ctxMore.Items.Add(new ToolStripMenuItem("Importar paquete…", null, (s, e) => ImportarPaquete()));
             ctxMore.Items.Add(new ToolStripSeparator());
             ctxMore.Items.Add(new ToolStripMenuItem("Manual del SDK…", null, (s, e) => MostrarManualSdk()));
             ctxMore.Items.Add(new ToolStripMenuItem("Respaldar todos los scripts…", null, (s, e) => RespaldarTodos()));
@@ -509,11 +521,10 @@ namespace BrosLMV
             btnMore.Click += (s, e) => ctxMore.Show(btnMore, new Point(0, btnMore.Height));
             pnlToolbar.Controls.Add(btnMore);
 
-            // Lenguaje del script (v2.97.0): C# / Python / SQL. Cambiarlo escribe (o quita) la línea «lang:» por el usuario; ya no hay que recordarla.
-            _btnLang = new IconButton { Glyph = Glyph.Down, Text = "Lenguaje: C#", Kind = BtnKind.Toolbar, Accent = Color.Empty, PadX = 12, MinH = 34, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(3, 1, 3, 1) };
-            _tips.SetToolTip(_btnLang, "Lenguaje del script: C#, Python o SQL");
-            _btnLang.Click += (s, e) => MostrarMenuLenguaje(_btnLang, new Point(0, _btnLang.Height));
-            pnlToolbar.Controls.Add(_btnLang);
+            _btnContexto = new IconButton { Glyph = Glyph.Info, Text = "Contexto y SDK", Kind = BtnKind.Outline, PadX = 8, MinH = 34, AutoSize = true, Margin = new Padding(3, 1, 3, 1) };
+            _tips.SetToolTip(_btnContexto, "Mostrar u ocultar el contexto, las referencias y los tokens");
+            _btnContexto.Click += (s, e) => ToggleContexto();
+            pnlToolbar.Controls.Add(_btnContexto);
             
             AddSep();
             
@@ -521,17 +532,18 @@ namespace BrosLMV
             _tips.SetToolTip(_chkSoloLectura, "Bloquea operaciones de escritura (UPDATE/DELETE/INSERT)");
             pnlToolbar.Controls.Add(_chkSoloLectura);
             
-            AddSep();
-            var pnlEdTools = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.Transparent, Margin = new Padding(16, 2, 0, 0) };
+            var pnlEdTools = _herramientasEditor = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, BackColor = ConsolaChrome, Padding = new Padding(12, 5, 12, 5), MinimumSize = new Size(0, 44) };
             _cboFontSize = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 64, Font = AppTheme.FontSmall, FlatStyle = FlatStyle.Flat, Margin = new Padding(4, 4, 4, 0) };
-            _cboFontSize.Items.AddRange(new object[] { "11 px", "12 px", "13 px", "14 px", "16 px", "18 px" });
-            _cboFontSize.SelectedIndex = 0;
+            _cboFontSize.AccessibleName = "Tamano del texto del editor";
+            _tips.SetToolTip(_cboFontSize, "Tamano del texto del editor, en puntos");
+            _cboFontSize.Items.AddRange(new object[] { "11 pt", "12 pt", "13 pt", "14 pt", "16 pt", "18 pt" });
+            _cboFontSize.SelectedIndex = 1;
             _cboFontSize.SelectedIndexChanged += (s, e) =>
             {
                 var t = (_cboFontSize.SelectedItem as string ?? "11").Split(' ')[0];
                 if (int.TryParse(t, out int pt)) AplicarTamanoFuente(pt);
             };
-            var chkWrap = new CheckBox { Text = "Ajuste", AutoSize = true, Appearance = Appearance.Normal, ForeColor = AppTheme.TextMain, BackColor = Color.Transparent, Font = AppTheme.FontMain, Margin = new Padding(8, 6, 4, 0), Cursor = Cursors.Hand };
+            var chkWrap = _chkWrap = new CheckBox { Text = "Ajuste de línea", AutoSize = true, Appearance = Appearance.Normal, ForeColor = AppTheme.TextMain, BackColor = Color.Transparent, Font = AppTheme.FontMain, Margin = new Padding(8, 6, 4, 0), Cursor = Cursors.Hand };
             chkWrap.CheckedChanged += (s, e) => { try { if (_activeTab?.Editor != null) _activeTab.Editor.WrapMode = chkWrap.Checked ? WrapMode.Word : WrapMode.None; } catch { } };
             var btnBuscarEd = new IconButton { Glyph = Glyph.Search, Text = "Buscar", Kind = BtnKind.Toolbar, MinH = 34, AutoSize = true, Radius = 4, Margin = new Padding(2, 1, 0, 1) };
             btnBuscarEd.Click += (s, e) => MostrarBuscar();
@@ -542,7 +554,6 @@ namespace BrosLMV
             pnlEdTools.Controls.Add(chkWrap);
             pnlEdTools.Controls.Add(btnBuscarEd);
             pnlEdTools.Controls.Add(_btnZen);
-            pnlToolbar.Controls.Add(pnlEdTools);
 
 
 
@@ -553,7 +564,7 @@ namespace BrosLMV
             // =========================================================
             //   Barra de estado
             // =========================================================
-            var ss = new StatusStrip { BackColor = AppTheme.BgChrome, ForeColor = AppTheme.TextMuted, SizingGrip = false, Padding = new Padding(8, 0, 12, 0), Font = AppTheme.FontMain };
+            var ss = new StatusStrip { BackColor = ConsolaChrome, ForeColor = AppTheme.TextMuted, SizingGrip = false, Padding = new Padding(8, 0, 12, 0), Font = AppTheme.FontMain };
             ss.Renderer = new BordeSuperiorRenderer();
             _status        = new ToolStripStatusLabel("Listo") { TextAlign = ContentAlignment.MiddleLeft, ForeColor = AppTheme.TextMain };
             var sep1       = new ToolStripStatusLabel { Spring = true };
@@ -584,14 +595,21 @@ namespace BrosLMV
 
             // ----- Derecha: inspector de contexto -----
             split2.Panel2.Controls.Add(ConstruirPanelDerecho());
+            split2.Panel2Collapsed = !_contextoVisible;
 
             split1.Panel2.Controls.Add(split2);
             Controls.Add(split1);
-            split1.BringToFront();
+            // WinForms acopla desde el ultimo control: estado, cabecera, acciones y cuerpo.
+            Controls.SetChildIndex(split1, 0);
+            Controls.SetChildIndex(pnlToolbar, 1);
+            Controls.SetChildIndex(pnlHeader, 2);
+            Controls.SetChildIndex(ss, 3);
+            AplicarPaletaConsola(this);
 
             KeyPreview = true;
             KeyDown += (s, e) =>
             {
+                if (AtajoArchivo(e)) return;
                 if (e.KeyCode == Keys.F5) { e.Handled = true; Ejecutar(false); }
                 else if (e.Control && (e.KeyCode == Keys.F || e.KeyCode == Keys.B)) { e.Handled = e.SuppressKeyPress = true; MostrarBuscar(); }
                 else if (e.KeyCode == Keys.F3) { e.Handled = true; if (_findBar != null && _findBar.Visible) BuscarMover(e.Shift ? -1 : 1); else MostrarBuscar(); }
@@ -615,6 +633,7 @@ namespace BrosLMV
                     // Panel izquierdo (FixedPanel) no autoescala con DPI: fijarlo aquí.
                     int izq = Math.Max(LogicalToDeviceUnits(238), (int)(_splitLeft.Width * 0.18));
                     if (_splitLeft.Width > 500) _splitLeft.SplitterDistance = Math.Min(izq, 360);
+                    _splitLeft.Panel2MinSize = Math.Min(LogicalToDeviceUnits(640), _splitLeft.Width - _splitLeft.SplitterDistance - _splitLeft.SplitterWidth);
                 }
                 catch { }
                 try
@@ -630,7 +649,7 @@ namespace BrosLMV
                     }
                 }
                 catch { }
-                try { _splitEditor.SplitterDistance = (int)(_splitEditor.Height * 0.64); } catch { }
+                try { _splitEditor.SplitterDistance = (int)(_splitEditor.Height * 0.72); } catch { }
             };
         }
 
@@ -639,28 +658,75 @@ namespace BrosLMV
         internal static void BordeInferior(Graphics g, Control c)
         { using (var p = new Pen(AppTheme.Border)) g.DrawLine(p, 0, c.Height - 1, c.Width, c.Height - 1); }
 
+        // La paleta solo se aplica a esta ventana, no al tema compartido del addon.
+        private static void AplicarPaletaConsola(Control control)
+        {
+            if (control.BackColor == AppTheme.BgSurface) control.BackColor = ConsolaSuperficie;
+            else if (control.BackColor == AppTheme.BgMain) control.BackColor = ConsolaChrome;
+            if (control is IconButton boton) boton.Superficie = ConsolaSuperficie;
+            foreach (Control hijo in control.Controls) AplicarPaletaConsola(hijo);
+        }
+
         // Refleja el nombre del script en la pestaña y el estado "guardado/sin guardar".
         private void RefrescarEstadoDoc()
         {
-            bool guardado = !string.IsNullOrEmpty(_appKey);
+            bool guardado = _activeTab != null && !string.IsNullOrEmpty(_appKey) && !_activeTab.IsModified;
             // lblTabName deleted
             if (_lblEstadoDoc != null)
             {
                 _lblEstadoDoc.Text = guardado ? "● Guardado" : "● Sin guardar";
                 _lblEstadoDoc.ForeColor = guardado ? AppTheme.Success : AppTheme.Warning;
             }
-            if (_statusScript != null) _statusScript.Text = guardado ? _appKey : "(sin guardar)"; if (_activeTab != null) { _activeTab.IsModified = !guardado; _activeTab.LblName.Text = _activeTab.Titulo; }
+            if (_statusScript != null) _statusScript.Text = string.IsNullOrEmpty(_appKey) ? "(sin guardar)" : _appKey;
+            if (_activeTab != null) _activeTab.LblName.Text = _activeTab.Titulo;
         }
 
         // =========================================================
         //   Panel izquierdo — Biblioteca de scripts
         // =========================================================
+        private Panel ConstruirLenguajes()
+        {
+            var host = new Panel { Dock = DockStyle.Top, Height = 108, BackColor = AppTheme.BgSurface, Padding = new Padding(0, 0, 0, 18) };
+            var titulo = new Label { Text = "Lenguaje del script", Dock = DockStyle.Top, Height = 26, Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMuted };
+            var opciones = new TableLayoutPanel { Dock = DockStyle.Top, Height = 44, ColumnCount = 3, RowCount = 1, BackColor = AppTheme.BgSurface };
+            opciones.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            foreach (var lang in new[] { "C#", "Python", "SQL" })
+            {
+                opciones.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3));
+                var button = new IconButton { Text = lang, Name = "Lenguaje" + lang, AccessibleName = "Lenguaje " + lang, Kind = BtnKind.Ghost, Dock = DockStyle.Fill, Radius = 4, PadX = 6, Margin = new Padding(0, 0, 4, 0) };
+                _tips.SetToolTip(button, "Cambiar el lenguaje a " + lang + "; conserva el codigo, no lo convierte");
+                button.Click += (s, e) => CambiarLenguaje(lang);
+                _botonesLenguaje.Add(lang, button);
+                opciones.Controls.Add(button, opciones.Controls.Count, 0);
+            }
+            var sdk = new LinkLabel { Text = "Manual del SDK", Dock = DockStyle.Bottom, Height = 22, LinkColor = AppTheme.Primary, ActiveLinkColor = AppTheme.PrimaryHover, Font = AppTheme.FontSmall, BackColor = AppTheme.BgSurface };
+            sdk.LinkClicked += (s, e) => MostrarManualSdk();
+            host.Controls.Add(opciones);
+            host.Controls.Add(titulo);
+            host.Controls.Add(sdk);
+            return host;
+        }
+
+        private void ToggleContexto()
+        {
+            if (_zen) ToggleZen();
+            _contextoVisible = !_contextoVisible;
+            _splitMain.Panel2Collapsed = !_contextoVisible;
+            if (_contextoVisible)
+            {
+                int ancho = Math.Max(_splitMain.Panel2MinSize, Math.Min(LogicalToDeviceUnits(330), _splitMain.Width / 2));
+                _splitMain.SplitterDistance = Math.Max(_splitMain.Panel1MinSize, _splitMain.Width - ancho - _splitMain.SplitterWidth);
+            }
+            _btnContexto.Kind = _contextoVisible ? BtnKind.Outline : BtnKind.Toolbar;
+            _btnContexto.Invalidate();
+        }
+
         private Panel ConstruirPanelIzquierdo()
         {
-            var pnlIzq = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgMain, Padding = new Padding(14, 14, 12, 14) };
+            var pnlIzq = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgSurface, Padding = new Padding(16, 18, 16, 14) };
 
-            var pnlLibHead = new Panel { Dock = DockStyle.Top, Height = 22, BackColor = AppTheme.BgMain };
-            var lblScripts = new Label { Text = "BIBLIOTECA DE SCRIPTS", Dock = DockStyle.Fill, ForeColor = AppTheme.Primary, Font = AppTheme.FontTitle, TextAlign = ContentAlignment.MiddleLeft };
+            var pnlLibHead = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = AppTheme.BgSurface };
+            var lblScripts = new Label { Text = "Biblioteca", Dock = DockStyle.Fill, ForeColor = AppTheme.TextMain, Font = AppTheme.FontTitle, TextAlign = ContentAlignment.MiddleLeft };
             var btnExpandir = new IconButton { Glyph = Glyph.Down, Kind = BtnKind.Ghost, Dock = DockStyle.Right, Width = 24, Radius = 4, ForeColor = AppTheme.TextMuted };
             _tips.SetToolTip(btnExpandir, "Expandir / contraer todo");
             btnExpandir.Click += (s, e) =>
@@ -690,7 +756,7 @@ namespace BrosLMV
 
             var espTop = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = AppTheme.BgMain };
 
-            _tree = new TreeView { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, HideSelection = false, BackColor = AppTheme.BgMain, ForeColor = AppTheme.TextMain, Font = AppTheme.FontMain, ItemHeight = 26, ShowLines = false, ShowRootLines = true, ShowPlusMinus = true, FullRowSelect = true, Indent = 16, ShowNodeToolTips = true };
+            _tree = new TreeView { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, HideSelection = false, BackColor = AppTheme.BgSurface, ForeColor = AppTheme.TextMain, Font = AppTheme.FontMain, ItemHeight = 30, ShowLines = false, ShowRootLines = true, ShowPlusMinus = true, FullRowSelect = true, Indent = 16, ShowNodeToolTips = true };
             _tree.ImageList = ConstruirIconosArbol();
             _tree.NodeMouseDoubleClick += (s, e) =>
             {
@@ -714,6 +780,7 @@ namespace BrosLMV
             pnlIzq.Controls.Add(espTop);
             pnlIzq.Controls.Add(pnlBuscar);
             pnlIzq.Controls.Add(pnlLibHead);
+            pnlIzq.Controls.Add(ConstruirLenguajes());
             pnlIzq.Controls.Add(pnlBtnNuevo);
             return pnlIzq;
         }
@@ -735,7 +802,7 @@ namespace BrosLMV
         {
             var pnlEditorHost = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgSurface };
 
-            _pnlEditorHost = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgSurface };
+            _pnlEditorHost = new Panel { Dock = DockStyle.Fill, BackColor = ConsolaMarca, Padding = new Padding(0, 0, 4, 4) };
 
             var pnlTabEditor = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = AppTheme.BgMain };
             pnlTabEditor.Paint += (s, e) => BordeInferior(e.Graphics, pnlTabEditor);
@@ -754,6 +821,7 @@ namespace BrosLMV
 
 
             _pnlEditorHost.Controls.Add(ConstruirBarraBuscar());
+            _pnlEditorHost.Controls.Add(_herramientasEditor);
             _pnlEditorHost.Controls.Add(pnlTabEditor);
             return _pnlEditorHost;
 
@@ -762,10 +830,11 @@ namespace BrosLMV
         // Barra de búsqueda incremental del editor (oculta por defecto).
         private Panel ConstruirBarraBuscar()
         {
-            _findBar = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = AppTheme.BgMain, Padding = new Padding(10, 5, 10, 5), Visible = false };
+            var barra = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, MinimumSize = new Size(0, 38), BackColor = AppTheme.BgMain, Padding = new Padding(6, 5, 6, 5), Visible = false };
+            _findBar = barra;
             _findBar.Paint += (s, e) => BordeInferior(e.Graphics, _findBar);
 
-            var caja = new Panel { Dock = DockStyle.Left, Width = 240, BackColor = AppTheme.BgSurface, Padding = new Padding(8, 5, 8, 0) };
+            var caja = new Panel { Width = 160, Height = 28, BackColor = AppTheme.BgSurface, Padding = new Padding(8, 5, 8, 0) };
             caja.Paint += (s, e) => { using (var p = new Pen(AppTheme.Border)) using (var path = ModernUI.Round(new Rectangle(0, 0, caja.Width - 1, caja.Height - 1), 5)) e.Graphics.DrawPath(p, path); };
             _txtFind = new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, BackColor = AppTheme.BgSurface, ForeColor = AppTheme.TextMain, Font = AppTheme.FontMain };
             _txtFind.TextChanged += (s, e) => BuscarResaltar();
@@ -787,12 +856,20 @@ namespace BrosLMV
             _tips.SetToolTip(btnCerrar, "Cerrar (Esc)");
             btnCerrar.Click += (s, e) => OcultarBuscar();
 
-            // Orden de docking (izq→der): caja, prev, next, contador; cerrar a la derecha.
-            _findBar.Controls.Add(_lblFindCount);
-            _findBar.Controls.Add(btnNext);
-            _findBar.Controls.Add(btnPrev);
-            _findBar.Controls.Add(caja);
-            _findBar.Controls.Add(btnCerrar);
+            _findMayusculas = new CheckBox { Text = "Aa", AutoSize = false, Width = 42, Height = 28, ForeColor = AppTheme.TextMain };
+            _findPalabra = new CheckBox { Text = "Palabra", AutoSize = false, Width = 72, Height = 28, ForeColor = AppTheme.TextMain };
+            _tips.SetToolTip(_findMayusculas, "Distinguir mayusculas y minusculas");
+            _tips.SetToolTip(_findPalabra, "Buscar solo palabras completas");
+            _findMayusculas.CheckedChanged += (s, e) => BuscarResaltar();
+            _findPalabra.CheckedChanged += (s, e) => BuscarResaltar();
+            _lblFindCount.Width = 85;
+            foreach (var control in new Control[] { caja, _findMayusculas, _findPalabra, btnPrev, btnNext, _lblFindCount, btnCerrar })
+            {
+                control.Dock = DockStyle.None;
+                control.Height = 28;
+                control.Margin = new Padding(1, 0, 1, 0);
+                barra.Controls.Add(control);
+            }
             return _findBar;
         }
 
@@ -842,6 +919,8 @@ namespace BrosLMV
             // --- Tarjeta de contexto ---
             var pnlCtxCard = new Panel { Dock = DockStyle.Top, Height = 214, BackColor = AppTheme.BgSurface, Padding = new Padding(14, 12, 14, 12) };
             pnlCtxCard.Paint += (s, e) => BordeTarjeta(e.Graphics, pnlCtxCard);
+            pnlDer.Resize += (s, e) => pnlCtxCard.Height = Math.Min(LogicalToDeviceUnits(214),
+                Math.Max(LogicalToDeviceUnits(160), pnlDer.ClientSize.Height - LogicalToDeviceUnits(310)));
 
             var pnlCtxHead = new Panel { Dock = DockStyle.Top, Height = 26, BackColor = AppTheme.BgSurface };
             var btnCtxRefresh = new IconButton { Glyph = Glyph.Refresh, Kind = BtnKind.Ghost, Dock = DockStyle.Right, Width = 28, Radius = 4 };
@@ -849,10 +928,9 @@ namespace BrosLMV
             btnCtxRefresh.Click += (s, e) => ActualizarContexto();
             _lblCtx = new Label { Dock = DockStyle.Right, AutoSize = false, Width = 134, TextAlign = ContentAlignment.MiddleRight, ForeColor = AppTheme.TextMuted, Font = AppTheme.FontSmall, Text = "", Margin = new Padding(0, 0, 4, 0) };
             var lblCtxT = new Label { Text = "Contexto actual", Dock = DockStyle.Fill, ForeColor = AppTheme.Primary, Font = AppTheme.FontTitle, TextAlign = ContentAlignment.MiddleLeft };
-            // Orden: primero los anclados a la derecha, el título (Fill) al final ocupa el resto.
-            pnlCtxHead.Controls.Add(btnCtxRefresh);
-            pnlCtxHead.Controls.Add(_lblCtx);
             pnlCtxHead.Controls.Add(lblCtxT);
+            pnlCtxHead.Controls.Add(_lblCtx);
+            pnlCtxHead.Controls.Add(btnCtxRefresh);
 
             // Contexto en forma de lista: Campo / Valor. Valores largos (la Vista/SELECT)
             // se ven completos con tooltip y se pueden copiar con doble clic.
@@ -880,7 +958,8 @@ namespace BrosLMV
             var espCtx = new Panel { Dock = DockStyle.Top, Height = 14, BackColor = AppTheme.BgMain };
 
             // --- Tarjeta de referencias ---
-            var lblMet = new Label { Text = "REFERENCIAS  ·  doble clic: insertar  ·  clic derecho: ver ficha", Dock = DockStyle.Top, Height = 26, ForeColor = AppTheme.Primary, Font = AppTheme.FontTitle, TextAlign = ContentAlignment.BottomLeft, Padding = new Padding(0, 0, 0, 6) };
+            var lblMet = new Label { Text = "Referencias del SDK", Dock = DockStyle.Top, Height = 26, ForeColor = AppTheme.Primary, Font = AppTheme.FontTitle, TextAlign = ContentAlignment.BottomLeft, Padding = new Padding(0, 0, 0, 6) };
+            _tips.SetToolTip(lblMet, "Doble clic para insertar; clic secundario para ver la ficha");
 
             var pnlRefsCard = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.BgSurface };
             pnlRefsCard.Paint += (s, e) => BordeTarjeta(e.Graphics, pnlRefsCard);
@@ -972,8 +1051,16 @@ namespace BrosLMV
             btnD.Click += (s, e) => ActivarTab(_lstSeleccion, btnD);
             pnlTabs.Controls.Add(btnC, 0, 0); pnlTabs.Controls.Add(btnP, 1, 0);
             pnlTabs.Controls.Add(btnS, 2, 0); pnlTabs.Controls.Add(btnD, 3, 0);
+            _activarReferencia = indice => ActivarTab(listas[indice], btnTabs[indice]);
 
             pnlRefsCard.Controls.Add(pnlHost);
+            var buscarSdk = new Panel { Dock = DockStyle.Top, Height = 34, Padding = new Padding(8, 8, 8, 5), BackColor = AppTheme.BgSurface };
+            _txtSdk = new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, BackColor = AppTheme.BgSurface, ForeColor = AppTheme.TextMain, AccessibleName = "Buscar funciones del SDK" };
+            buscarSdk.Controls.Add(_txtSdk);
+            AplicarPlaceholder(_txtSdk, buscarSdk, "Buscar funciones del SDK...");
+            _txtSdk.TextChanged += (s, e) => CargarMetodos();
+            _tips.SetToolTip(_txtSdk, "Filtrar funciones por nombre, descripcion o categoria");
+            pnlRefsCard.Controls.Add(buscarSdk);
             pnlRefsCard.Controls.Add(pnlTabs);
             ActivarTab(_lstMetodosCSharp, btnC);
 
@@ -1068,6 +1155,13 @@ namespace BrosLMV
         // Resalta todas las coincidencias y deja lista la navegación.
         private void BuscarResaltar()
         {
+            ActualizarBusqueda(true);
+        }
+
+        private static bool CaracterPalabra(char c) => char.IsLetterOrDigit(c) || c == '_';
+
+        private void ActualizarBusqueda(bool seleccionar)
+        {
             _findHits.Clear(); _findIdx = -1;
             try
             {
@@ -1087,10 +1181,15 @@ namespace BrosLMV
             int from = 0;
             while (true)
             {
-                int idx = txt.IndexOf(q, from, StringComparison.OrdinalIgnoreCase);
+                int idx = txt.IndexOf(q, from, _findMayusculas.Checked ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
                 if (idx < 0) break;
-                _findHits.Add(idx);
-                try { _editor.IndicatorFillRange(idx, q.Length); } catch { }
+                if (!_findPalabra.Checked ||
+                    ((idx == 0 || !CaracterPalabra(txt[idx - 1])) &&
+                    (idx + q.Length == txt.Length || !CaracterPalabra(txt[idx + q.Length]))))
+                {
+                    _findHits.Add(idx);
+                    try { _editor.IndicatorFillRange(idx, q.Length); } catch { }
+                }
                 from = idx + Math.Max(1, q.Length);
             }
 
@@ -1100,7 +1199,8 @@ namespace BrosLMV
             int caret = _editor.CurrentPosition;
             _findIdx = _findHits.FindIndex(p => p >= caret);
             if (_findIdx < 0) _findIdx = 0;
-            SeleccionarHit(q.Length);
+            if (seleccionar) SeleccionarHit(q.Length);
+            else _lblFindCount.Text = _findHits.Count + " coincidencias";
         }
 
         private void BuscarMover(int dir)
@@ -1128,7 +1228,7 @@ namespace BrosLMV
             try
             {
                 _splitLeft.Panel1Collapsed = _zen;     // biblioteca
-                _splitMain.Panel2Collapsed = _zen;     // contexto
+                _splitMain.Panel2Collapsed = _zen || !_contextoVisible;
                 _splitEditor.Panel2Collapsed = _zen;   // salida
                 _btnZen.Glyph = _zen ? Glyph.Restore : Glyph.Full;
                 _btnZen.Invalidate();
@@ -1145,7 +1245,7 @@ namespace BrosLMV
 
         private RichTextBox NuevoOut()
         {
-            return new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = AppTheme.BgSurface, ForeColor = AppTheme.TextMain, Font = AppTheme.FontMono, WordWrap = false, Padding = new Padding(8) };
+            return new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = ConsolaSuperficie, ForeColor = AppTheme.TextMain, Font = AppTheme.FontMono, WordWrap = false, Padding = new Padding(8) };
         }
         private TabPage NuevaTab(string titulo, Control c) { var t = new TabPage(titulo) { BackColor = AppTheme.BgSurface }; c.Dock = DockStyle.Fill; t.Controls.Add(c); return t; }
 
@@ -1157,17 +1257,17 @@ namespace BrosLMV
             
             bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
             
-            e.Graphics.FillRectangle(new SolidBrush(AppTheme.BgMain), rect);
+            using (var fondo = new SolidBrush(ConsolaChrome)) e.Graphics.FillRectangle(fondo, rect);
             
             if (isSelected)
             {
-                e.Graphics.FillRectangle(new SolidBrush(AppTheme.BgSurface), rect);
-                e.Graphics.FillRectangle(new SolidBrush(AppTheme.Primary), new Rectangle(rect.X, rect.Y, rect.Width, 2));
+                using (var fondo = new SolidBrush(ConsolaSuperficie)) e.Graphics.FillRectangle(fondo, rect);
+                using (var acento = new SolidBrush(AppTheme.Primary)) e.Graphics.FillRectangle(acento, new Rectangle(rect.X, rect.Y, rect.Width, 2));
             }
             
-            var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            var brush = new SolidBrush(isSelected ? AppTheme.Primary : AppTheme.TextMuted);
-            e.Graphics.DrawString(page.Text, AppTheme.FontMain, brush, rect, format);
+            using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            using (var brush = new SolidBrush(isSelected ? AppTheme.Primary : AppTheme.TextMuted))
+                e.Graphics.DrawString(page.Text, AppTheme.FontMain, brush, rect, format);
         }
 
         // Lee un recurso embebido del addon (logo, icono) por terminacion del nombre.
@@ -1185,9 +1285,11 @@ namespace BrosLMV
         {
             var ed = _editor;
             EstilizarEditor(_fontSize);
-
-            ed.SetKeywords(0, "abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using var virtual void volatile while async await dynamic");
-            ed.SetKeywords(1, "List Dictionary StringBuilder DateTime Math Convert Console MessageBox Color Form ctx");
+            ed.UseTabs = false;
+            ed.TabWidth = 4;
+            ed.IndentWidth = 4;
+            ed.AutoCIgnoreCase = true;
+            ed.AutoCMaxHeight = 12;
 
             // Posición del cursor en la barra de estado.
             ed.UpdateUI += (s, e) =>
@@ -1196,33 +1298,103 @@ namespace BrosLMV
                 int line = ed.CurrentLine + 1;
                 int col = ed.CurrentPosition - ed.Lines[ed.CurrentLine].Position + 1;
                 _statusPos.Text = "Lín " + line + ", Col " + col;
+                ResaltarPareja(ed);
             };
-            ed.TextChanged += (s, e) => { DetectarLenguajeStatus(); if (_activeTab != null && !string.IsNullOrEmpty(ed.Text)) { _activeTab.IsModified = true; _activeTab.LblName.Text = _activeTab.Titulo; } };
+            var tab = _activeTab;
+            ed.TextChanged += (s, e) =>
+            {
+                tab.IsModified = true;
+                if (tab.LblName != null) tab.LblName.Text = tab.Titulo;
+                if (tab == _activeTab)
+                {
+                    DetectarLenguajeStatus(); RefrescarEstadoDoc();
+                    if (_findBar.Visible) ActualizarBusqueda(false);
+                }
+            };
 
             // Atajos dentro del editor (Scintilla es nativo y a veces captura las teclas
             // antes que KeyPreview del formulario, así que los atendemos aquí también).
             ed.KeyDown += (s, e) =>
             {
-                if (e.Control && (e.KeyCode == Keys.F || e.KeyCode == Keys.B)) { e.SuppressKeyPress = true; MostrarBuscar(); }
+                if (AtajoArchivo(e)) return;
+                if (e.Control && e.KeyCode == Keys.Space) { e.SuppressKeyPress = true; MostrarCompletado(ed); }
+                else if (e.Control && (e.KeyCode == Keys.F || e.KeyCode == Keys.B)) { e.SuppressKeyPress = true; MostrarBuscar(); }
                 else if (e.KeyCode == Keys.F3) { e.SuppressKeyPress = true; if (_findBar != null && _findBar.Visible) BuscarMover(e.Shift ? -1 : 1); else MostrarBuscar(); }
                 else if (e.KeyCode == Keys.F11) { e.SuppressKeyPress = true; ToggleZen(); }
                 else if (e.KeyCode == Keys.F5) { e.SuppressKeyPress = true; Ejecutar(false); }
             };
 
-            // Autocompletado de ctx.
             ed.CharAdded += (s, e) =>
             {
-                if (e.Char != '.') return;
-                int pos = ed.CurrentPosition;
-                int dotPos = pos - 1;
-                int ini = ed.WordStartPosition(dotPos, true);
-                string w = ed.GetTextRange(ini, dotPos - ini);
-                if (w == "ctx")
-                {
-                    var lista = string.Join(" ", METODOS.Select(m => m.Nombre).OrderBy(x => x).ToArray());
-                    ed.AutoCShow(0, lista);
-                }
+                if (e.Char == '.') MostrarCompletado(ed);
+                else if (e.Char == '\n') IndentarLinea(ed);
             };
+        }
+
+        private bool AtajoArchivo(KeyEventArgs e)
+        {
+            if (!e.Control || e.Alt || (e.KeyCode != Keys.S && e.KeyCode != Keys.N)) return false;
+            e.Handled = e.SuppressKeyPress = true;
+            if (e.KeyCode == Keys.N) NuevoScript();
+            else Guardar(e.Shift);
+            return true;
+        }
+
+        // Sugerencias del catalogo, no un analizador semantico ni ejecucion de codigo.
+        private string[] OpcionesCompletado(Scintilla ed, out int longitud)
+        {
+            longitud = 0;
+            if (HostClient.EsSql(ed.Text)) return new string[0];
+            int pos = ed.CurrentPosition;
+            int inicio = ed.Lines[ed.CurrentLine].Position;
+            ed.Colorize(inicio, pos);
+            int estilo = pos == 0 ? 0 : ed.GetStyleAt(pos - 1);
+            if (ed.Lexer == Lexer.Cpp && (estilo == Style.Cpp.Comment || estilo == Style.Cpp.CommentLine ||
+                estilo == Style.Cpp.CommentDoc || estilo == Style.Cpp.CommentLineDoc || estilo == Style.Cpp.String ||
+                estilo == Style.Cpp.StringEol || estilo == Style.Cpp.Verbatim || estilo == Style.Cpp.Character)) return new string[0];
+            if (ed.Lexer == Lexer.Python && (estilo == Style.Python.CommentLine || estilo == Style.Python.String ||
+                estilo == Style.Python.StringEol || estilo == Style.Python.CommentBlock || estilo == Style.Python.Character ||
+                estilo == Style.Python.Triple || estilo == Style.Python.TripleDouble)) return new string[0];
+            var match = Regex.Match(ed.GetTextRange(inicio, pos - inicio), @"\bctx\.(erp\.)?([A-Za-z_0-9]*)$");
+            if (!match.Success) return new string[0];
+            longitud = match.Groups[2].Length;
+            string raiz = "ctx." + match.Groups[1].Value;
+            string prefijo = match.Groups[2].Value;
+            var catalogo = HostClient.EsPython(ed.Text) ? METODOS_PYTHON : METODOS;
+            return catalogo.Select(m => Regex.Match(m.Firma, @"\bctx\.[A-Za-z_0-9.]+").Value)
+                .Where(nombre => nombre.StartsWith(raiz, StringComparison.Ordinal))
+                .Select(nombre => nombre.Substring(raiz.Length).Split('.')[0])
+                .Where(nombre => nombre.StartsWith(prefijo, StringComparison.OrdinalIgnoreCase))
+                .Distinct().OrderBy(nombre => nombre, StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+
+        private void MostrarCompletado(Scintilla ed)
+        {
+            var opciones = OpcionesCompletado(ed, out int longitud);
+            if (opciones.Length > 0) ed.AutoCShow(longitud, string.Join(" ", opciones));
+        }
+
+        private static void IndentarLinea(Scintilla ed)
+        {
+            if (ed.CurrentLine == 0) return;
+            var anterior = ed.Lines[ed.CurrentLine - 1];
+            string texto = anterior.Text.TrimEnd();
+            int indentacion = anterior.Indentation;
+            if ((ed.Lexer == Lexer.Python && texto.EndsWith(":")) ||
+                (ed.Lexer == Lexer.Cpp && texto.EndsWith("{"))) indentacion += ed.IndentWidth;
+            ed.Lines[ed.CurrentLine].Indentation = indentacion;
+            ed.GotoPosition(ed.Lines[ed.CurrentLine].Position + ed.Lines[ed.CurrentLine].Indentation);
+        }
+
+        private static void ResaltarPareja(Scintilla ed)
+        {
+            int pos = ed.CurrentPosition;
+            int candidato = pos > 0 && "()[]{}".IndexOf((char)ed.GetCharAt(pos - 1)) >= 0 ? pos - 1 :
+                pos < ed.TextLength && "()[]{}".IndexOf((char)ed.GetCharAt(pos)) >= 0 ? pos : -1;
+            if (candidato < 0) { ed.BraceHighlight(-1, -1); return; }
+            int pareja = ed.BraceMatch(candidato);
+            if (pareja >= 0) ed.BraceHighlight(candidato, pareja);
+            else ed.BraceBadLight(candidato);
         }
 
         // Aplica colores, fuente y márgenes del editor para un tamaño dado (reutilizable).
@@ -1241,20 +1413,18 @@ namespace BrosLMV
             ed.Lexer = esPython ? Lexer.Python : esSql ? Lexer.Sql : Lexer.Cpp;
             ed.Styles[Style.Default].Font = AppTheme.FontMono.Name;
             ed.Styles[Style.Default].Size = size;
-            ed.Styles[Style.Default].BackColor = AppTheme.BgSurface;
-            ed.Styles[Style.Default].ForeColor = AppTheme.TextMain;
+            ed.Styles[Style.Default].BackColor = ConsolaEditor;
+            ed.Styles[Style.Default].ForeColor = ConsolaCodigo;
             ed.StyleClearAll();
 
-            // Misma paleta en los 3 lexers (verde=comentario, sienna=string, azul=palabra
-            // clave) -- así cambiar de lenguaje no cambia el "idioma visual" del editor,
-            // solo qué palabras cuentan como qué.
-            var cComentario = Color.FromArgb(0, 128, 0);
-            var cNumero     = Color.FromArgb(9, 134, 88);
-            var cString     = Color.FromArgb(163, 21, 21);
-            var cPalabra    = Color.FromArgb(0, 0, 255);
-            var cPalabra2   = Color.FromArgb(43, 145, 175);
-            var cOperador   = Color.FromArgb(100, 100, 100);
-            var cGris       = Color.FromArgb(128, 128, 128);
+            // Colores legibles sobre gris claro, sin fondo blanco intenso.
+            var cComentario = Color.FromArgb(82, 106, 86);
+            var cNumero     = Color.FromArgb(143, 67, 28);
+            var cString     = Color.FromArgb(153, 56, 58);
+            var cPalabra    = Color.FromArgb(38, 79, 152);
+            var cPalabra2   = Color.FromArgb(105, 63, 137);
+            var cOperador   = ConsolaCodigo;
+            var cGris       = Color.FromArgb(96, 106, 119);
 
             if (esPython)
             {
@@ -1282,7 +1452,7 @@ namespace BrosLMV
                 ed.Styles[Style.Sql.Word].ForeColor = cPalabra;
                 ed.Styles[Style.Sql.Word2].ForeColor = cPalabra2;
                 ed.Styles[Style.Sql.Operator].ForeColor = cOperador;
-                ed.Styles[Style.Sql.Identifier].ForeColor = AppTheme.TextMain;
+                ed.Styles[Style.Sql.Identifier].ForeColor = ConsolaCodigo;
             }
             else
             {
@@ -1300,19 +1470,23 @@ namespace BrosLMV
                 ed.Styles[Style.Cpp.Preprocessor].ForeColor = cGris;
             }
 
-            // Gutter de números con fondo claro propio.
-            ed.Styles[Style.LineNumber].BackColor = AppTheme.BgSubtle;
-            ed.Styles[Style.LineNumber].ForeColor = AppTheme.TextMuted;
+            // Numeros de linea con la misma superficie del codigo.
+            ed.Styles[Style.LineNumber].BackColor = ConsolaEditor;
+            ed.Styles[Style.LineNumber].ForeColor = cGris;
             ed.Margins[0].Type = MarginType.Number;
             ed.Margins[0].Width = 46;
-            ed.Margins[0].BackColor = AppTheme.BgSubtle;
+            ed.Margins[0].BackColor = ConsolaEditor;
             ed.Margins[1].Width = 8;
-            ed.Margins[1].BackColor = AppTheme.BgSurface;
+            ed.Margins[1].BackColor = ConsolaEditor;
 
             ed.CaretLineVisible = true;
-            ed.CaretLineBackColor = Color.FromArgb(244, 247, 251);
-            ed.CaretForeColor = AppTheme.TextMain;
-            ed.SetSelectionBackColor(true, AppTheme.PrimarySelected);
+            ed.CaretLineBackColor = Color.FromArgb(216, 223, 231);
+            ed.CaretForeColor = ConsolaCodigo;
+            ed.SetSelectionBackColor(true, Color.FromArgb(184, 204, 231));
+            ed.SetSelectionForeColor(true, ConsolaCodigo);
+            ed.Styles[Style.BraceLight].BackColor = Color.FromArgb(191, 212, 196);
+            ed.Styles[Style.BraceLight].ForeColor = ConsolaCodigo;
+            ed.Styles[Style.BraceBad].ForeColor = AppTheme.Error;
             ed.ExtraDescent = 3; // mejor interlineado
         }
 
@@ -1363,11 +1537,17 @@ namespace BrosLMV
             string c = _editor.Text;
             string lang = HostClient.EsPython(c) ? "Python" : HostClient.EsSql(c) ? "SQL" : "C#";
             if (_statusLang != null) _statusLang.Text = lang;
-            if (_btnLang != null) _btnLang.Text = "Lenguaje: " + lang;
+            foreach (var item in _botonesLenguaje)
+            {
+                item.Value.Kind = item.Key == lang ? BtnKind.Outline : BtnKind.Ghost;
+                item.Value.ForeColor = item.Key == lang ? AppTheme.Primary : AppTheme.TextMuted;
+                item.Value.Invalidate();
+            }
             if (lang != _ultimoLenguajeEditor)
             {
                 _ultimoLenguajeEditor = lang;
                 try { EstilizarEditor(_fontSize); } catch { }
+                _activarReferencia?.Invoke(lang == "Python" ? 1 : lang == "SQL" ? 2 : 0);
             }
         }
 
@@ -1947,6 +2127,7 @@ namespace BrosLMV
             var grupos = new Dictionary<string, ListViewGroup>();
             foreach (var m in METODOS)
             {
+                if (!CoincideFiltroSdk(m)) continue;
                 string cat = string.IsNullOrEmpty(m.Cat) ? "General" : m.Cat;
                 if (!grupos.TryGetValue(cat, out var g))
                 {
@@ -1963,6 +2144,7 @@ namespace BrosLMV
             _lstMetodosPython.Items.Clear();
             foreach (var m in METODOS_PYTHON)
             {
+                if (!CoincideFiltroSdk(m)) continue;
                 var it = new ListViewItem(m.Nombre) { Tag = m, ToolTipText = m.Firma + "\n" + m.Desc };
                 it.SubItems.Add(m.Desc);
                 _lstMetodosPython.Items.Add(it);
@@ -1972,6 +2154,7 @@ namespace BrosLMV
             _lstMetodosSql.Items.Clear();
             foreach (var m in METODOS_SQL)
             {
+                if (!CoincideFiltroSdk(m)) continue;
                 var it = new ListViewItem(m.Nombre) { Tag = m, ToolTipText = m.Firma + "\n" + m.Desc };
                 it.SubItems.Add(m.Desc);
                 _lstMetodosSql.Items.Add(it);
@@ -1979,7 +2162,13 @@ namespace BrosLMV
             _lstMetodosSql.ShowItemToolTips = true;
 
             Alternar(_lstMetodosPython); Alternar(_lstMetodosSql);   // C# usa grupos, sin zebra
-            _lstMetodosCSharp.BringToFront();   // pestaña C# activa al inicio
+        }
+
+        private bool CoincideFiltroSdk(MetodoCtx metodo)
+        {
+            string filtro = _txtSdk?.Text.Trim() ?? "";
+            return (metodo.Nombre + " " + metodo.Desc + " " + metodo.Cat)
+                .IndexOf(filtro, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private void ActualizarContexto()
@@ -2090,7 +2279,7 @@ namespace BrosLMV
         private void Alternar(ListView lv)
         {
             for (int i = 0; i < lv.Items.Count; i++)
-                lv.Items[i].BackColor = (i % 2 == 0) ? AppTheme.BgSurface : AppTheme.BgSubtle;
+                lv.Items[i].BackColor = (i % 2 == 0) ? ConsolaSuperficie : ConsolaChrome;
         }
 
         // =====================================================
@@ -2395,18 +2584,21 @@ namespace BrosLMV
 
         private static string SqlLit(string s) { return "N'" + (s ?? "").Replace("'", "''") + "'"; }
 
-                private void ActivarTab(ScriptTab tab)
+        private void ActivarTab(ScriptTab tab)
         {
             if (_activeTab != null && _activeTab.Chip != null)
             {
-                _activeTab.Chip.BackColor = AppTheme.BgMain;
-                _activeTab.LblName.BackColor = AppTheme.BgMain;
+                _activeTab.Chip.BackColor = ConsolaChrome;
+                _activeTab.LblName.BackColor = ConsolaChrome;
                 _activeTab.Editor.Visible = false;
             }
             _activeTab = tab;
-            _activeTab.Chip.BackColor = AppTheme.BgSurface;
-            _activeTab.LblName.BackColor = AppTheme.BgSurface;
+            _activeTab.Chip.BackColor = ConsolaSuperficie;
+            _activeTab.LblName.BackColor = ConsolaSuperficie;
             _activeTab.Editor.Visible = true;
+            _activeTab.Editor.WrapMode = _chkWrap.Checked ? WrapMode.Word : WrapMode.None;
+            _ultimoLenguajeEditor = "";
+            DetectarLenguajeStatus();
             _activeTab.Editor.Focus();
             if (_pnlEditorHost != null) _pnlEditorHost.Controls.SetChildIndex(_activeTab.Editor, 0);
             
@@ -2414,6 +2606,7 @@ namespace BrosLMV
             if (_status != null) _status.Text = string.IsNullOrEmpty(_activeTab.AppKey) ? "Nuevo script" : "Abierto: " + _activeTab.AppKey;
             
             foreach (var t in _tabs) { if(t.Chip != null) t.Chip.Invalidate(); }
+            if (_findBar.Visible) BuscarResaltar();
         }
 
         private void CerrarTab(ScriptTab tab)
@@ -2438,6 +2631,7 @@ namespace BrosLMV
 
         private void NuevoScript()
         {
+            if (_activeTab != null) _activeTab.Editor.Visible = false;
             var tab = new ScriptTab();
             _activeTab = tab; 
             
@@ -2462,6 +2656,7 @@ namespace BrosLMV
             
             tab.Chip.Controls.Add(tab.LblName);
             tab.Chip.Controls.Add(btnCerrarTab);
+            AplicarPaletaConsola(tab.Chip);
             
             _tabs.Add(tab);
             if (_tabStrip != null) _tabStrip.Controls.Add(tab.Chip);
@@ -2547,8 +2742,10 @@ private void Guardar(bool comoNuevo)
                 _ctx.BrosAsegurarTablas();   // crea zzBros* si faltan (requiere conexión viva)
                 _ctx.BrosGuardar(ak, ak, _editor.Text, SafeModulo());
                 if (!string.IsNullOrEmpty(categoria)) _ctx.BrosCategorizar(ak, categoria);
+                _activeTab.IsModified = false;
                 _appKey = ak;
                 Text = "BrosLMV — " + ak;
+                RefrescarEstadoDoc();
                 _status.Text = "Guardado en la empresa: " + ak + (string.IsNullOrEmpty(categoria) ? "" : "  ·  categoría: " + categoria);
                 CargarArbol();
             }
@@ -3128,6 +3325,7 @@ private void Guardar(bool comoNuevo)
         public string Glyph = "";
         public BtnKind Kind = BtnKind.Ghost;
         public Color Accent = Color.Empty;
+        public Color Superficie = Color.Empty;
         public int Radius = 6;
         public int PadX = 14;          // padding horizontal interno
         public int MinH = 32;          // alto mínimo
@@ -3199,13 +3397,13 @@ private void Guardar(bool comoNuevo)
             }
             else if (Kind == BtnKind.Outline)
             {
-                fill = _down ? AppTheme.PrimarySelected : (_hover ? AppTheme.Hover : AppTheme.BgSurface);
+                fill = _down ? AppTheme.PrimarySelected : (_hover ? AppTheme.Hover : (Superficie.IsEmpty ? AppTheme.BgSurface : Superficie));
                 fg = baseC; border = AppTheme.Border;
             }
             else if (Kind == BtnKind.Toolbar)
             {
                 // Botón blanco con borde sobre la barra tintada: se lee claramente como botón.
-                fill = _down ? AppTheme.PrimarySelected : (_hover ? AppTheme.PrimarySoft : AppTheme.BgSurface);
+                fill = _down ? AppTheme.PrimarySelected : (_hover ? AppTheme.PrimarySoft : (Superficie.IsEmpty ? AppTheme.BgSurface : Superficie));
                 fg = _hover || _down ? AppTheme.PrimaryHover : AppTheme.TextMain;
                 border = _hover || _down ? AppTheme.Primary : AppTheme.Border;
             }

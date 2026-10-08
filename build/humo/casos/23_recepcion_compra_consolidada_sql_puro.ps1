@@ -53,7 +53,7 @@ function Exec-Q([string]$q) {
 # v2.77.0: los parametros de la plantilla ahora son tokens {DATOS:Tabla.Columna:*} (formulario
 # automatico) -- el Runner headless no los resuelve, se sustituyen a mano.
 function Build-CodigoRecepcion([int]$sourceOC, [int]$sourceItemId, [int]$productoID, [decimal]$cantidad, [decimal]$precio) {
-    $plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
+    $plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
     $plantilla = $plantilla -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$sourceOC"
     $plantilla = $plantilla -replace '\{DATOS:docDocumentItem\.DocumentItemID[^}]*\}', "$sourceItemId"
     $plantilla = $plantilla -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
@@ -69,7 +69,7 @@ function Build-CodigoRecepcion([int]$sourceOC, [int]$sourceItemId, [int]$product
 # v2.77.0: los parametros de la plantilla ahora son tokens {DATOS:Tabla.Columna:*} (formulario
 # automatico) -- el Runner headless no los resuelve, se sustituyen a mano por los MISMOS
 # valores default que antes traia el archivo.
-$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
+$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
 $codigoOC = $codigoOC -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoOC = $codigoOC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoOC = $codigoOC -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'

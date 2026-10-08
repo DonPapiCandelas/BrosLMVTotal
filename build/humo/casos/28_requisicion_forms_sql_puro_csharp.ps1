@@ -68,7 +68,8 @@ EXEC sp_executesql @sql;
 $codigoNativo = @'
 // job: safe-offline
 int doc = ctx.erp.NuevoDocumento(1040, 1, 2);
-ctx.NonQuery("UPDATE docDocument SET DepotIDFrom=0, UserID=0, PaymentTermID=1, Comments='' WHERE DocumentID=" + doc);
+// Mismos datos de entrada que el fixture SQL; Title sigue comparandose campo por campo.
+ctx.NonQuery("UPDATE docDocument SET Title=NULL, DepotIDFrom=0, UserID=0, PaymentTermID=1, Comments='' WHERE DocumentID=" + doc);
 ctx.erp.AgregarArticulo(doc, 1, 2);
 ctx.erp.RecalcCompleto(doc);
 ctx.erp.Save(doc);

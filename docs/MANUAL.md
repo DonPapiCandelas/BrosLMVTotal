@@ -96,6 +96,15 @@ El botón **"Consola BrosLMV"** (`BrosLMV.CONSOLA`) abre un entorno de edición 
 editor de código (resaltado de C#, números de línea, autocompletado de `ctx.`),
 biblioteca de scripts, inspector de contexto y salida con pestañas.
 
+Desde **v3.1.3**, la biblioteca y las acciones tienen fondo claro, y el editor Scintilla
+usa una paleta oscura. **Lenguaje del script**, a la izquierda, ofrece C#, Python y SQL:
+cambia el marcador pero no convierte el código. Fuente, ajuste de línea, búsqueda y Zen
+están junto al editor. **Contexto y SDK** muestra u oculta el inspector sin perder sus
+referencias y tokens. Zen conserva esa elección al volver. La salida sigue debajo, con
+Salida, Errores y Mensajes. Importar paquete se encuentra en **Más opciones**.
+Las pestañas conservan su código; cambiar de pestaña sincroniza su lenguaje y la vista.
+El indicador Guardado/Sin guardar refleja los cambios, incluido borrar todo el texto.
+
 | Acción | Qué hace |
 |--------|----------|
 | **Ejecutar (F5)** | Compila y ejecuta todo el script |
@@ -182,7 +191,7 @@ Botón ControlExecute:  BrosLMV.SUMA      ← SIN extensión, SIN puntos ni espa
   empresa ven lo mismo. Los archivos de `C:\BrosLMV\scripts` **no son la biblioteca**: son plantillas y semillas que instala BrosLMV. Si se borran, **no pasa nada** con tus scripts.
 - **El nombre del script es su clave:** el script `crear_doc_desde_xml` lo ejecuta el botón `BrosLMV.crear_doc_desde_xml`. Al guardar, la Consola muestra la clave que va a usar.
   **No importan las mayúsculas:** `broslmv.crear_doc_desde_xml`, `BrosLMV.Crear_Doc_Desde_XML` y `BROSLMV.CREAR_DOC_DESDE_XML` son el mismo botón y el mismo script.
-- **El lenguaje** (C#, Python o SQL) se elige con el botón *Lenguaje* de la barra; la Consola escribe la línea `lang:` por ti.
+- **El lenguaje** (C#, Python o SQL) se elige en *Lenguaje del script*, a la izquierda; la Consola escribe la línea `lang:` por ti. También se puede cambiar desde la barra de estado.
 - **Respaldo:** *Más opciones → Respaldar todos los scripts…* crea un `.bros` por script; con clic secundario sobre uno, *Exportar paquete (.bros)…* exporta solo ese.
   Un `.bros` se importa con *Importar paquete…* en cualquier empresa o equipo.
 - **Si se borra un script en SQL:** se recupera del historial de versiones (clic secundario → *Historial de versiones…*) o importando su `.bros`.
@@ -1886,7 +1895,7 @@ donde se guardaron. Un paquete `.bros` empaca ambas partes para moverlas juntas.
 assets (si tiene) y un manifiesto con metadatos (nombre, módulo, versión de BrosLMV con la
 que se exportó).
 
-**Importar:** botón **"Importar paquete…"** en la barra de herramientas de la Consola.
+**Importar:** **Más opciones → Importar paquete…** en la Consola.
 Selecciona el `.bros` — se guarda en la **empresa activa** (la que tenga abierta Comercial
 en ese momento), con su historial (`zzBrosScriptHist`) intacto si ya existía un script con
 ese `AppKey`. Si la empresa destino está en una versión de BrosLMV más vieja que la que
@@ -2210,6 +2219,55 @@ Necesitas **.NET SDK**. La guía completa está en [`DESARROLLO.md`](DESARROLLO.
 Datos fijos del componente:
 - **ProgID:** `BrosLMV.clsMain`
 - **CLSID:** `{E593D5A9-4BAA-4618-A5BB-F7E1F9B0359E}`
+
+### Ayudas de programacion de Consola (3.1.4)
+
+La Consola inicia con Contexto y SDK visibles y una paleta gris clara de menor brillo.
+El interruptor los oculta; Zen conserva esa eleccion al salir.
+
+- `ctx.` y `ctx.erp.` ofrecen miembros del catalogo del lenguaje activo. Ctrl+Espacio
+  vuelve a abrir las sugerencias y filtra por el prefijo escrito. C# y Python usan
+  sus nombres respectivos. No es IntelliSense semantico de variables ni un depurador.
+- Enter conserva la sangria anterior; suma cuatro espacios despues de `{` en C# o
+  `:` en Python. Tab inserta espacios. Las parejas de llaves, parentesis y corchetes
+  se resaltan al colocar el cursor junto a ellas.
+- Las referencias siguen el lenguaje de la pestana activa. El filtro del SDK busca
+  por nombre, descripcion o categoria; el doble clic inserta el ejemplo y el clic
+  secundario abre la ficha, como antes.
+- La busqueda admite distinguir mayusculas (`Aa`) y palabras completas. F3 y
+  Shift+F3 recorren coincidencias; se actualizan al editar o cambiar de pestana.
+- Ctrl+S guarda, Ctrl+Shift+S abre Guardar como y Ctrl+N crea otro script.
+
+### Validar y aplicar el rediseño de Consola (3.1.4)
+
+Compilar no sustituye la instalación que abre Comercial. Antes de ejecutar humo,
+recompilar también Runner y HtmlToPdf en sus salidas por defecto: las pruebas usan
+`bin/Release`, que no se actualiza al compilar con `-o instalador/...`.
+
+En las comparaciones heredadas se proporciona explícitamente `Title=NULL` a la
+referencia nativa, igual que al fixture SQL. XEngine inicia ese campo con cadena vacía
+y los INSERT heredados lo dejan en NULL; esos defaults distintos no son entradas
+equivalentes. `Title` sigue incluido en la comparación estricta: no se ignora ni se
+normaliza al comparar resultados. Estas pruebas comparan campos y cálculos con las
+mismas entradas, no la igualdad de los defaults de las dos rutas. El caso de series
+prepara su producto de prueba por clave, de forma idempotente y únicamente en el
+laboratorio autorizado `BROSLMV_DESARROLLO`, sin alterar productos existentes.
+
+`build/consola/actualizar_local.ps1` aplica únicamente la DLL del addon y su registro
+COM de 32 bits, tras comprobar que los 46 casos de humo pasaron. Requiere un respaldo
+externo y permisos de administrador; rechaza una DLL cargada, no cierra Comercial a
+la fuerza y restaura el archivo anterior si falla. No provisiona empresas, no copia
+plantillas y no cambia SQL. Tras aplicarlo, abrir Comercial de nuevo y comprobar la
+versión en la cabecera de la Consola; no basta con mirar la versión del proyecto.
+
+Para esta actualización sin cambio de interfaz pública se registra con RegAsm de 32
+bits y `/codebase`, sin `/tlb`. En este equipo, exportar toda la biblioteca de tipos
+falla con `Google.Protobuf.ByteString` y su referencia a `System.Memory` tanto para
+3.1.2 como para 3.1.3, aunque el registro de los tipos sí funciona. No se intenta
+exportar el protocolo de Python a COM ni sustituir dependencias para un cambio visual.
+La comprobación local incluye activación COM nueva y propiedades por enlace tardío.
+Registro de tipos y exportación de TLB son operaciones distintas:
+[RegAsm, documentación de Microsoft](https://learn.microsoft.com/en-us/dotnet/framework/tools/regasm-exe-assembly-registration-tool).
 
 ---
 

@@ -9,6 +9,26 @@
 
 ## Paleta
 
+### Consola desde v3.1.4
+
+La Consola usa superficies gris claro (`#EBEDF0`, cabecera `#DCE0E5`) y editor Scintilla
+`#E8EAED`, texto `#262C35`. El borde del editor es gris `#BBC3CD`; palabras clave
+azules `#264F98`, cadenas `#99383A` y comentarios `#526A56`. La linea activa usa
+`#D8DFE7` y la seleccion `#B8CCE7`, sin blanco intenso ni fondo oscuro.
+Estos tokens son locales a la Consola: no cambian `AppTheme` ni las otras ventanas.
+La biblioteca queda a la izquierda y la salida debajo. El inspector conserva contexto,
+referencias y tokens, y es visible desde el inicio; **Contexto y SDK** lo alterna.
+Los controles siguen siendo
+WinForms y Scintilla, no una página HTML ni otro motor de scripts.
+La altura del contexto se adapta al espacio disponible (160-214 px logicos); sus
+campos siguen accesibles por desplazamiento. En la ventana minima, las referencias
+conservan al menos 100 px de altura en la prueba de layout. La busqueda reacomoda sus
+controles en filas si no caben, sin superponerlos al editor.
+
+Para comprobar tamaños y estados sin SQL: `build/consola/verificar_diseno.ps1` compila
+una copia temporal con arranque aislado, prueba las transiciones y genera capturas
+en `build/out/consola-diseno`. Esa copia no se distribuye ni reemplaza el addon.
+
 | Token | Valor | Uso |
 |---|---|---|
 | **Acento** (primario) | `#2D6FE0` | Botones primarios, enlaces, foco. Variante hover: `#1f56b8`. |

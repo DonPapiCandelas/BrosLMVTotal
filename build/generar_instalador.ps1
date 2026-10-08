@@ -18,6 +18,7 @@
 # Resultado: la carpeta instalador\ queda lista para distribuir.
 # Requiere .NET SDK.
 
+param([switch]$MantenerComercialAbierto)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent          # C:\MLVTotal
 $src  = Join-Path $root "src"
@@ -34,7 +35,11 @@ Write-Host "==================================================="
 
 # Si compilas en el mismo equipo donde corre CONTPAQi, cierra ComercialSP para
 # que no bloquee la DLL (en un equipo de desarrollo puro, esto no hace nada).
-Get-Process ComercialSP -ErrorAction SilentlyContinue | Stop-Process -Force
+if (-not $MantenerComercialAbierto) {
+    Get-Process ComercialSP -ErrorAction SilentlyContinue | Stop-Process -Force
+} else {
+    Write-Host "Sin cierre forzado de Comercial. Solo se genera el paquete; no se instala." -ForegroundColor Yellow
+}
 
 Write-Host "0) Documentacion HTML de las plantillas (se incrusta en la DLL; clic secundario -> Ver documentacion)..." -ForegroundColor Cyan
 $docsPlant = Join-Path $root "instalador\docs\plantillas"

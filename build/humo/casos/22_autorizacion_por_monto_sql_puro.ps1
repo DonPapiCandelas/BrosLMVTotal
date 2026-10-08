@@ -49,7 +49,7 @@ function Exec-Q([string]$q) {
 # un literal hardcodeado en la plantilla (NO se migro, ver comentario en el .sql), asi que su
 # reemplazo sigue funcionando igual que antes.
 function Build-CodigoAutorizacion([int]$docId, [int]$usuarioId, [int]$nivel, [string]$accion) {
-    $plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_AUTORIZACION_POR_MONTO_SQL_PURO.sql") -Raw
+    $plantilla = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_AUTORIZACION_POR_MONTO_SQL_PURO.sql") -Raw
     $plantilla = $plantilla -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$docId"
     $plantilla = $plantilla -replace '\{DATOS:engUser\.UserID[^}]*\}', "$usuarioId"
     $plantilla = $plantilla -replace '\{DATOS:docDocument\.ModuleID[^}]*\}', "$nivel"
@@ -65,7 +65,7 @@ sqlcmd -S $Server -E -d $Database -Q "IF OBJECT_ID('dbo.BrosAutorizaciones') IS 
 # v2.77.0: los parametros de la plantilla ahora son tokens {DATOS:Tabla.Columna:*} (formulario
 # automatico) -- el Runner headless no los resuelve, se sustituyen a mano por los MISMOS
 # valores default que antes traia el archivo.
-$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
+$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
 $codigoOC = $codigoOC -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoOC = $codigoOC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoOC = $codigoOC -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', '1'

@@ -5,7 +5,7 @@
 # precedente en Comercial Pro. Se valida funcionalmente en 3 pasos encadenados:
 #   1) Crea una Orden de Compra + Recepcion de Compra reales (SQL puro, mismas plantillas
 #      que los casos 17/-- Recepcion) para el producto de humo con numero de serie
-#      (ProductID=3, HUMO-PROD-SERIE, UseSerialNumber=1) SIN capturar @seriesCSV -- deja el
+#      (HUMO-PROD-SERIE, UseSerialNumber=1, ID resuelto por clave) SIN capturar @seriesCSV -- deja el
 #      kardex pendiente de serie a proposito, el caso real que esta plantilla resuelve.
 #   2) Corre PLANTILLA_GENERAR_SERIES_AUTO_SQL.sql sobre esa Recepcion y valida: se generan
 #      tantas series como Quantity recibida, formato exacto "<ProductKey>.<5 digitos>",
@@ -48,7 +48,34 @@ function Escalar([string]$q) {
     return (sqlcmd -S $Server -E -d $Database -h -1 -Q $q -W 2>&1 | Select-Object -First 1).Trim()
 }
 
-# ── Producto de prueba: HUMO-PROD-SERIE (ProductID=3, UseSerialNumber=1) ──
+# Preparar solamente el fixture del laboratorio autorizado, sin modificar productos existentes.
+if ($Database -eq 'BROSLMV_DESARROLLO') {
+    $preparar = @'
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+IF NOT EXISTS (SELECT 1 FROM orgProduct WHERE ProductKey='HUMO-PROD-SERIE')
+BEGIN
+    INSERT INTO orgProduct (ProductKey, ProductName, ProductTypeID, TaxTypeID,
+        Unit, ClaveUnidad, ObjetoImpuesto, ClaveProdServ,
+        ProductBuy, ProductSale, UseLot, UseSerialNumber, CreatedBy, CreatedOn, UserID)
+    VALUES ('HUMO-PROD-SERIE', 'Producto de humo con series', 1, 2,
+        'PZA', 'H87', '02', '43231500', 1, 1, 0, 1, 0, GETDATE(), 0);
+    DECLARE @id int = CONVERT(int, SCOPE_IDENTITY());
+    INSERT INTO orgProductPicture (ProductID) VALUES (@id);
+    INSERT INTO orgProductUnitConversion (ProductID) VALUES (@id);
+END;
+COMMIT;
+'@
+    $prepararSalida = sqlcmd -S $Server -E -d $Database -b -Q $preparar -W 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '  [ERROR] No se pudo preparar el producto de prueba.' -ForegroundColor Red
+        $prepararSalida | ForEach-Object { Write-Host "    $_" }
+        exit 1
+    }
+}
+
+# Producto de prueba: HUMO-PROD-SERIE (UseSerialNumber=1).
 $prodId = Escalar "SELECT ProductID FROM orgProduct WHERE ProductKey='HUMO-PROD-SERIE' AND UseSerialNumber=1"
 if ([string]::IsNullOrWhiteSpace($prodId)) { Write-Host "  [ERROR] No existe el producto de humo HUMO-PROD-SERIE (UseSerialNumber=1) en el sandbox." -ForegroundColor Red; exit 1 }
 
@@ -57,7 +84,7 @@ if ([string]::IsNullOrWhiteSpace($prodId)) { Write-Host "  [ERROR] No existe el 
 # automatico) en vez de literales -- el Runner headless no los resuelve, se sustituyen a mano
 # (productoID=$prodId/cantidad=3 son los que este caso necesita variar; el resto usa los MISMOS
 # defaults que antes traia el archivo: proveedorBE=2, almacen=1, precio=80, condicionPago=4).
-$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
+$codigoOC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_ORDEN_COMPRA_SQL_PURO.sql") -Raw
 $codigoOC = $codigoOC -replace '\{DATOS:orgBusinessEntity\.BusinessEntityID[^}]*\}', '2'
 $codigoOC = $codigoOC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
 $codigoOC = $codigoOC -replace '\{DATOS:orgProduct\.ProductID[^}]*\}', "$prodId"
@@ -73,7 +100,7 @@ $ocItemId = Escalar "SELECT DocumentItemID FROM docDocumentItem WHERE DocumentID
 
 # 2) Recepcion de Compra (SQL puro) derivada de esa OC, SIN @seriesCSV -- deja el kardex
 #    pendiente de serie a proposito (el caso que esta plantilla nueva resuelve).
-$codigoRC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
+$codigoRC = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_RECEPCION_COMPRA_SQL_PURO.sql") -Raw
 $codigoRC = $codigoRC -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$ocId"
 $codigoRC = $codigoRC -replace '\{DATOS:docDocumentItem\.DocumentItemID[^}]*\}', "$ocItemId"
 $codigoRC = $codigoRC -replace '\{DATOS:orgDepot\.DepotID[^}]*\}', '1'
@@ -92,7 +119,7 @@ $pendientesAntes = Escalar "SELECT COUNT(*) FROM orgProductKardex K INNER JOIN o
 if ($pendientesAntes -ne "1") { Write-Host "  [ERROR] Se esperaba 1 renglon de kardex pendiente de serie en la Recepcion $rcId, hay $pendientesAntes." -ForegroundColor Red; exit 1 }
 
 # 3) Correr la plantilla nueva -- primera vez: debe generar 3 series.
-$codigoGS = Get-Content (Join-Path $PSScriptRoot "..\..\..\docsrchivo\plantillas_2.93.0\PLANTILLA_GENERAR_SERIES_AUTO_SQL.sql") -Raw
+$codigoGS = Get-Content (Join-Path $PSScriptRoot "..\..\..\docs\archivo\plantillas_2.93.0\PLANTILLA_GENERAR_SERIES_AUTO_SQL.sql") -Raw
 $codigoGS = $codigoGS -replace '\{DATOS:docDocument\.DocumentID[^}]*\}', "$rcId"
 $codigoGS = "-- job: safe-offline`n" + $codigoGS
 if (-not (Upsert-Boton "HUMO20_GENSERIES" "Humo 20 - generar series auto" $codigoGS)) { exit 1 }

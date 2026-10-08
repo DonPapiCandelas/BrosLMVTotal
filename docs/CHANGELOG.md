@@ -8,6 +8,43 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.1.4] — 2026-10-08 — Consola gris clara y ayudas de programacion
+
+### Cambiado
+- Contexto y SDK visibles al iniciar; se conservan el interruptor y la restauracion al salir de Zen.
+- Editor, biblioteca, resultados y referencias en grises claros suaves. Sintaxis de alto contraste, seleccion azul suave y linea activa discreta; sin fondo blanco intenso ni editor oscuro.
+- Barra de acciones compacta y contexto de altura adaptable para conservar referencias legibles en ventanas pequenas.
+
+### Agregado
+- Completado de `ctx.` y `ctx.erp.` desde el catalogo del lenguaje activo, al escribir punto o con Ctrl+Espacio; filtrado por prefijo, sin sugerencias dentro de comentarios/cadenas. No es analisis semantico de variables.
+- Sangria de cuatro espacios, continuidad de sangria al pulsar Enter y apertura de bloques C#/Python; resaltado de parejas de parentesis, corchetes y llaves.
+- Referencias del SDK sincronizadas con C#/Python/SQL y filtro por nombre, descripcion o categoria.
+- Busqueda con mayusculas opcionales y palabras completas; coincidencias actualizadas al editar y cambiar de pestana.
+- Ctrl+S para guardar, Ctrl+Shift+S para guardar como y Ctrl+N para otro script.
+
+### Corregido
+- La configuracion inicial ya no sobrescribe las palabras clave de Python/SQL con las de C#.
+- Los recursos graficos de las pestanas de salida se liberan tras cada repintado.
+- Prueba aislada ampliada para comprobar ayudas de programacion y layout con inspector visible. Sin cambios de motor, API publica, permisos ni bases.
+
+## [3.1.3] — 2026-10-07 — Consola clara con editor oscuro (requiere instalar)
+
+### Cambiado
+- Consola rediseñada a partir del recorrido del sitio: biblioteca clara, selector visible C#/Python/SQL, editor Scintilla oscuro con acento amarillo y salida debajo. Contexto, referencias y tokens se muestran con **Contexto y SDK**; no se eliminan.
+- Controles de fuente, ajuste de línea, búsqueda y Zen junto al editor. Importar paquete pasa a **Más opciones**. Se conservan los scripts, el motor de ejecución, el historial y los controles de acceso.
+
+### Corregido
+- Cambiar de pestaña sincroniza el lenguaje, el resaltado y el ajuste de línea. Crear una pestaña oculta el editor anterior.
+- El indicador de guardado ya no altera el estado de edición; borrar todo también marca cambios, y guardar los limpia tras persistir correctamente.
+- Al salir de Zen se restaura la visibilidad elegida del contexto.
+
+### Verificación
+- Prueba de layout aislada en `build/consola/verificar_diseno.ps1`: copia temporal sin SQL ni conexión a Comercial; comprueba cambios de lenguaje, pestañas, estado y dimensiones, y produce imágenes de la ventana nativa.
+- Se repararon rutas con un carácter de control en once pruebas heredadas; se recompiló el Runner local antes de repetir la batería. El resultado completo y el estado del candidato se registran en `ESTADO.md`.
+- `build/generar_instalador.ps1 -MantenerComercialAbierto` permite preparar el paquete sin cerrar Comercial ni instalarlo; sin ese parámetro se conserva el comportamiento anterior.
+- Para completar la aplicación local se igualan las entradas de `Title` en ocho referencias de prueba (NULL explícito, conservando la comparación estricta del campo) y el caso 20 prepara de forma idempotente su producto con series solo en el laboratorio autorizado. No se cambian plantillas históricas ni código de ejecución por estos ajustes.
+- Actualización local de solo Consola con `build/consola/actualizar_local.ps1`: exige 46 pruebas en verde, respaldo y registro COM de 32 bits; no cierra Comercial a la fuerza ni provisiona empresas.
+
 ## [3.1.2] — 2026-10-07 — El instalador ya no se queda en «Instalando» (requiere instalar)
 
 ### Corregido
