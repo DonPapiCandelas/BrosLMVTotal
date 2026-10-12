@@ -19,6 +19,7 @@
       </StackPanel>
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
         <Button Content="Archivar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnArchivar_Click" ToolTip="Oculta o muestra el CFDI seleccionado del historial diario"/>
+        <Button Content="Crear documento en Comercial" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnCrearDocumento_Click" ToolTip="Prepara los CFDI recibidos marcados para convertirlos en documentos de Comercial"/>
         <Button Content="Descargar XML" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnDescargarXml_Click" ToolTip="Copia los XML seleccionados a una carpeta a tu elección"/>
         <Button Content="Actualizar" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnActualizar_Click"/>
         <Button Content="📊 Exportar a Excel" Style="{StaticResource BotonExito}" Padding="16,9" Click="BtnExportarExcel_Click" ToolTip="Genera un libro .xlsx con formato ejecutivo, autofiltro y totales automáticos"/>

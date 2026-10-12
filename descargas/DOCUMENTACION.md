@@ -9,6 +9,7 @@
 - **Agregado**: la aplicación acepta `--rfc <RFC>`. Si ya hay una copia corriendo (también escondida en la bandeja), la nueva **no abre otra ni muestra el aviso «ya está corriendo»**: le pide a la primera que se muestre y abra esa empresa, y se cierra. Se avisan por un evento con nombre (`Global\BrosLMV.DescargasUI.Mostrar`) y un archivo pequeño en `%ProgramData%\BrosLMV\descargas_abrir.txt`.
 - **Corregido**: el candado de instancia única fallaba si la segunda copia no podía abrir el mutex con los derechos de `Create` (`UnauthorizedAccessException`), y se creía la primera. Ahora lo abre solo con `Synchronize` para confirmar que existe.
 - **Para qué**: la plantilla de BrosLMV `ABRIR_DESCARGAS` pone un botón en Comercial que abre Descargas con el RFC de la empresa activa.
+- **Agregado**: botón **Crear documento en Comercial** en la lista de CFDI (pestaña Recibidos). Consulta en Comercial (`docDocumentCFDiSAT`, por UUID) cuáles de los marcados ya están cargados y sin documento, y deja `%ProgramData%\BrosLMV\crear_doc_pedido.json` (RFC, fecha y `DocSATID`). La plantilla `CREAR_DOC_DESDE_XML`, si no hay selección en Comercial, toma ese pedido (vale 24 h y se consume).
 - Sin cambio de esquema SQL.
 
 ### Sin publicar — 2026-10-02 — Metadatos al estilo SmartXML (hipótesis por medir) y renovación del token

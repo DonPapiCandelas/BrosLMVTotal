@@ -65,6 +65,10 @@ Los «otros» se ofrecen porque `XMLRecibido = 1` indica que Comercial puede gen
 comportamiento exacto aún no está validado. Hoy solo se convierten CFDI de Ingreso; los de Egreso y Pago
 siguen bloqueados hasta validar su destino.
 
+## 1b. Desde BrosLMV Descargas
+
+Además de seleccionar XML en la lista de Comercial, puedes empezar en **BrosLMV Descargas**: en *Recibidos* marca los CFDI y pulsa **Crear documento en Comercial**. Descargas revisa en Comercial cuáles ya están cargados y no tienen documento, y deja un pedido. Después, en Comercial, pulsa este botón **sin seleccionar nada**: se abre con esos XML. El pedido vale un día y se usa una sola vez; si seleccionas XML en la lista, manda tu selección.
+
 ## 2. Pantalla (pestañas)
 
 1. **Documentos** — una fila por CFDI: destino (Compra/Gasto), almacén, plazo, estado y avisos; filtros,

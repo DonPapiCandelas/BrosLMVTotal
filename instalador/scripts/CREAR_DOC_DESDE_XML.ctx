@@ -20,6 +20,27 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
 var ids = ctx.GetSelectedIds();
+// Sin seleccion en Comercial: toma el pedido que dejo BrosLMV Descargas («Crear documento en Comercial»).
+// Solo vale un dia y se consume al leerlo; los IDs de otra empresa se descartan mas abajo al consultar.
+if (ids == null || ids.Count == 0)
+{
+    try
+    {
+        string pedidoRuta = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BrosLMV", "crear_doc_pedido.json");
+        if (System.IO.File.Exists(pedidoRuta))
+        {
+            var pedido = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(System.IO.File.ReadAllText(pedidoRuta));
+            DateTime fechaPedido; DateTime.TryParse(Convert.ToString(pedido["fecha"]), out fechaPedido);
+            if (DateTime.Now - fechaPedido < TimeSpan.FromHours(24) && pedido["docSatIds"] is System.Collections.IEnumerable listaPedido)
+            {
+                var desdePedido = new List<long>();
+                foreach (var idPedido in listaPedido) desdePedido.Add(Convert.ToInt64(idPedido));
+                if (desdePedido.Count > 0) { ids = desdePedido; System.IO.File.Delete(pedidoRuta); }
+            }
+        }
+    }
+    catch { }
+}
 if (ids == null || ids.Count == 0)
 {
     ctx.Msg("Selecciona uno o más XML de la lista de Comercial antes de abrir el importador.", "Crear documentos desde XML");

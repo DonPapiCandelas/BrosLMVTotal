@@ -175,6 +175,76 @@ namespace BrosLMV.DescargasUI
             new DescargarXmlWindow(seleccionados) { Owner = this }.ShowDialog();
         }
 
+        // Deja un pedido con los XML ya cargados en Comercial; el boton «Crear documentos desde XML»
+        // de Comercial lo toma si no hay nada seleccionado en su lista (Comercial no se puede
+        // manejar desde fuera, por eso el relevo es un archivo).
+        private void BtnCrearDocumento_Click(object sender, RoutedEventArgs e)
+        {
+            if (TabRecibidos.IsChecked != true)
+            {
+                MessageBox.Show(this, "Por ahora solo los CFDI recibidos (compras y gastos) se convierten en documentos. Cambia a la pestaña «Recibidos».", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var marcados = (GridCfdi.ItemsSource as IEnumerable<CfdiRow>)?.Where(x => x.Seleccionado).ToList();
+            if (marcados == null || marcados.Count == 0)
+            {
+                MessageBox.Show(this, "Marca uno o más CFDI recibidos para crear sus documentos.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(_empresa.ComercialConexionSql))
+            {
+                MessageBox.Show(this, "Esta empresa no tiene conexión a Comercial. Configúrala en «Editar empresa → Carga en Comercial» para poder crear documentos desde aquí.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var listos = new List<long>(); var yaConDoc = 0; var sinCargar = new List<string>();
+            try
+            {
+                using (var comercial = new SqlConnection(DpapiHelper.DescifrarConexionSql(_empresa.ComercialConexionSql)))
+                {
+                    comercial.Open();
+                    foreach (var c in marcados)
+                    {
+                        using (var cmd = new SqlCommand("SELECT TOP 1 DocSATID, ISNULL(DocumentID,0) FROM docDocumentCFDiSAT WHERE DeletedOn IS NULL AND UUID = @u AND Status <> 'Cancelado'", comercial))
+                        {
+                            cmd.Parameters.AddWithValue("@u", (c.UUID ?? "").ToUpperInvariant());
+                            using (var r = cmd.ExecuteReader())
+                            {
+                                if (!r.Read()) { sinCargar.Add(c.UUID); continue; }
+                                if (Convert.ToInt64(r[1]) > 0) { yaConDoc++; continue; }
+                                listos.Add(Convert.ToInt64(r[0]));
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "No se pudo consultar Comercial:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            string resumen = $"Marcados: {marcados.Count}\n• Listos para crear documento: {listos.Count}\n• Ya tienen documento: {yaConDoc}\n• Aún no cargados en Comercial: {sinCargar.Count}";
+            if (listos.Count == 0)
+            {
+                MessageBox.Show(this, resumen + (sinCargar.Count > 0 ? "\n\nLos que faltan se cargan con la sincronización a Comercial (Configuración de la empresa)." : ""), "Crear documento", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            try
+            {
+                var carpeta = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BrosLMV");
+                Directory.CreateDirectory(carpeta);
+                var ids = string.Join(",", listos);
+                File.WriteAllText(Path.Combine(carpeta, "crear_doc_pedido.json"),
+                    "{\"rfc\":\"" + _empresa.RFC + "\",\"fecha\":\"" + DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss") + "\",\"docSatIds\":[" + ids + "]}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "No se pudo dejar el pedido:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            MessageBox.Show(this, resumen + "\n\nSiguiente paso: en Comercial pulsa el botón «Crear documentos desde XML» (sin seleccionar nada en su lista). Se abrirá con estos " + listos.Count + " XML.", "Pedido listo", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
         private void BtnExportarExcel_Click(object sender, RoutedEventArgs e)
         {
             if (_cfdis.Count == 0)
