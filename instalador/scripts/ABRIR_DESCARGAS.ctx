@@ -1,0 +1,44 @@
+// lang: csharp
+// AppKey recomendado: ABRIR_DESCARGAS
+// Plantilla: Abrir BrosLMV Descargas
+// Categoria: Documentos
+// Documentacion: ABRIR_DESCARGAS.html
+// job: safe-offline
+// Abre BrosLMV.Descargas (el programa que baja tus CFDI del SAT) desde un botón de Comercial, ya en la empresa que tienes abierta.
+
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Windows.Forms;
+
+const string exe = @"C:\BrosLMV\Descargas\ui\BrosLMV.DescargasUI.exe";
+
+if (!File.Exists(exe))
+{
+    MessageBox.Show(
+        "BrosLMV Descargas no está instalado en este equipo.\n\n" +
+        "Descarga su instalador desde la página de BrosLMV, instálalo y vuelve a pulsar este botón.\n\n" +
+        "(Se esperaba en: " + exe + ")",
+        "BrosLMV Descargas", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    return;
+}
+
+// El RFC de la empresa abierta permite que Descargas muestre directamente su tablero.
+string rfc = "";
+try
+{
+    int empresa = ctx.erp.OwnedBusinessEntityId;
+    var v = ctx.Scalar("SELECT TOP 1 OfficialNumber FROM orgBusinessEntityMainInfo WHERE BusinessEntityID = " + empresa);
+    rfc = v == null || v is DBNull ? "" : Convert.ToString(v).Trim().ToUpperInvariant();
+    foreach (char c in rfc) if (!char.IsLetterOrDigit(c) && c != '&') { rfc = ""; break; }
+}
+catch { rfc = ""; }
+
+// Si ya estaba abierto (o en la bandeja), esta llamada solo lo trae al frente.
+Process.Start(new ProcessStartInfo
+{
+    FileName = exe,
+    Arguments = rfc.Length > 0 ? "--rfc " + rfc : "",
+    UseShellExecute = true,
+    WorkingDirectory = Path.GetDirectoryName(exe)
+});

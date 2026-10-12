@@ -180,6 +180,20 @@ namespace BrosLMV.DescargasUI
             _iconoBandeja.ContextMenuStrip = menu;
         }
 
+        // Llamado por la segunda instancia (boton de Comercial): trae la ventana al frente y, si
+        // viene un RFC que esta dado de alta, abre directamente esa empresa.
+        public void MostrarYAbrir(string rfc)
+        {
+            RestaurarDesdeBandeja();
+            Topmost = true; Topmost = false;
+            if (string.IsNullOrWhiteSpace(rfc) || _conn == null) return;
+            if (GridEmpresas.ItemsSource is System.Collections.Generic.IEnumerable<EmpresaRow> filas)
+            {
+                var e = filas.FirstOrDefault(x => string.Equals(x.RFC, rfc, StringComparison.OrdinalIgnoreCase));
+                if (e != null) AbrirDetalle(e);
+            }
+        }
+
         private void RestaurarDesdeBandeja()
         {
             Show();
@@ -234,6 +248,7 @@ namespace BrosLMV.DescargasUI
             // el tablero de trabajo, no un catálogo con una fila que obliga a doble clic.
             if (GridEmpresas.ItemsSource is System.Collections.Generic.IEnumerable<EmpresaRow> empresas && empresas.Count() == 1)
                 AbrirDetalle(empresas.Single());
+            if (!string.IsNullOrEmpty(App.RfcInicial)) MostrarYAbrir(App.RfcInicial);
         }
 
         // ---- Panel de empresas ----

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Abrir BrosLMV Descargas</title>
+<style>
+:root { --bg:#ffffff; --tx:#1e293b; --mut:#64748b; --lin:#e2e8f0; --cod:#f1f5f9; --ac:#1d4ed8; --q:#f8fafc; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0f172a; --tx:#e2e8f0; --mut:#94a3b8; --lin:#334155; --cod:#1e293b; --ac:#60a5fa; --q:#111c33; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--tx); font:14px/1.6 system-ui,'Segoe UI',Roboto,Arial,sans-serif; }
+main { max-width:960px; margin:0 auto; padding:24px 28px 60px; }
+h1 { font-size:24px; margin:0 0 8px; } h2 { font-size:18px; margin:32px 0 8px; padding-top:8px; border-top:1px solid var(--lin); }
+h3 { font-size:15px; margin:22px 0 6px; } h4 { font-size:14px; margin:16px 0 4px; }
+p, li { max-width:78ch; } a { color:var(--ac); }
+code { background:var(--cod); padding:1px 5px; border-radius:4px; font:12.5px Consolas,monospace; }
+pre { background:var(--cod); padding:12px 14px; border-radius:8px; overflow:auto; } pre code { background:none; padding:0; }
+blockquote { margin:12px 0; padding:8px 14px; border-left:3px solid var(--ac); background:var(--q); color:var(--mut); }
+.tabla { overflow-x:auto; margin:12px 0; } table { border-collapse:collapse; width:100%; font-size:13px; }
+th, td { border:1px solid var(--lin); padding:6px 10px; text-align:left; vertical-align:top; } th { background:var(--cod); }
+hr { border:0; border-top:1px solid var(--lin); margin:24px 0; }
+</style></head><body><main>
+<h1>Abrir BrosLMV Descargas</h1>
+<p>Plantilla de fábrica <strong>Plantillas → Documentos → Abrir BrosLMV Descargas</strong> (<code>ABRIR_DESCARGAS.ctx</code>). Pone en la cinta de Comercial un botón que abre <strong>BrosLMV Descargas</strong>, el programa que baja tus CFDI del SAT, para que no sientas que es una herramienta aparte: la abres desde donde ya trabajas.</p>
+<p><strong>No modifica nada</strong> en Comercial: solo abre el programa.</p>
+<h2>Cómo usarla</h2>
+<ol><li>Instala <strong>BrosLMV Descargas</strong> (instalador aparte, gratis).</li><li>En la <strong>Consola</strong> abre la plantilla y guárdala como botón (nombre sugerido <code>ABRIR_DESCARGAS</code>); el asistente *Crear botón…* la pone en el ribbon.</li><li>Pulsa el botón desde cualquier empresa.</li></ol>
+<h2>Qué hace al pulsarlo</h2>
+<ul><li>Si Descargas <strong>no está abierto</strong>, lo inicia.</li><li>Si ya estaba abierto, o escondido junto al reloj, <strong>lo trae al frente</strong> en vez de abrir otra copia.</li><li>Lee el <strong>RFC de la empresa que tienes abierta</strong> en Comercial y se lo pasa a Descargas: si esa empresa ya está dada de alta allí, muestra directamente su tablero.</li><li>Si Descargas no está instalado, te lo dice y explica dónde conseguirlo.</li></ul>
+<h2>Requisitos</h2>
+<ul><li>BrosLMV Descargas con la versión que incluye esta función (2.5.0 o posterior). Con una versión anterior el botón también abre el programa, pero no cambia de empresa ni trae al frente la ventana ya abierta.</li><li>Se espera en <code>C:\BrosLMV\Descargas\ui\</code>, que es donde lo deja su instalador.</li></ul>
+<h2>Para adaptarla</h2>
+<p>El script es corto. Puedes cambiar la ruta del programa, o agregar otros argumentos. Descargas entiende <code>--rfc &lt;RFC&gt;</code> para abrir una empresa concreta.</p>
+</main></body></html>

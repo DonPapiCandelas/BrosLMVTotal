@@ -38,11 +38,21 @@ namespace BrosLMV.DescargasUI
     public partial class App : Application
     {
         private const string NombreMutex = @"Global\BrosLMV.DescargasUI.InstanciaUnica";
+        private const string NombreEventoMostrar = @"Global\BrosLMV.DescargasUI.Mostrar";
         private Mutex _mutexInstanciaUnica;
+        private EventWaitHandle _eventoMostrar;
+
+        // Lo usa el boton de Comercial: pide traer al frente esta ventana y, opcionalmente, abrir la
+        // empresa con ese RFC. Se pasa por un archivo pequeno porque el evento no lleva datos.
+        public static string RfcInicial { get; private set; } = "";
+        private static string ArchivoPedido => System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BrosLMV", "descargas_abrir.txt");
 
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            for (int i = 0; i < e.Args.Length - 1; i++)
+                if (string.Equals(e.Args[i], "--rfc", StringComparison.OrdinalIgnoreCase)) RfcInicial = (e.Args[i + 1] ?? "").Trim().ToUpperInvariant();
 
             // Una excepcion en cualquier manejador de la interfaz (p. ej. doble clic en una celda de
             // una tabla de reportes, 2026-10-01) cerraba TODA la aplicacion. Ahora se anota en la
@@ -65,17 +75,61 @@ namespace BrosLMV.DescargasUI
             }
             catch
             {
-                // Si hasta crear el Mutex con ACL abierto falla, no hay forma confiable de saber
-                // si ya hay otra instancia -- se deja continuar en vez de bloquear el arranque.
+                // Create pide mas derechos de los que concede la ACL abierta (probado 2026-10-12:
+                // UnauthorizedAccessException en la segunda copia, que se creia la primera). Si el
+                // mutex ya existe basta abrirlo solo para sincronizar; eso prueba que hay otra viva.
                 esNueva = true;
+                try
+                {
+                    using (MutexAcl.OpenExisting(NombreMutex, MutexRights.Synchronize)) { esNueva = false; }
+                }
+                catch { }
             }
 
             if (!esNueva)
             {
-                MessageBox.Show("BrosLMV Descargas ya está corriendo — revisa la bandeja del sistema (junto al reloj).",
-                    "BrosLMV Descargas", MessageBoxButton.OK, MessageBoxImage.Information);
+                // Ya hay una abierta (a veces solo en la bandeja): se le pide mostrarse en vez de avisar.
+                bool avisada = false;
+                try
+                {
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(ArchivoPedido));
+                    System.IO.File.WriteAllText(ArchivoPedido, RfcInicial);
+                    using (var ev = EventWaitHandleAcl.OpenExisting(NombreEventoMostrar, EventWaitHandleRights.Modify))
+                    { ev.Set(); avisada = true; }
+                }
+                catch { }
+                if (!avisada)
+                    MessageBox.Show("BrosLMV Descargas ya está corriendo — revisa la bandeja del sistema (junto al reloj).",
+                        "BrosLMV Descargas", MessageBoxButton.OK, MessageBoxImage.Information);
                 Shutdown();
+                Environment.Exit(0); // Shutdown() solo no basta: la ventana de StartupUri se crea igual
             }
+            EscucharPedidosDeMostrar();
+        }
+
+        private void EscucharPedidosDeMostrar()
+        {
+            try
+            {
+                var seguridad = new EventWaitHandleSecurity();
+                seguridad.AddAccessRule(new EventWaitHandleAccessRule(
+                    new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                    EventWaitHandleRights.Synchronize | EventWaitHandleRights.Modify, AccessControlType.Allow));
+                bool creado;
+                _eventoMostrar = EventWaitHandleAcl.Create(false, EventResetMode.AutoReset, NombreEventoMostrar, out creado, seguridad);
+                var hilo = new Thread(() =>
+                {
+                    while (true)
+                    {
+                        try { _eventoMostrar.WaitOne(); } catch { return; }
+                        string rfc = "";
+                        try { rfc = System.IO.File.ReadAllText(ArchivoPedido).Trim().ToUpperInvariant(); } catch { }
+                        Dispatcher.BeginInvoke(new Action(() => (MainWindow as MainWindow)?.MostrarYAbrir(rfc)));
+                    }
+                }) { IsBackground = true, Name = "Descargas-Mostrar" };
+                hilo.Start();
+            }
+            catch { }
         }
 
         protected override void OnExit(ExitEventArgs e)
