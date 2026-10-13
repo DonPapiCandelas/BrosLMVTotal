@@ -8,6 +8,16 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.2.0] — 2026-10-12 — Descargas se abre desde Comercial
+
+### Agregado
+- Plantilla **Abrir BrosLMV Descargas** (`ABRIR_DESCARGAS`, categoría Documentos): un botón de Comercial que abre BrosLMV.Descargas con el RFC de la empresa activa, o lo trae al frente si ya estaba abierto o escondido en la bandeja. Guía en `docs/ABRIR_DESCARGAS.md`. Requiere BrosLMV.Descargas 2.5.0 para unificar copias.
+- **Crear documentos desde XML** puede arrancar desde BrosLMV.Descargas: si no hay XML seleccionados en la lista de Comercial, toma el pedido que Descargas deja con «Crear documento en Comercial» (vale 24 h y se consume). Con selección manual, manda la selección.
+
+### Notas
+- Sin cambios de esquema SQL. La plantilla nueva se instala con las demás de fábrica.
+- BrosLMV.Descargas 2.5.0 se publica por separado (ver `descargas/DOCUMENTACION.md`).
+
 ## [3.1.4] — 2026-10-08 — Consola gris clara y ayudas de programacion
 
 ### Cambiado

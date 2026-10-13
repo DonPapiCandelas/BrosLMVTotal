@@ -69,7 +69,7 @@
         <StackPanel DockPanel.Dock="Bottom" Margin="24,18">
           <Border Height="1" Background="#22456A" Margin="0,0,0,14"/>
           <TextBlock x:Name="LblConexion" Text="Sin conexión" Foreground="#9FB3C8" FontSize="11.5" TextWrapping="Wrap"/>
-          <TextBlock Text="BrosLMV Descargas · v2.4.0" Foreground="#6E8198" FontSize="11.5" Margin="0,8,0,0"/>
+          <TextBlock Text="BrosLMV Descargas · v2.5.0" Foreground="#6E8198" FontSize="11.5" Margin="0,8,0,0"/>
         </StackPanel>
       </DockPanel>
     </Border>

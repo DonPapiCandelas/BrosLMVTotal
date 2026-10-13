@@ -4,7 +4,7 @@
 
 ## Historial de versiones del instalador
 
-### Sin publicar — 2026-10-12 — Se abre desde Comercial
+### 2.5.0 — 2026-10-12 — Se abre desde Comercial, cobertura por año y carga manual
 
 - **Agregado**: la aplicación acepta `--rfc <RFC>`. Si ya hay una copia corriendo (también escondida en la bandeja), la nueva **no abre otra ni muestra el aviso «ya está corriendo»**: le pide a la primera que se muestre y abra esa empresa, y se cierra. Se avisan por un evento con nombre (`Global\BrosLMV.DescargasUI.Mostrar`) y un archivo pequeño en `%ProgramData%\BrosLMV\descargas_abrir.txt`.
 - **Corregido**: el candado de instancia única fallaba si la segunda copia no podía abrir el mutex con los derechos de `Create` (`UnauthorizedAccessException`), y se creía la primera. Ahora lo abre solo con `Synchronize` para confirmar que existe.
