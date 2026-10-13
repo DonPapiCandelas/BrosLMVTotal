@@ -1,0 +1,66 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <!-- Menú lateral: elementos de navegación (RadioButton con GroupName) y rótulos de sección. -->
+
+  <Style x:Key="NavSeccion" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource PincelMarcaTextoTenue}"/>
+    <Setter Property="FontSize" Value="10.5"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Margin" Value="24,14,0,5"/>
+  </Style>
+
+  <Style x:Key="NavItem" TargetType="RadioButton">
+    <Setter Property="Foreground" Value="{StaticResource PincelMarcaTexto}"/>
+    <Setter Property="FontSize" Value="13.5"/>
+    <Setter Property="FontWeight" Value="Normal"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Height" Value="34"/>
+    <Setter Property="Margin" Value="10,1"/>
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Border x:Name="Fondo" CornerRadius="8" Background="Transparent">
+            <Grid>
+              <Border x:Name="Barra" Width="3" Height="18" CornerRadius="2" Background="{StaticResource PincelAcento}" HorizontalAlignment="Left" Margin="0,0,0,0" Visibility="Collapsed"/>
+              <Grid Margin="14,0,12,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="30"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="Ico" Grid.Column="0" FontFamily="{StaticResource FuenteIconos}" FontSize="16" VerticalAlignment="Center"
+                           Foreground="{StaticResource PincelMarcaTextoTenue}" Text="{Binding (ui:Ui.Glifo), RelativeSource={RelativeSource TemplatedParent}}"/>
+                <ContentPresenter Grid.Column="1" VerticalAlignment="Center"/>
+                <Border x:Name="Insignia" Grid.Column="2" CornerRadius="9" MinWidth="20" Height="18" Padding="6,0" VerticalAlignment="Center"
+                        Background="{StaticResource PincelMarca600}">
+                  <TextBlock x:Name="TxtInsignia" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Text="{Binding (ui:Ui.Insignia), RelativeSource={RelativeSource TemplatedParent}}"/>
+                </Border>
+              </Grid>
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="ui:Ui.Insignia" Value="{x:Null}"><Setter TargetName="Insignia" Property="Visibility" Value="Collapsed"/></Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Fondo" Property="Background" Value="{StaticResource PincelMarca700}"/>
+              <Setter Property="Foreground" Value="White"/>
+              <Setter TargetName="Ico" Property="Foreground" Value="White"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Fondo" Property="Background" Value="{StaticResource PincelMarca700}"/>
+              <Setter TargetName="Barra" Property="Visibility" Value="Visible"/>
+              <Setter Property="Foreground" Value="White"/>
+              <Setter Property="FontWeight" Value="SemiBold"/>
+              <Setter TargetName="Ico" Property="Foreground" Value="White"/>
+            </Trigger>
+            <Trigger Property="ui:Ui.NivelInsignia" Value="critico"><Setter TargetName="Insignia" Property="Background" Value="{StaticResource PincelCritico}"/></Trigger>
+            <Trigger Property="ui:Ui.NivelInsignia" Value="aviso"><Setter TargetName="Insignia" Property="Background" Value="{StaticResource PincelAviso}"/></Trigger>
+            <Trigger Property="ui:Ui.NivelInsignia" Value="ok"><Setter TargetName="Insignia" Property="Background" Value="{StaticResource PincelOk}"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+</ResourceDictionary>

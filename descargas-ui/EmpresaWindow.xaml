@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Nueva empresa" Height="680" Width="540" MinHeight="440" MinWidth="480"
         WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" SizeToContent="Manual"
-        Background="#F4F6F9">
+        Background="{StaticResource PincelLienzo}">
   <!-- Titulo fijo arriba, botones fijos abajo, contenido con scroll en medio: pedido explicito
        del usuario (2026-08-14, "cuando le das editar no tenia ningun boton"). Con los 3 campos
        nuevos el dialogo crecio y en pantallas mas chicas los botones de Guardar/Cancelar se

@@ -1,0 +1,112 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Tablas. Estilos implícitos: aplican a todas las rejillas de la aplicación.
+       Filas con separador fino, encabezado discreto, selección azul suave con texto oscuro (no blanco). -->
+
+  <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="{StaticResource AcentoSuave}"/>
+  <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="{StaticResource Texto}"/>
+  <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#EDF2FA"/>
+  <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{StaticResource Texto}"/>
+  <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="{StaticResource Texto}"/>
+
+  <Style TargetType="DataGrid">
+    <Setter Property="AutoGenerateColumns" Value="False"/>
+    <Setter Property="CanUserAddRows" Value="False"/>
+    <Setter Property="CanUserReorderColumns" Value="False"/>
+    <Setter Property="CanUserResizeRows" Value="False"/>
+    <Setter Property="HeadersVisibility" Value="Column"/>
+    <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+    <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource PincelBorde}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Background" Value="{StaticResource PincelSuperficie}"/>
+    <Setter Property="RowBackground" Value="{StaticResource PincelSuperficie}"/>
+    <Setter Property="RowHeight" Value="40"/>
+    <Setter Property="ColumnHeaderHeight" Value="38"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="RowHeaderWidth" Value="0"/>
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+    <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
+    <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+    <Setter Property="Typography.NumeralAlignment" Value="Tabular"/>
+  </Style>
+
+  <Style TargetType="DataGridColumnHeader">
+    <Setter Property="Background" Value="{StaticResource PincelSuperficie2}"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto2}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="FontSize" Value="11.5"/>
+    <Setter Property="Padding" Value="12,0"/>
+    <Setter Property="BorderBrush" Value="{StaticResource PincelBorde}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+
+  <Style TargetType="DataGridRow">
+    <Setter Property="MinHeight" Value="40"/>
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{StaticResource PincelSuperficieHover}"/></Trigger>
+    </Style.Triggers>
+  </Style>
+
+  <Style TargetType="DataGridCell">
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="12,0"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto}"/>
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="DataGridCell">
+          <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                  Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+            <ContentPresenter VerticalAlignment="Center" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+    <Style.Triggers>
+      <Trigger Property="IsSelected" Value="True">
+        <Setter Property="Background" Value="{StaticResource PincelAcentoSuave}"/>
+        <Setter Property="Foreground" Value="{StaticResource PincelTexto}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+
+  <!-- Los TextBlock de las celdas se centran verticalmente por defecto. -->
+  <Style x:Key="CeldaTexto" TargetType="TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+  </Style>
+  <Style x:Key="CeldaNumero" TargetType="TextBlock" BasedOn="{StaticResource CeldaTexto}">
+    <Setter Property="HorizontalAlignment" Value="Right"/>
+    <Setter Property="TextAlignment" Value="Right"/>
+  </Style>
+  <Style x:Key="CeldaCasilla" TargetType="CheckBox">
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+    <Setter Property="Margin" Value="0"/>
+  </Style>
+  <Style x:Key="CeldaAtenuada" TargetType="TextBlock" BasedOn="{StaticResource CeldaTexto}">
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto2}"/>
+  </Style>
+  <Style x:Key="CeldaAtenuadaMono" TargetType="TextBlock" BasedOn="{StaticResource CeldaAtenuada}">
+    <Setter Property="FontFamily" Value="{StaticResource FuenteMono}"/>
+    <Setter Property="FontSize" Value="12"/>
+  </Style>
+  <Style x:Key="CeldaError" TargetType="TextBlock" BasedOn="{StaticResource CeldaTexto}">
+    <Setter Property="Foreground" Value="{StaticResource PincelCritico}"/>
+  </Style>
+  <!-- Verde cuando ya se copió a Comercial (FechaSincronizadoComercial con valor), gris cuando no. -->
+  <Style x:Key="CeldaSincronizado" TargetType="TextBlock" BasedOn="{StaticResource CeldaTexto}">
+    <Setter Property="Foreground" Value="{StaticResource PincelOk}"/>
+    <Style.Triggers>
+      <DataTrigger Binding="{Binding FechaSincronizadoComercial}" Value="{x:Null}">
+        <Setter Property="Foreground" Value="{StaticResource PincelTexto3}"/>
+      </DataTrigger>
+    </Style.Triggers>
+  </Style>
+</ResourceDictionary>

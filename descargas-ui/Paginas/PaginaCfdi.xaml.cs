@@ -1,4 +1,4 @@
-// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+﻿// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
 // Copyright (C) 2026 Cristofer Candelas Garcia
 //
 // This program is free software: you can redistribute it and/or modify
@@ -27,23 +27,24 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Win32;
 using BrosLMV.Descargas.Datos;
 
-namespace BrosLMV.DescargasUI
+namespace BrosLMV.DescargasUI.Paginas
 {
     // Vista de consulta completa: separada del tablero para que el trabajo diario conserve foco
     // y el historial pueda verse, filtrarse y exportarse sin quedar reducido a unas pocas filas.
-    public partial class DescargasWindow : Window
+    public partial class PaginaCfdi : UserControl
     {
         private readonly SqlConnection _conn;
         private readonly EmpresaRow _empresa;
         private List<CfdiFila> _cfdis = new List<CfdiFila>();
 
-        public DescargasWindow(SqlConnection conn, EmpresaRow empresa)
+        private Window Ventana => Window.GetWindow(this);
+
+        public PaginaCfdi(Sesion sesion)
         {
             InitializeComponent();
-            _conn = conn;
-            _empresa = empresa;
-            LblSubtitulo.Text = empresa.Nombre + "  ·  " + empresa.RFC + "  ·  historial de comprobantes fiscales";
-            ChkOcultarNominas.IsChecked = empresa.OcultarNominas;
+            _conn = sesion.Conn;
+            _empresa = sesion.Empresa;
+            ChkOcultarNominas.IsChecked = _empresa.OcultarNominas;
             Loaded += (s, e) => Cargar();
         }
 
@@ -117,11 +118,12 @@ namespace BrosLMV.DescargasUI
             decimal sumTotal = _cfdis.Sum(c => c.Total ?? 0m);
             var culture = new CultureInfo("es-MX");
 
-            LblTotalesResumen.Text = $"{_cfdis.Count.ToString("N0", culture)} CFDI   |   " +
-                                    $"Subtotal: {sumSubtotal.ToString("C2", culture)}   |   " +
-                                    $"IVA: {sumIva.ToString("C2", culture)}   |   " +
-                                    $"Retenciones: {sumRet.ToString("C2", culture)}   |   " +
-                                    $"Total: {sumTotal.ToString("C2", culture)}";
+            LblTotCfdi.Text = _cfdis.Count.ToString("N0", culture);
+            LblTotSubtotal.Text = sumSubtotal.ToString("C2", culture);
+            LblTotIva.Text = sumIva.ToString("C2", culture);
+            LblTotRet.Text = sumRet.ToString("C2", culture);
+            LblTotTotal.Text = sumTotal.ToString("C2", culture);
+            Vacio.Visibility = _cfdis.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private static CfdiRow ARow(CfdiFila c, bool emitidos) => new CfdiRow
@@ -132,7 +134,7 @@ namespace BrosLMV.DescargasUI
             TipoComprobante = c.TipoComprobante,
             Serie = c.Serie,
             Folio = c.Folio,
-            FechaEmision = c.FechaEmision.ToString("yyyy-MM-dd HH:mm"),
+            FechaEmision = c.FechaEmision.ToString("dd/MM/yyyy"),
             Subtotal = c.Subtotal.HasValue ? c.Subtotal.Value.ToString("C2", new CultureInfo("es-MX")) : "-",
             Descuento = c.Descuento.HasValue ? c.Descuento.Value.ToString("C2", new CultureInfo("es-MX")) : "-",
             IVA = c.IVA.HasValue ? c.IVA.Value.ToString("C2", new CultureInfo("es-MX")) : "-",
@@ -150,14 +152,14 @@ namespace BrosLMV.DescargasUI
         private void AbrirDetalle()
         {
             if (GridCfdi.SelectedItem is CfdiRow fila)
-                new CfdiDetalleWindow(_conn, fila.CfdiID) { Owner = this }.ShowDialog();
+                new CfdiDetalleWindow(_conn, fila.CfdiID) { Owner = Ventana }.ShowDialog();
         }
 
         private void BtnArchivar_Click(object sender, RoutedEventArgs e)
         {
             if (!(GridCfdi.SelectedItem is CfdiRow fila))
             {
-                MessageBox.Show(this, "Selecciona un CFDI para archivarlo o mostrarlo de nuevo.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Ventana, "Selecciona un CFDI para archivarlo o mostrarlo de nuevo.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             BrosSatDb.ArchivarCfdi(_conn, fila.CfdiID, !fila.Archivado);
@@ -169,10 +171,10 @@ namespace BrosLMV.DescargasUI
             var seleccionados = (GridCfdi.ItemsSource as IEnumerable<CfdiRow>)?.Where(x => x.Seleccionado).ToList();
             if (seleccionados == null || seleccionados.Count == 0)
             {
-                MessageBox.Show(this, "Marca uno o más CFDI para copiar sus XML ya descargados.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Ventana, "Marca uno o más CFDI para copiar sus XML ya descargados.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            new DescargarXmlWindow(seleccionados) { Owner = this }.ShowDialog();
+            new DescargarXmlWindow(seleccionados) { Owner = Ventana }.ShowDialog();
         }
 
         // Deja un pedido con los XML ya cargados en Comercial; el boton «Crear documentos desde XML»
@@ -182,18 +184,18 @@ namespace BrosLMV.DescargasUI
         {
             if (TabRecibidos.IsChecked != true)
             {
-                MessageBox.Show(this, "Por ahora solo los CFDI recibidos (compras y gastos) se convierten en documentos. Cambia a la pestaña «Recibidos».", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Ventana, "Por ahora solo los CFDI recibidos (compras y gastos) se convierten en documentos. Cambia a la pestaña «Recibidos».", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             var marcados = (GridCfdi.ItemsSource as IEnumerable<CfdiRow>)?.Where(x => x.Seleccionado).ToList();
             if (marcados == null || marcados.Count == 0)
             {
-                MessageBox.Show(this, "Marca uno o más CFDI recibidos para crear sus documentos.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Ventana, "Marca uno o más CFDI recibidos para crear sus documentos.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             if (string.IsNullOrWhiteSpace(_empresa.ComercialConexionSql))
             {
-                MessageBox.Show(this, "Esta empresa no tiene conexión a Comercial. Configúrala en «Editar empresa → Carga en Comercial» para poder crear documentos desde aquí.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Ventana, "Esta empresa no tiene conexión a Comercial. Configúrala en «Editar empresa → Carga en Comercial» para poder crear documentos desde aquí.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             var listos = new List<long>(); var yaConDoc = 0; var sinCargar = new List<string>();
@@ -219,14 +221,14 @@ namespace BrosLMV.DescargasUI
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "No se pudo consultar Comercial:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(Ventana, "No se pudo consultar Comercial:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
             string resumen = $"Marcados: {marcados.Count}\n• Listos para crear documento: {listos.Count}\n• Ya tienen documento: {yaConDoc}\n• Aún no cargados en Comercial: {sinCargar.Count}";
             if (listos.Count == 0)
             {
-                MessageBox.Show(this, resumen + (sinCargar.Count > 0 ? "\n\nLos que faltan se cargan con la sincronización a Comercial (Configuración de la empresa)." : ""), "Crear documento", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Ventana, resumen + (sinCargar.Count > 0 ? "\n\nLos que faltan se cargan con la sincronización a Comercial (Configuración de la empresa)." : ""), "Crear documento", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             try
@@ -239,17 +241,17 @@ namespace BrosLMV.DescargasUI
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "No se pudo dejar el pedido:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(Ventana, "No se pudo dejar el pedido:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            MessageBox.Show(this, resumen + "\n\nSiguiente paso: en Comercial pulsa el botón «Crear documentos desde XML» (sin seleccionar nada en su lista). Se abrirá con estos " + listos.Count + " XML.", "Pedido listo", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(Ventana, resumen + "\n\nSiguiente paso: en Comercial pulsa el botón «Crear documentos desde XML» (sin seleccionar nada en su lista). Se abrirá con estos " + listos.Count + " XML.", "Pedido listo", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void BtnExportarExcel_Click(object sender, RoutedEventArgs e)
         {
             if (_cfdis.Count == 0)
             {
-                MessageBox.Show(this, "No hay CFDI para exportar con los filtros actuales.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Ventana, "No hay CFDI para exportar con los filtros actuales.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             bool emitidos = TabEmitidos.IsChecked == true;
@@ -258,11 +260,11 @@ namespace BrosLMV.DescargasUI
                 Filter = "Libro de Excel (*.xlsx)|*.xlsx",
                 FileName = $"CFDI_{(emitidos ? "Emitidos" : "Recibidos")}_{_empresa.RFC}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
             };
-            if (dialogo.ShowDialog(this) != true) return;
+            if (dialogo.ShowDialog(Ventana) != true) return;
             try
             {
                 CrearExcel(dialogo.FileName);
-                var r = MessageBox.Show(this,
+                var r = MessageBox.Show(Ventana,
                     $"Se creó el reporte de Excel con {_cfdis.Count:N0} CFDI:\n\n{dialogo.FileName}\n\n¿Deseas abrir el archivo ahora?",
                     "Exportación terminada",
                     MessageBoxButton.YesNo,
@@ -279,7 +281,7 @@ namespace BrosLMV.DescargasUI
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "No se pudo crear el archivo de Excel:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(Ventana, "No se pudo crear el archivo de Excel:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

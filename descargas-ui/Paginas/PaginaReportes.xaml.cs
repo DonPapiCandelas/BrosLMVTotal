@@ -1,4 +1,4 @@
-// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+﻿// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
 // Copyright (C) 2026 Cristofer Candelas Garcia
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// ReportesWindow.xaml.cs -- Presentación y exportación ejecutiva de reportes financieros y fiscales.
+// PaginaReportes.xaml.cs -- Presentación y exportación ejecutiva de reportes financieros y fiscales.
 // Conecta los datos de ReportesSql con la interfaz WPF moderna y con el motor de generación
 // de Excel corporativo (ExcelReporteEjecutivo.cs).
 
@@ -25,14 +25,15 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using BrosLMV.Descargas.Datos;
 using Microsoft.Data.SqlClient;
 using Microsoft.Win32;
 
-namespace BrosLMV.DescargasUI
+namespace BrosLMV.DescargasUI.Paginas
 {
-    public partial class ReportesWindow : Window
+    public partial class PaginaReportes : UserControl
     {
         private readonly SqlConnection _conn;
         private readonly string _rfc;
@@ -68,13 +69,14 @@ namespace BrosLMV.DescargasUI
             ["P01"] = "Por definir"
         };
 
-        internal ReportesWindow(SqlConnection conn, string rfc, string nombreEmpresa)
+        private Window Ventana => Window.GetWindow(this);
+
+        public PaginaReportes(Sesion sesion)
         {
             InitializeComponent();
-            _conn = conn;
-            _rfc = rfc;
-            _nombreEmpresa = nombreEmpresa;
-            LblEmpresa.Text = nombreEmpresa + " (" + rfc + ")";
+            _conn = sesion.Conn;
+            _rfc = sesion.Empresa.RFC;
+            _nombreEmpresa = sesion.Empresa.Nombre;
 
             CargarListaDeMeses();
             CargarTodo();
@@ -381,7 +383,7 @@ ORDER BY FechaEmision DESC;";
                 FileName = $"Informe_Ejecutivo_{nombreLimpio}_{mes.Anio}{mes.Mes:00}.xlsx"
             };
 
-            if (dialogo.ShowDialog(this) != true) return;
+            if (dialogo.ShowDialog(Ventana) != true) return;
 
             try
             {
@@ -393,7 +395,7 @@ ORDER BY FechaEmision DESC;";
                     mes.Anio,
                     mes.Mes);
 
-                var r = MessageBox.Show(this,
+                var r = MessageBox.Show(Ventana,
                     $"Se generó exitosamente el Informe Ejecutivo en Excel:\n\n{dialogo.FileName}\n\n¿Deseas abrir el archivo ahora?",
                     "Exportación Ejecutiva Completada",
                     MessageBoxButton.YesNo,
@@ -410,7 +412,7 @@ ORDER BY FechaEmision DESC;";
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Error al generar el libro de Excel:\n\n" + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(Ventana, "Error al generar el libro de Excel:\n\n" + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -553,7 +555,7 @@ ORDER BY FechaEmision DESC;";
             var facturas = ReportesSql.ObtenerFacturasRiesgoRep(_conn, _rfc, diasMinimos: 60);
             if (facturas.Count == 0)
             {
-                MessageBox.Show(this, "No se detectaron facturas PPD en riesgo (más de 60 días sin REP).", "Auditoría Fiscal", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Ventana, "No se detectaron facturas PPD en riesgo (más de 60 días sin REP).", "Auditoría Fiscal", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -594,7 +596,7 @@ ORDER BY FechaEmision DESC;";
                 FileName = $"{prefijoArchivo}_{_rfc}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
             };
 
-            if (dialogo.ShowDialog(this) != true) return;
+            if (dialogo.ShowDialog(Ventana) != true) return;
 
             try
             {
@@ -608,7 +610,7 @@ ORDER BY FechaEmision DESC;";
                     encabezados,
                     llenarFilas);
 
-                var r = MessageBox.Show(this,
+                var r = MessageBox.Show(Ventana,
                     $"Se creó el reporte de Excel:\n\n{dialogo.FileName}\n\n¿Deseas abrir el archivo?",
                     "Exportación completada",
                     MessageBoxButton.YesNo,
@@ -625,7 +627,7 @@ ORDER BY FechaEmision DESC;";
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Error al crear archivo de Excel:\n\n" + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(Ventana, "Error al crear archivo de Excel:\n\n" + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

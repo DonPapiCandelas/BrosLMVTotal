@@ -28,14 +28,16 @@ namespace BrosLMV.Descargas.Datos
 {
     internal sealed class ConciliacionFila
     {
-        public int Anio, Mes;
-        public string Tipo;            // Recibidos / Emitidos
-        public int SatTotal;           // Metadata: todos los CFDI que el SAT reporta ese mes
-        public int SatVigentes;
-        public int SatCancelados;
-        public int Descargados;        // XML en la base
-        public int Faltan;             // vigentes del SAT sin XML
-        public int SoloLocal;          // XML que Metadata no reporto (informativo)
+        // PROPIEDADES, no campos: el binding de WPF solo resuelve propiedades (con campos la tabla salia con las columnas vacias).
+        public int Anio { get; set; }
+        public int Mes { get; set; }
+        public string Tipo { get; set; }            // Recibidos / Emitidos
+        public int SatTotal { get; set; }           // Metadata: todos los CFDI que el SAT reporta ese mes
+        public int SatVigentes { get; set; }
+        public int SatCancelados { get; set; }
+        public int Descargados { get; set; }        // XML en la base
+        public int Faltan { get; set; }             // vigentes del SAT sin XML
+        public int SoloLocal { get; set; }          // XML que Metadata no reporto (informativo)
         public bool HayMetadata => SatTotal > 0;
 
         public string MesTexto => new DateTime(Anio, Mes, 1).ToString("yyyy-MM");

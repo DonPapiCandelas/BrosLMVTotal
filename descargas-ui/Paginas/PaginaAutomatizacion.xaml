@@ -1,0 +1,45 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaAutomatizacion"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid Margin="32,26,32,24">
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <ui:EncabezadoPagina Grid.Row="0" Titulo="Automatización" Subtitulo="El servicio de Windows «BrosLMV Descargas» trabaja en segundo plano, sin ventanas: revisa y descarga cada 10 minutos, verifica estatus una vez al día y pide los periodos nuevos con el intervalo que definas aquí."/>
+
+      <Border Grid.Row="1" Style="{StaticResource Tarjeta}" Margin="0,22,0,0" MaxWidth="720" HorizontalAlignment="Left" Padding="0">
+        <StackPanel>
+          <Grid Margin="24,20,24,18">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock Text="Servicio de descarga" Style="{StaticResource TextoSubtitulo}"/>
+              <TextBlock x:Name="LblEstado" Style="{StaticResource TextoSecundario}" Margin="0,3,0,0" Text="Consultando…"/>
+            </StackPanel>
+            <Border x:Name="PastillaServicio" Grid.Column="1" Style="{StaticResource PastillaNeutra}"><TextBlock x:Name="LblServicio" Text="…"/></Border>
+          </Grid>
+          <Border Height="1" Background="{StaticResource PincelBorde}"/>
+          <StackPanel Margin="24,18,24,20">
+            <TextBlock Text="Pedir periodos nuevos cada" Style="{StaticResource TextoRotulo}"/>
+            <ComboBox x:Name="CmbIntervalo" Width="240" HorizontalAlignment="Left" Margin="0,8,0,0">
+              <ComboBoxItem Content="15 minutos" Tag="15"/>
+              <ComboBoxItem Content="30 minutos" Tag="30"/>
+              <ComboBoxItem Content="1 hora" Tag="60"/>
+              <ComboBoxItem Content="2 horas" Tag="120"/>
+              <ComboBoxItem Content="3 horas" Tag="180"/>
+              <ComboBoxItem Content="4 horas" Tag="240"/>
+              <ComboBoxItem Content="6 horas" Tag="360"/>
+              <ComboBoxItem Content="8 horas" Tag="480"/>
+              <ComboBoxItem Content="12 horas" Tag="720"/>
+              <ComboBoxItem Content="24 horas" Tag="1440"/>
+            </ComboBox>
+            <Border Style="{StaticResource BandaAviso}" Margin="0,16,0,0">
+              <TextBlock TextWrapping="Wrap" Text="Un intervalo más corto gasta más rápido el cupo diario del SAT si hay tramos pendientes grandes."/>
+            </Border>
+            <Button x:Name="BtnGuardar" Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE74E;" Content="Guardar" HorizontalAlignment="Left" Margin="0,18,0,0" Click="Guardar_Click"/>
+            <TextBlock Style="{StaticResource TextoTenue}" Margin="0,10,0,0" TextWrapping="Wrap" Text="El cambio se aplica solo, sin reiniciar nada. Para pedir una fecha concreta ahora mismo, usa «Nueva descarga» en Descargas del SAT."/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </ScrollViewer>
+</UserControl>

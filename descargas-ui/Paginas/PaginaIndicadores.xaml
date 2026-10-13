@@ -1,0 +1,53 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaIndicadores"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <Grid Margin="32,26,32,24">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <ui:EncabezadoPagina Grid.Row="0" Titulo="Indicadores fiscales" Subtitulo="Señales para revisar en los CFDI de este equipo. No son un dictamen: confirma cada caso con tu contador.">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="Periodo" Style="{StaticResource TextoSecundario}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+        <ComboBox x:Name="CmbPeriodo" Width="190" Margin="0,0,8,0" SelectionChanged="Filtro_Changed">
+          <ComboBoxItem Tag="anio" Content="Este año" IsSelected="True"/>
+          <ComboBoxItem Tag="mes" Content="Este mes"/>
+          <ComboBoxItem Tag="12m" Content="Últimos 12 meses"/>
+          <ComboBoxItem Tag="anioant" Content="Año pasado"/>
+          <ComboBoxItem Tag="todo" Content="Todo el historial"/>
+        </ComboBox>
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE72C;" Content="Actualizar" Click="BtnActualizar_Click"/>
+      </StackPanel>
+    </ui:EncabezadoPagina>
+    <Grid Grid.Row="1" Margin="0,20,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="380"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Grid Grid.Column="0">
+        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="Lista" Margin="0,0,6,0"/></ScrollViewer>
+        <Button Grid.Row="1" Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE710;" Content="Nuevo indicador propio" Margin="0,10,0,0" HorizontalAlignment="Left" Click="BtnNuevo_Click"
+                ToolTip="Escribe una consulta SQL de solo lectura sobre los CFDI de este equipo"/>
+      </Grid>
+      <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Padding="0">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <Grid Margin="22,18,18,14">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock x:Name="LblTitulo" Style="{StaticResource TextoTitulo}" Text="Elige un indicador" TextWrapping="Wrap"/>
+              <TextBlock x:Name="LblDescripcion" Style="{StaticResource TextoSecundario}" Margin="0,5,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="16,0,0,0">
+              <Button x:Name="BtnEditar" Style="{StaticResource Subtle}" ui:Ui.Glifo="&#xE70F;" Content="Editar" Visibility="Collapsed" Click="BtnEditar_Click"/>
+              <Button x:Name="BtnEliminar" Style="{StaticResource Danger}" ui:Ui.Glifo="&#xE74D;" Content="Eliminar" Margin="6,0,6,0" Visibility="Collapsed" Click="BtnEliminar_Click"/>
+              <Button x:Name="BtnExcel" Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE74E;" Content="Exportar a Excel" Click="BtnExcel_Click" IsEnabled="False"/>
+            </StackPanel>
+          </Grid>
+          <Border Grid.Row="0" Height="1" Background="{StaticResource PincelBorde}" VerticalAlignment="Bottom"/>
+          <Grid Grid.Row="1">
+            <DataGrid x:Name="Rejilla" IsReadOnly="True" AutoGenerateColumns="True" AutoGeneratingColumn="Rejilla_AutoGeneratingColumn" MouseDoubleClick="Rejilla_MouseDoubleClick"
+                      HeadersVisibility="Column" Margin="0,1,0,0"/>
+            <ui:EstadoVacio x:Name="Vacio" Visibility="Collapsed" Glifo="&#xE73E;" Titulo="Sin casos en este periodo" Texto="Ningún comprobante cumple esta regla."/>
+          </Grid>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

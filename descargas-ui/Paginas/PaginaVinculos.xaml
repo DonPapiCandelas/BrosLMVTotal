@@ -1,0 +1,47 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaVinculos"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <Grid Margin="32,26,32,24">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <ui:EncabezadoPagina Grid.Row="0" Titulo="Vínculos con Comercial" Subtitulo="Cruza los XML de Comercial con sus documentos. Solo lee: no vincula ni cambia nada, el vínculo lo haces tú en Comercial. Las sugerencias se calculan por RFC, total y fecha.">
+      <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE72C;" Content="Actualizar" Click="BtnActualizar_Click"/>
+    </ui:EncabezadoPagina>
+    <Border Grid.Row="1" x:Name="Aviso" Style="{StaticResource BandaNeutra}" Margin="0,18,0,0">
+      <TextBlock x:Name="LblResumen" TextWrapping="Wrap" FontSize="13"/>
+    </Border>
+    <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Margin="0,16,0,0" Padding="0">
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <StackPanel Orientation="Horizontal" Margin="22,14,22,0">
+          <RadioButton x:Name="TabSin" Content="CFDI sin documento" GroupName="TabsVinculos" Style="{StaticResource Pestana}" IsChecked="True" Checked="Tab_Changed"/>
+          <RadioButton x:Name="TabDif" Content="Totales que no coinciden" GroupName="TabsVinculos" Style="{StaticResource Pestana}" Checked="Tab_Changed"/>
+        </StackPanel>
+        <Border Grid.Row="0" Height="1" Background="{StaticResource PincelBorde}" VerticalAlignment="Bottom"/>
+        <Grid Grid.Row="1">
+          <DataGrid x:Name="GridSinDocumento" IsReadOnly="True" Margin="0,1,0,0">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="FECHA" Binding="{Binding FechaTexto}" Width="105" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="90" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="RFC" Binding="{Binding Rfc}" Width="140" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+              <DataGridTextColumn Header="CONTRAPARTE" Binding="{Binding Nombre}" Width="*" MinWidth="200" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="TOTAL" Binding="{Binding TotalTexto}" Width="120" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="DOCUMENTO SUGERIDO" Binding="{Binding Sugerido}" Width="200" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="UUID" Binding="{Binding UUID}" Width="290" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <DataGrid x:Name="GridDiferencias" IsReadOnly="True" Margin="0,1,0,0" Visibility="Collapsed">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="DOCUMENTO" Binding="{Binding Folio}" Width="160" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="TOTAL DEL CFDI" Binding="{Binding TotalCfdiTexto}" Width="150" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="TOTAL DEL DOCUMENTO" Binding="{Binding TotalDocTexto}" Width="180" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="DIFERENCIA" Binding="{Binding DiferenciaTexto}" Width="140" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="UUID" Binding="{Binding UUID}" Width="*" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <ui:EstadoVacio x:Name="Vacio" Visibility="Collapsed"/>
+        </Grid>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+// PaginaCobertura.xaml.cs -- una fila por ano y tipo (Recibidos / Emitidos), una celda por mes. El color sale de los dias que ninguna
+// solicitud buena cubre (los mismos rangos y huecos que usa Salud) y el numero es la cantidad de CFDI de ese mes en este equipo.
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -25,52 +28,35 @@ using BrosLMV.Descargas.Cola;
 using BrosLMV.Descargas.Datos;
 using Microsoft.Data.SqlClient;
 
-namespace BrosLMV.DescargasUI
+namespace BrosLMV.DescargasUI.Paginas
 {
-    // Vista por ano: una fila por ano y tipo (Recibidos / Emitidos), una celda por mes. El color sale de los
-    // dias que ninguna solicitud buena cubre (los mismos rangos y huecos que usa Salud) y el numero es la
-    // cantidad de CFDI de ese mes que ya estan en este equipo. Solo lee la base local.
-    public partial class CoberturaWindow : Window
+    public partial class PaginaCobertura : UserControl
     {
-        private readonly SqlConnection _conn;
-        private List<EmpresaFila> _empresas = new List<EmpresaFila>();
+        private readonly Sesion _s;
+        private static readonly CultureInfo Es = new CultureInfo("es-MX");
 
-        public CoberturaWindow(SqlConnection conn)
+        public PaginaCobertura(Sesion sesion)
         {
             InitializeComponent();
-            _conn = conn;
-            Loaded += (s, e) =>
-            {
-                _empresas = BrosSatDb.ObtenerEmpresas(_conn).Where(x => x.Activa).ToList();
-                CmbEmpresa.ItemsSource = _empresas.Select(x => x.Nombre + "  ·  " + x.RFC).ToList();
-                if (_empresas.Count > 0) CmbEmpresa.SelectedIndex = 0; else Mensaje("No hay empresas activas en el catálogo.");
-            };
+            _s = sesion;
+            Loaded += (s, e) => Cargar();
         }
 
-        private void Mensaje(string t)
-        {
-            Contenido.Children.Clear();
-            Contenido.Children.Add(new TextBlock { Text = t, Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)) });
-        }
-
-        private void CmbEmpresa_SelectionChanged(object sender, SelectionChangedEventArgs e) => Cargar();
         private void BtnActualizar_Click(object sender, RoutedEventArgs e) => Cargar();
-
-        private static Brush Pincel(byte r, byte g, byte b) => new SolidColorBrush(Color.FromRgb(r, g, b));
+        private Brush P(string clave) => (Brush)FindResource(clave);
+        private static Brush Gris(byte r, byte g, byte b) => new SolidColorBrush(Color.FromRgb(r, g, b));
 
         private void Cargar()
         {
-            int i = CmbEmpresa.SelectedIndex;
-            if (i < 0 || i >= _empresas.Count) return;
-            var empresa = _empresas[i];
+            var empresa = _s.DatosEmpresa();
+            if (empresa == null) return;
             Cursor = System.Windows.Input.Cursors.Wait;
             try
             {
                 Contenido.Children.Clear();
                 var hoy = DateTime.Today;
                 int anioIni = Math.Min(empresa.AnioInicioDescargas ?? hoy.Year, hoy.Year);
-                // Si ya hay solicitudes o CFDI mas viejos que el ano configurado, tambien se muestran.
-                using (var cmd = new SqlCommand("SELECT MIN(YEAR(FechaInicial)) FROM SolicitudDescarga WHERE RfcSolicitante=@r", _conn))
+                using (var cmd = new SqlCommand("SELECT MIN(YEAR(FechaInicial)) FROM SolicitudDescarga WHERE RfcSolicitante=@r", _s.Conn))
                 {
                     cmd.Parameters.AddWithValue("@r", empresa.RFC);
                     var v = cmd.ExecuteScalar();
@@ -81,34 +67,33 @@ namespace BrosLMV.DescargasUI
 
                 foreach (var tipo in new[] { "Recibidos", "Emitidos" })
                 {
-                    var cubiertos = BrosSatDb.ObtenerRangosCubiertos(_conn, empresa.RFC, "CFDI", tipo);
-                    var huecos = Huecos.Todos(cubiertos, new DateTime(anioIni, 1, 1), hasta);
+                    var huecos = Huecos.Todos(BrosSatDb.ObtenerRangosCubiertos(_s.Conn, empresa.RFC, "CFDI", tipo), new DateTime(anioIni, 1, 1), hasta);
                     var conteo = ContarPorMes(empresa.RFC, tipo == "Recibidos", anioIni);
 
                     var tarjeta = new StackPanel();
-                    tarjeta.Children.Add(new TextBlock { Text = tipo, FontSize = 17, FontWeight = FontWeights.SemiBold, Foreground = Pincel(22, 38, 58), Margin = new Thickness(0, 0, 0, 10) });
+                    tarjeta.Children.Add(new TextBlock { Text = tipo, Style = (Style)FindResource("TextoSubtitulo"), Margin = new Thickness(0, 0, 0, 12) });
                     var rejilla = new Grid();
-                    rejilla.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
-                    for (int m = 0; m < 12; m++) rejilla.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 62 });
+                    rejilla.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
+                    for (int m = 0; m < 12; m++) rejilla.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 60 });
                     rejilla.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                     for (int m = 1; m <= 12; m++)
                     {
-                        var t = new TextBlock { Text = CultureInfo.GetCultureInfo("es-MX").DateTimeFormat.GetAbbreviatedMonthName(m).Replace(".", ""), HorizontalAlignment = HorizontalAlignment.Center, Foreground = Pincel(100, 116, 139), FontSize = 12, Margin = new Thickness(0, 0, 0, 4) };
+                        var t = new TextBlock { Text = Es.DateTimeFormat.GetAbbreviatedMonthName(m).Replace(".", "").ToUpperInvariant(), HorizontalAlignment = HorizontalAlignment.Center, Style = (Style)FindResource("TextoRotulo"), Margin = new Thickness(0, 0, 0, 6) };
                         Grid.SetColumn(t, m); rejilla.Children.Add(t);
                     }
                     int fila = 1;
                     for (int anio = hoy.Year; anio >= anioIni; anio--, fila++)
                     {
-                        rejilla.RowDefinitions.Add(new RowDefinition { Height = new GridLength(46) });
-                        var ta = new TextBlock { Text = anio.ToString(), VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, Foreground = Pincel(22, 38, 58) };
+                        rejilla.RowDefinitions.Add(new RowDefinition { Height = new GridLength(44) });
+                        var ta = new TextBlock { Text = anio.ToString(), VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold };
                         Grid.SetRow(ta, fila); rejilla.Children.Add(ta);
                         for (int m = 1; m <= 12; m++)
                         {
                             var ini = new DateTime(anio, m, 1);
                             var fin = ini.AddMonths(1).AddDays(-1);
-                            int n; conteo.TryGetValue(anio * 100 + m, out n);
+                            conteo.TryGetValue(anio * 100 + m, out int n);
                             Brush color; string estado; int totalDias = 0, sinCubrir = 0;
-                            if (ini > hasta) { color = Pincel(203, 213, 225); estado = "Aún no transcurre"; }
+                            if (ini > hasta) { color = Gris(203, 213, 225); estado = "Aún no transcurre"; }
                             else
                             {
                                 var topeMes = fin < hasta ? fin : hasta;
@@ -119,24 +104,22 @@ namespace BrosLMV.DescargasUI
                                     var b = h.Hasta.Date < topeMes ? h.Hasta.Date : topeMes;
                                     if (a <= b) sinCubrir += (int)(b - a).TotalDays + 1;
                                 }
-                                if (sinCubrir == 0) { color = Pincel(22, 128, 59); estado = "Completo"; }
-                                else if (sinCubrir >= totalDias && anio < (empresa.AnioInicioDescargas ?? 0)) { color = Pincel(226, 232, 240); estado = "Fuera del periodo configurado (se descarga desde " + empresa.AnioInicioDescargas + ")"; }
-                                else if (sinCubrir >= totalDias) { color = Pincel(200, 40, 40); estado = "Sin cubrir"; }
-                                else { color = Pincel(217, 143, 12); estado = "Parcial"; }
+                                if (sinCubrir == 0) { color = P("PincelOk"); estado = "Completo"; }
+                                else if (sinCubrir >= totalDias && anio < (empresa.AnioInicioDescargas ?? 0)) { color = Gris(226, 232, 240); estado = "Fuera del periodo configurado (se descarga desde " + empresa.AnioInicioDescargas + ")"; }
+                                else if (sinCubrir >= totalDias) { color = P("PincelCritico"); estado = "Sin cubrir"; }
+                                else { color = P("PincelAviso"); estado = "Parcial"; }
                             }
                             var celda = new Border
                             {
-                                Background = color, CornerRadius = new CornerRadius(6), Margin = new Thickness(2),
-                                ToolTip = ini.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("es-MX")) + " — " + estado +
-                                          (totalDias > 0 ? "\n" + (totalDias - sinCubrir) + " de " + totalDias + " días cubiertos" : "") +
-                                          "\n" + n.ToString("N0") + " CFDI en este equipo",
+                                Background = color, CornerRadius = new CornerRadius(7), Margin = new Thickness(2),
+                                ToolTip = ini.ToString("MMMM yyyy", Es) + " — " + estado + (totalDias > 0 ? "\n" + (totalDias - sinCubrir) + " de " + totalDias + " días cubiertos" : "") + "\n" + n.ToString("N0") + " CFDI en este equipo",
                                 Child = new TextBlock { Text = n > 0 ? n.ToString("N0") : "", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 }
                             };
                             Grid.SetRow(celda, fila); Grid.SetColumn(celda, m); rejilla.Children.Add(celda);
                         }
                     }
                     tarjeta.Children.Add(rejilla);
-                    Contenido.Children.Add(new Border { Style = (Style)FindResource("Tarjeta"), Margin = new Thickness(0, 0, 0, 16), Padding = new Thickness(20), Child = tarjeta });
+                    Contenido.Children.Add(new Border { Style = (Style)FindResource("Tarjeta"), Margin = new Thickness(0, 0, 0, 16), Child = tarjeta });
                 }
             }
             finally { Cursor = System.Windows.Input.Cursors.Arrow; }
@@ -147,14 +130,13 @@ namespace BrosLMV.DescargasUI
         {
             var r = new Dictionary<int, int>();
             string sql = "SELECT YEAR(FechaEmision), MONTH(FechaEmision), COUNT(*) FROM CfdiRecibido WHERE " +
-                         (recibidos ? "RFCReceptor=@r AND RFCEmisor<>@r" : "RFCEmisor=@r") +
-                         " AND FechaEmision >= @d GROUP BY YEAR(FechaEmision), MONTH(FechaEmision)";
-            using (var cmd = new SqlCommand(sql, _conn))
+                         (recibidos ? "RFCReceptor=@r AND RFCEmisor<>@r" : "RFCEmisor=@r") + " AND FechaEmision >= @d GROUP BY YEAR(FechaEmision), MONTH(FechaEmision)";
+            using (var cmd = new SqlCommand(sql, _s.Conn))
             {
                 cmd.Parameters.AddWithValue("@r", rfc);
                 cmd.Parameters.AddWithValue("@d", new DateTime(desdeAnio, 1, 1));
-                using (var lector = cmd.ExecuteReader())
-                    while (lector.Read()) r[lector.GetInt32(0) * 100 + lector.GetInt32(1)] = lector.GetInt32(2);
+                using (var l = cmd.ExecuteReader())
+                    while (l.Read()) r[l.GetInt32(0) * 100 + l.GetInt32(1)] = l.GetInt32(2);
             }
             return r;
         }

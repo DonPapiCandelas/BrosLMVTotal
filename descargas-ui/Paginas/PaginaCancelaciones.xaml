@@ -1,0 +1,47 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaCancelaciones"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <Grid Margin="32,26,32,24">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <ui:EncabezadoPagina Grid.Row="0" Titulo="Cancelaciones con documento" Subtitulo="CFDI que el SAT canceló y que ya estaban vinculados a un documento de Comercial. BrosLMV no toca esos documentos (tienen efectos contables y de inventario): revisa cada uno y márcalo cuando lo hayas atendido.">
+      <StackPanel Orientation="Horizontal">
+        <CheckBox x:Name="ChkRevisadas" Content="Mostrar revisadas" Margin="0,0,16,0" VerticalAlignment="Center" Checked="Filtro_Changed" Unchecked="Filtro_Changed"/>
+        <Button Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE73E;" Content="Marcar como revisada" Click="BtnRevisada_Click"/>
+      </StackPanel>
+    </ui:EncabezadoPagina>
+    <Border Grid.Row="1" Style="{StaticResource Tarjeta}" Margin="0,22,0,0" Padding="0">
+      <Grid>
+        <DataGrid x:Name="GridCancelaciones" IsReadOnly="True" SelectionMode="Single">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="DETECTADA" Binding="{Binding FechaTexto}" Width="150" ElementStyle="{StaticResource CeldaTexto}"/>
+            <DataGridTextColumn Header="EMPRESA" Binding="{Binding Empresa}" Width="180" ElementStyle="{StaticResource CeldaTexto}"/>
+            <DataGridTextColumn Header="UUID" Binding="{Binding UUID}" Width="300" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+            <DataGridTextColumn Header="DOCUMENTO EN COMERCIAL" Binding="{Binding Descripcion}" Width="*" ElementStyle="{StaticResource CeldaTexto}"/>
+            <DataGridTemplateColumn Header="ESTADO" Width="120">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <Border VerticalAlignment="Center">
+                    <Border.Style>
+                      <Style TargetType="Border" BasedOn="{StaticResource PastillaAviso}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding Estado}" Value="Revisada">
+                            <Setter Property="Background" Value="{StaticResource PincelOkFondo}"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource PincelOkBorde}"/>
+                            <Setter Property="TextElement.Foreground" Value="{StaticResource PincelOk}"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding Estado}"/>
+                  </Border>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <ui:EstadoVacio x:Name="Vacio" Visibility="Collapsed" Titulo="Sin cancelaciones pendientes" Texto="Ningún CFDI vinculado a un documento de Comercial ha sido cancelado ante el SAT."/>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

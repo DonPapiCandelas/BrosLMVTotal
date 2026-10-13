@@ -1,0 +1,56 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaRegistro"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <Grid Margin="32,26,32,24">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <ui:EncabezadoPagina Grid.Row="0" Titulo="Actividad y bitácora" Subtitulo="Qué se ha descargado cada día y el registro técnico de lo que hizo el servicio."/>
+
+    <Border Grid.Row="1" Style="{StaticResource Tarjeta}" Margin="0,20,0,0" Padding="0">
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid Margin="22,14,18,0">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+            <RadioButton x:Name="TabActividad" Content="Actividad diaria" GroupName="TabsRegistro" Style="{StaticResource Pestana}" IsChecked="True" Checked="Tab_Changed"/>
+            <RadioButton x:Name="TabBitacora" Content="Bitácora" GroupName="TabsRegistro" Style="{StaticResource Pestana}" Checked="Tab_Changed"/>
+          </StackPanel>
+          <StackPanel x:Name="AccionesActividad" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,8">
+            <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE76B;" Content="Mes anterior" Margin="0,0,8,0" Click="BtnAnterior_Click"/>
+            <Button Style="{StaticResource Ghost}" Content="Mes siguiente" Click="BtnSiguiente_Click"/>
+          </StackPanel>
+          <StackPanel x:Name="AccionesBitacora" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,8" Visibility="Collapsed">
+            <ComboBox x:Name="CmbMes" Width="150" Margin="0,0,8,0" SelectionChanged="CmbMes_SelectionChanged"/>
+            <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE72C;" Content="Actualizar" Margin="0,0,8,0" Click="BtnActualizarLog_Click"/>
+            <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xED43;" Content="Abrir carpeta" Click="BtnAbrirCarpeta_Click"/>
+          </StackPanel>
+        </Grid>
+        <Border Grid.Row="0" Height="1" Background="{StaticResource PincelBorde}" VerticalAlignment="Bottom"/>
+
+        <!-- Actividad -->
+        <ScrollViewer x:Name="VistaActividad" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="22,18,22,18">
+          <StackPanel>
+            <Grid Margin="0,0,0,18">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <Border Grid.Column="0" Style="{StaticResource TarjetaPlana}" Padding="16,14"><StackPanel><TextBlock Text="XML DESCARGADOS EN EL MES" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="LblMesCantidad" Style="{StaticResource TextoCifra}" Margin="0,6,0,0"/></StackPanel></Border>
+              <Border Grid.Column="2" Style="{StaticResource TarjetaPlana}" Padding="16,14"><StackPanel><TextBlock Text="DÍAS CON ACTIVIDAD" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="LblDiasActivos" Style="{StaticResource TextoCifra}" Foreground="{StaticResource PincelOk}" Margin="0,6,0,0"/></StackPanel></Border>
+              <Border Grid.Column="4" Style="{StaticResource TarjetaPlana}" Padding="16,14"><StackPanel><TextBlock Text="ÚLTIMA DESCARGA REGISTRADA" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="LblUltima" FontSize="19" FontWeight="SemiBold" Margin="0,12,0,0"/></StackPanel></Border>
+            </Grid>
+            <TextBlock x:Name="LblMes" Style="{StaticResource TextoTitulo}" TextTrimming="CharacterEllipsis"/>
+            <UniformGrid x:Name="CabeceraDias" Columns="7" Margin="0,16,0,6"/>
+            <UniformGrid x:Name="Calendario" Columns="7"/>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Bitácora -->
+        <Grid x:Name="VistaBitacora" Grid.Row="1" Visibility="Collapsed" Margin="22,14,22,18">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <TextBlock x:Name="LblRuta" Style="{StaticResource TextoTenue}" Margin="0,0,0,10" TextTrimming="CharacterEllipsis"/>
+          <Border Grid.Row="1" Style="{StaticResource TarjetaPlana}" Padding="14">
+            <TextBox x:Name="TxtLog" IsReadOnly="True" TextWrapping="NoWrap" FontFamily="{StaticResource FuenteMono}" FontSize="12.5"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent" Padding="0" MinHeight="0"/>
+          </Border>
+        </Grid>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

@@ -1,0 +1,102 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Tokens de diseño de BrosLMV Descargas. TODO color, tipografía y medida de la aplicación sale de aquí;
+    ningún .xaml debería escribir un hexadecimal suelto. Para cambiar el aspecto de la aplicación se cambia este archivo.
+    Documentación del sistema de diseño: docs/desarrollo/DISENO_DESCARGAS.md
+  -->
+
+  <!-- ===== Marca (barra lateral) ===== -->
+  <Color x:Key="Marca950">#081A2E</Color>
+  <Color x:Key="Marca900">#0B2239</Color>
+  <Color x:Key="Marca800">#0F2C4A</Color>
+  <Color x:Key="Marca700">#163A60</Color>
+  <Color x:Key="Marca600">#1F4C7B</Color>
+  <Color x:Key="MarcaTexto">#C4D3E6</Color>
+  <Color x:Key="MarcaTextoTenue">#7F96B0</Color>
+
+  <!-- ===== Acento ===== -->
+  <Color x:Key="Acento">#2D6FE0</Color>
+  <Color x:Key="AcentoHover">#2158C4</Color>
+  <Color x:Key="AcentoPresionado">#1B4AA6</Color>
+  <Color x:Key="AcentoSuave">#E8F0FE</Color>
+  <Color x:Key="AcentoBorde">#B9D0F7</Color>
+
+  <!-- ===== Neutros (fríos, con un toque del azul de la marca) ===== -->
+  <Color x:Key="Lienzo">#F3F5F9</Color>
+  <Color x:Key="Superficie">#FFFFFF</Color>
+  <Color x:Key="Superficie2">#F8FAFC</Color>
+  <Color x:Key="SuperficieHover">#F1F5FB</Color>
+  <Color x:Key="Borde">#E3E8F0</Color>
+  <Color x:Key="BordeFuerte">#CBD5E1</Color>
+  <Color x:Key="Texto">#0F1D2E</Color>
+  <Color x:Key="Texto2">#475569</Color>
+  <Color x:Key="Texto3">#7B8AA0</Color>
+  <Color x:Key="TextoDeshabilitado">#B3BFCD</Color>
+
+  <!-- ===== Semánticos ===== -->
+  <Color x:Key="Ok">#15803D</Color>
+  <Color x:Key="OkFondo">#E8F5EC</Color>
+  <Color x:Key="OkBorde">#BFE3CB</Color>
+  <Color x:Key="Aviso">#B45309</Color>
+  <Color x:Key="AvisoFondo">#FEF3E0</Color>
+  <Color x:Key="AvisoBorde">#F6D9A8</Color>
+  <Color x:Key="Critico">#B42318</Color>
+  <Color x:Key="CriticoFondo">#FDECEA</Color>
+  <Color x:Key="CriticoBorde">#F4C2BD</Color>
+  <Color x:Key="Info">#1D4ED8</Color>
+  <Color x:Key="InfoFondo">#E8F0FE</Color>
+  <Color x:Key="InfoBorde">#B9D0F7</Color>
+
+  <!-- Pinceles -->
+  <SolidColorBrush x:Key="PincelMarca950" Color="{StaticResource Marca950}"/>
+  <SolidColorBrush x:Key="PincelMarca900" Color="{StaticResource Marca900}"/>
+  <SolidColorBrush x:Key="PincelMarca800" Color="{StaticResource Marca800}"/>
+  <SolidColorBrush x:Key="PincelMarca700" Color="{StaticResource Marca700}"/>
+  <SolidColorBrush x:Key="PincelMarca600" Color="{StaticResource Marca600}"/>
+  <SolidColorBrush x:Key="PincelMarcaTexto" Color="{StaticResource MarcaTexto}"/>
+  <SolidColorBrush x:Key="PincelMarcaTextoTenue" Color="{StaticResource MarcaTextoTenue}"/>
+  <SolidColorBrush x:Key="PincelAcento" Color="{StaticResource Acento}"/>
+  <SolidColorBrush x:Key="PincelAcentoHover" Color="{StaticResource AcentoHover}"/>
+  <SolidColorBrush x:Key="PincelAcentoPresionado" Color="{StaticResource AcentoPresionado}"/>
+  <SolidColorBrush x:Key="PincelAcentoSuave" Color="{StaticResource AcentoSuave}"/>
+  <SolidColorBrush x:Key="PincelAcentoBorde" Color="{StaticResource AcentoBorde}"/>
+  <SolidColorBrush x:Key="PincelLienzo" Color="{StaticResource Lienzo}"/>
+  <SolidColorBrush x:Key="PincelSuperficie" Color="{StaticResource Superficie}"/>
+  <SolidColorBrush x:Key="PincelSuperficie2" Color="{StaticResource Superficie2}"/>
+  <SolidColorBrush x:Key="PincelSuperficieHover" Color="{StaticResource SuperficieHover}"/>
+  <SolidColorBrush x:Key="PincelBorde" Color="{StaticResource Borde}"/>
+  <SolidColorBrush x:Key="PincelBordeFuerte" Color="{StaticResource BordeFuerte}"/>
+  <SolidColorBrush x:Key="PincelTexto" Color="{StaticResource Texto}"/>
+  <SolidColorBrush x:Key="PincelTexto2" Color="{StaticResource Texto2}"/>
+  <SolidColorBrush x:Key="PincelTexto3" Color="{StaticResource Texto3}"/>
+  <SolidColorBrush x:Key="PincelTextoDeshabilitado" Color="{StaticResource TextoDeshabilitado}"/>
+  <SolidColorBrush x:Key="PincelOk" Color="{StaticResource Ok}"/>
+  <SolidColorBrush x:Key="PincelOkFondo" Color="{StaticResource OkFondo}"/>
+  <SolidColorBrush x:Key="PincelOkBorde" Color="{StaticResource OkBorde}"/>
+  <SolidColorBrush x:Key="PincelAviso" Color="{StaticResource Aviso}"/>
+  <SolidColorBrush x:Key="PincelAvisoFondo" Color="{StaticResource AvisoFondo}"/>
+  <SolidColorBrush x:Key="PincelAvisoBorde" Color="{StaticResource AvisoBorde}"/>
+  <SolidColorBrush x:Key="PincelCritico" Color="{StaticResource Critico}"/>
+  <SolidColorBrush x:Key="PincelCriticoFondo" Color="{StaticResource CriticoFondo}"/>
+  <SolidColorBrush x:Key="PincelCriticoBorde" Color="{StaticResource CriticoBorde}"/>
+  <SolidColorBrush x:Key="PincelInfo" Color="{StaticResource Info}"/>
+  <SolidColorBrush x:Key="PincelInfoFondo" Color="{StaticResource InfoFondo}"/>
+  <SolidColorBrush x:Key="PincelInfoBorde" Color="{StaticResource InfoBorde}"/>
+
+  <!-- ===== Tipografía ===== -->
+  <FontFamily x:Key="FuentePrincipal">Segoe UI Variable Text, Segoe UI</FontFamily>
+  <FontFamily x:Key="FuenteTitulos">Segoe UI Variable Display, Segoe UI Variable Text, Segoe UI</FontFamily>
+  <FontFamily x:Key="FuenteMono">Cascadia Mono, Consolas</FontFamily>
+  <FontFamily x:Key="FuenteIconos">Segoe MDL2 Assets</FontFamily>
+
+  <!-- ===== Medidas ===== -->
+  <CornerRadius x:Key="RadioControl">7</CornerRadius>
+  <CornerRadius x:Key="RadioTarjeta">12</CornerRadius>
+  <CornerRadius x:Key="RadioPastilla">999</CornerRadius>
+  <Thickness x:Key="PaddingTarjeta">20</Thickness>
+
+  <!-- Sombras: dos niveles, siempre sutiles -->
+  <DropShadowEffect x:Key="SombraTarjeta" Color="#0F172A" Opacity="0.05" BlurRadius="14" ShadowDepth="2" Direction="270"/>
+  <DropShadowEffect x:Key="SombraFlotante" Color="#0F172A" Opacity="0.16" BlurRadius="28" ShadowDepth="8" Direction="270"/>
+</ResourceDictionary>

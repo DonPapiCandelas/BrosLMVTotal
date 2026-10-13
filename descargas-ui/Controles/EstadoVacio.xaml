@@ -1,0 +1,11 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Controles.EstadoVacio"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="Raiz" IsHitTestVisible="False">
+  <!-- Mensaje centrado cuando una tabla o lista no tiene nada que mostrar. -->
+  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="400" Margin="0,30">
+    <TextBlock Text="{Binding Glifo, ElementName=Raiz}" FontFamily="{StaticResource FuenteIconos}" FontSize="32" Foreground="{StaticResource PincelBordeFuerte}" HorizontalAlignment="Center"/>
+    <TextBlock Text="{Binding Titulo, ElementName=Raiz}" Style="{StaticResource TextoSubtitulo}" HorizontalAlignment="Center" Margin="0,10,0,0" TextAlignment="Center"/>
+    <TextBlock Text="{Binding Texto, ElementName=Raiz}" Style="{StaticResource TextoSecundario}" TextAlignment="Center" Margin="0,4,0,0"/>
+  </StackPanel>
+</UserControl>

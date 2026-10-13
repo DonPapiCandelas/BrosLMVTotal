@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Detalle de CFDI" Height="780" Width="820" MinHeight="560" MinWidth="640"
         WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip"
-        Background="#F4F6F9">
+        Background="{StaticResource PincelLienzo}">
   <!-- Estilo Ghost/Tarjeta compartido en App.xaml; Etiqueta/Valor son unicos de esta ventana. -->
   <Window.Resources>
     <Style x:Key="Etiqueta" TargetType="TextBlock">

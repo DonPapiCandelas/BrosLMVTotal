@@ -1,0 +1,75 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Escala tipográfica. Se usa por nombre: Style="{StaticResource TextoTitulo}". -->
+
+  <Style TargetType="Window">
+    <Setter Property="FontFamily" Value="{StaticResource FuentePrincipal}"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto}"/>
+    <Setter Property="UseLayoutRounding" Value="True"/>
+    <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
+  </Style>
+  <Style TargetType="UserControl">
+    <Setter Property="FontFamily" Value="{StaticResource FuentePrincipal}"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto}"/>
+  </Style>
+
+  <Style x:Key="TextoDisplay" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource FuenteTitulos}"/>
+    <Setter Property="FontSize" Value="26"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto}"/>
+  </Style>
+  <Style x:Key="TextoTitulo" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource FuenteTitulos}"/>
+    <Setter Property="FontSize" Value="18"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto}"/>
+  </Style>
+  <Style x:Key="TextoSubtitulo" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="14.5"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto}"/>
+  </Style>
+  <Style x:Key="TextoCuerpo" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+  <Style x:Key="TextoSecundario" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto2}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+  <Style x:Key="TextoTenue" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto3}"/>
+  </Style>
+  <!-- Rótulo pequeño en mayúsculas encima de un dato o de un grupo (el texto ya se escribe en mayúsculas). -->
+  <Style x:Key="TextoRotulo" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto3}"/>
+    <Setter Property="Typography.Capitals" Value="AllSmallCaps"/>
+  </Style>
+  <Style x:Key="TextoCifra" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource FuenteTitulos}"/>
+    <Setter Property="FontSize" Value="28"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto}"/>
+    <Setter Property="Typography.NumeralAlignment" Value="Tabular"/>
+  </Style>
+  <Style x:Key="TextoMono" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource FuenteMono}"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto2}"/>
+  </Style>
+  <!-- Ícono suelto: <TextBlock Style="{StaticResource Icono}" Text="&#xE80F;"/> -->
+  <Style x:Key="Icono" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource FuenteIconos}"/>
+    <Setter Property="FontSize" Value="16"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Foreground" Value="{StaticResource PincelTexto2}"/>
+  </Style>
+</ResourceDictionary>

@@ -1,0 +1,80 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Contenedores: tarjetas y pastillas de estado. -->
+
+  <!-- Tarjeta: superficie blanca, borde fino y sombra muy sutil. -->
+  <Style x:Key="Tarjeta" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource PincelSuperficie}"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadioTarjeta}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource PincelBorde}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Padding" Value="{StaticResource PaddingTarjeta}"/>
+    <Setter Property="Effect" Value="{StaticResource SombraTarjeta}"/>
+  </Style>
+  <!-- Tarjeta plana: sin sombra, para agrupar dentro de otra tarjeta. -->
+  <Style x:Key="TarjetaPlana" TargetType="Border" BasedOn="{StaticResource Tarjeta}">
+    <Setter Property="Background" Value="{StaticResource PincelSuperficie2}"/>
+    <Setter Property="Effect" Value="{x:Null}"/>
+  </Style>
+
+  <!-- Pastillas de estado. El texto hereda el color con TextElement.Foreground:
+       <Border Style="{StaticResource PastillaOk}"><TextBlock Text="Activo"/></Border> -->
+  <Style x:Key="Pastilla" TargetType="Border">
+    <Setter Property="CornerRadius" Value="{StaticResource RadioPastilla}"/>
+    <Setter Property="Padding" Value="10,3"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="TextElement.FontSize" Value="11.5"/>
+    <Setter Property="TextElement.FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style x:Key="PastillaNeutra" TargetType="Border" BasedOn="{StaticResource Pastilla}">
+    <Setter Property="Background" Value="{StaticResource PincelSuperficie2}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource PincelBorde}"/>
+    <Setter Property="TextElement.Foreground" Value="{StaticResource PincelTexto2}"/>
+  </Style>
+  <Style x:Key="PastillaOk" TargetType="Border" BasedOn="{StaticResource Pastilla}">
+    <Setter Property="Background" Value="{StaticResource PincelOkFondo}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource PincelOkBorde}"/>
+    <Setter Property="TextElement.Foreground" Value="{StaticResource PincelOk}"/>
+  </Style>
+  <Style x:Key="PastillaAviso" TargetType="Border" BasedOn="{StaticResource Pastilla}">
+    <Setter Property="Background" Value="{StaticResource PincelAvisoFondo}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource PincelAvisoBorde}"/>
+    <Setter Property="TextElement.Foreground" Value="{StaticResource PincelAviso}"/>
+  </Style>
+  <Style x:Key="PastillaCritica" TargetType="Border" BasedOn="{StaticResource Pastilla}">
+    <Setter Property="Background" Value="{StaticResource PincelCriticoFondo}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource PincelCriticoBorde}"/>
+    <Setter Property="TextElement.Foreground" Value="{StaticResource PincelCritico}"/>
+  </Style>
+  <!-- Bandas: aviso de ancho completo (resumen de una pagina). Mismo juego de colores que las pastillas. -->
+  <Style x:Key="Banda" TargetType="Border">
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Padding" Value="16,11"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="TextElement.FontSize" Value="13"/>
+    <Setter Property="TextElement.FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style x:Key="BandaNeutra" TargetType="Border" BasedOn="{StaticResource Banda}">
+    <Setter Property="Background" Value="{StaticResource PincelSuperficie2}"/><Setter Property="BorderBrush" Value="{StaticResource PincelBorde}"/><Setter Property="TextElement.Foreground" Value="{StaticResource PincelTexto2}"/>
+  </Style>
+  <Style x:Key="BandaOk" TargetType="Border" BasedOn="{StaticResource Banda}">
+    <Setter Property="Background" Value="{StaticResource PincelOkFondo}"/><Setter Property="BorderBrush" Value="{StaticResource PincelOkBorde}"/><Setter Property="TextElement.Foreground" Value="{StaticResource PincelOk}"/>
+  </Style>
+  <Style x:Key="BandaAviso" TargetType="Border" BasedOn="{StaticResource Banda}">
+    <Setter Property="Background" Value="{StaticResource PincelAvisoFondo}"/><Setter Property="BorderBrush" Value="{StaticResource PincelAvisoBorde}"/><Setter Property="TextElement.Foreground" Value="{StaticResource PincelAviso}"/>
+  </Style>
+  <Style x:Key="BandaCritica" TargetType="Border" BasedOn="{StaticResource Banda}">
+    <Setter Property="Background" Value="{StaticResource PincelCriticoFondo}"/><Setter Property="BorderBrush" Value="{StaticResource PincelCriticoBorde}"/><Setter Property="TextElement.Foreground" Value="{StaticResource PincelCritico}"/>
+  </Style>
+  <Style x:Key="BandaInfo" TargetType="Border" BasedOn="{StaticResource Banda}">
+    <Setter Property="Background" Value="{StaticResource PincelInfoFondo}"/><Setter Property="BorderBrush" Value="{StaticResource PincelInfoBorde}"/><Setter Property="TextElement.Foreground" Value="{StaticResource PincelInfo}"/>
+  </Style>
+  <Style x:Key="PastillaInfo" TargetType="Border" BasedOn="{StaticResource Pastilla}">
+    <Setter Property="Background" Value="{StaticResource PincelInfoFondo}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource PincelInfoBorde}"/>
+    <Setter Property="TextElement.Foreground" Value="{StaticResource PincelInfo}"/>
+  </Style>
+</ResourceDictionary>

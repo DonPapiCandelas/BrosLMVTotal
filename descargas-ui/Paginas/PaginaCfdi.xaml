@@ -1,0 +1,131 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaCfdi"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <Grid Margin="32,26,32,22">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <ui:EncabezadoPagina Grid.Row="0" Titulo="CFDI" Subtitulo="Historial de comprobantes de la empresa activa. Marca los que quieras exportar, copiar o convertir en documentos de Comercial.">
+      <StackPanel Orientation="Horizontal">
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE7B3;" Content="Ver detalle" Margin="0,0,8,0" Click="BtnDetalle_Click"/>
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE8F1;" Content="Archivar" Margin="0,0,8,0" Click="BtnArchivar_Click" ToolTip="Oculta o muestra el CFDI seleccionado del historial diario"/>
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE896;" Content="Copiar XML" Margin="0,0,8,0" Click="BtnDescargarXml_Click" ToolTip="Copia los XML marcados a una carpeta a tu elección"/>
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE74E;" Content="Excel" Margin="0,0,8,0" Click="BtnExportarExcel_Click" ToolTip="Genera un libro .xlsx con formato ejecutivo, autofiltro y totales"/>
+        <Button Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE8A5;" Content="Crear documento en Comercial" Click="BtnCrearDocumento_Click" ToolTip="Prepara los CFDI recibidos marcados para convertirlos en documentos de Comercial"/>
+      </StackPanel>
+    </ui:EncabezadoPagina>
+
+    <!-- Filtros -->
+    <Border Grid.Row="1" Style="{StaticResource Tarjeta}" Margin="0,20,0,14" Padding="20,6,20,14">
+      <StackPanel>
+        <Grid>
+          <StackPanel Orientation="Horizontal">
+            <RadioButton x:Name="TabRecibidos" Content="Recibidos" GroupName="Tipo" Style="{StaticResource Pestana}" IsChecked="True" Checked="Filtro_Changed" ToolTip="Gastos y compras: los CFDI que te emitieron"/>
+            <RadioButton x:Name="TabEmitidos" Content="Emitidos" GroupName="Tipo" Style="{StaticResource Pestana}" Checked="Filtro_Changed" ToolTip="Ingresos y facturación: los CFDI que tú emitiste"/>
+          </StackPanel>
+          <TextBlock x:Name="LblConteo" HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource TextoSecundario}" FontWeight="SemiBold"/>
+        </Grid>
+        <Border Height="1" Background="{StaticResource PincelBorde}" Margin="-20,0,-20,14"/>
+        <WrapPanel>
+          <TextBox x:Name="TxtBuscar" Width="270" Margin="0,0,10,8" ui:Ui.Marca="Buscar por UUID, RFC, nombre, folio o importe" TextChanged="Filtro_Changed"/>
+          <ComboBox x:Name="CmbRangoFecha" Width="170" Margin="0,0,10,8" SelectionChanged="CmbRangoFecha_SelectionChanged">
+            <ComboBoxItem Content="Todo el historial" Tag="todos" IsSelected="True"/>
+            <ComboBoxItem Content="Este mes" Tag="este_mes"/>
+            <ComboBoxItem Content="Mes anterior" Tag="mes_anterior"/>
+            <ComboBoxItem Content="Año actual" Tag="anio_actual"/>
+            <ComboBoxItem Content="Últimos 30 días" Tag="ultimos_30"/>
+            <ComboBoxItem Content="Personalizado" Tag="personalizado"/>
+          </ComboBox>
+          <DatePicker x:Name="DpDesde" Width="150" Margin="0,0,6,8" SelectedDateChanged="Fecha_SelectedDateChanged" ToolTip="Desde"/>
+          <TextBlock Text="–" VerticalAlignment="Center" Margin="0,0,6,8" Foreground="{StaticResource PincelTexto3}"/>
+          <DatePicker x:Name="DpHasta" Width="150" Margin="0,0,14,8" SelectedDateChanged="Fecha_SelectedDateChanged" ToolTip="Hasta"/>
+          <ComboBox x:Name="CmbEstatus" Width="150" Margin="0,0,10,8" SelectedIndex="0" SelectionChanged="Filtro_Changed">
+            <ComboBoxItem Content="Todos los estatus" Tag=""/>
+            <ComboBoxItem Content="Vigente" Tag="Vigente"/>
+            <ComboBoxItem Content="Cancelado" Tag="Cancelado"/>
+          </ComboBox>
+          <ComboBox x:Name="CmbTipo" Width="160" Margin="0,0,16,8" SelectedIndex="0" SelectionChanged="Filtro_Changed">
+            <ComboBoxItem Content="Todos los tipos" Tag=""/>
+            <ComboBoxItem Content="Ingreso (I)" Tag="I"/>
+            <ComboBoxItem Content="Egreso (E)" Tag="E"/>
+            <ComboBoxItem Content="Nómina (N)" Tag="N"/>
+            <ComboBoxItem Content="Traslado (T)" Tag="T"/>
+            <ComboBoxItem Content="Pago (P)" Tag="P"/>
+          </ComboBox>
+          <CheckBox x:Name="ChkOcultarNominas" Content="Ocultar nóminas" VerticalAlignment="Center" Margin="0,0,16,8" Checked="Filtro_Changed" Unchecked="Filtro_Changed" ToolTip="Oculta los recibos de nómina individual para no saturar la vista"/>
+          <CheckBox x:Name="ChkArchivados" Content="Incluir archivados" VerticalAlignment="Center" Margin="0,0,0,8" Checked="Filtro_Changed" Unchecked="Filtro_Changed"/>
+        </WrapPanel>
+      </StackPanel>
+    </Border>
+
+    <!-- Tabla -->
+    <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Padding="0">
+      <Grid>
+        <DataGrid x:Name="GridCfdi" IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow" MouseDoubleClick="GridCfdi_MouseDoubleClick">
+          <DataGrid.Columns>
+            <DataGridCheckBoxColumn Header="" Binding="{Binding Seleccionado, UpdateSourceTrigger=PropertyChanged}" Width="44" IsReadOnly="False" ElementStyle="{StaticResource CeldaCasilla}" EditingElementStyle="{StaticResource CeldaCasilla}"/>
+            <DataGridTextColumn Header="FECHA" Binding="{Binding FechaEmision}" Width="104" ElementStyle="{StaticResource CeldaTexto}"/>
+            <DataGridTextColumn Header="SERIE / FOLIO" Binding="{Binding SerieFolio}" Width="130" ElementStyle="{StaticResource CeldaAtenuadaMono}"/>
+            <DataGridTemplateColumn Header="CONTRAPARTE" Width="*" MinWidth="240">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding NombreContraparte}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding Contraparte}" Style="{StaticResource TextoMono}" FontSize="11"/>
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="TIPO" Binding="{Binding TipoComprobante}" Width="58" ElementStyle="{StaticResource CeldaTexto}"/>
+            <DataGridTextColumn Header="SUBTOTAL" Binding="{Binding Subtotal}" Width="120" ElementStyle="{StaticResource CeldaNumero}"/>
+            <DataGridTextColumn Header="IVA" Binding="{Binding IVA}" Width="110" ElementStyle="{StaticResource CeldaNumero}"/>
+            <DataGridTextColumn Header="TOTAL" Binding="{Binding Total}" Width="130" ElementStyle="{StaticResource CeldaNumero}"/>
+            <DataGridTextColumn Header="MON." Binding="{Binding Moneda}" Width="66" ElementStyle="{StaticResource CeldaAtenuada}"/>
+            <DataGridTextColumn Header="MÉTODO" Binding="{Binding MetodoPago}" Width="84" ElementStyle="{StaticResource CeldaAtenuada}"/>
+            <DataGridTextColumn Header="FORMA" Binding="{Binding FormaPago}" Width="70" ElementStyle="{StaticResource CeldaAtenuada}"/>
+            <DataGridTemplateColumn Header="ESTATUS" Width="104">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <Border>
+                    <Border.Style>
+                      <Style TargetType="Border" BasedOn="{StaticResource PastillaOk}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding EstatusSat}" Value="Cancelado">
+                            <Setter Property="Background" Value="{StaticResource PincelCriticoFondo}"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource PincelCriticoBorde}"/>
+                            <Setter Property="TextElement.Foreground" Value="{StaticResource PincelCritico}"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding EstatusSat}"/>
+                  </Border>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <ui:EstadoVacio x:Name="Vacio" Visibility="Collapsed" Glifo="&#xE721;" Titulo="No hay CFDI con estos filtros" Texto="Prueba con otro periodo o quita algún filtro. Si aún no descargas nada, ve a «Descargas del SAT»."/>
+      </Grid>
+    </Border>
+
+    <!-- Totales del filtro -->
+    <Border Grid.Row="3" Style="{StaticResource Tarjeta}" Margin="0,14,0,0" Padding="22,12">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="0"><TextBlock Text="CFDI EN LA TABLA" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="LblTotCfdi" FontWeight="SemiBold" FontSize="15" Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"/></StackPanel>
+        <StackPanel Grid.Column="2"><TextBlock Text="SUBTOTAL" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="LblTotSubtotal" FontWeight="SemiBold" FontSize="15" Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"/></StackPanel>
+        <StackPanel Grid.Column="4"><TextBlock Text="IVA" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="LblTotIva" FontWeight="SemiBold" FontSize="15" Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"/></StackPanel>
+        <StackPanel Grid.Column="6"><TextBlock Text="RETENCIONES" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="LblTotRet" FontWeight="SemiBold" FontSize="15" Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"/></StackPanel>
+        <StackPanel Grid.Column="8"><TextBlock Text="TOTAL" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="LblTotTotal" FontWeight="Bold" FontSize="17" Foreground="{StaticResource PincelAcento}" Margin="0,1,0,0" Typography.NumeralAlignment="Tabular"/></StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

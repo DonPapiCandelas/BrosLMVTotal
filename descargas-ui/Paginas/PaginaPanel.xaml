@@ -1,0 +1,128 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid Margin="32,26,32,28">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+
+      <ui:EncabezadoPagina x:Name="Encabezado" Grid.Row="0" Titulo="Panel" Subtitulo="">
+        <StackPanel Orientation="Horizontal">
+          <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE72C;" Content="Actualizar" Margin="0,0,8,0" Click="BtnActualizar_Click"/>
+          <Button Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE896;" Content="Nueva descarga" Click="BtnNuevaDescarga_Click"/>
+        </StackPanel>
+      </ui:EncabezadoPagina>
+
+      <!-- Estado general -->
+      <Border Grid.Row="1" Style="{StaticResource Tarjeta}" Margin="0,22,0,0" Padding="0">
+        <Grid x:Name="Estado" Height="74">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/><ColumnDefinition Width="1"/><ColumnDefinition Width="*"/><ColumnDefinition Width="1"/><ColumnDefinition Width="*"/><ColumnDefinition Width="1"/><ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="0" Margin="22,0,12,0" VerticalAlignment="Center">
+            <TextBlock Text="SERVICIO DE DESCARGA" Style="{StaticResource TextoRotulo}"/>
+            <StackPanel Orientation="Horizontal" Margin="0,5,0,0"><Ellipse x:Name="PuntoServicio" Width="9" Height="9" Fill="{StaticResource PincelTexto3}" Margin="0,1,8,0"/><TextBlock x:Name="TxtServicio" Text="Calculando…" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></StackPanel>
+          </StackPanel>
+          <Border Grid.Column="1" Background="{StaticResource PincelBorde}" Margin="0,16"/>
+          <StackPanel Grid.Column="2" Margin="22,0,12,0" VerticalAlignment="Center">
+            <TextBlock Text="E.FIRMA" Style="{StaticResource TextoRotulo}"/>
+            <StackPanel Orientation="Horizontal" Margin="0,5,0,0"><Ellipse x:Name="PuntoFirma" Width="9" Height="9" Fill="{StaticResource PincelTexto3}" Margin="0,1,8,0"/><TextBlock x:Name="TxtFirma" Text="Calculando…" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></StackPanel>
+          </StackPanel>
+          <Border Grid.Column="3" Background="{StaticResource PincelBorde}" Margin="0,16"/>
+          <StackPanel Grid.Column="4" Margin="22,0,12,0" VerticalAlignment="Center">
+            <TextBlock Text="COMERCIAL" Style="{StaticResource TextoRotulo}"/>
+            <StackPanel Orientation="Horizontal" Margin="0,5,0,0"><Ellipse x:Name="PuntoComercial" Width="9" Height="9" Fill="{StaticResource PincelTexto3}" Margin="0,1,8,0"/><TextBlock x:Name="TxtComercial" Text="Calculando…" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></StackPanel>
+          </StackPanel>
+          <Border Grid.Column="5" Background="{StaticResource PincelBorde}" Margin="0,16"/>
+          <StackPanel Grid.Column="6" Margin="22,0,12,0" VerticalAlignment="Center">
+            <TextBlock Text="ÚLTIMO XML RECIBIDO" Style="{StaticResource TextoRotulo}"/>
+            <StackPanel Orientation="Horizontal" Margin="0,5,0,0"><Ellipse x:Name="PuntoUltimo" Width="9" Height="9" Fill="{StaticResource PincelTexto3}" Margin="0,1,8,0"/><TextBlock x:Name="TxtUltimo" Text="Calculando…" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></StackPanel>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Cifras -->
+      <Grid Grid.Row="2" Margin="0,16,0,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Style="{StaticResource Tarjeta}" Padding="20,18">
+          <StackPanel>
+            <TextBlock x:Name="K1Rotulo" Text="FACTURAS RECIBIDAS" Style="{StaticResource TextoRotulo}"/>
+            <TextBlock x:Name="K1Valor" Style="{StaticResource TextoCifra}" Text="—" Margin="0,8,0,0"/>
+            <TextBlock x:Name="K1Detalle" Style="{StaticResource TextoSecundario}" Margin="0,2,0,0"/>
+            <Border x:Name="K1Delta" Style="{StaticResource PastillaNeutra}" Margin="0,10,0,0" Visibility="Collapsed"><TextBlock x:Name="K1DeltaTxt"/></Border>
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Padding="20,18">
+          <StackPanel>
+            <TextBlock x:Name="K2Rotulo" Text="FACTURAS EMITIDAS" Style="{StaticResource TextoRotulo}"/>
+            <TextBlock x:Name="K2Valor" Style="{StaticResource TextoCifra}" Text="—" Margin="0,8,0,0"/>
+            <TextBlock x:Name="K2Detalle" Style="{StaticResource TextoSecundario}" Margin="0,2,0,0"/>
+            <Border x:Name="K2Delta" Style="{StaticResource PastillaNeutra}" Margin="0,10,0,0" Visibility="Collapsed"><TextBlock x:Name="K2DeltaTxt"/></Border>
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="4" Style="{StaticResource Tarjeta}" Padding="20,18">
+          <StackPanel>
+            <TextBlock Text="PARA REVISAR ESTE AÑO" Style="{StaticResource TextoRotulo}"/>
+            <TextBlock x:Name="K3Valor" Style="{StaticResource TextoCifra}" Text="—" Margin="0,8,0,0"/>
+            <TextBlock x:Name="K3Detalle" Style="{StaticResource TextoSecundario}" Margin="0,2,0,0"/>
+            <Button Style="{StaticResource Subtle}" Content="Ver indicadores" ui:Ui.Glifo="&#xE76C;" Padding="0,4" MinHeight="28" HorizontalAlignment="Left" Margin="0,8,0,-4" Click="BtnVerIndicadores_Click"/>
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="6" Style="{StaticResource Tarjeta}" Padding="20,18">
+          <StackPanel>
+            <TextBlock x:Name="K4Rotulo" Text="COBERTURA DEL AÑO" Style="{StaticResource TextoRotulo}"/>
+            <TextBlock x:Name="K4Valor" Style="{StaticResource TextoCifra}" Text="—" Margin="0,8,0,0"/>
+            <ProgressBar x:Name="K4Barra" Height="6" Minimum="0" Maximum="1" Margin="0,8,0,0" Foreground="{StaticResource PincelAcento}" Background="{StaticResource PincelBorde}" BorderThickness="0"/>
+            <TextBlock x:Name="K4Detalle" Style="{StaticResource TextoSecundario}" Margin="0,8,0,0"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <!-- Atención y accesos -->
+      <Grid Grid.Row="3" Margin="0,16,0,0">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="1.7*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Style="{StaticResource Tarjeta}" Padding="0">
+          <StackPanel>
+            <Grid Margin="22,18,22,12">
+              <TextBlock Text="Requiere atención" Style="{StaticResource TextoSubtitulo}"/>
+              <TextBlock x:Name="TxtAtencionCuenta" Style="{StaticResource TextoTenue}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            </Grid>
+            <Border Height="1" Background="{StaticResource PincelBorde}"/>
+            <StackPanel x:Name="ListaAtencion" Margin="0,4"/>
+          </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Column="2">
+          <Border Style="{StaticResource Tarjeta}" Padding="0">
+            <StackPanel>
+              <TextBlock Text="Acciones" Style="{StaticResource TextoSubtitulo}" Margin="22,18,22,12"/>
+              <Border Height="1" Background="{StaticResource PincelBorde}"/>
+              <StackPanel Margin="10,8,10,10">
+                <Button Style="{StaticResource Subtle}" ui:Ui.Glifo="&#xE8A5;" Content="Ver y filtrar CFDI" HorizontalContentAlignment="Left" Click="BtnVerCfdi_Click" Foreground="{StaticResource PincelTexto}"/>
+                <Button Style="{StaticResource Subtle}" ui:Ui.Glifo="&#xE8E5;" Content="Cargar XML o ZIP" HorizontalContentAlignment="Left" Click="BtnCargar_Click" Foreground="{StaticResource PincelTexto}"/>
+                <Button Style="{StaticResource Subtle}" ui:Ui.Glifo="&#xE9F9;" Content="Reportes ejecutivos" HorizontalContentAlignment="Left" Click="BtnReportes_Click" Foreground="{StaticResource PincelTexto}"/>
+                <Button Style="{StaticResource Subtle}" ui:Ui.Glifo="&#xE787;" Content="Cobertura por año" HorizontalContentAlignment="Left" Click="BtnCobertura_Click" Foreground="{StaticResource PincelTexto}"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Tarjeta}" Padding="0" Margin="0,16,0,0">
+            <StackPanel>
+              <TextBlock Text="Últimas solicitudes al SAT" Style="{StaticResource TextoSubtitulo}" Margin="22,18,22,12"/>
+              <Border Height="1" Background="{StaticResource PincelBorde}"/>
+              <StackPanel x:Name="ListaSolicitudes" Margin="0,4"/>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Grid>
+    </Grid>
+  </ScrollViewer>
+</UserControl>

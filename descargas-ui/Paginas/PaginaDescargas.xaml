@@ -1,0 +1,134 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaDescargas"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles"
+             AllowDrop="True" Background="Transparent" DragOver="Pagina_DragOver" DragLeave="Pagina_DragLeave" Drop="Pagina_Drop">
+  <Grid Margin="32,26,32,24">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <ui:EncabezadoPagina Grid.Row="0" Titulo="Descargas del SAT" Subtitulo="Pide los CFDI al SAT, revisa cómo van tus solicitudes o carga archivos que ya tengas.">
+      <StackPanel Orientation="Horizontal">
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE8E5;" Content="Cargar XML o ZIP" Margin="0,0,8,0" Click="BtnCargarXml_Click"
+                ToolTip="Mete CFDI que ya tienes (XML o ZIP del portal del SAT o de un proveedor). También puedes arrastrarlos a esta pantalla."/>
+        <Button Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE896;" Content="Nueva descarga" Click="BtnNuevaSolicitud_Click"/>
+      </StackPanel>
+    </ui:EncabezadoPagina>
+
+    <!-- Resumen -->
+    <Grid Grid.Row="1" Margin="0,22,0,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Style="{StaticResource Tarjeta}" Padding="18,16">
+        <StackPanel>
+          <StackPanel Orientation="Horizontal">
+            <Border Style="{StaticResource PastillaInfo}" Padding="8,3"><TextBlock Text="&#xE916;" FontFamily="{StaticResource FuenteIconos}" FontSize="12"/></Border>
+            <TextBlock Text="EN ESPERA DEL SAT" Style="{StaticResource TextoRotulo}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+          </StackPanel>
+          <TextBlock x:Name="CardPendientes" Style="{StaticResource TextoCifra}" Text="0" Margin="0,10,0,2"/>
+          <TextBlock Style="{StaticResource TextoSecundario}" Text="Solicitudes aceptadas que el SAT aún está preparando."/>
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Padding="18,16">
+        <StackPanel>
+          <StackPanel Orientation="Horizontal">
+            <Border Style="{StaticResource PastillaOk}" Padding="8,3"><TextBlock Text="&#xE73E;" FontFamily="{StaticResource FuenteIconos}" FontSize="12"/></Border>
+            <TextBlock Text="TERMINADAS" Style="{StaticResource TextoRotulo}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+          </StackPanel>
+          <TextBlock x:Name="CardTerminadas" Style="{StaticResource TextoCifra}" Text="0" Margin="0,10,0,2"/>
+          <TextBlock Style="{StaticResource TextoSecundario}" Text="Paquetes ya descargados y guardados."/>
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="4" Style="{StaticResource Tarjeta}" Padding="18,16">
+        <StackPanel>
+          <StackPanel Orientation="Horizontal">
+            <Border x:Name="PastillaErrores" Style="{StaticResource PastillaNeutra}" Padding="8,3"><TextBlock Text="&#xE7BA;" FontFamily="{StaticResource FuenteIconos}" FontSize="12"/></Border>
+            <TextBlock Text="REQUIEREN REVISIÓN" Style="{StaticResource TextoRotulo}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+          </StackPanel>
+          <TextBlock x:Name="CardErrores" Style="{StaticResource TextoCifra}" Text="0" Margin="0,10,0,2"/>
+          <TextBlock x:Name="LblActividad" Style="{StaticResource TextoSecundario}" Text="Sin incidencias."/>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Solicitudes -->
+    <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Margin="0,18,0,0" Padding="0">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0" Margin="22,16,16,0">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+            <RadioButton x:Name="TabSolicitudesPendientes" Content="En proceso" GroupName="TabsSolicitudes" Style="{StaticResource Pestana}" IsChecked="True" Checked="FiltroSolicitud_Changed"/>
+            <RadioButton x:Name="TabSolicitudesTerminadas" Content="Terminadas" GroupName="TabsSolicitudes" Style="{StaticResource Pestana}" Checked="FiltroSolicitud_Changed"/>
+            <RadioButton x:Name="TabSolicitudesRechazadas" Content="Rechazadas o con error" GroupName="TabsSolicitudes" Style="{StaticResource Pestana}" Checked="FiltroSolicitud_Changed"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,8">
+            <Button x:Name="BtnRevisarPendientes" Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE72C;" Content="Revisar pendientes" Margin="0,0,8,0" Click="BtnRevisarPendientes_Click"
+                    ToolTip="Pregunta al SAT por las solicitudes en espera y descarga lo que ya esté listo."/>
+            <Button x:Name="BtnSincronizarComercial" Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE895;" Content="Sincronizar con Comercial" Margin="0,0,8,0" Click="BtnSincronizarComercial_Click"/>
+            <Button Style="{StaticResource Subtle}" Content="Limpiar historial" Click="BtnLimpiarSolicitudes_Click" ToolTip="Oculta de esta vista lo antiguo. No borra ningún XML."/>
+          </StackPanel>
+        </Grid>
+        <Border Grid.Row="0" Height="1" Background="{StaticResource PincelBorde}" VerticalAlignment="Bottom"/>
+
+        <Grid Grid.Row="1">
+          <DataGrid x:Name="GridSolicitudes" IsReadOnly="True" SelectionMode="Single" Margin="0,1,0,0">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="SOLICITUD" Width="150">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate><TextBlock Text="{Binding IdSolicitudCorto}" ToolTip="{Binding IdSolicitud}" Style="{StaticResource CeldaAtenuadaMono}"/></DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="CFDI" Binding="{Binding Tipo}" Width="90" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="CONTENIDO" Binding="{Binding TipoSolicitud}" Width="100" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="PERIODO" Binding="{Binding Rango}" Width="200" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTemplateColumn Header="ESTATUS" Width="150">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Border VerticalAlignment="Center">
+                      <Border.Style>
+                        <Style TargetType="Border" BasedOn="{StaticResource PastillaNeutra}">
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding EstatusCategoria}" Value="Terminada"><Setter Property="Background" Value="{StaticResource PincelOkFondo}"/><Setter Property="BorderBrush" Value="{StaticResource PincelOkBorde}"/><Setter Property="TextElement.Foreground" Value="{StaticResource PincelOk}"/></DataTrigger>
+                            <DataTrigger Binding="{Binding EstatusCategoria}" Value="Pendiente"><Setter Property="Background" Value="{StaticResource PincelInfoFondo}"/><Setter Property="BorderBrush" Value="{StaticResource PincelInfoBorde}"/><Setter Property="TextElement.Foreground" Value="{StaticResource PincelInfo}"/></DataTrigger>
+                            <DataTrigger Binding="{Binding EstatusCategoria}" Value="Rechazada"><Setter Property="Background" Value="{StaticResource PincelCriticoFondo}"/><Setter Property="BorderBrush" Value="{StaticResource PincelCriticoBorde}"/><Setter Property="TextElement.Foreground" Value="{StaticResource PincelCritico}"/></DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Border.Style>
+                      <TextBlock Text="{Binding Estatus}"/>
+                    </Border>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="ESPERANDO" Binding="{Binding TiempoTranscurrido}" Width="100" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="CFDI" Binding="{Binding NumeroCFDIs}" Width="70" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="PEDIDA" Binding="{Binding Fecha}" Width="140" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="DETALLE" Binding="{Binding ErrorDescarga}" Width="*" MinWidth="200" ElementStyle="{StaticResource CeldaError}"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <!-- Estado vacío -->
+          <StackPanel x:Name="Vacio" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" Margin="0,40,0,0">
+            <TextBlock x:Name="VacioIcono" Text="&#xE73E;" FontFamily="{StaticResource FuenteIconos}" FontSize="30" Foreground="{StaticResource PincelBordeFuerte}" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="VacioTitulo" Style="{StaticResource TextoSubtitulo}" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+            <TextBlock x:Name="VacioTexto" Style="{StaticResource TextoSecundario}" HorizontalAlignment="Center" TextAlignment="Center" MaxWidth="380" Margin="0,4,0,0"/>
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <!-- Aviso al arrastrar archivos -->
+    <Border x:Name="ZonaSoltar" Grid.RowSpan="3" Margin="-8" Visibility="Collapsed" Background="#E6F3F5F9" BorderBrush="{StaticResource PincelAcento}" BorderThickness="2" CornerRadius="14" IsHitTestVisible="False">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+        <TextBlock Text="&#xE8E5;" FontFamily="{StaticResource FuenteIconos}" FontSize="42" Foreground="{StaticResource PincelAcento}" HorizontalAlignment="Center"/>
+        <TextBlock Text="Suelta aquí tus XML o ZIP" Style="{StaticResource TextoTitulo}" HorizontalAlignment="Center" Margin="0,12,0,0"/>
+        <TextBlock Text="Se cargarán en la empresa activa." Style="{StaticResource TextoSecundario}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

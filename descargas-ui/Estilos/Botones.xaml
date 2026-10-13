@@ -1,0 +1,137 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <!--
+    Botones. Una sola plantilla (BotonBase) y cuatro variantes que solo cambian colores:
+      Primary  -> la acción principal de la pantalla (una por pantalla)
+      Ghost    -> acción secundaria (borde gris)
+      Subtle   -> acción terciaria, sin borde
+      Danger   -> acción destructiva
+      BotonExito -> confirma una operación terminada (verde)
+    Ícono opcional:  <Button Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE896;" Content="Descargar"/>
+  -->
+
+  <Style x:Key="FocoTeclado">
+    <Setter Property="Control.Template">
+      <Setter.Value>
+        <ControlTemplate>
+          <Border Margin="-2" BorderBrush="{StaticResource PincelAcento}" BorderThickness="2" CornerRadius="9" SnapsToDevicePixels="True"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="BotonBase" TargetType="Button">
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Padding" Value="16,8"/>
+    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocoTeclado}"/>
+    <Setter Property="Foreground" Value="{DynamicResource BtnTexto}"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Fondo" CornerRadius="{StaticResource RadioControl}" Padding="{TemplateBinding Padding}"
+                  Background="{DynamicResource BtnFondo}" BorderBrush="{DynamicResource BtnBorde}" BorderThickness="1" SnapsToDevicePixels="True">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center">
+              <TextBlock x:Name="Ico" FontFamily="{StaticResource FuenteIconos}" FontSize="14" VerticalAlignment="Center" Margin="0,1,8,0"
+                         Text="{Binding (ui:Ui.Glifo), RelativeSource={RelativeSource TemplatedParent}}"
+                         Foreground="{Binding Foreground, RelativeSource={RelativeSource TemplatedParent}}"/>
+              <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True"/>
+            </StackPanel>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="ui:Ui.Glifo" Value="{x:Null}"><Setter TargetName="Ico" Property="Visibility" Value="Collapsed"/></Trigger>
+            <Trigger Property="Content" Value="{x:Null}"><Setter TargetName="Ico" Property="Margin" Value="0,1,0,0"/></Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Fondo" Property="Background" Value="{DynamicResource BtnFondoHover}"/>
+              <Setter TargetName="Fondo" Property="BorderBrush" Value="{DynamicResource BtnBordeHover}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Fondo" Property="Background" Value="{DynamicResource BtnFondoPresionado}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Fondo" Property="Background" Value="{DynamicResource BtnFondoOff}"/>
+              <Setter TargetName="Fondo" Property="BorderBrush" Value="{DynamicResource BtnBordeOff}"/>
+              <Setter Property="Foreground" Value="{StaticResource PincelTextoDeshabilitado}"/>
+              <Setter Property="Cursor" Value="Arrow"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource BotonBase}">
+    <Style.Resources>
+      <SolidColorBrush x:Key="BtnTexto" Color="White"/>
+      <SolidColorBrush x:Key="BtnFondo" Color="{StaticResource Acento}"/>
+      <SolidColorBrush x:Key="BtnFondoHover" Color="{StaticResource AcentoHover}"/>
+      <SolidColorBrush x:Key="BtnFondoPresionado" Color="{StaticResource AcentoPresionado}"/>
+      <SolidColorBrush x:Key="BtnBorde" Color="{StaticResource Acento}"/>
+      <SolidColorBrush x:Key="BtnBordeHover" Color="{StaticResource AcentoHover}"/>
+      <SolidColorBrush x:Key="BtnFondoOff" Color="#B9CDF3"/>
+      <SolidColorBrush x:Key="BtnBordeOff" Color="#B9CDF3"/>
+    </Style.Resources>
+  </Style>
+
+  <Style x:Key="Ghost" TargetType="Button" BasedOn="{StaticResource BotonBase}">
+    <Style.Resources>
+      <SolidColorBrush x:Key="BtnTexto" Color="{StaticResource Texto}"/>
+      <SolidColorBrush x:Key="BtnFondo" Color="{StaticResource Superficie}"/>
+      <SolidColorBrush x:Key="BtnFondoHover" Color="{StaticResource SuperficieHover}"/>
+      <SolidColorBrush x:Key="BtnFondoPresionado" Color="#E6ECF5"/>
+      <SolidColorBrush x:Key="BtnBorde" Color="{StaticResource BordeFuerte}"/>
+      <SolidColorBrush x:Key="BtnBordeHover" Color="{StaticResource Texto3}"/>
+      <SolidColorBrush x:Key="BtnFondoOff" Color="{StaticResource Superficie2}"/>
+      <SolidColorBrush x:Key="BtnBordeOff" Color="{StaticResource Borde}"/>
+    </Style.Resources>
+  </Style>
+
+  <Style x:Key="Subtle" TargetType="Button" BasedOn="{StaticResource BotonBase}">
+    <Style.Resources>
+      <SolidColorBrush x:Key="BtnTexto" Color="{StaticResource Acento}"/>
+      <SolidColorBrush x:Key="BtnFondo" Color="Transparent"/>
+      <SolidColorBrush x:Key="BtnFondoHover" Color="{StaticResource AcentoSuave}"/>
+      <SolidColorBrush x:Key="BtnFondoPresionado" Color="{StaticResource AcentoBorde}"/>
+      <SolidColorBrush x:Key="BtnBorde" Color="Transparent"/>
+      <SolidColorBrush x:Key="BtnBordeHover" Color="Transparent"/>
+      <SolidColorBrush x:Key="BtnFondoOff" Color="Transparent"/>
+      <SolidColorBrush x:Key="BtnBordeOff" Color="Transparent"/>
+    </Style.Resources>
+  </Style>
+
+  <Style x:Key="Danger" TargetType="Button" BasedOn="{StaticResource BotonBase}">
+    <Style.Resources>
+      <SolidColorBrush x:Key="BtnTexto" Color="{StaticResource Critico}"/>
+      <SolidColorBrush x:Key="BtnFondo" Color="{StaticResource Superficie}"/>
+      <SolidColorBrush x:Key="BtnFondoHover" Color="{StaticResource CriticoFondo}"/>
+      <SolidColorBrush x:Key="BtnFondoPresionado" Color="{StaticResource CriticoBorde}"/>
+      <SolidColorBrush x:Key="BtnBorde" Color="{StaticResource CriticoBorde}"/>
+      <SolidColorBrush x:Key="BtnBordeHover" Color="{StaticResource Critico}"/>
+      <SolidColorBrush x:Key="BtnFondoOff" Color="{StaticResource Superficie2}"/>
+      <SolidColorBrush x:Key="BtnBordeOff" Color="{StaticResource Borde}"/>
+    </Style.Resources>
+  </Style>
+
+  <Style x:Key="BotonExito" TargetType="Button" BasedOn="{StaticResource BotonBase}">
+    <Style.Resources>
+      <SolidColorBrush x:Key="BtnTexto" Color="White"/>
+      <SolidColorBrush x:Key="BtnFondo" Color="{StaticResource Ok}"/>
+      <SolidColorBrush x:Key="BtnFondoHover" Color="#116A33"/>
+      <SolidColorBrush x:Key="BtnFondoPresionado" Color="#0E5A2B"/>
+      <SolidColorBrush x:Key="BtnBorde" Color="{StaticResource Ok}"/>
+      <SolidColorBrush x:Key="BtnBordeHover" Color="#116A33"/>
+      <SolidColorBrush x:Key="BtnFondoOff" Color="#A9D4B8"/>
+      <SolidColorBrush x:Key="BtnBordeOff" Color="#A9D4B8"/>
+    </Style.Resources>
+  </Style>
+
+  <!-- Botón cuadrado solo con ícono (barra de herramientas de una tabla, cerrar, etc.) -->
+  <Style x:Key="BotonIcono" TargetType="Button" BasedOn="{StaticResource Ghost}">
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="MinHeight" Value="34"/>
+    <Setter Property="MinWidth" Value="34"/>
+  </Style>
+</ResourceDictionary>

@@ -1,0 +1,31 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaConciliacion"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <Grid Margin="32,26,32,24">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <ui:EncabezadoPagina Grid.Row="0" Titulo="Conciliación mensual" Subtitulo="Lo que el SAT reporta (Metadata) contra los XML que ya descargaste. «Faltan» en cero significa que ningún CFDI vigente del SAT se quedó sin su XML.">
+      <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE74E;" Content="Exportar CSV" Click="BtnCsv_Click"/>
+    </ui:EncabezadoPagina>
+    <Border Grid.Row="1" x:Name="Aviso" Style="{StaticResource BandaOk}" Margin="0,18,0,0">
+      <TextBlock x:Name="LblResumen" TextWrapping="Wrap" FontSize="13"/>
+    </Border>
+    <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Margin="0,16,0,0" Padding="0">
+      <Grid>
+        <DataGrid x:Name="GridConciliacion" IsReadOnly="True">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="MES" Binding="{Binding MesTexto}" Width="110" ElementStyle="{StaticResource CeldaTexto}"/>
+            <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="110" ElementStyle="{StaticResource CeldaTexto}"/>
+            <DataGridTextColumn Header="SAT REPORTA" Binding="{Binding SatTotal}" Width="120" ElementStyle="{StaticResource CeldaNumero}"/>
+            <DataGridTextColumn Header="VIGENTES" Binding="{Binding SatVigentes}" Width="110" ElementStyle="{StaticResource CeldaNumero}"/>
+            <DataGridTextColumn Header="CANCELADOS" Binding="{Binding SatCancelados}" Width="120" ElementStyle="{StaticResource CeldaNumero}"/>
+            <DataGridTextColumn Header="XML DESCARGADOS" Binding="{Binding Descargados}" Width="150" ElementStyle="{StaticResource CeldaNumero}"/>
+            <DataGridTextColumn Header="FALTAN" Binding="{Binding Faltan}" Width="100" ElementStyle="{StaticResource CeldaNumero}"/>
+            <DataGridTextColumn Header="ESTADO" Binding="{Binding Estado}" Width="*" ElementStyle="{StaticResource CeldaAtenuada}"/>
+          </DataGrid.Columns>
+        </DataGrid>
+        <ui:EstadoVacio x:Name="Vacio" Visibility="Collapsed" Glifo="&#xE71D;" Titulo="Todavía no hay nada que conciliar" Texto="Cuando el SAT entregue la Metadata de algún mes, aquí verás si falta algún XML."/>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>
