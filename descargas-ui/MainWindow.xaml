@@ -56,6 +56,9 @@
         <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebar}" MouseLeftButtonUp="NavSalud_Click">
           <TextBlock Text="🩺   Salud del servicio" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
         </Border>
+        <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebar}" MouseLeftButtonUp="NavIndicadores_Click">
+          <TextBlock Text="🔎   Indicadores fiscales" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
+        </Border>
         <Border DockPanel.Dock="Top" Style="{StaticResource BotonSidebar}" MouseLeftButtonUp="NavBitacora_Click">
           <TextBlock Text="📋   Bitácora" Foreground="#B9CCF3" FontWeight="SemiBold" FontSize="13.5" Margin="18,12"/>
         </Border>

@@ -333,6 +333,17 @@ CREATE TABLE CfdiMetadata (
     LineaCruda NVARCHAR(MAX) NOT NULL,
     FechaDescarga DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
+
+-- Indicadores personalizados: consultas de solo lectura del usuario (ver Indicadores.cs). Parametros: @rfc, @desde, @hasta.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'IndicadorPersonalizado')
+CREATE TABLE IndicadorPersonalizado (
+    IndicadorID INT IDENTITY PRIMARY KEY,
+    Nombre NVARCHAR(120) NOT NULL,
+    Descripcion NVARCHAR(500) NULL,
+    Sql NVARCHAR(MAX) NOT NULL,
+    Nivel INT NOT NULL DEFAULT 1,
+    FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
 ";
 
         public static void Asegurar(SqlConnection conn)

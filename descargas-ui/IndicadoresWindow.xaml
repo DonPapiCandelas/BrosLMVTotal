@@ -1,0 +1,62 @@
+<Window x:Class="BrosLMV.DescargasUI.IndicadoresWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Indicadores fiscales" Height="780" Width="1340" MinHeight="520" MinWidth="980"
+        WindowStartupLocation="CenterOwner" Background="#F4F6F9">
+  <Grid Margin="28,22,28,24">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+    <StackPanel Grid.Row="0">
+      <TextBlock Text="Indicadores fiscales" FontSize="26" FontWeight="Bold" Foreground="#16263A"/>
+      <TextBlock Foreground="#64748B" Margin="0,4,0,0" TextWrapping="Wrap"
+                 Text="Señales para revisar en los CFDI de este equipo. No son un dictamen: confirma cada caso con tu contador. Todo se calcula con la base local; no se consulta al SAT."/>
+    </StackPanel>
+    <WrapPanel Grid.Row="1" Margin="0,14,0,12">
+      <TextBlock Text="Empresa:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="#16263A" FontWeight="SemiBold"/>
+      <ComboBox x:Name="CmbEmpresa" Width="330" Margin="0,0,18,0" SelectionChanged="Filtro_Changed"/>
+      <TextBlock Text="Periodo:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="#16263A" FontWeight="SemiBold"/>
+      <ComboBox x:Name="CmbPeriodo" Width="190" Margin="0,0,10,0" SelectionChanged="Filtro_Changed">
+        <ComboBoxItem Tag="anio" Content="Este año" IsSelected="True"/>
+        <ComboBoxItem Tag="mes" Content="Este mes"/>
+        <ComboBoxItem Tag="12m" Content="Últimos 12 meses"/>
+        <ComboBoxItem Tag="anioant" Content="Año pasado"/>
+        <ComboBoxItem Tag="todo" Content="Todo el historial"/>
+      </ComboBox>
+      <Button Content="Actualizar" Style="{StaticResource Ghost}" Margin="8,0,0,0" Click="BtnActualizar_Click"/>
+    </WrapPanel>
+    <Grid Grid.Row="2">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="370"/>
+        <ColumnDefinition Width="16"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <Grid Grid.Column="0">
+        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="Lista"/></ScrollViewer>
+        <Button Grid.Row="1" Content="+ Nuevo indicador propio…" Style="{StaticResource Ghost}" Margin="0,10,0,0" HorizontalAlignment="Left" Click="BtnNuevo_Click"
+                ToolTip="Escribe una consulta SQL de solo lectura sobre los CFDI de este equipo"/>
+      </Grid>
+      <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Padding="18">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <DockPanel Grid.Row="0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+              <Button x:Name="BtnEditar" Content="Editar" Style="{StaticResource Ghost}" Margin="0,0,8,0" Click="BtnEditar_Click" Visibility="Collapsed"/>
+              <Button x:Name="BtnEliminar" Content="Eliminar" Style="{StaticResource Danger}" Margin="0,0,8,0" Click="BtnEliminar_Click" Visibility="Collapsed"/>
+              <Button x:Name="BtnExcel" Content="Exportar a Excel" Style="{StaticResource Ghost}" Click="BtnExcel_Click" IsEnabled="False"/>
+            </StackPanel>
+            <TextBlock x:Name="LblTitulo" FontSize="19" FontWeight="SemiBold" Foreground="#16263A" TextWrapping="Wrap" Text="Elige un indicador"/>
+          </DockPanel>
+          <TextBlock Grid.Row="1" x:Name="LblDescripcion" Foreground="#64748B" Margin="0,6,0,12" TextWrapping="Wrap"/>
+          <DataGrid Grid.Row="2" x:Name="Rejilla" IsReadOnly="True" AutoGenerateColumns="True" AutoGeneratingColumn="Rejilla_AutoGeneratingColumn"
+                    MouseDoubleClick="Rejilla_MouseDoubleClick" HeadersVisibility="Column" GridLinesVisibility="Horizontal"/>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

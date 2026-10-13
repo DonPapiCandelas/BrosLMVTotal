@@ -416,6 +416,11 @@ namespace BrosLMV.DescargasUI
             new SaludWindow(_conn) { Owner = this }.ShowDialog();
         }
 
+        private void NavIndicadores_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            new IndicadoresWindow(_conn) { Owner = this }.ShowDialog();
+        }
+
         private void NavBitacora_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             new BitacoraWindow { Owner = this }.ShowDialog();

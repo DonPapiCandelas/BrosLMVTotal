@@ -44,6 +44,7 @@
     <Compile Include="..\descargas\Datos\BrosSatDb.cs" Link="Datos\BrosSatDb.cs" />
     <Compile Include="..\descargas\Datos\ReportesSql.cs" Link="Datos\ReportesSql.cs" />
     <Compile Include="..\descargas\Datos\Salud.cs" Link="Datos\Salud.cs" />
+    <Compile Include="..\descargas\Datos\Indicadores.cs" Link="Datos\Indicadores.cs" />
     <Compile Include="..\descargas\Datos\Conciliacion.cs" Link="Datos\Conciliacion.cs" />
     <Compile Include="..\descargas\Datos\Vinculacion.cs" Link="Datos\Vinculacion.cs" />
     <Compile Include="..\descargas\Datos\Respaldo.cs" Link="Datos\Respaldo.cs" />
