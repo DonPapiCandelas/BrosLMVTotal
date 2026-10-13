@@ -5,6 +5,7 @@
 // Plantilla: Crear documentos desde XML
 // Categoria: Documentos
 // Documentacion: CREAR_DOC_DESDE_XML.html
+// job: safe-offline  (lo abre BrosLMV Descargas con el Runner, sin Comercial: trae su propia ventana y no crea nada hasta que el usuario pulsa «Crear»)
 // Prorrateo de gastos por proyecto: 2026-10-06
 
 using System;
@@ -71,6 +72,8 @@ string FechaSql(DateTime d) => "'" + d.ToString("yyyy-MM-dd HH:mm:ss", ci) + "'"
 
 int ownEntityId = ctx.erp.OwnedBusinessEntityId;
 string idsJoined = ctx.JoinIds(ids);
+// El campo «Proyecto» de las partidas no existe en todas las bases (se usa solo para repartir gastos entre proyectos).
+bool tieneProyecto = I(ctx.Scalar("SELECT CASE WHEN COL_LENGTH('docDocumentItem', 'Proyecto') IS NULL THEN 0 ELSE 1 END")) == 1;
 
 ctx.NonQuery(@"
 IF OBJECT_ID('zzBrosCfdiProductoMapa', 'U') IS NULL
@@ -1153,6 +1156,7 @@ void ValidarReparto(DocXml doc)
 {
     var items = doc.Partidas.Where(x => x.Reparto.Count > 0).ToList();
     if (items.Count == 0) return;
+    if (!tieneProyecto) throw new Exception("Esta base de Comercial no tiene el campo «Proyecto» en las partidas de documento, así que no se puede repartir el gasto entre proyectos.");
     if (!EsGasto(doc.DestinoModulo) || DestinoDe(doc.DestinoModulo).Stock != 0 || items.Any(x => x.ProdId > 0))
         throw new Exception("El reparto entre proyectos es para Gastos sin producto ni movimiento de inventario. Para materiales, asigna el proyecto al registrar el consumo.");
     var validos = new HashSet<int>(ctx.Query("SELECT ProjectID FROM orgProject WHERE DeletedOn IS NULL AND OwnedBusinessEntityID=" + ownEntityId).Select(x => I(x["ProjectID"])));
@@ -1196,7 +1200,7 @@ int CrearUnDocumento(DocXml d, List<string> notas)
         double neto = it.Importe - it.Descuento;
         double precio = it.Descuento > 0 && it.Cantidad > 0 ? neto / it.Cantidad : it.Precio;
         if (it.Descuento > 0) conDescuento++;
-        string proyectoSql = it.ProjectId > 0 ? ", Proyecto=" + Q(it.ProjectId.ToString()) : "";
+        string proyectoSql = tieneProyecto && it.ProjectId > 0 ? ", Proyecto=" + Q(it.ProjectId.ToString()) : "";
         string comentario = it.ProjectId > 0 ? "Prorrateo XML " + d.Uuid + " | concepto " + it.ItemId + " | proyecto " + it.ProjectId + " | " + it.Reparto.First(x=>x.ProjectId==it.ProjectId).Porcentaje.ToString("0.######", ci) + "%" : "";
         string expSql = EsGasto(d.DestinoModulo) && it.ExpId > 0 ? ", ExpenseTypeID=" + it.ExpId : "";
         if (it.ProdId > 0)
@@ -1208,10 +1212,10 @@ int CrearUnDocumento(DocXml d, List<string> notas)
         {
             lote1.Add(
                 "INSERT INTO docDocumentItem(DocumentID, ProductID, ProductKey, Description, Unit, Quantity, UnitPrice, Total, TaxTypeID, TaxPerc, RetentionPerc, DiscountPerc, LineNumber, DateItem, " +
-                "ApplyGlobalDiscount, DeductiblePerc, IsBusinessOperation, MustBeDelivered, CoefUnit, ExpenseTypeID, ClaveUnidad, ObjetoImpuesto, Proyecto, Comments) VALUES(" +
+                "ApplyGlobalDiscount, DeductiblePerc, IsBusinessOperation, MustBeDelivered, CoefUnit, ExpenseTypeID, ClaveUnidad, ObjetoImpuesto, " + (tieneProyecto ? "Proyecto, " : "") + "Comments) VALUES(" +
                 docId + ", 0, N'', " + Q(it.Desc) + ", " + Q(string.IsNullOrEmpty(it.Unit) ? "SERVICIO" : it.Unit) + ", " + Num(it.Cantidad) + ", " + Num(precio) + ", " + Num(neto > 0 ? neto : it.Cantidad * precio) + ", " +
                 it.TaxTypeId + ", " + Num(iva) + ", " + Num(ret) + ", 0, " + ln + ", GETDATE(), 1, 1, 1, 0, 1, " +
-                (EsGasto(d.DestinoModulo) && it.ExpId > 0 ? it.ExpId.ToString() : "NULL") + ", " + Q(ClaveDe(it.ClaveUn, 10)) + ", " + Q(ClaveDe(it.Objeto, 2)) + ", " + (it.ProjectId > 0 ? Q(it.ProjectId.ToString()) : "NULL") + ", " + Q(comentario) + ")");
+                (EsGasto(d.DestinoModulo) && it.ExpId > 0 ? it.ExpId.ToString() : "NULL") + ", " + Q(ClaveDe(it.ClaveUn, 10)) + ", " + Q(ClaveDe(it.Objeto, 2)) + ", " + (tieneProyecto ? (it.ProjectId > 0 ? Q(it.ProjectId.ToString()) : "NULL") + ", " : "") + Q(comentario) + ")");
         }
         ln++;
     }

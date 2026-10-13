@@ -16,7 +16,7 @@
         <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE8F1;" Content="Archivar" Margin="0,0,8,0" Click="BtnArchivar_Click" ToolTip="Oculta o muestra el CFDI seleccionado del historial diario"/>
         <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE896;" Content="Copiar XML" Margin="0,0,8,0" Click="BtnDescargarXml_Click" ToolTip="Copia los XML marcados a una carpeta a tu elección"/>
         <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE74E;" Content="Excel" Margin="0,0,8,0" Click="BtnExportarExcel_Click" ToolTip="Genera un libro .xlsx con formato ejecutivo, autofiltro y totales"/>
-        <Button Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE8A5;" Content="Crear documento en Comercial" Click="BtnCrearDocumento_Click" ToolTip="Prepara los CFDI recibidos marcados para convertirlos en documentos de Comercial"/>
+        <Button Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE8A5;" Content="Crear documentos" Click="BtnCrearDocumento_Click" ToolTip="Abre la ventana para convertir los CFDI recibidos marcados en compras o gastos de Comercial"/>
       </StackPanel>
     </ui:EncabezadoPagina>
 

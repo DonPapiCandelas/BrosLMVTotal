@@ -67,7 +67,9 @@ siguen bloqueados hasta validar su destino.
 
 ## 1b. Desde BrosLMV Descargas
 
-Además de seleccionar XML en la lista de Comercial, puedes empezar en **BrosLMV Descargas**: en *Recibidos* marca los CFDI y pulsa **Crear documento en Comercial**. Descargas revisa en Comercial cuáles ya están cargados y no tienen documento, y deja un pedido. Después, en Comercial, pulsa este botón **sin seleccionar nada**: se abre con esos XML. El pedido vale un día y se usa una sola vez; si seleccionas XML en la lista, manda tu selección.
+Además de seleccionar XML en la lista de Comercial, puedes empezar en **BrosLMV Descargas**, **sin abrir Comercial**: en *CFDI* → *Recibidos* marca los comprobantes y pulsa **Crear documentos**. Descargas revisa en la base de Comercial cuáles ya están cargados y no tienen documento, te pide a nombre de qué usuario de Comercial se crearán (lo recuerda) y abre esta misma ventana con esos XML mediante el Runner. Los documentos, los proveedores nuevos y las pólizas los crea el motor de CONTPAQi igual que dentro de Comercial.
+
+Requisitos: BrosLMV 3.2.0 o posterior instalado en el mismo equipo y activado en la empresa. El pedido (`crear_doc_pedido.json`) vale un día y se usa una sola vez; si seleccionas XML en la lista de Comercial, manda tu selección. Si todo sale bien, la ventana se cierra sola; si algo falla, se queda en la pestaña *Resultado*.
 
 ## 2. Pantalla (pestañas)
 

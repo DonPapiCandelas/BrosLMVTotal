@@ -57,7 +57,7 @@ using Microsoft.Win32;
 
 // Prototipo T3.3 -- aún no se distribuye con el instalador; versión propia, independiente
 // de BrosLMVClsMain.dll.
-[assembly: AssemblyVersion("0.4.0.0")]
+[assembly: AssemblyVersion("0.5.0.0")]
 [assembly: AssemblyTitle("BrosLMV.Runner - Programador headless (prototipo T3.3)")]
 
 namespace BrosLMV.Runner
@@ -155,7 +155,7 @@ namespace BrosLMV.Runner
                     }
                     cs = baseCs.TrimEnd(';') + ";Database=" + bd;
                 }
-                xe = CrearXEngineStandalone(cs);
+                xe = CrearXEngineStandalone(cs, userId);
             }
             catch (Exception ex)
             {
@@ -271,6 +271,7 @@ namespace BrosLMV.Runner
             {
                 origen = "runner-csharp";
                 res = ScriptRunner.Ejecutar(codigo, ctx); // "" = éxito
+                if (res == "") EsperarVentanas();
             }
             sw.Stop();
 
@@ -293,10 +294,22 @@ namespace BrosLMV.Runner
             return 0;
         }
 
+        // Un script con ventana propia (p. ej. «Crear documentos desde XML», que abre su formulario sin bloquear) regresa en cuanto la
+        // muestra; sin esto el Runner terminaria y la ventana se cerraria sola. Se bombean los mensajes hasta que no quede ninguna visible.
+        private static void EsperarVentanas()
+        {
+            Func<bool> hayVisibles = () => { foreach (Form f in Application.OpenForms) if (f.Visible && f.Opacity > 0) return true; return false; };
+            if (!hayVisibles()) return;
+            var t = new System.Windows.Forms.Timer { Interval = 500 };
+            t.Tick += (s, e) => { if (!hayVisibles()) { t.Stop(); Application.ExitThread(); } };
+            t.Start();
+            Application.Run();
+        }
+
         // Equivalente C# del bootstrap standalone de XEngine: crea XengineLib.clsMain SIN que
         // Comercial lo esté hospedando, y le conecta el DataLayer a mano. Usa las mismas
         // ayudas de late-binding (Com.*) que ya usa ScriptContext para hablar con XEngine.
-        private static object CrearXEngineStandalone(string connStr)
+        private static object CrearXEngineStandalone(string connStr, int userId = 0)
         {
             var b = new SqlConnectionStringBuilder(connStr);
 
@@ -327,6 +340,11 @@ namespace BrosLMV.Runner
             Com.Call(xe, "SetDataLayers", new object[0]);
             if (!string.IsNullOrEmpty(Com.LastError))
                 throw new Exception("SetDataLayers falló: " + Com.LastError);
+
+            // Sin sesion de Comercial el motor arranca con userID = 0 y todo lo que escriba (CreatedBy) queda sin usuario.
+            // Si se paso --userid, se le asigna al motor para que los documentos y altas queden a nombre de ese usuario.
+            if (userId > 0 && !Com.SetProp(xe, "userID", userId))
+                Console.Error.WriteLine("AVISO: no se pudo asignar el usuario " + userId + " al motor: " + Com.LastError);
 
             return xe;
         }

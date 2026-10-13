@@ -244,7 +244,24 @@ namespace BrosLMV.DescargasUI.Paginas
                 MessageBox.Show(Ventana, "No se pudo dejar el pedido:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            MessageBox.Show(Ventana, resumen + "\n\nSiguiente paso: en Comercial pulsa el botón «Crear documentos desde XML» (sin seleccionar nada en su lista). Se abrirá con estos " + listos.Count + " XML.", "Pedido listo", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            // Sin pasar por Comercial: el Runner abre la misma ventana de «Crear documentos desde XML» con estos XML.
+            if (CreadorDocumentos.Disponible)
+            {
+                try
+                {
+                    int usuario = CreadorDocumentos.ElegirUsuario(Ventana, _empresa.RFC, _empresa.ComercialConexionSql);
+                    if (usuario == 0) return;
+                    CreadorDocumentos.Abrir(Ventana, _empresa.ComercialConexionSql, usuario, () => Cargar());
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(Ventana, "No se pudo abrir la creación de documentos:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+            }
+            MessageBox.Show(Ventana, resumen + "\n\nBrosLMV (el complemento de Comercial) no está instalado en este equipo, así que la ventana de creación no puede abrirse desde aquí. Instálalo, o en Comercial pulsa «Crear documentos desde XML» sin seleccionar nada: se abrirá con estos " + listos.Count + " XML.", "Pedido listo", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void BtnExportarExcel_Click(object sender, RoutedEventArgs e)

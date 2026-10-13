@@ -12,7 +12,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 ### Agregado
 - Plantilla **Abrir BrosLMV Descargas** (`ABRIR_DESCARGAS`, categoría Documentos): un botón de Comercial que abre BrosLMV.Descargas con el RFC de la empresa activa, o lo trae al frente si ya estaba abierto o escondido en la bandeja. Guía en `docs/ABRIR_DESCARGAS.md`. Requiere BrosLMV.Descargas 2.5.0 para unificar copias.
-- **Crear documentos desde XML** puede arrancar desde BrosLMV.Descargas: si no hay XML seleccionados en la lista de Comercial, toma el pedido que Descargas deja con «Crear documento en Comercial» (vale 24 h y se consume). Con selección manual, manda la selección.
+- **Crear documentos desde XML sin abrir Comercial.** BrosLMV.Descargas 2.5.0 abre esa misma ventana con el Runner: eliges los CFDI recibidos, pulsas **Crear documentos**, eliges el usuario de Comercial y se abre la ventana con esos XML. Los documentos, las altas de proveedor y la póliza se crean con el motor de CONTPAQi igual que dentro de Comercial, a nombre del usuario elegido (probado en el laboratorio). El pedido (`crear_doc_pedido.json`) vale 24 h y se consume al abrirse; dentro de Comercial sigue funcionando con la selección de la lista.
+- La plantilla lleva el marcador `job: safe-offline` (el Runner solo abre scripts marcados): trae su propia ventana y no crea nada hasta que se pulsa «Crear».
+
+### Cambiado
+- **BrosLMV.Runner 0.5.0**: con `--userid` asigna ese usuario al motor (antes los documentos quedaban con creador 0) y, si un script C# deja una ventana abierta, el Runner espera a que se cierre en vez de terminar de inmediato.
+
+### Corregido
+- «Crear documentos desde XML» fallaba en bases sin el campo `Proyecto` en las partidas de documento (`Invalid column name 'Proyecto'`): ahora solo lo usa si existe, y el reparto entre proyectos avisa cuando la base no lo tiene.
 
 ### Notas
 - Sin cambios de esquema SQL. La plantilla nueva se instala con las demás de fábrica.
