@@ -67,6 +67,26 @@ namespace BrosLMV.Descargas.Datos
                 if (edad.TotalMinutes <= 30) Pasada(r, conn, ClavePasadaDescargas, "Revision de solicitudes y descargas", 3, 12);
             }
 
+            // 1b) Vigencia de la e.firma: si vence, el SAT deja de contestar y no se baja nada. Solo se lee el .cer (sin contrasena).
+            try
+            {
+                if (string.IsNullOrWhiteSpace(empresa.RutaCer) || !System.IO.File.Exists(empresa.RutaCer))
+                    Agregar(NivelSalud.Aviso, "e.firma", "No se encuentra el archivo .cer configurado" + (string.IsNullOrWhiteSpace(empresa.RutaCer) ? "." : " (" + empresa.RutaCer + ")."));
+                else
+                {
+                    using (var cer = new System.Security.Cryptography.X509Certificates.X509Certificate2(empresa.RutaCer))
+                    {
+                        int dias = (int)Math.Floor((cer.NotAfter - DateTime.Now).TotalDays);
+                        string fecha = cer.NotAfter.ToString("dd/MM/yyyy");
+                        if (dias < 0) Agregar(NivelSalud.Critico, "e.firma", "Vencio el " + fecha + " (hace " + (-dias) + " dia(s)). No se puede descargar del SAT hasta renovarla.");
+                        else if (dias <= 7) Agregar(NivelSalud.Critico, "e.firma", "Vence el " + fecha + " (en " + dias + " dia(s)). Renuevala ya para no perder descargas.");
+                        else if (dias <= 30) Agregar(NivelSalud.Aviso, "e.firma", "Vence el " + fecha + " (en " + dias + " dias). Conviene renovarla.");
+                        else Agregar(NivelSalud.Ok, "e.firma", "Vigente hasta el " + fecha + " (" + dias + " dias).");
+                    }
+                }
+            }
+            catch (Exception ex) { Agregar(NivelSalud.Aviso, "e.firma", "No se pudo leer el certificado: " + ex.Message); }
+
             // 2) Ultima descarga de XML (informativo)
             using (var cmd = new SqlCommand("SELECT MAX(FechaDescarga), COUNT(*) FROM CfdiRecibido WHERE RFCReceptor=@r OR RFCEmisor=@r", conn))
             {

@@ -149,7 +149,7 @@
     </Grid>
 
     <!-- ===== PANEL 2: Detalle de una empresa ===== -->
-    <Grid x:Name="PanelDetalle" Grid.Column="1" Margin="36,28,36,26" Visibility="Collapsed">
+    <Grid x:Name="PanelDetalle" Grid.Column="1" Margin="36,28,36,26" Visibility="Collapsed" AllowDrop="True" Background="Transparent" DragOver="PanelDetalle_DragOver" Drop="PanelDetalle_Drop">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
@@ -167,6 +167,7 @@
       <Grid Grid.Row="1" Margin="0,16,0,0">
         <StackPanel Orientation="Horizontal">
           <Button x:Name="BtnNuevaSolicitud" Content="+ Nueva solicitud" Style="{StaticResource Primary}" Margin="0,0,10,0" Padding="16,9" Click="BtnNuevaSolicitud_Click"/>
+          <Button x:Name="BtnCargarXml" Content="Cargar XML o ZIP…" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnCargarXml_Click" ToolTip="Mete CFDI que ya tienes (XML o ZIP del portal del SAT o de un proveedor). También puedes arrastrarlos a esta pantalla."/>
           <Button x:Name="BtnRevisarPendientes" Content="Revisar pendientes ahora" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnRevisarPendientes_Click"/>
           <Button x:Name="BtnSincronizarComercial" Content="Sincronizar con Comercial" Style="{StaticResource Ghost}" Margin="0,0,10,0" Padding="14,9" Click="BtnSincronizarComercial_Click"/>
           <Button x:Name="BtnActualizarDetalle" Content="Actualizar" Style="{StaticResource Ghost}" Padding="14,9" Click="BtnActualizarDetalle_Click"/>

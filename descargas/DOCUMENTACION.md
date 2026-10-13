@@ -10,6 +10,9 @@
 - **Corregido**: el candado de instancia única fallaba si la segunda copia no podía abrir el mutex con los derechos de `Create` (`UnauthorizedAccessException`), y se creía la primera. Ahora lo abre solo con `Synchronize` para confirmar que existe.
 - **Para qué**: la plantilla de BrosLMV `ABRIR_DESCARGAS` pone un botón en Comercial que abre Descargas con el RFC de la empresa activa.
 - **Agregado**: botón **Crear documento en Comercial** en la lista de CFDI (pestaña Recibidos). Consulta en Comercial (`docDocumentCFDiSAT`, por UUID) cuáles de los marcados ya están cargados y sin documento, y deja `%ProgramData%\BrosLMV\crear_doc_pedido.json` (RFC, fecha y `DocSATID`). La plantilla `CREAR_DOC_DESDE_XML`, si no hay selección en Comercial, toma ese pedido (vale 24 h y se consume).
+- **Agregado**: **Cobertura por año** (botón en Salud): una fila por año y tipo (Recibidos / Emitidos) y una celda por mes. El color sale de los días que ninguna solicitud buena cubre (los mismos rangos y huecos de Salud) y el número es la cantidad de CFDI de ese mes en el equipo. Los meses anteriores al año de inicio configurado salen en gris claro, no en rojo. Solo lee la base local.
+- **Agregado**: **alerta de vigencia de la e.firma** en Salud (lee el `.cer`, sin contraseña): vencida o a ≤ 7 días = crítico, ≤ 30 días = aviso, y avisa si el archivo no existe.
+- **Agregado**: **Cargar XML o ZIP…** (botón y arrastrar y soltar sobre el tablero de la empresa). Mete XML sueltos, ZIP del portal del SAT o carpetas por el mismo camino que los paquetes del servicio (carpeta con su estructura, registro en la base, pase a Comercial si está configurado). Solo entra un comprobante si la empresa es su emisor o receptor; el tipo sale de los RFC. Reimportar no duplica. Código en `descargas/Cola/CargaManual.cs`; 6 pruebas nuevas (48 en total).
 - Sin cambio de esquema SQL.
 
 ### Sin publicar — 2026-10-02 — Metadatos al estilo SmartXML (hipótesis por medir) y renovación del token

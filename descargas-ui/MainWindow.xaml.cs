@@ -194,6 +194,53 @@ namespace BrosLMV.DescargasUI
             }
         }
 
+        // ---- Carga manual de XML / ZIP (boton o arrastrar y soltar sobre el tablero de la empresa) ----
+
+        private void BtnCargarXml_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Filter = "CFDI (*.xml;*.zip)|*.xml;*.zip", Title = "Elige XML o ZIP de CFDI" };
+            if (dlg.ShowDialog(this) == true) _ = CargarArchivosAsync(dlg.FileNames);
+        }
+
+        private void PanelDetalle_DragOver(object sender, DragEventArgs e)
+        {
+            e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) && !_ocupado ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void PanelDetalle_Drop(object sender, DragEventArgs e)
+        {
+            if (_ocupado || !e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+            _ = CargarArchivosAsync((string[])e.Data.GetData(DataFormats.FileDrop));
+        }
+
+        private async System.Threading.Tasks.Task CargarArchivosAsync(string[] rutas)
+        {
+            if (_empresaActual == null || _conn == null) return;
+            _ocupado = true; Cursor = System.Windows.Input.Cursors.Wait;
+            try
+            {
+                var empresa = BrosSatDb.ObtenerEmpresas(_conn).FirstOrDefault(x => x.EmpresaID == _empresaActual.EmpresaID);
+                if (empresa == null) return;
+                var filas = await BrosLMV.Descargas.Cola.CargaManual.ImportarAsync(_conn, empresa, rutas);
+                int nuevos = filas.Count(f => f.Resultado == BrosLMV.Descargas.Cola.ResultadoCarga.Nuevo);
+                int ya = filas.Count(f => f.Resultado == BrosLMV.Descargas.Cola.ResultadoCarga.YaExistia);
+                var problemas = filas.Where(f => f.Resultado != BrosLMV.Descargas.Cola.ResultadoCarga.Nuevo && f.Resultado != BrosLMV.Descargas.Cola.ResultadoCarga.YaExistia).ToList();
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("Revisados: " + filas.Count + " comprobante(s) de " + _empresaActual.Nombre + ".");
+                sb.AppendLine("• Nuevos: " + nuevos);
+                sb.AppendLine("• Ya estaban: " + ya);
+                sb.AppendLine("• Con problema: " + problemas.Count);
+                foreach (var p in problemas.Take(12)) sb.AppendLine("    – " + p.Archivo + ": " + p.Detalle);
+                if (problemas.Count > 12) sb.AppendLine("    … y " + (problemas.Count - 12) + " más.");
+                if (nuevos > 0) sb.AppendLine(Environment.NewLine + "Su estatus ante el SAT se confirma en la siguiente verificación automática.");
+                MessageBox.Show(this, sb.ToString(), "Carga manual", MessageBoxButton.OK, problemas.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+                CargarDetalle();
+            }
+            catch (Exception ex) { MessageBox.Show(this, "No se pudo completar la carga:" + Environment.NewLine + Environment.NewLine + ex.Message, "Carga manual", MessageBoxButton.OK, MessageBoxImage.Warning); }
+            finally { _ocupado = false; Cursor = System.Windows.Input.Cursors.Arrow; }
+        }
+
         private void RestaurarDesdeBandeja()
         {
             Show();

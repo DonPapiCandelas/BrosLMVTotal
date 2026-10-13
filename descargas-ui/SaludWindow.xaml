@@ -31,6 +31,7 @@
       <WrapPanel Grid.Row="1" Margin="0,12,0,0">
         <Button Content="Vínculos con Comercial" Style="{StaticResource Ghost}" Margin="0,0,8,6" Click="BtnVinculos_Click"/>
         <Button Content="Cancelaciones con documento" Style="{StaticResource Ghost}" Margin="0,0,8,6" Click="BtnCancelaciones_Click"/>
+        <Button Content="Cobertura por año" Style="{StaticResource Ghost}" Margin="0,0,8,6" Click="BtnCobertura_Click"/>
         <Button Content="Conciliación mensual" Style="{StaticResource Ghost}" Margin="0,0,8,6" Click="BtnConciliacion_Click"/>
       </WrapPanel>
     </Grid>
