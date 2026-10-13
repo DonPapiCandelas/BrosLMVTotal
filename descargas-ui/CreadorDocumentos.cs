@@ -106,7 +106,9 @@ namespace BrosLMV.DescargasUI
                 string texto; lock (salida) texto = salida.ToString().Trim();
                 dueno.Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    if (codigo != 0)
+                    // El Runner imprime «OK (...)» cuando el script termino bien; un codigo de salida raro al cerrar la ventana no es un fallo.
+                    bool termino = texto.Contains("OK (");
+                    if (codigo != 0 && !termino)
                         MessageBox.Show(dueno, "No se pudo abrir la creación de documentos.\n\n" + Explicar(codigo, texto), "Crear documentos", MessageBoxButton.OK, MessageBoxImage.Warning);
                     alTerminar?.Invoke();
                 }));

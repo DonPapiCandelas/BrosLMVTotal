@@ -8,6 +8,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.2.1] — 2026-10-13 — Crear documentos desde Descargas: salida limpia
+
+### Corregido
+- Al cerrar la ventana «Crear documentos desde XML» abierta desde BrosLMV.Descargas, Descargas mostraba un aviso de error («No se pudo abrir la creación de documentos») aunque los documentos ya se habían creado bien. El Runner ahora termina con código 0 después de una ventana y Descargas da por buena toda ejecución que imprima «OK (…)».
+
 ## [3.2.0] — 2026-10-12 — Descargas se abre desde Comercial
 
 ### Agregado

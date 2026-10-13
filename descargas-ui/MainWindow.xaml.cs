@@ -36,7 +36,7 @@ namespace BrosLMV.DescargasUI
     internal static class VersionApp
     {
         // Misma version que el instalador (descargas-instalador\*.csproj); se cambia junto con ella.
-        public const string Actual = "2.5.0";
+        public const string Actual = "2.5.1";
     }
 
     public partial class MainWindow : Window

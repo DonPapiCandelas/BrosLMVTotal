@@ -103,7 +103,7 @@ de pestañas, el estado de guardado y la restauración del contexto al salir de 
 | **Motor de recetas no-code** | MVP construido (2 recetas, pasos encadenados, asistente). Sin trabajo activo | `RECETAS_NOCODE.md` |
 | **Motor de Asientos Contables** | Validado en producción (cobros/pagos multi-moneda); en el repo solo está el motor de cálculo y el esquema | `MOTOR_ASIENTOS_CONTABLES.md` |
 | **Contabilidad** (SDK y modelo de datos) | Investigado y documentado; el SDK no se ha probado en vivo desde este repo | `SDK_CONTABILIDAD.md`, `CONTABILIDAD_MODELO_DATOS.md` |
-| **`BrosLMV.Descargas`** (descarga masiva SAT) | Subproducto independiente, instalador propio v2.5.0 | `descargas/DOCUMENTACION.md` |
+| **`BrosLMV.Descargas`** (descarga masiva SAT) | Subproducto independiente, instalador propio v2.5.1 | `descargas/DOCUMENTACION.md` |
 | **Punto de Venta** | Prototipo **privado**, fuera del repo público a propósito | `AGENTS.md` §1 |
 
 Conocimiento consolidado recientemente (2026-09-27): el barrido de los proyectos de clientes

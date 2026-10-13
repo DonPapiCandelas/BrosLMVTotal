@@ -249,6 +249,7 @@ namespace BrosLMV.Runner
             }
 
             var sw = Stopwatch.StartNew();
+            bool huboVentanas = false;
             string res; string origen;
             if (esSql)
             {
@@ -271,7 +272,7 @@ namespace BrosLMV.Runner
             {
                 origen = "runner-csharp";
                 res = ScriptRunner.Ejecutar(codigo, ctx); // "" = éxito
-                if (res == "") EsperarVentanas();
+                if (res == "") huboVentanas = EsperarVentanas();
             }
             sw.Stop();
 
@@ -291,19 +292,23 @@ namespace BrosLMV.Runner
             }
             if (!string.IsNullOrEmpty(res)) Console.WriteLine(res);
             Console.WriteLine("OK (" + sw.ElapsedMilliseconds + " ms, " + ctx.FilasAfectadas + " fila(s) afectada(s)).");
+            // Tras una ventana con WebView2, el cierre normal del proceso puede terminar con un codigo distinto de cero aunque todo salio bien:
+            // se sale aqui, explicitamente, con 0.
+            if (huboVentanas) { Console.Out.Flush(); Environment.Exit(0); }
             return 0;
         }
 
         // Un script con ventana propia (p. ej. «Crear documentos desde XML», que abre su formulario sin bloquear) regresa en cuanto la
         // muestra; sin esto el Runner terminaria y la ventana se cerraria sola. Se bombean los mensajes hasta que no quede ninguna visible.
-        private static void EsperarVentanas()
+        private static bool EsperarVentanas()
         {
             Func<bool> hayVisibles = () => { foreach (Form f in Application.OpenForms) if (f.Visible && f.Opacity > 0) return true; return false; };
-            if (!hayVisibles()) return;
+            if (!hayVisibles()) return false;
             var t = new System.Windows.Forms.Timer { Interval = 500 };
             t.Tick += (s, e) => { if (!hayVisibles()) { t.Stop(); Application.ExitThread(); } };
             t.Start();
             Application.Run();
+            return true;
         }
 
         // Equivalente C# del bootstrap standalone de XEngine: crea XengineLib.clsMain SIN que

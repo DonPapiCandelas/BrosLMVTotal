@@ -4,6 +4,10 @@
 
 ## Historial de versiones del instalador
 
+### 2.5.1 — 2026-10-13 — Crear documentos: sin aviso de error falso
+
+- **Corregido**: al terminar la ventana de crear documentos, Descargas mostraba «No se pudo abrir la creación de documentos» aunque los documentos ya estaban creados (el código de salida del Runner no era 0 al cerrar). Ahora se considera correcta toda ejecución cuya salida incluya «OK (…)».
+
 ### 2.5.0 — 2026-10-12 — Se abre desde Comercial, cobertura por año y carga manual
 
 - **Agregado**: la aplicación acepta `--rfc <RFC>`. Si ya hay una copia corriendo (también escondida en la bandeja), la nueva **no abre otra ni muestra el aviso «ya está corriendo»**: le pide a la primera que se muestre y abra esa empresa, y se cierra. Se avisan por un evento con nombre (`Global\BrosLMV.DescargasUI.Mostrar`) y un archivo pequeño en `%ProgramData%\BrosLMV\descargas_abrir.txt`.
