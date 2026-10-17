@@ -42,6 +42,15 @@ namespace BrosLMV.Descargas.Datos
         public bool OcultarNominas = true; // Ocultar comprobantes de nómina (Tipo N) por defecto en UI y reportes
     }
 
+    internal sealed class ContabilidadConfig
+    {
+        public string RFC;
+        public string BaseDatos;      // ctXXX
+        public string Usuario;
+        public byte[] ClaveCifrada;   // DPAPI (equipo); NULL = clave vacia
+        public bool CargaAutomatica;
+    }
+
     internal sealed class SolicitudFila
     {
         public string IdSolicitud;
@@ -1091,6 +1100,49 @@ WHERE RfcSolicitante = @Rfc AND Origen = 'Retroactivo' AND Tipo = @TipoRecEmi;";
         // desde SolicitudWorker (copia automatica en cada descarga nueva) y ComercialSync (backfill
         // manual). Por UUID porque es lo que ya se tiene a la mano en ambos puntos de llamada, sin
         // necesidad de conocer el CfdiID.
+        // ===== Contabilidad (ADD) =====
+
+        public static ContabilidadConfig ObtenerContabilidad(SqlConnection conn, string rfc)
+        {
+            using (var cmd = new SqlCommand("SELECT BaseDatos, Usuario, ClaveCifrada, CargaAutomatica FROM EmpresaContabilidad WHERE RFC = @r", conn))
+            {
+                cmd.Parameters.AddWithValue("@r", rfc);
+                using (var l = cmd.ExecuteReader())
+                    return l.Read() ? new ContabilidadConfig
+                    {
+                        RFC = rfc, BaseDatos = l.GetString(0), Usuario = l.GetString(1),
+                        ClaveCifrada = l.IsDBNull(2) ? null : (byte[])l[2], CargaAutomatica = l.GetBoolean(3)
+                    } : null;
+            }
+        }
+
+        public static void GuardarContabilidad(SqlConnection conn, ContabilidadConfig c)
+        {
+            using (var cmd = new SqlCommand(@"
+MERGE EmpresaContabilidad AS t USING (SELECT @r AS RFC) AS s ON t.RFC = s.RFC
+WHEN MATCHED THEN UPDATE SET BaseDatos=@b, Usuario=@u, ClaveCifrada=@c, CargaAutomatica=@a
+WHEN NOT MATCHED THEN INSERT (RFC, BaseDatos, Usuario, ClaveCifrada, CargaAutomatica) VALUES (@r, @b, @u, @c, @a);", conn))
+            {
+                cmd.Parameters.AddWithValue("@r", c.RFC); cmd.Parameters.AddWithValue("@b", c.BaseDatos); cmd.Parameters.AddWithValue("@u", c.Usuario ?? "");
+                cmd.Parameters.Add("@c", System.Data.SqlDbType.VarBinary, 512).Value = (object)c.ClaveCifrada ?? DBNull.Value;
+                cmd.Parameters.AddWithValue("@a", c.CargaAutomatica);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static void QuitarContabilidad(SqlConnection conn, string rfc)
+        {
+            using (var cmd = new SqlCommand("DELETE FROM EmpresaContabilidad WHERE RFC = @r", conn)) { cmd.Parameters.AddWithValue("@r", rfc); cmd.ExecuteNonQuery(); }
+        }
+
+        public static void MarcarCargadoContabilidad(SqlConnection conn, string rfc, IEnumerable<Guid> uuids)
+        {
+            foreach (var u in uuids)
+                using (var cmd = new SqlCommand("UPDATE CfdiRecibido SET FechaCargadoContabilidad = SYSUTCDATETIME() WHERE UUID = @u AND FechaCargadoContabilidad IS NULL", conn))
+                { cmd.Parameters.AddWithValue("@u", u); cmd.ExecuteNonQuery(); }
+            using (var cmd = new SqlCommand("UPDATE EmpresaContabilidad SET FechaUltimaCarga = SYSUTCDATETIME() WHERE RFC = @r", conn)) { cmd.Parameters.AddWithValue("@r", rfc); cmd.ExecuteNonQuery(); }
+        }
+
         public static void MarcarSincronizadoComercial(SqlConnection conn, Guid uuid)
         {
             using (var cmd = new SqlCommand("UPDATE CfdiRecibido SET FechaSincronizadoComercial = SYSUTCDATETIME() WHERE UUID = @Uuid", conn))

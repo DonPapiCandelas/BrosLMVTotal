@@ -4,6 +4,17 @@
 
 ## Historial de versiones del instalador
 
+### 2.6.0 — 2026-10-17 — Carga de XML al ADD de CONTPAQi Contabilidad
+
+- **Agregado**: botón **Cargar a Contabilidad** (Descargas del SAT). Sube los XML descargados al ADD de la empresa de Contabilidad que elijas, igual que el importador de CONTPAQi, sin abrir Contabilidad. **Clic derecho** en el botón (o la primera vez que lo pulsas) abre la configuración: empresa de Contabilidad (se propone la que tiene el mismo RFC), usuario, contraseña (cifrada con DPAPI del equipo, puede ir vacía) y «Cargar automáticamente lo nuevo después de cada descarga». **Probar acceso** inicia y cierra sesión sin cargar nada.
+- **Cómo funciona**: no escribe por SQL en las bases del ADD. Busca el `GuidDSL` de la empresa en `ctXXX.dbo.Parametros`, abre una sesión de tipo SACI en el servidor de aplicaciones de CONTPAQi (`127.0.0.1:9080/saci`) y le entrega los XML en lotes de 50 (recibidos y emitidos por separado: los emitidos usan `SetDocumentsIssued`). Lo hace un script de Windows PowerShell 5.1 embebido (`CargaAdd.ps1`) porque las DLL de CONTPAQi (`ConvertidorADD`) son .NET Framework.
+- **Idempotente**: antes de cargar lee los UUID que ya están en el ADD (`Comprobante`) y solo manda los que faltan; después vuelve a leer y cuenta como cargado únicamente lo que de verdad quedó. Marca `CfdiRecibido.FechaCargadoContabilidad`. Cargar dos veces no duplica.
+- **Automático**: el servicio y «Revisar pendientes» cargan lo nuevo después de bajar del SAT si la empresa tiene la carga automática activa. Un fallo de Contabilidad se anota en la Bitácora y nunca detiene la descarga.
+- **Esquema**: tabla `EmpresaContabilidad` (RFC, base ctXXX, usuario, clave cifrada, carga automática) y columna `CfdiRecibido.FechaCargadoContabilidad`. Se crean solas.
+- **Requisitos**: esa máquina debe tener CONTPAQi Contabilidad con su servidor de aplicaciones (`Saci_CONTPAQi`) y la carpeta `C:\Program Files (x86)\Compac\ConvertidorADD`. El RFC de la empresa de Contabilidad debe ser el mismo que el de Descargas.
+- **Ritmo**: ~50 XML por minuto (CONTPAQi valida el certificado de cada uno). Las cargas grandes tardan; no bloquean la descarga del SAT.
+- Detalle técnico y hallazgos: `Entrenamiento\contabilidad\ADD_SACI_CARGA_DE_XML.md`.
+
 ### 2.5.1 — 2026-10-13 — Crear documentos: sin aviso de error falso
 
 - **Corregido**: al terminar la ventana de crear documentos, Descargas mostraba «No se pudo abrir la creación de documentos» aunque los documentos ya estaban creados (el código de salida del Runner no era 0 al cerrar). Ahora se considera correcta toda ejecución cuya salida incluya «OK (…)».

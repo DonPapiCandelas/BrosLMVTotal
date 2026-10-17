@@ -261,6 +261,21 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('CfdiRecibido
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('CfdiRecibido') AND name='FechaSincronizadoComercial')
     ALTER TABLE CfdiRecibido ADD FechaSincronizadoComercial DATETIME2 NULL;
 
+-- Carga al ADD de CONTPAQi Contabilidad (2.6.0): NULL = aun no esta en el ADD de la empresa de Contabilidad.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('CfdiRecibido') AND name='FechaCargadoContabilidad')
+    ALTER TABLE CfdiRecibido ADD FechaCargadoContabilidad DATETIME2 NULL;
+
+-- A que empresa de Contabilidad (base ctXXX) se cargan los XML de cada RFC y con que usuario. La clave va cifrada con DPAPI (equipo).
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmpresaContabilidad')
+CREATE TABLE EmpresaContabilidad (
+    RFC NVARCHAR(13) NOT NULL PRIMARY KEY,
+    BaseDatos NVARCHAR(128) NOT NULL,
+    Usuario NVARCHAR(100) NOT NULL,
+    ClaveCifrada VARBINARY(512) NULL,
+    CargaAutomatica BIT NOT NULL DEFAULT 1,
+    FechaUltimaCarga DATETIME2 NULL
+);
+
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CfdiConcepto')
 CREATE TABLE CfdiConcepto (
     CfdiConceptoID INT IDENTITY PRIMARY KEY,

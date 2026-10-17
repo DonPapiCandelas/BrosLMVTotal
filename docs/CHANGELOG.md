@@ -8,6 +8,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 2.6.0] — 2026-10-17 — Carga de XML al ADD de Contabilidad
+
+### Agregado
+- **BrosLMV.Descargas 2.6.0: «Cargar a Contabilidad».** Sube los XML descargados (recibidos y emitidos) al ADD de una empresa de CONTPAQi Contabilidad usando el servidor de aplicaciones de CONTPAQi, sin abrir Contabilidad y sin escribir por SQL. Configuración por empresa (empresa de Contabilidad, usuario, contraseña cifrada) y carga automática tras cada descarga. Ver `descargas\DOCUMENTACION.md`.
+
+### Notas
+- El addon de Comercial no cambia (sigue en 3.2.1); solo hay instalador nuevo de Descargas. Esquema SQL nuevo de Descargas (tabla `EmpresaContabilidad`, columna `FechaCargadoContabilidad`), se crea solo.
+
 ## [3.2.1] — 2026-10-13 — Crear documentos desde Descargas: salida limpia
 
 ### Corregido

@@ -126,6 +126,7 @@ namespace BrosLMV.DescargasUI.Paginas
                 using (llave)
                     await SolicitudWorker.EjecutarPasadaAsync(_s.Conn, cert, llave, emp.CarpetaXml, emp.EstructuraCarpetas, emp.PlantillaNombreArchivo, emp.RFC,
                         emp.ComercialCarpetaXmlRecibidos, emp.ComercialCarpetaXmlEmitidos, emp.ComercialConexionSql);
+                await ContabilidadAdd.CargarAutomaticoAsync(_s.Conn, emp.RFC, emp.Nombre);
             }, "Revisión de pendientes terminada.");
         }
 
@@ -155,6 +156,42 @@ namespace BrosLMV.DescargasUI.Paginas
             }
             catch (Exception ex) { Aviso("No se pudo sincronizar:\n\n" + ex.Message, "BrosLMV Descargas", MessageBoxImage.Error); }
             finally { _ocupado = false; Cursor = System.Windows.Input.Cursors.Arrow; }
+        }
+
+        // ---- Contabilidad (ADD) ----
+
+        private void BtnCargarContabilidad_ClicDerecho(object sender, System.Windows.Input.MouseButtonEventArgs e) { ConfigurarContabilidad(); e.Handled = true; }
+
+        private bool ConfigurarContabilidad()
+        {
+            var dlg = new ContabilidadWindow(_s.Conn, _s.Empresa.RFC, _s.Empresa.Nombre) { Owner = Ventana };
+            return dlg.ShowDialog() == true && BrosSatDb.ObtenerContabilidad(_s.Conn, _s.Empresa.RFC) != null;
+        }
+
+        private async void BtnCargarContabilidad_Click(object sender, RoutedEventArgs e)
+        {
+            var emp = _s.Empresa;
+            var cfg = BrosSatDb.ObtenerContabilidad(_s.Conn, emp.RFC);
+            if (cfg == null)
+            {
+                if (!ConfigurarContabilidad()) return;
+                cfg = BrosSatDb.ObtenerContabilidad(_s.Conn, emp.RFC);
+                if (cfg == null) return;
+            }
+            if (_ocupado) return;
+            _ocupado = true; Cursor = System.Windows.Input.Cursors.Wait;
+            BtnCargarContabilidad.IsEnabled = false;
+            try
+            {
+                var r = await ContabilidadAdd.CargarAsync(_s.Conn, emp.RFC, cfg, texto => Dispatcher.Invoke(() => BtnCargarContabilidad.Content = texto));
+                if (!r.Exito) { Aviso("No se pudo cargar a Contabilidad:\n\n" + r.Error, "Contabilidad", MessageBoxImage.Warning); return; }
+                string mensaje = r.Cargados + " XML cargados al ADD de Contabilidad, " + r.YaEstaban + " ya estaban.";
+                if (r.NoSeCargaron > 0) mensaje += "\n" + r.NoSeCargaron + " no se pudieron cargar (CONTPAQi los rechazó; revisa que sean CFDI válidos de este RFC).";
+                if (r.SinArchivo > 0) mensaje += "\n" + r.SinArchivo + " CFDI sin XML en disco (se omitieron).";
+                Aviso(mensaje, "Contabilidad");
+            }
+            catch (Exception ex) { Aviso("No se pudo cargar:\n\n" + ex.Message, "BrosLMV Descargas", MessageBoxImage.Error); }
+            finally { _ocupado = false; Cursor = System.Windows.Input.Cursors.Arrow; BtnCargarContabilidad.IsEnabled = true; BtnCargarContabilidad.Content = "Cargar a Contabilidad"; }
         }
 
         private async void BtnNuevaSolicitud_Click(object sender, RoutedEventArgs e)

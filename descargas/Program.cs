@@ -54,6 +54,7 @@ namespace BrosLMV.Descargas
             bool autenticar = false, solicitar = false, auto = false, reparsear = false, autoTodas = false, verificarEstatus = false;
             bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false, mostrarConciliacion = false, mostrarVinculos = false;
             string exportarRespaldo = null, importarRespaldo = null, carpetaFiel = null;
+            bool cargarContabilidad = false; int maxContabilidad = 0;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -137,6 +138,10 @@ namespace BrosLMV.Descargas
                     // automatica en SolicitudWorker, asi que nunca se copiaron). Sin --rfc procesa
                     // TODAS las empresas activas del catalogo; con --rfc solo esa. Requiere --conn.
                     case "--sincronizar-comercial": sincronizarComercial = true; break;
+                    // Sube al ADD de CONTPAQi Contabilidad lo descargado que aun no este alli (ver ContabilidadAdd.cs). Requiere --conn y --rfc;
+                    // --max N limita cuantos XML manda en esta corrida (para probar o repartir una carga grande).
+                    case "--cargar-contabilidad": cargarContabilidad = true; break;
+                    case "--max": int.TryParse(Siguiente(args, ref i), out maxContabilidad); break;
                     case "--salud": mostrarSalud = true; break;
                     case "--conciliacion": mostrarConciliacion = true; break;
                     case "--vinculos": mostrarVinculos = true; break;
@@ -287,6 +292,27 @@ namespace BrosLMV.Descargas
                 if (todos.Count == 0) Console.WriteLine("Salud: todo en orden.");
                 foreach (var h in todos) Console.WriteLine(h.Nivel + " [" + h.Empresa + "] " + h.Tema + ": " + h.Detalle);
                 return todos.Any(h => h.Nivel == "CRITICO") ? 2 : 0;
+            }
+
+            if (cargarContabilidad)
+            {
+                if (string.IsNullOrEmpty(conexionSql) || string.IsNullOrEmpty(rfc))
+                {
+                    Console.Error.WriteLine("--cargar-contabilidad requiere --conn y --rfc.");
+                    return Uso();
+                }
+                using (var connCont = new SqlConnection(conexionSql))
+                {
+                    connCont.Open();
+                    EsquemaSql.Asegurar(connCont);
+                    var cfg = BrosSatDb.ObtenerContabilidad(connCont, rfc);
+                    if (cfg == null) { Console.Error.WriteLine("Ese RFC no tiene Contabilidad configurada (hazlo en la app: clic derecho en «Cargar a Contabilidad»)."); return 1; }
+                    var r = await ContabilidadAdd.CargarAsync(connCont, rfc, cfg, Console.WriteLine, maxContabilidad);
+                    Console.WriteLine(r.Exito
+                        ? "Contabilidad: " + r.Cargados + " cargados, " + r.YaEstaban + " ya estaban, " + r.NoSeCargaron + " rechazados, " + r.SinArchivo + " sin archivo."
+                        : "Contabilidad: ERROR " + r.Error);
+                    return r.Exito ? 0 : 1;
+                }
             }
 
             if (sincronizarComercial)
@@ -863,6 +889,7 @@ namespace BrosLMV.Descargas
                                     empresa.CarpetaXml, empresa.EstructuraCarpetas, empresa.PlantillaNombreArchivo, empresa.RFC,
                                     empresa.ComercialCarpetaXmlRecibidos, empresa.ComercialCarpetaXmlEmitidos, empresa.ComercialConexionSql);
                             await ComercialSync.PropagarCancelacionesAsync(conn, empresa).ConfigureAwait(false);
+                            await ContabilidadAdd.CargarAutomaticoAsync(conn, empresa.RFC, empresa.Nombre).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
