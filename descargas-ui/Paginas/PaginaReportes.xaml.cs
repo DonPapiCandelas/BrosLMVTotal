@@ -135,6 +135,9 @@ ORDER BY FechaEmision DESC;";
 
         private void CmbMes_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => CargarTodo();
 
+        private void BtnExpediente_Click(object sender, RoutedEventArgs e) =>
+            new ExpedienteWindow(_conn, _rfc, _nombreEmpresa) { Owner = Window.GetWindow(this) }.Show();
+
         private void BtnActualizar_Click(object sender, RoutedEventArgs e) => CargarTodo();
 
         private void CargarTodo()

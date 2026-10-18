@@ -54,7 +54,7 @@ namespace BrosLMV.Descargas
             bool autenticar = false, solicitar = false, auto = false, reparsear = false, autoTodas = false, verificarEstatus = false;
             bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false, mostrarConciliacion = false, mostrarVinculos = false;
             string exportarRespaldo = null, importarRespaldo = null, carpetaFiel = null;
-            bool cargarContabilidad = false; int maxContabilidad = 0; bool verificarSistemas = false;
+            bool cargarContabilidad = false; int maxContabilidad = 0; bool verificarSistemas = false; bool expedienteResumen = false; string expDesde = null, expHasta = null;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -143,6 +143,10 @@ namespace BrosLMV.Descargas
                     case "--cargar-contabilidad": cargarContabilidad = true; break;
                     // Lee (solo lectura) donde esta cada CFDI: XML en disco, Comercial, ADD y polizas de Contabilidad, y imprime el resumen. Requiere --conn y --rfc.
                     case "--verificar-sistemas": verificarSistemas = true; break;
+                    // Resumen en pantalla del expediente de un periodo (lee los XML en disco): --expediente-resumen --rfc X --desde 2026-01-01 --hasta 2026-03-31 --conn ...
+                    case "--expediente-resumen": expedienteResumen = true; break;
+                    case "--desde": expDesde = Siguiente(args, ref i); break;
+                    case "--hasta": expHasta = Siguiente(args, ref i); break;
                     case "--max": int.TryParse(Siguiente(args, ref i), out maxContabilidad); break;
                     case "--salud": mostrarSalud = true; break;
                     case "--conciliacion": mostrarConciliacion = true; break;
@@ -294,6 +298,29 @@ namespace BrosLMV.Descargas
                 if (todos.Count == 0) Console.WriteLine("Salud: todo en orden.");
                 foreach (var h in todos) Console.WriteLine(h.Nivel + " [" + h.Empresa + "] " + h.Tema + ": " + h.Detalle);
                 return todos.Any(h => h.Nivel == "CRITICO") ? 2 : 0;
+            }
+
+            if (expedienteResumen)
+            {
+                if (string.IsNullOrEmpty(conexionSql) || string.IsNullOrEmpty(rfc) || !DateTime.TryParse(expDesde, out var edesde) || !DateTime.TryParse(expHasta, out var ehasta))
+                {
+                    Console.Error.WriteLine("--expediente-resumen requiere --conn, --rfc, --desde y --hasta (yyyy-MM-dd).");
+                    return Uso();
+                }
+                using (var connExp = new SqlConnection(conexionSql))
+                {
+                    connExp.Open();
+                    EsquemaSql.Asegurar(connExp);
+                    var cron = System.Diagnostics.Stopwatch.StartNew();
+                    var ex = Expediente.Construir(connExp, new ExpedienteOpciones { Rfc = rfc, Desde = edesde, Hasta = ehasta, Direccion = "Ambos", IncluirNomina = false }, Console.WriteLine);
+                    Console.WriteLine("CFDI " + ex.Cfdis.Count + " (leídos " + ex.Cfdis.Count(c => c.Leido) + ", no leídos " + ex.XmlNoLeidos + ") en " + cron.Elapsed.TotalSeconds.ToString("0.0") + " s");
+                    Console.WriteLine("Conceptos " + ex.Conceptos.Count + " | impuestos " + ex.Impuestos.Count + " | pagos (documentos relacionados) " + ex.Pagos.Count + " | complementos " + ex.Complementos.Count);
+                    foreach (var g in ex.Complementos.GroupBy(x => x.Complemento).OrderByDescending(g => g.Count())) Console.WriteLine("  complemento " + g.Key + ": " + g.Count());
+                    Console.WriteLine("PPD " + ex.Ppd.Count + " (sin REP " + ex.Ppd.Count(x => x.Estado == "Sin complemento de pago") + ", parcial " + ex.Ppd.Count(x => x.Estado == "Pago parcial") + ", pagado " + ex.Ppd.Count(x => x.Estado == "Pagado") + ")");
+                    foreach (var f in ex.Flujo.Take(6)) Console.WriteLine("  flujo " + f.MesTexto + " " + f.Direccion + ": PUE " + f.IvaPue.ToString("N2") + " + pagos " + f.IvaPagos.ToString("N2") + " (estimado " + f.IvaPagosEstimado.ToString("N2") + ") - egresos " + f.IvaEgresos.ToString("N2") + " = " + f.Total.ToString("N2"));
+                    foreach (var g in ex.Observaciones.GroupBy(x => x.Nivel + " · " + x.Tema).OrderBy(g => g.Key)) Console.WriteLine("  obs " + g.Key + ": " + g.Count());
+                    return 0;
+                }
             }
 
             if (verificarSistemas)

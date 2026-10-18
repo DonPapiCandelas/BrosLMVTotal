@@ -8,6 +8,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 2.8.0] — 2026-10-18 — Expediente de CFDI en Excel
+
+### Agregado
+- **Expediente** (Mapa de CFDI y Reportes ejecutivos): Excel de 9 hojas con todos los datos de los XML de un periodo, impuestos por tasa y locales, pagos (REP), estado PPD, **IVA por flujo de efectivo** (base de devoluciones), complementos y observaciones. No depende de Comercial ni de Contabilidad. Comando `--expediente-resumen`. Ver `descargas\DOCUMENTACION.md`.
+
+### Notas
+- El addon de Comercial no cambia; sin esquema SQL nuevo.
+
 ## [Descargas 2.7.1] — 2026-10-18 — Mapa de CFDI: lo que solo está en el ADD
 
 ### Cambiado

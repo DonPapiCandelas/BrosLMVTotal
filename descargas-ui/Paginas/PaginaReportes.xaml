@@ -65,6 +65,8 @@
         <TextBlock Text="Periodo" Style="{StaticResource TextoSecundario}" VerticalAlignment="Center" Margin="0,0,10,0"/>
         <ComboBox x:Name="CmbMes" Width="190" Margin="0,0,8,0" SelectionChanged="CmbMes_SelectionChanged"/>
         <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE72C;" Content="Actualizar" Margin="0,0,8,0" Click="BtnActualizar_Click"/>
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE8A5;" Content="Expediente (.xlsx)" Margin="0,0,8,0" Click="BtnExpediente_Click"
+                ToolTip="Todos los datos de los XML de un periodo, pagos, IVA por flujo de efectivo y observaciones: para devoluciones y aclaraciones al SAT."/>
         <Button x:Name="BtnExportarEjecutivo" Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE74E;" Content="Informe ejecutivo (.xlsx)" Click="BtnExportarEjecutivo_Click"
                 ToolTip="Genera un libro de Excel de varias hojas con KPIs, Cuentas por Cobrar, Cuentas por Pagar, Inconsistencias y Detalle de Comprobantes"/>
       </StackPanel>

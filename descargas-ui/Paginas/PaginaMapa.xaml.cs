@@ -284,6 +284,9 @@ namespace BrosLMV.DescargasUI.Paginas
 
         // ---- Exportar ----
 
+        private void BtnExpediente_Click(object sender, RoutedEventArgs e) =>
+            new ExpedienteWindow(_s.Conn, Rfc, _s.Empresa.Nombre) { Owner = Ventana }.Show();
+
         private void BtnExportar_Click(object sender, RoutedEventArgs e)
         {
             if (_filas.Count == 0) { MessageBox.Show(Ventana, "No hay nada que exportar todavía.", "Mapa de CFDI", MessageBoxButton.OK, MessageBoxImage.Information); return; }

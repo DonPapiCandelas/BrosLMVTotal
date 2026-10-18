@@ -12,6 +12,7 @@
 
     <ui:EncabezadoPagina Grid.Row="0" Titulo="Mapa de CFDI" Subtitulo="Dónde está cada CFDI: el SAT, tus XML, Comercial y Contabilidad (ADD y pólizas). Se lee de cada sistema; no se supone.">
       <StackPanel Orientation="Horizontal">
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE8A5;" Content="Expediente" Margin="0,0,8,0" Click="BtnExpediente_Click" ToolTip="Excel con todos los datos de los XML de un periodo, para devoluciones y aclaraciones al SAT."/>
         <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE74E;" Content="Exportar a Excel" Margin="0,0,8,0" Click="BtnExportar_Click"/>
         <Button x:Name="BtnVerificar" Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE72C;" Content="Verificar ahora" Click="BtnVerificar_Click"/>
       </StackPanel>
