@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Security.Principal;
 using System.Threading.Tasks;
@@ -53,6 +54,24 @@ namespace BrosLMV.Empresas
             // limpio -- nunca debe quedar una ventana en blanco sin explicación.
             try
             {
+                // --solo-empresas: abre directo la pantalla de empresas (provisionar/actualizar) sin reinstalar el runtime. Solo habla con SQL: no pide administrador.
+                if (e.Args.Any(x => string.Equals(x, "--solo-empresas", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var soloEmpresas = new MainWindow();
+                    soloEmpresas.Closed += (s2, e2) => Shutdown();
+                    MainWindow = soloEmpresas;
+                    soloEmpresas.Show();
+                    return;
+                }
+
+                // --vista-bienvenida: solo muestra la pantalla de bienvenida (no instala nada); sirve para revisar el diseño.
+                if (e.Args.Any(x => string.Equals(x, "--vista-bienvenida", StringComparison.OrdinalIgnoreCase)))
+                {
+                    new WelcomeWindow().ShowDialog();
+                    Shutdown();
+                    return;
+                }
+
                 // Instalar el runtime necesita admin (RegAsm/HKLM, C:\BrosLMV). Si no lo
                 // somos, relanzamos con UAC y salimos.
                 if (!IsAdmin()) { Elevate(); Shutdown(); return; }
@@ -127,7 +146,7 @@ namespace BrosLMV.Empresas
         {
             try
             {
-                Process.Start(new ProcessStartInfo(Assembly.GetExecutingAssembly().Location)
+                Process.Start(new ProcessStartInfo(Assembly.GetExecutingAssembly().Location, string.Join(" ", Environment.GetCommandLineArgs().Skip(1)))
                 { Verb = "runas", UseShellExecute = true });
             }
             catch

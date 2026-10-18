@@ -178,9 +178,10 @@ cuál mandar:
 
 1. `BrosLMV-Instalador-X.Y.Z.exe` — doble clic, aceptar UAC, **Instalar** (despliega el runtime a
    `C:\BrosLMV`, copia el icono y registra el componente COM), luego abre el GUI de provisión.
-2. En el GUI: servidor\instancia + usuario/contraseña → **Probar conexión** → marca las
-   empresas → **Instalar seleccionadas**. En una terminal sin acceso al SQL, cierra el GUI: el
-   runtime ya quedó instalado igual.
+2. En el GUI: elige la instancia de SQL (se detectan solas; en una actualización la conexión ya viene
+   recordada) → **Conectar** → **Actualizar todas** / **Instalar pendientes**, o marca las empresas y
+   **Aplicar a las seleccionadas**. En una terminal sin acceso al SQL, cierra el GUI: el runtime ya
+   quedó instalado igual.
 3. Reinicia CONTPAQi. Debería aparecer el botón **Consola BrosLMV** en la pestaña "Soluciones LMV".
 
 Para quitarlo: `BrosLMV-Desinstalador-X.Y.Z.exe` (quita de empresas específicas o del equipo

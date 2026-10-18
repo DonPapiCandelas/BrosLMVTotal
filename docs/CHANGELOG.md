@@ -8,6 +8,20 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.2.2] — 2026-10-18 — Instalador: actualizar sin volver a escribir la conexión, y «Actualizar todas»
+
+### Cambiado
+- **Instalador de empresas rediseñado** (barra lateral con pasos, tarjetas, filtros, estados en etiquetas de color, versión `3.1.2 → 3.2.1` por empresa). La pantalla de bienvenida avisa si es **instalación nueva, actualización (`3.2.0 → 3.2.1`) o reinstalación**.
+- **Detecta las instancias de SQL Server** del equipo (registro y servicios) y ya no propone un nombre fijo (`COMPAC2022`). **Buscar en la red** agrega otros servidores.
+- **Recuerda la conexión** de la instalación anterior y entra sola: una actualización no vuelve a pedir servidor, usuario ni contraseña. Se guarda **cifrada con DPAPI** (`broslmv_cred.dat`, la misma que lee la consola, el runner y el host); el instalador ya no deja la contraseña en texto plano en `broslmv_conn.txt`.
+
+### Agregado
+- **Actualizar todas (N)** e **Instalar pendientes (N)**: todas las empresas de una vez, con barra de avance, sin ventanas por cada error y sin detenerse si una falla. **Seleccionar todas** marca las que se ven con el filtro.
+- `BrosLMV-Instalador.exe --solo-empresas`: abre directo la pantalla de empresas, sin reinstalar el runtime ni pedir administrador.
+
+### Notas
+- Sin cambios funcionales en el addon ni en el esquema SQL: la versión sube porque cambia el instalador del paquete.
+
 ## [Descargas 2.6.0] — 2026-10-17 — Carga de XML al ADD de Contabilidad
 
 ### Agregado

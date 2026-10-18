@@ -74,17 +74,29 @@ Ambos son **autocontenidos**: no hay que copiar carpetas ni DLLs sueltas.
 
 En la ventana que abre el instalador (o ejecutándolo de nuevo):
 
-1. Escribe **Servidor\Instancia**, **Usuario** y **Contraseña** → **Probar conexión**.
-2. Se listan las **empresas Comercial Start/Pro** de la instancia, con su estado
-   (**Pendiente** / **Ya instalado**).
-3. Marca las que quieras y presiona **Instalar seleccionadas** (o **Marcar pendientes**
-   para todas las que falten). Es **idempotente**: las ya instaladas no se duplican.
+1. **Conexión.** El instalador **detecta las instancias de SQL Server** del equipo (lista desplegable;
+   «Buscar en la red» agrega las demás) y **recuerda la conexión de la instalación anterior**
+   (cifrada con DPAPI en `C:\BrosLMVinroslmv_cred.dat`): en una **actualización** entra solo,
+   sin pedir servidor, usuario ni contraseña. Si es la primera vez, elige la instancia, escribe
+   **Usuario** y **Contraseña** y pulsa **Conectar**. «Cambiar conexión» la vuelve a pedir.
+2. Se listan las **empresas Comercial Start/Pro** de la instancia con su estado: **Pendiente**,
+   **Actualizar disponible** (`3.1.2 → 3.2.1`) o **Al día**. Los filtros *Por actualizar* /
+   *Pendientes* / *Al día* y el buscador acotan la lista.
+3. Pulsa **Actualizar todas (N)** para llevar todas las empresas con versión anterior a la actual de
+   una vez, **Instalar pendientes (N)** para las que no tienen BrosLMV, o marca las que quieras
+   (**Seleccionar todas** marca las que se ven con el filtro) y **Aplicar a las seleccionadas**.
+   Se trabaja empresa por empresa con barra de avance y no se detiene si una falla. Es
+   **idempotente**: las ya instaladas no se duplican.
 4. **Reinicia CONTPAQi** en las terminales → aparece el botón **Consola BrosLMV** en
    la pestaña **Soluciones LMV**.
 
 > La conexión de los scripts es **automática** (reutiliza la de CONTPAQi); no se
 > configuran credenciales por empresa. El filtro detecta solo Comercial Start/Pro
 > (excluye Contabilidad/Nómina) leyendo el esquema; **tú** decides con las casillas.
+
+### Solo empresas, sin reinstalar
+`BrosLMV-Instalador.exe --solo-empresas` abre directo esta pantalla (no reinstala el runtime ni pide
+administrador; solo habla con SQL). Sirve para provisionar o actualizar empresas más tarde.
 
 ### Empresa nueva más adelante
 Vuelve a abrir el instalador (o el GUI), conéctate y provisiona **solo** la empresa

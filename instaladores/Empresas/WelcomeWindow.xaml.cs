@@ -36,7 +36,33 @@ namespace BrosLMV.Empresas
                 var v = Assembly.GetExecutingAssembly().GetName().Version;
                 ver = v.Major + "." + v.Minor + "." + v.Build;
             }
-            lblVer.Text = "BrosLMV v" + ver + "  ·  instalará esta versión";
+            lblVer.Text = "BrosLMV v" + ver + "  ·  versión que se instalará";
+            lblVersionGrande.Text = ver.Split('.')[0];
+
+            // Si ya hay una instalación, esto es una ACTUALIZACION: se dice claro y no se pide nada que ya se sepa.
+            string instalada = Conexion.VersionInstalada();
+            if (instalada == null)
+            {
+                lblModo.Text = "Instalación nueva";
+            }
+            else if (instalada == ver)
+            {
+                lblModo.Text = "Ya tienes la versión " + ver + " · reparar";
+                chipModo.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(71, 85, 105));
+                lblTitulo.Text = "Reinstalar BrosLMV " + ver;
+                lblDescripcion.Text = "Vuelve a copiar los componentes y a registrar la consola. Tus scripts, empresas y configuración no se tocan.";
+                btnInstalar.Content = "Reinstalar";
+                lblSiguiente.Text = "Usaremos la conexión a SQL que ya tienes guardada: no hace falta escribirla otra vez.";
+            }
+            else
+            {
+                lblModo.Text = "Actualización  " + instalada + "  →  " + ver;
+                chipModo.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(22, 163, 74));
+                lblTitulo.Text = "Actualizar BrosLMV a la versión " + ver;
+                lblDescripcion.Text = "Reemplaza los componentes de la versión " + instalada + ". Tus scripts, empresas y configuración se conservan.";
+                btnInstalar.Content = "Actualizar";
+                lblSiguiente.Text = "Al terminar podrás actualizar todas tus empresas de una vez, con la conexión a SQL que ya tienes guardada.";
+            }
         }
 
         // Lee la AssemblyVersion del addon (BrosLMVClsMain.dll) dentro de payload.zip embebido,

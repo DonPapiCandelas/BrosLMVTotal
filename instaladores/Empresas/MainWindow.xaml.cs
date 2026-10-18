@@ -1,4 +1,4 @@
-// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
+﻿// BrosLMV - Botones personalizados para CONTPAQi Comercial PRO
 // Copyright (C) 2026 Cristofer Candelas Garcia
 //
 // This program is free software: you can redistribute it and/or modify
@@ -23,6 +23,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -40,40 +41,83 @@ namespace BrosLMV.Empresas
         public string DB { get; set; }
         public bool Instalado { get; set; }
         public bool NecesitaActualizar { get; set; }
+        public string VersionNueva { get; set; }
 
         string _versionInstalada;
         public string VersionInstalada
         {
             get { return _versionInstalada; }
-            set { _versionInstalada = value; PC("VersionInstalada"); }
+            set { _versionInstalada = value; PC("VersionInstalada"); PC("VersionTexto"); }
+        }
+
+        // «3.1.2  →  3.2.1» cuando hay que actualizar; solo la versión cuando está al día; guion si no está instalada.
+        public string VersionTexto
+        {
+            get
+            {
+                if (!Instalado) return "—";
+                if (NecesitaActualizar && !string.IsNullOrEmpty(VersionNueva)) return _versionInstalada + "   →   " + VersionNueva;
+                return _versionInstalada;
+            }
         }
 
         string _estado;
         public string Estado
         {
             get { return _estado; }
-            set { _estado = value; PC("Estado"); PC("EstadoColor"); PC("EstadoIcon"); }
+            set { _estado = value; PC("Estado"); PC("EstadoColor"); PC("EstadoIcon"); PC("EstadoFondo"); PC("VersionTexto"); }
+        }
+
+        string Clase()
+        {
+            string e = (_estado ?? "").ToLower();
+            if (e.Contains("error")) return "error";
+            if (e.Contains("ahora") || e.Contains("actualizada")) return "listo";
+            if (e.Contains("trabajando") || e.Contains("espera")) return "trabajo";
+            if (e.Contains("actualizar")) return "actualizar";
+            if (e.Contains("al día") || e.Contains("instalad")) return "listo";
+            return "pendiente";
         }
         public string EstadoColor
         {
             get
             {
-                string e = (_estado ?? "").ToLower();
-                if (e.Contains("error")) return "#DC2626";
-                if (e.Contains("actualizar")) return "#2D6FE0";
-                if (e.Contains("instalad") || e.Contains("actualizad")) return "#1E9E5A";
-                return "#E08A1E";
+                switch (Clase())
+                {
+                    case "error": return "#B91C1C";
+                    case "actualizar": return "#1D4ED8";
+                    case "listo": return "#15803D";
+                    case "trabajo": return "#475569";
+                    default: return "#B45309";
+                }
+            }
+        }
+        public string EstadoFondo
+        {
+            get
+            {
+                switch (Clase())
+                {
+                    case "error": return "#FEE2E2";
+                    case "actualizar": return "#DBEAFE";
+                    case "listo": return "#DCFCE7";
+                    case "trabajo": return "#E2E8F0";
+                    default: return "#FEF3C7";
+                }
             }
         }
         public string EstadoIcon
         {
             get
             {
-                string e = (_estado ?? "").ToLower();
-                if (e.Contains("error")) return "✕";
-                if (e.Contains("actualizar")) return "↑";
-                if (e.Contains("instalad") || e.Contains("actualizad")) return "✓";
-                return "●";
+                switch (Clase())
+                {
+                    case "error": return "";       // X
+                    case "actualizar": return "";  // flecha arriba
+                    case "listo": return "";       // palomita
+                    case "trabajo": return "";     // sincronizar
+                    default: return "";            // reloj
+                }
             }
         }
     }
@@ -144,14 +188,47 @@ SELECT db, instalado, version FROM #r ORDER BY db;";
             InitializeComponent();
             _provisionSql = LoadResourceText("provision_empresa.sql");
             grid.ItemsSource = _rows;
-            cbFiltro.Items.Add("Todas");
-            cbFiltro.Items.Add("Pendientes");
-            cbFiltro.Items.Add("Instaladas");
-            cbFiltro.Items.Add("Por actualizar");
-            cbFiltro.SelectedIndex = 0;
             _versionActual = Assembly.GetExecutingAssembly().GetName().Version;
             _versionActualTexto = _versionActual.Major + "." + _versionActual.Minor + "." + _versionActual.Build;
-            lblVer.Text = "BrosLMV v" + _versionActualTexto;
+            lblVer.Text = "Versión " + _versionActualTexto;
+            Loaded += async (s, e) => await IniciarAsync();
+        }
+
+        // Al abrir: detecta las instancias de este equipo y, si la instalación anterior dejó la conexión guardada,
+        // la usa y entra sola (una actualización no debe pedir servidor, usuario ni contraseña otra vez).
+        async Task IniciarAsync()
+        {
+            LlenarInstancias(null);
+            var g = Conexion.LeerGuardada();
+            if (g != null)
+            {
+                cbServer.Text = g.Servidor;
+                if (!string.IsNullOrWhiteSpace(g.Usuario)) txtUser.Text = g.Usuario;
+                pwdBox.Password = g.Contrasena ?? "";
+                lblRecordada.Text = "Conexión recordada de la instalación anterior";
+                await ConectarAsync(true);
+            }
+            else
+            {
+                // Sin conexión guardada: se propone la instancia detectada (nunca un nombre fijo).
+                var lista = cbServer.Items.Cast<string>().ToList();
+                cbServer.Text = lista.FirstOrDefault(x => x.IndexOf("COMPAC", StringComparison.OrdinalIgnoreCase) >= 0)
+                                ?? (lista.Count == 1 ? lista[0] : lista.FirstOrDefault()) ?? "localhost";
+                if (lista.Count > 1) lblRecordada.Text = lista.Count + " instancias detectadas en este equipo";
+                else if (lista.Count == 1) lblRecordada.Text = "Instancia detectada en este equipo";
+                else lblRecordada.Text = "No se detectó SQL Server en este equipo: escribe el servidor";
+            }
+            PintarPasos();
+        }
+
+        void LlenarInstancias(IEnumerable<string> extra)
+        {
+            string actual = cbServer.Text;
+            var todas = new List<string>(Conexion.InstanciasLocales());
+            if (extra != null) foreach (var x in extra) if (!todas.Contains(x, StringComparer.OrdinalIgnoreCase)) todas.Add(x);
+            cbServer.ItemsSource = null;
+            cbServer.ItemsSource = todas;
+            cbServer.Text = actual;
         }
 
         // Compara "X.Y.Z" contra la versión actual del instalador. NULL/vacío/ilegible = "más
@@ -168,11 +245,10 @@ SELECT db, instalado, version FROM #r ORDER BY db;";
 
         public void SetEstadoRuntime(string msg, bool ok)
         {
-            lblFooter.Text = (ok ? "✓ " : "⚠ ") + msg +
-                "   —   Si este equipo es una TERMINAL, ya terminaste (puedes cerrar). Si es el SERVIDOR, conéctate y provisiona las empresas.";
-            lblFooter.Foreground = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(ok ? "#1E9E5A" : "#DC2626"));
+            _mensajeRuntime = (ok ? "✓ " : "⚠ ") + msg;
+            lblFooter.Text = _mensajeRuntime;
         }
+        string _mensajeRuntime;
 
         static string LoadResourceText(string endsWith)
         {
@@ -209,7 +285,7 @@ SELECT db, instalado, version FROM #r ORDER BY db;";
                             bool inst = Convert.ToInt32(rd["instalado"]) == 1;
                             string ver = rd["version"] == DBNull.Value ? null : rd["version"].ToString();
                             bool desact = inst && VersionDesactualizada(ver);
-                            string estado = !inst ? "Pendiente" : (desact ? "Actualizar disponible" : "Ya instalado");
+                            string estado = !inst ? "Pendiente" : (desact ? "Actualizar disponible" : "Al día");
                             list.Add(new EmpresaRow
                             {
                                 DB = rd["db"].ToString(),
@@ -353,54 +429,145 @@ ELSE
             }
         }
 
+        // ---- Estado visual ----
+
+        bool _conectado;
+
+        void PintarPasos()
+        {
+            var azul = (System.Windows.Media.Brush)FindResource("Azul");
+            var hecho = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#16A34A"));
+            var apagado = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#24405E"));
+            var textoApagado = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#8CA5C3"));
+            int sel = _rows.Count(r => r.Sel);
+
+            Marcar(dot1, ico1, "1", _conectado ? 2 : 1, hecho, azul, apagado, textoApagado);
+            Marcar(dot2, ico2, "2", !_conectado ? 0 : (sel > 0 || _trabajando ? 2 : 1), hecho, azul, apagado, textoApagado);
+            Marcar(dot3, ico3, "3", !_conectado ? 0 : (_trabajando ? 1 : 0), hecho, azul, apagado, textoApagado);
+            lblPaso1.Text = _conectado ? "Conectado" : "Elige el servidor SQL";
+            lblPaso2.Text = !_conectado ? "Marca las que quieres" : (sel > 0 ? sel + " seleccionada(s)" : "Marca las que quieres");
+            lblPaso3.Text = _trabajando ? "Trabajando..." : "Instala o actualiza";
+        }
+
+        // estado: 0 = pendiente, 1 = actual, 2 = hecho
+        static void Marcar(System.Windows.Controls.Border dot, TextBlock ico, string numero, int estado,
+            System.Windows.Media.Brush hecho, System.Windows.Media.Brush azul, System.Windows.Media.Brush apagado, System.Windows.Media.Brush textoApagado)
+        {
+            if (estado == 2) { dot.Background = hecho; ico.Text = ""; ico.FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"); ico.FontSize = 12; ico.Foreground = System.Windows.Media.Brushes.White; }
+            else
+            {
+                ico.Text = numero; ico.FontFamily = new System.Windows.Media.FontFamily("Segoe UI"); ico.FontSize = 13;
+                dot.Background = estado == 1 ? azul : apagado;
+                ico.Foreground = estado == 1 ? System.Windows.Media.Brushes.White : textoApagado;
+            }
+        }
+
+        void MostrarConexion(bool conectado)
+        {
+            _conectado = conectado;
+            pnlConexionResumen.Visibility = conectado ? Visibility.Visible : Visibility.Collapsed;
+            pnlConexionEditar.Visibility = conectado ? Visibility.Collapsed : Visibility.Visible;
+            ledConn.Fill = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(conectado ? "#22C55E" : "#64748B"));
+            lblConnTitle.Text = conectado ? "Conectado a SQL Server" : "Sin conexión";
+            lblConnSrv.Text = conectado ? cbServer.Text.Trim() : "";
+            lblConnUsr.Text = conectado ? "Usuario: " + txtUser.Text.Trim() : "";
+            lblResumenServidor.Text = cbServer.Text.Trim();
+            lblResumenDetalle.Text = "Usuario " + txtUser.Text.Trim() + " · " + _rows.Count + " empresa(s) de Comercial encontrada(s)";
+            lblVacio.Visibility = conectado && _rows.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+            lblVacio.Text = conectado ? "No se encontraron empresas de CONTPAQi Comercial en este servidor." : "Conecta al servidor para ver tus empresas.";
+            PintarPasos();
+        }
+
         void UpdateCounts()
         {
             int tot = _rows.Count;
-            int inst = _rows.Count(r => r.Instalado);
-            int pend = tot - inst;
-            int desact = _rows.Count(r => r.NecesitaActualizar);
+            int act = _rows.Count(r => r.NecesitaActualizar);
+            int pend = _rows.Count(r => !r.Instalado);
+            int alDia = tot - act - pend;
             int sel = _rows.Count(r => r.Sel);
             cardTotal.Text = tot.ToString();
-            cardInst.Text = inst.ToString();
+            cardInst.Text = alDia.ToString();
+            cardAct.Text = act.ToString();
             cardPend.Text = pend.ToString();
-            btnInstall.Content = "Instalar seleccionadas (" + sel + ")";
-            btnInstall.IsEnabled = sel > 0;
-            lblFooter.Text = tot + " empresa(s) detectada(s) · " + inst + " instalada(s) · " + pend + " pendiente(s)" +
-                (desact > 0 ? " · " + desact + " por actualizar" : "");
+
+            btnActualizarTodas.Visibility = act > 0 ? Visibility.Visible : Visibility.Collapsed;
+            btnActualizarTodas.Content = "Actualizar todas (" + act + ")";
+            btnInstalarPendientes.Visibility = pend > 0 ? Visibility.Visible : Visibility.Collapsed;
+            btnInstalarPendientes.Content = "Instalar pendientes (" + pend + ")";
+            btnInstall.Content = "Aplicar a las seleccionadas (" + sel + ")";
+            btnInstall.IsEnabled = sel > 0 && !_trabajando;
+            btnActualizarTodas.IsEnabled = btnInstalarPendientes.IsEnabled = !_trabajando;
+
+            if (!_trabajando)
+                lblFooter.Text = tot == 0 ? "Conecta a tu SQL Server para listar las empresas."
+                    : (act > 0 ? act + " empresa(s) tienen una versión anterior: pulsa «Actualizar todas» o marca las que quieras."
+                    : pend > 0 ? pend + " empresa(s) todavía no tienen BrosLMV."
+                    : "Todas tus empresas están al día con la versión " + _versionActualTexto + ".");
+
+            if (tot > 0)
+            {
+                bool actualizando = _rows.Any(r => r.Instalado);
+                lblTitulo.Text = actualizando && act > 0 ? "Actualizar BrosLMV a la versión " + _versionActualTexto
+                               : actualizando ? "BrosLMV " + _versionActualTexto + " en tus empresas"
+                               : "Instalar BrosLMV en tus empresas";
+                lblSubtitulo.Text = act > 0 ? "Se encontraron empresas con una versión anterior. Actualízalas todas de una vez o elige cuáles."
+                                  : pend > 0 ? "Elige las empresas de CONTPAQi Comercial donde quieres usar BrosLMV."
+                                  : "Nada pendiente. Puedes volver a aplicar a una empresa si lo necesitas.";
+            }
+            chkTodas.IsChecked = _verFilas().Any() && _verFilas().All(r => r.Sel);
+            PintarPasos();
+        }
+
+        IEnumerable<EmpresaRow> _verFilas()
+        {
+            var view = CollectionViewSource.GetDefaultView(_rows);
+            return view.Cast<EmpresaRow>();
         }
 
         void ApplyFilter()
         {
             var view = CollectionViewSource.GetDefaultView(_rows);
             string txt = (txtSearch.Text ?? "").ToLower();
-            int modo = cbFiltro.SelectedIndex;
+            int modo = rbAct.IsChecked == true ? 1 : rbPend.IsChecked == true ? 2 : rbOk.IsChecked == true ? 3 : 0;
             view.Filter = o =>
             {
                 var it = (EmpresaRow)o;
                 bool okTxt = string.IsNullOrWhiteSpace(txt) || it.DB.ToLower().Contains(txt);
-                bool okEst = modo == 1 ? !it.Instalado
-                    : modo == 2 ? it.Instalado
-                    : modo == 3 ? it.NecesitaActualizar
+                bool okEst = modo == 1 ? it.NecesitaActualizar
+                    : modo == 2 ? !it.Instalado
+                    : modo == 3 ? (it.Instalado && !it.NecesitaActualizar)
                     : true;
                 return okTxt && okEst;
             };
             view.Refresh();
         }
 
-        void Conectar()
+        // ---- Conexión ----
+
+        async Task ConectarAsync(bool silencioso)
         {
-            lblFooter.Text = "Conectando...";
+            string server = cbServer.Text.Trim(), user = txtUser.Text.Trim(), pass = Pass();
+            if (string.IsNullOrEmpty(server)) { MostrarError("Escribe o elige el servidor \\ instancia."); return; }
+            lblConnError.Visibility = Visibility.Collapsed;
+            btnConn.IsEnabled = false; btnConn.Content = "Conectando...";
+            lblFooter.Text = "Conectando a " + server + "...";
             List<EmpresaRow> empresas;
-            try { empresas = GetEmpresas(cbServer.Text.Trim(), txtUser.Text.Trim(), Pass()); }
+            try { empresas = await Task.Run(() => GetEmpresas(server, user, pass)); }
             catch (Exception ex)
             {
-                MessageBox.Show("No se pudo conectar:\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Error);
-                lblConnTitle.Text = "Sin conexión"; lblFooter.Text = "Error de conexión.";
+                btnConn.IsEnabled = true; btnConn.Content = "Conectar";
+                MostrarConexion(false);
+                string motivo = ex.Message;
+                MostrarError((silencioso ? "No se pudo usar la conexión guardada (" + server + "): " : "No se pudo conectar: ") + motivo);
+                lblFooter.Text = "Sin conexión.";
                 return;
             }
+            btnConn.IsEnabled = true; btnConn.Content = "Conectar";
+
             _rows.Clear();
             foreach (var e in empresas)
             {
+                e.VersionNueva = _versionActualTexto;
                 e.PropertyChanged += (s, ev) =>
                 {
                     if (ev.PropertyName != "Sel") return;
@@ -409,29 +576,51 @@ ELSE
                 };
                 _rows.Add(e);
             }
-            lblConnTitle.Text = "Conectado a SQL Server";
-            lblConnSrv.Text = cbServer.Text.Trim();
-            lblConnUsr.Text = "Usuario: " + txtUser.Text.Trim();
+            MostrarConexion(true);
 
-            // Guarda las credenciales en broslmv_conn.txt para que la consola pueda
-            // conectar a SQL cuando CONTPAQi no entregue la conexión viva. La BASE la
-            // pone el DataLayer de CONTPAQi (la empresa activa); aquí solo van
-            // servidor + usuario + contraseña, válidos para todas las empresas.
-            try
-            {
-                string dir = @"C:\BrosLMV\bin";
-                if (System.IO.Directory.Exists(dir))
-                    System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "broslmv_conn.txt"),
-                        "Server=" + cbServer.Text.Trim() + ";User Id=" + txtUser.Text.Trim() +
-                        ";Password=" + Pass() + ";TrustServerCertificate=True;");
-            }
-            catch { }
+            // Recuerda la conexión (cifrada con DPAPI, igual que el addon) para la próxima actualización.
+            Conexion.Guardar(server, user, pass);
 
             ApplyFilter();
             UpdateCounts();
+            // Si hay empresas por actualizar, que el filtro útil quede a la vista.
+            if (_rows.Any(r => r.NecesitaActualizar)) rbAct.IsChecked = true;
         }
 
-        // ---- Eventos ----
+        void MostrarError(string texto)
+        {
+            lblConnError.Text = "⚠  " + texto;
+            lblConnError.Visibility = Visibility.Visible;
+        }
+
+        void btnConn_Click(object sender, RoutedEventArgs e) { var _ = ConectarAsync(false); }
+        void pwd_KeyDown(object sender, System.Windows.Input.KeyEventArgs e) { if (e.Key == System.Windows.Input.Key.Enter) { var _ = ConectarAsync(false); } }
+
+        void btnCambiar_Click(object sender, RoutedEventArgs e)
+        {
+            lblRecordada.Text = "";
+            MostrarConexion(false);
+        }
+
+        void btnDetectar_Click(object sender, RoutedEventArgs e)
+        {
+            LlenarInstancias(null);
+            int n = cbServer.Items.Count;
+            lblRecordada.Text = n == 0 ? "No se detectó SQL Server en este equipo" : n + " instancia(s) detectada(s) en este equipo";
+            if (n > 0) cbServer.IsDropDownOpen = true;
+        }
+
+        async void btnBuscarRed_Click(object sender, RoutedEventArgs e)
+        {
+            btnBuscarRed.IsEnabled = false; lblRecordada.Text = "Buscando servidores SQL en la red...";
+            List<string> red = null;
+            try { red = await Task.Run(() => Conexion.InstanciasEnRed()); } catch { }
+            btnBuscarRed.IsEnabled = true;
+            LlenarInstancias(red);
+            lblRecordada.Text = (red == null || red.Count == 0) ? "No se encontraron más servidores en la red" : cbServer.Items.Count + " servidor(es) en la lista";
+            if (cbServer.Items.Count > 0) cbServer.IsDropDownOpen = true;
+        }
+
         void btnEye_Click(object sender, RoutedEventArgs e)
         {
             if (pwdPlain.Visibility == Visibility.Visible)
@@ -446,22 +635,50 @@ ELSE
             }
         }
 
-        void btnConn_Click(object sender, RoutedEventArgs e) { Conectar(); }
-        void txtSearch_TextChanged(object sender, TextChangedEventArgs e) { if (IsLoaded) ApplyFilter(); }
-        void cbFiltro_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (IsLoaded) ApplyFilter(); }
+        // ---- Lista ----
 
-        void btnMark_Click(object sender, RoutedEventArgs e)
+        void txtSearch_TextChanged(object sender, TextChangedEventArgs e) { if (IsLoaded) { ApplyFilter(); UpdateCounts(); } }
+        void filtro_Changed(object sender, RoutedEventArgs e) { if (IsLoaded) { ApplyFilter(); UpdateCounts(); } }
+
+        void chkTodas_Click(object sender, RoutedEventArgs e)
         {
-            var view = CollectionViewSource.GetDefaultView(_rows);
-            foreach (EmpresaRow it in view) if (!it.Instalado || it.NecesitaActualizar) it.Sel = true;
-            grid.Items.Refresh();
+            bool marcar = chkTodas.IsChecked == true;
+            foreach (var it in _verFilas().ToList()) it.Sel = marcar;
             UpdateCounts();
+        }
+
+        // ---- Aplicar (instalar / actualizar) ----
+
+        bool _trabajando;
+
+        void btnActualizarTodas_Click(object sender, RoutedEventArgs e)
+        {
+            var lista = _rows.Where(r => r.NecesitaActualizar).ToList();
+            if (lista.Count == 0) return;
+            if (MessageBox.Show(this, "Se actualizarán " + lista.Count + " empresa(s) a la versión " + _versionActualTexto + ":\n\n  • " +
+                    string.Join("\n  • ", lista.Take(12).Select(r => r.DB)) + (lista.Count > 12 ? "\n  • ... y " + (lista.Count - 12) + " más" : "") +
+                    "\n\nEs seguro: el proceso no borra datos y se puede repetir.", "Actualizar todas", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+            var _ = AplicarAsync(lista);
+        }
+
+        void btnInstalarPendientes_Click(object sender, RoutedEventArgs e)
+        {
+            var lista = _rows.Where(r => !r.Instalado).ToList();
+            if (lista.Count == 0) return;
+            if (MessageBox.Show(this, "Se instalará BrosLMV en " + lista.Count + " empresa(s) pendiente(s).", "Instalar pendientes", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+            var _ = AplicarAsync(lista);
         }
 
         void btnInstall_Click(object sender, RoutedEventArgs e)
         {
             var sel = _rows.Where(r => r.Sel).ToList();
             if (sel.Count == 0) return;
+            var _ = AplicarAsync(sel);
+        }
+
+        async Task AplicarAsync(List<EmpresaRow> lista)
+        {
+            if (_trabajando || lista.Count == 0) return;
 
             bool proteger = chkProtegerConsola.IsChecked == true;
             string actual = pwdConsolaActual.Password;
@@ -470,62 +687,71 @@ ELSE
             {
                 if (string.IsNullOrEmpty(nueva))
                 {
-                    MessageBox.Show("Escribe la contraseña de la Consola (o desmarca la casilla si no la quieres activar/cambiar ahora).",
-                        "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    expConsola.IsExpanded = true;
+                    MessageBox.Show("Escribe la contraseña de la Consola (o desmarca la casilla si no la quieres activar/cambiar ahora).", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
                 if (nueva != pwdConsolaConfirmar.Password)
                 {
-                    MessageBox.Show("La confirmación de la contraseña de la Consola no coincide.",
-                        "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    expConsola.IsExpanded = true;
+                    MessageBox.Show("La confirmación de la contraseña de la Consola no coincide.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
                 if (pwdConsolaActual.Visibility == Visibility.Visible && string.IsNullOrEmpty(actual))
                 {
-                    MessageBox.Show("Esta empresa ya tiene contraseña -- escribe la actual para poder cambiarla.",
-                        "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    expConsola.IsExpanded = true;
+                    MessageBox.Show("Esta empresa ya tiene contraseña: escribe la actual para poder cambiarla.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
             }
 
             string server = cbServer.Text.Trim(), user = txtUser.Text.Trim(), pass = Pass();
-            int ok = 0, err = 0;
-            foreach (var row in sel)
+            _trabajando = true; UpdateCounts();
+            barProgreso.Visibility = Visibility.Visible; barProgreso.Minimum = 0; barProgreso.Maximum = lista.Count; barProgreso.Value = 0;
+            foreach (var r in lista) r.Estado = "En espera";
+            int ok = 0; var fallos = new List<string>();
+
+            foreach (var row in lista)
             {
-                lblFooter.Text = "Provisionando " + row.DB + " ...";
+                row.Estado = "Trabajando...";
+                lblFooter.Text = (ok + fallos.Count + 1) + " de " + lista.Count + " · " + row.DB;
                 try
                 {
-                    Provision(server, row.DB, user, pass);
-                    if (proteger) AplicarPasswordConsola(server, row.DB, user, pass, actual, nueva);
+                    await Task.Run(() =>
+                    {
+                        Provision(server, row.DB, user, pass);
+                        if (proteger) AplicarPasswordConsola(server, row.DB, user, pass, actual, nueva);
+                    });
                     row.Instalado = true; row.NecesitaActualizar = false;
                     row.VersionInstalada = _versionActualTexto;
-                    row.Estado = "Instalado ahora"; row.Sel = false; ok++;
+                    row.Estado = "Listo ahora"; row.Sel = false; ok++;
                 }
                 catch (Exception ex)
                 {
-                    row.Estado = "ERROR"; err++;
-                    MessageBox.Show("Error en " + row.DB + ":\n\n" + ex.Message, "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Error);
+                    row.Estado = "Error"; fallos.Add(row.DB + ": " + ex.Message);
                 }
+                barProgreso.Value = ok + fallos.Count;
             }
-            grid.Items.Refresh();
-            UpdateCounts();
-            MessageBox.Show("Provisión terminada.\n\nOK: " + ok + "\nErrores: " + err +
-                (proteger ? "\n\nContraseña de la Consola aplicada en las empresas instaladas ahora." : "") +
-                "\n\nReinicia CONTPAQi para ver el botón 'Consola BrosLMV'.", "BrosLMV", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            _trabajando = false; barProgreso.Visibility = Visibility.Collapsed;
+            grid.Items.Refresh(); UpdateCounts();
+            lblFooter.Text = ok + " lista(s)" + (fallos.Count > 0 ? ", " + fallos.Count + " con error." : ".") + " Reinicia CONTPAQi para ver el botón «Consola BrosLMV».";
+
+            string msg = "Terminado.\n\nListas: " + ok + "\nCon error: " + fallos.Count;
+            if (fallos.Count > 0) msg += "\n\n" + string.Join("\n", fallos.Take(6));
+            if (proteger && ok > 0) msg += "\n\nContraseña de la Consola aplicada.";
+            msg += "\n\nReinicia CONTPAQi para ver el botón «Consola BrosLMV».";
+            MessageBox.Show(this, msg, "BrosLMV", MessageBoxButton.OK, fallos.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
         }
 
-        // Al marcar la casilla: si hay EXACTAMENTE una empresa seleccionada y ya tiene
-        // contraseña, pide la actual (modo "cambiar"); en cualquier otro caso (ninguna
-        // seleccionada, varias, o no tiene todavia), solo pide la nueva (modo "activar").
+        // Al abrir/cerrar la sección de la Consola: si es una sola empresa y ya tiene contraseña, pide la actual.
+        void expConsola_Changed(object sender, RoutedEventArgs e) { }
+
         void chkProtegerConsola_Changed(object sender, RoutedEventArgs e)
         {
             bool activo = chkProtegerConsola.IsChecked == true;
             pnlPasswordConsola.IsEnabled = activo;
-            if (!activo)
-            {
-                pwdConsolaActual.Visibility = Visibility.Collapsed;
-                return;
-            }
+            if (!activo) { pwdConsolaActual.Visibility = Visibility.Collapsed; return; }
 
             var sel = _rows.Where(r => r.Sel).ToList();
             bool pideActual = false;

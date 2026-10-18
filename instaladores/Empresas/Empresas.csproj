@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <Reference Include="System.Data" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.ServiceProcess" />
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
