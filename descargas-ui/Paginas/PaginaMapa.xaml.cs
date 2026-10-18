@@ -24,6 +24,8 @@ namespace BrosLMV.DescargasUI.Paginas
             public string Tipo => Fila.Tipo;
             public string Sat { get; set; }
             public string Descargados { get; set; }
+            public string SoloAdd { get; set; }
+            public Style EstiloSoloAdd { get; set; }
             public string Comercial { get; set; }
             public string Add { get; set; }
             public string Poliza { get; set; }
@@ -77,6 +79,7 @@ namespace BrosLMV.DescargasUI.Paginas
                 PintarCifras();
                 PintarAviso();
                 TabFaltaAdd.Visibility = Ok(SistemaCfdi.Add) ? Visibility.Visible : Visibility.Collapsed;
+                TabSoloAdd.Visibility = Ok(SistemaCfdi.Add) && _filas.Any(f => f.SoloSistemas > 0) ? Visibility.Visible : Visibility.Collapsed;
                 TabFaltaComercial.Visibility = Ok(SistemaCfdi.Comercial) ? Visibility.Visible : Visibility.Collapsed;
                 TabSinPoliza.Visibility = Ok(SistemaCfdi.Polizas) ? Visibility.Visible : Visibility.Collapsed;
                 BtnCargarAdd.Visibility = Ok(SistemaCfdi.Add) ? Visibility.Visible : Visibility.Collapsed;
@@ -104,6 +107,7 @@ namespace BrosLMV.DescargasUI.Paginas
             GridMapa.ItemsSource = _filas.Select(f => new MapaVista
             {
                 Fila = f, Sat = f.SatTotal > 0 ? f.SatTotal.ToString("N0") : "—", Descargados = f.Descargados.ToString("N0"),
+                SoloAdd = N(f.SoloSistemas, add), EstiloSoloAdd = (Style)FindResource(!add ? "PastillaNeutra" : f.SoloSistemas > 0 ? "PastillaInfo" : "PastillaNeutra"),
                 Comercial = N(f.EnComercial, com), Add = N(f.EnAdd, add), Poliza = N(f.ConPoliza, pol),
                 FaltaAdd = N(f.FaltaAdd, add), FaltaComercial = N(f.FaltaComercial, com), SinPoliza = N(f.SinPoliza, pol),
                 EstiloFaltaAdd = Est(f.FaltaAdd, add), EstiloFaltaComercial = Est(f.FaltaComercial, com), EstiloSinPoliza = Est(f.SinPoliza, pol)
@@ -114,7 +118,9 @@ namespace BrosLMV.DescargasUI.Paginas
         {
             int sat = _filas.Sum(f => f.SatTotal), satVig = _filas.Sum(f => f.SatVigentes), desc = _filas.Sum(f => f.Descargados), sinArch = _filas.Sum(f => f.FaltaDisco);
             K1.Text = sat > 0 ? sat.ToString("N0") : "—"; K1d.Text = sat > 0 ? satVig.ToString("N0") + " vigentes (Metadata)" : "Sin Metadata todavía";
-            K2.Text = desc.ToString("N0"); K2d.Text = sinArch > 0 ? sinArch.ToString("N0") + " sin archivo en disco" : "todos con su archivo";
+            int solo = _filas.Sum(f => f.SoloSistemas);
+            K2.Text = desc.ToString("N0");
+            K2d.Text = (sinArch > 0 ? sinArch.ToString("N0") + " sin archivo en disco" : "todos con su archivo") + (Ok(SistemaCfdi.Add) && solo > 0 ? " · " + solo.ToString("N0") + " solo en el ADD" : "");
 
             if (Ok(SistemaCfdi.Comercial)) { K3.Text = _filas.Sum(f => f.EnComercial).ToString("N0"); int fa = _filas.Sum(f => f.FaltaComercial); K3d.Text = _filas.Sum(f => f.ConDocumento).ToString("N0") + " con documento · " + (fa > 0 ? fa.ToString("N0") + " faltan" : "nada falta"); }
             else { K3.Text = "—"; K3d.Text = Configurado(SistemaCfdi.Comercial) ? "no se pudo leer" : "sin configurar"; }
@@ -153,7 +159,7 @@ namespace BrosLMV.DescargasUI.Paginas
         private MapaFila Seleccion => (GridMapa.SelectedItem as MapaVista)?.Fila;
 
         private string FiltroActual =>
-            TabFaltaAdd.IsChecked == true ? "FaltaAdd" : TabFaltaComercial.IsChecked == true ? "FaltaComercial" : TabSinPoliza.IsChecked == true ? "SinPoliza" : "Todos";
+            TabFaltaAdd.IsChecked == true ? "FaltaAdd" : TabSoloAdd.IsChecked == true ? "SoloSistemas" : TabFaltaComercial.IsChecked == true ? "FaltaComercial" : TabSinPoliza.IsChecked == true ? "SinPoliza" : "Todos";
 
         private void GridMapa_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (!_cargando) CargarDetalle(); }
         private void Filtro_Changed(object sender, RoutedEventArgs e) { if (IsLoaded && !_cargando) CargarDetalle(); }
@@ -164,7 +170,7 @@ namespace BrosLMV.DescargasUI.Paginas
             try
             {
                 // Una pestaña oculta no puede quedar activa.
-                if ((TabFaltaAdd.IsChecked == true && TabFaltaAdd.Visibility != Visibility.Visible) || (TabFaltaComercial.IsChecked == true && TabFaltaComercial.Visibility != Visibility.Visible) ||
+                if ((TabFaltaAdd.IsChecked == true && TabFaltaAdd.Visibility != Visibility.Visible) || (TabSoloAdd.IsChecked == true && TabSoloAdd.Visibility != Visibility.Visible) || (TabFaltaComercial.IsChecked == true && TabFaltaComercial.Visibility != Visibility.Visible) ||
                     (TabSinPoliza.IsChecked == true && TabSinPoliza.Visibility != Visibility.Visible)) { _cargando = true; TabTodos.IsChecked = true; _cargando = false; }
                 var sel = Seleccion;
                 var lista = MapaCfdi.ObtenerCfdis(_s.Conn, Rfc, IncluirNomina, FiltroActual, sel?.Anio, sel?.Mes, sel?.Tipo, LimiteDetalle);
@@ -177,7 +183,14 @@ namespace BrosLMV.DescargasUI.Paginas
 
         private void GridDetalle_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
-            if (GridDetalle.SelectedItem is MapaCfdiFila f) new CfdiDetalleWindow(_s.Conn, f.CfdiId) { Owner = Ventana }.Show();
+            if (!(GridDetalle.SelectedItem is MapaCfdiFila f)) return;
+            if (f.Externo)
+            {
+                MessageBox.Show(Ventana, "Este CFDI está en el ADD de Contabilidad pero todavía no lo has descargado del SAT, así que Descargas no tiene su XML ni su detalle.\n\n" +
+                    "Descarga el mes " + f.Fecha.ToString("yyyy-MM") + " en «Descargas del SAT» → Nueva descarga.", "Mapa de CFDI", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            new CfdiDetalleWindow(_s.Conn, f.CfdiId) { Owner = Ventana }.Show();
         }
 
         // ---- Verificar ----
@@ -282,12 +295,12 @@ namespace BrosLMV.DescargasUI.Paginas
                 using (var wb = new XLWorkbook())
                 {
                     var ws = wb.AddWorksheet("Por mes");
-                    string[] cab = { "Mes", "Tipo", "SAT reporta", "SAT vigentes", "Tus XML", "XML en disco", "En Comercial", "Con documento", "En el ADD", "Con póliza", "Faltan en el ADD", "Faltan en Comercial", "Sin póliza" };
+                    string[] cab = { "Mes", "Tipo", "SAT reporta", "SAT vigentes", "Tus XML", "Solo en el ADD", "XML en disco", "En Comercial", "Con documento", "En el ADD", "Con póliza", "Faltan en el ADD", "Faltan en Comercial", "Sin póliza" };
                     for (int i = 0; i < cab.Length; i++) ws.Cell(1, i + 1).Value = cab[i];
                     int r = 2;
                     foreach (var f in _filas)
                     {
-                        object[] v = { f.MesTexto, f.Tipo, f.SatTotal, f.SatVigentes, f.Descargados, f.EnDisco, f.EnComercial, f.ConDocumento, f.EnAdd, f.ConPoliza, f.FaltaAdd, f.FaltaComercial, f.SinPoliza };
+                        object[] v = { f.MesTexto, f.Tipo, f.SatTotal, f.SatVigentes, f.Descargados, f.SoloSistemas, f.EnDisco, f.EnComercial, f.ConDocumento, f.EnAdd, f.ConPoliza, f.FaltaAdd, f.FaltaComercial, f.SinPoliza };
                         for (int i = 0; i < v.Length; i++) ws.Cell(r, i + 1).Value = XLCellValue.FromObject(v[i]);
                         r++;
                     }

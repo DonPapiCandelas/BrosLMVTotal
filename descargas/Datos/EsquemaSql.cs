@@ -388,6 +388,21 @@ CREATE TABLE VerificacionSistema (
     CONSTRAINT PK_VerificacionSistema PRIMARY KEY (RFC, Sistema)
 );
 
+-- CFDI que ESTAN en un sistema (hoy el ADD) pero NO en Descargas: dicen que meses faltan por bajar del SAT.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CfdiExterno')
+CREATE TABLE CfdiExterno (
+    RFC NVARCHAR(13) NOT NULL,
+    Sistema NVARCHAR(20) NOT NULL,
+    UUID UNIQUEIDENTIFIER NOT NULL,
+    FechaEmision DATETIME2 NULL,
+    Direccion NVARCHAR(10) NOT NULL,         -- Emitido / Recibido
+    TipoComprobante CHAR(1) NULL,
+    Contraparte NVARCHAR(300) NULL,
+    SerieFolio NVARCHAR(70) NULL,
+    Total DECIMAL(18,2) NULL,
+    CONSTRAINT PK_CfdiExterno PRIMARY KEY (RFC, Sistema, UUID)
+);
+
 -- Historial de polizas de Contabilidad de cada CFDI (un CFDI puede estar en varias: provision, pago, cancelacion...).
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CfdiPoliza')
 CREATE TABLE CfdiPoliza (

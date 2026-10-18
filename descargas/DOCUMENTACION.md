@@ -4,6 +4,11 @@
 
 ## Historial de versiones del instalador
 
+### 2.7.1 — 2026-10-18 — Mapa de CFDI: también lo que solo está en el ADD
+
+- **Cambiado**: el universo del mapa ya no es solo lo que Descargas bajó: incluye los CFDI de la empresa que **están en el ADD y no en tus XML**. Columna **«Solo en el ADD»** y pestaña del mismo nombre: dicen **qué meses faltan por descargar del SAT**. «Con póliza» y «Sin póliza» ahora cubren todo el ADD, no solo lo descargado. Tabla nueva `CfdiExterno` (se llena al verificar el ADD). Un CFDI externo no cuenta como faltante en Comercial; al descargarlo deja de ser externo.
+- Hallazgo con un respaldo realista de Contabilidad (65,000 comprobantes de 2022 a 2026, 27,757 pólizas): Descargas solo tenía desde noviembre de 2025 (≈ 18,000 CFDI del ADD sin nómina sin descargar). Verificar los cuatro sistemas tarda ≈ 6 segundos.
+
 ### 2.7.0 — 2026-10-18 — Mapa de CFDI: dónde está cada CFDI
 
 - **Agregado: página «Mapa de CFDI»** (menú Trabajo). Para la empresa activa muestra, por mes y dirección (recibidos/emitidos), cuántos CFDI hay en **el SAT** (Metadata), **tus XML** (en disco), **Comercial Pro**, el **ADD de Contabilidad** y **pólizas**, y cuántos **faltan** en cada sistema (solo vigentes). Tarjetas con los totales, filtro «Incluir nómina» (por defecto sigue la opción de la empresa), pestañas *Faltan en el ADD / Faltan en Comercial / Sin póliza / Todos* y lista de CFDI de lo seleccionado (doble clic = detalle).

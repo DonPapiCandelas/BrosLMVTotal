@@ -88,6 +88,34 @@ namespace BrosLMV.Descargas.Pruebas
         }
 
         [Fact]
+        public void CfdiQueSoloEstanEnElAdd_aparecenComoMesesPorDescargar()
+        {
+            if (!_bd.Disponible) return;
+            const string rfc = "MAT010101MAT";
+            var propio = Nuevo(rfc, false, diasAtras: 3);
+            var viejo = Guid.NewGuid(); var viejoNomina = Guid.NewGuid();
+            // «Externos»: estan en el ADD pero Descargas nunca los bajo (periodos anteriores).
+            foreach (var (u, tipo) in new[] { (viejo, "I"), (viejoNomina, "N") })
+                _bd.Ejecutar("INSERT INTO CfdiExterno (RFC, Sistema, UUID, FechaEmision, Direccion, TipoComprobante, Contraparte, SerieFolio, Total) VALUES ('" + rfc + "','ADD','" + u + "','2023-05-10','Recibido','" + tipo + "','PROVEEDOR','A1',100)");
+            MapaCfdi.GuardarEstados(_bd.Conn, rfc, SistemaCfdi.Add, new[] { E(propio, "En ADD"), E(viejo, "En ADD"), E(viejoNomina, "En ADD") });
+
+            var filas = MapaCfdi.Calcular(_bd.Conn, rfc, false);   // sin nomina
+            var mayo = filas.Single(f => f.Anio == 2023 && f.Mes == 5 && f.Tipo == "Recibidos");
+            Assert.Equal(1, mayo.SoloSistemas); Assert.Equal(0, mayo.Descargados); Assert.Equal(1, mayo.EnAdd);
+            Assert.Equal(2, MapaCfdi.Calcular(_bd.Conn, rfc, true).Single(f => f.Anio == 2023 && f.Mes == 5).SoloSistemas);   // con nomina son 2
+
+            var lista = MapaCfdi.ObtenerCfdis(_bd.Conn, rfc, false, "SoloSistemas", null, null, null);
+            var f1 = Assert.Single(lista);
+            Assert.True(f1.Externo); Assert.Equal(viejo, f1.Uuid); Assert.Equal("Sin descargar", f1.Estatus);
+            Assert.DoesNotContain(MapaCfdi.ObtenerCfdis(_bd.Conn, rfc, true, "FaltaComercial", null, null, null), x => x.Externo);   // los externos no «faltan» en Comercial
+
+            // si luego se descarga, deja de ser externo (no se cuenta doble)
+            BrosSatDb.GuardarCfdiRecibido(_bd.Conn, new CfdiParseado { UUID = viejo, RFCEmisor = "PRV010101PRV", RFCReceptor = rfc, FechaEmision = new DateTime(2023, 5, 10), Total = 100m, TipoComprobante = "I" }, null, out _);
+            var tras = MapaCfdi.Calcular(_bd.Conn, rfc, false).Single(f => f.Anio == 2023 && f.Mes == 5);
+            Assert.Equal(0, tras.SoloSistemas); Assert.Equal(1, tras.Descargados);
+        }
+
+        [Fact]
         public void DeduceRol_dePolizaSegunTipoSatYConcepto()
         {
             Assert.Equal("Provisión / diario", MapaCfdi.DeducirRol(3, "Compra a credito", "Poliza"));

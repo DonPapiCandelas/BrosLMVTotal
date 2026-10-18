@@ -76,6 +76,7 @@ namespace BrosLMV.Descargas.Datos
         public int ConDocumento { get; set; }
         public int EnAdd { get; set; }
         public int ConPoliza { get; set; }
+        public int SoloSistemas { get; set; }     // estan en el ADD pero NO en Descargas (faltan por bajar del SAT)
         public int FaltaDisco { get; set; }       // vigentes descargados cuyo archivo ya no esta
         public int FaltaComercial { get; set; }   // vigentes que no estan en la lista de Comercial
         public int FaltaAdd { get; set; }         // vigentes que no estan en el ADD
@@ -86,6 +87,7 @@ namespace BrosLMV.Descargas.Datos
     internal sealed class MapaCfdiFila
     {
         public int CfdiId { get; set; }
+        public bool Externo => CfdiId == 0;       // no esta en Descargas
         public Guid Uuid { get; set; }
         public DateTime Fecha { get; set; }
         public string Direccion { get; set; }     // Emitido / Recibido
@@ -259,10 +261,58 @@ FROM docDocumentCFDiSAT s LEFT JOIN docDocument d ON d.DocumentID = s.DocumentID
             if (conta == null) return null;
             var emp = ContabilidadAdd.BuscarEmpresa(conn, conta.BaseDatos)
                 ?? throw new InvalidOperationException("No se encontró la empresa de Contabilidad «" + conta.BaseDatos + "» en este servidor.");
-            var lista = new List<EstadoCfdi>();
-            foreach (var u in ContabilidadAdd.UuidsEnAdd(conn, emp))
-                if (Guid.TryParse(u, out var g) && uuids.Contains(g)) lista.Add(new EstadoCfdi { Uuid = g, Estado = "En ADD" });
+            if (!Regex.IsMatch(emp.GuidDsl ?? "", "^[0-9a-fA-F-]+$")) throw new InvalidOperationException("GuidDSL inválido.");
+            var lista = new List<EstadoCfdi>(); var externos = new List<EstadoExterno>();
+            // TODOS los comprobantes de esta empresa que hay en el ADD (no solo los que ya bajamos): los que no estan en Descargas son «externos».
+            using (var cmd = new SqlCommand(@"
+SELECT UUID, TRY_CONVERT(datetime2, Fecha, 21), TipoComprobante, RFCEmisor, NombreEmisor, RFCReceptor, NombreReceptor, ISNULL(Serie, ''), ISNULL(Folio, ''), Total
+FROM [document_" + emp.GuidDsl + "_metadata].dbo.Comprobante WHERE UUID IS NOT NULL AND (RFCEmisor = @r OR RFCReceptor = @r)", conn) { CommandTimeout = 300 })
+            {
+                cmd.Parameters.AddWithValue("@r", rfc);
+                using (var l = cmd.ExecuteReader())
+                    while (l.Read())
+                    {
+                        if (!Guid.TryParse(Convert.ToString(l.GetValue(0)), out var g)) continue;
+                        lista.Add(new EstadoCfdi { Uuid = g, Estado = "En ADD" });
+                        if (uuids.Contains(g)) continue;
+                        bool emitido = string.Equals(l.IsDBNull(3) ? "" : Convert.ToString(l.GetValue(3)).Trim(), rfc, StringComparison.OrdinalIgnoreCase);
+                        externos.Add(new EstadoExterno
+                        {
+                            Uuid = g, Fecha = l.IsDBNull(1) ? (DateTime?)null : l.GetDateTime(1), Emitido = emitido,
+                            Tipo = l.IsDBNull(2) ? null : Convert.ToString(l.GetValue(2)).Trim().Substring(0, 1),
+                            Contraparte = emitido ? (l.IsDBNull(6) ? Convert.ToString(l.GetValue(5)) : Convert.ToString(l.GetValue(6))) : (l.IsDBNull(4) ? Convert.ToString(l.GetValue(3)) : Convert.ToString(l.GetValue(4))),
+                            SerieFolio = Convert.ToString(l.GetValue(7)) + Convert.ToString(l.GetValue(8)), Total = l.IsDBNull(9) ? 0m : Convert.ToDecimal(l.GetValue(9))
+                        });
+                    }
+            }
+            GuardarExternos(conn, rfc, SistemaCfdi.Add, externos);
             return lista;
+        }
+
+        private sealed class EstadoExterno
+        {
+            public Guid Uuid; public DateTime? Fecha; public bool Emitido; public string Tipo, Contraparte, SerieFolio; public decimal Total;
+        }
+
+        private static void GuardarExternos(SqlConnection conn, string rfc, string sistema, List<EstadoExterno> filas)
+        {
+            using (var tx = conn.BeginTransaction())
+            {
+                using (var del = new SqlCommand("DELETE FROM CfdiExterno WHERE RFC = @r AND Sistema = @s", conn, tx)) { del.Parameters.AddWithValue("@r", rfc); del.Parameters.AddWithValue("@s", sistema); del.ExecuteNonQuery(); }
+                var t = new DataTable();
+                foreach (var (n, ty) in new[] { ("RFC", typeof(string)), ("Sistema", typeof(string)), ("UUID", typeof(Guid)), ("FechaEmision", typeof(DateTime)), ("Direccion", typeof(string)),
+                    ("TipoComprobante", typeof(string)), ("Contraparte", typeof(string)), ("SerieFolio", typeof(string)), ("Total", typeof(decimal)) }) t.Columns.Add(n, ty);
+                var vistos = new HashSet<Guid>();
+                foreach (var f in filas)
+                    if (vistos.Add(f.Uuid))
+                        t.Rows.Add(rfc, sistema, f.Uuid, (object)f.Fecha ?? DBNull.Value, f.Emitido ? "Emitido" : "Recibido", (object)f.Tipo ?? DBNull.Value, (object)Recortar(f.Contraparte, 300) ?? DBNull.Value, (object)Recortar(f.SerieFolio, 70) ?? DBNull.Value, f.Total);
+                using (var bulk = new SqlBulkCopy(conn, SqlBulkCopyOptions.Default, tx) { DestinationTableName = "CfdiExterno", BulkCopyTimeout = 300 })
+                {
+                    foreach (DataColumn c in t.Columns) bulk.ColumnMappings.Add(c.ColumnName, c.ColumnName);
+                    bulk.WriteToServer(t);
+                }
+                tx.Commit();
+            }
         }
 
         // Polizas: AsocCFDIs (UUID <-> poliza o movimiento) unido a Polizas / MovimientosPoliza. Un CFDI puede estar en varias.
@@ -286,13 +336,20 @@ SELECT a.UUID, a.AppType, NULL, 'Otro', NULL, NULL, NULL, NULL, NULL, NULL, NULL
 FROM " + ct + @"AsocCFDIs a
 WHERE NOT EXISTS (SELECT 1 FROM " + ct + @"Polizas p WHERE p.Guid = a.GuidRef) AND NOT EXISTS (SELECT 1 FROM " + ct + @"MovimientosPoliza m WHERE m.Guid = a.GuidRef)";
 
+            // Solo interesan los CFDI de esta empresa que estan en el ADD (los ya descargados y los «externos»); asi un CFDI de otra empresa no entra.
+            var enAdd = new HashSet<Guid>();
+            using (var cmdAdd = new SqlCommand("SELECT UUID FROM CfdiEstadoSistema WHERE RFC = @r AND Sistema = 'ADD'", conn) { CommandTimeout = 120 })
+            {
+                cmdAdd.Parameters.AddWithValue("@r", rfc);
+                using (var la = cmdAdd.ExecuteReader()) while (la.Read()) enAdd.Add(la.GetGuid(0));
+            }
             // Una fila por (CFDI, poliza): si el CFDI esta ligado a la poliza Y a un movimiento suyo, cuenta una sola vez.
             var polizas = new Dictionary<(Guid, string), PolizaFila>();
             using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 300 })
             using (var l = cmd.ExecuteReader())
                 while (l.Read())
                 {
-                    if (!Guid.TryParse(Convert.ToString(l.GetValue(0)), out var uuid) || !uuids.Contains(uuid)) continue;
+                    if (!Guid.TryParse(Convert.ToString(l.GetValue(0)), out var uuid) || !(uuids.Contains(uuid) || enAdd.Contains(uuid))) continue;
                     string nivel = l.GetString(3); string origen = l.IsDBNull(1) ? null : Convert.ToString(l.GetValue(1));
                     Guid? gp = l.IsDBNull(2) || !Guid.TryParse(l.GetString(2), out var gpv) ? (Guid?)null : gpv;
                     string clave = gp.HasValue ? gp.Value.ToString() : "otro-" + (origen ?? "");
@@ -443,6 +500,16 @@ WHEN NOT MATCHED THEN INSERT (RFC, Sistema, Estado, Total, Mensaje) VALUES (@r, 
         //  Consultas del mapa
         // ===================================================================================
 
+        // Universo del mapa: los CFDI de Descargas MAS los que estan en un sistema pero no en Descargas («externos»). Direccion = Emitidos / Recibidos.
+        private const string UniversoSql = @"
+WITH u AS (
+  SELECT c.UUID, c.FechaEmision, CASE WHEN c.RFCEmisor = @r THEN 'Emitidos' ELSE 'Recibidos' END AS Direccion, c.TipoComprobante, c.EstatusSat, 0 AS Externo
+  FROM CfdiRecibido c WHERE (c.RFCEmisor = @r OR c.RFCReceptor = @r) AND (@nom = 1 OR ISNULL(c.TipoComprobante, '') <> 'N')
+  UNION ALL
+  SELECT x.UUID, x.FechaEmision, CASE WHEN x.Direccion = 'Emitido' THEN 'Emitidos' ELSE 'Recibidos' END, x.TipoComprobante, 'Vigente', 1
+  FROM CfdiExterno x WHERE x.RFC = @r AND (@nom = 1 OR ISNULL(x.TipoComprobante, '') <> 'N') AND NOT EXISTS (SELECT 1 FROM CfdiRecibido c2 WHERE c2.UUID = x.UUID)
+)";
+
         // Una fila por mes y direccion con lo que cada sistema tiene. Los sistemas sin verificar quedan en 0 y la pantalla los muestra como «—».
         public static List<MapaFila> Calcular(SqlConnection conn, string rfc, bool incluirNomina)
         {
@@ -467,25 +534,26 @@ GROUP BY YEAR(FechaEmision), MONTH(FechaEmision)", conn) { CommandTimeout = 120 
                 }
             }
 
-            const string sql = @"
-SELECT YEAR(c.FechaEmision), MONTH(c.FechaEmision), CASE WHEN c.RFCEmisor = @r THEN 'Emitidos' ELSE 'Recibidos' END,
-       COUNT(*),
+            const string sql = UniversoSql + @"
+SELECT YEAR(c.FechaEmision), MONTH(c.FechaEmision), c.Direccion,
+       SUM(CASE WHEN c.Externo = 0 THEN 1 ELSE 0 END),
        SUM(CASE WHEN di.Estado = 'Con archivo' THEN 1 ELSE 0 END),
        SUM(CASE WHEN co.UUID IS NOT NULL THEN 1 ELSE 0 END),
        SUM(CASE WHEN co.Estado = 'Con documento' THEN 1 ELSE 0 END),
        SUM(CASE WHEN ad.UUID IS NOT NULL THEN 1 ELSE 0 END),
        SUM(CASE WHEN po.UUID IS NOT NULL THEN 1 ELSE 0 END),
-       SUM(CASE WHEN c.EstatusSat = 'Vigente' AND ISNULL(di.Estado, 'Sin archivo') <> 'Con archivo' THEN 1 ELSE 0 END),
-       SUM(CASE WHEN c.EstatusSat = 'Vigente' AND co.UUID IS NULL THEN 1 ELSE 0 END),
+       SUM(CASE WHEN c.Externo = 0 AND c.EstatusSat = 'Vigente' AND ISNULL(di.Estado, 'Sin archivo') <> 'Con archivo' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN c.Externo = 0 AND c.EstatusSat = 'Vigente' AND co.UUID IS NULL THEN 1 ELSE 0 END),
        SUM(CASE WHEN c.EstatusSat = 'Vigente' AND ad.UUID IS NULL THEN 1 ELSE 0 END),
-       SUM(CASE WHEN c.EstatusSat = 'Vigente' AND po.UUID IS NULL THEN 1 ELSE 0 END)
-FROM CfdiRecibido c
+       SUM(CASE WHEN c.EstatusSat = 'Vigente' AND po.UUID IS NULL THEN 1 ELSE 0 END),
+       SUM(c.Externo)
+FROM u c
 LEFT JOIN CfdiEstadoSistema di ON di.RFC = @r AND di.Sistema = 'Disco' AND di.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema co ON co.RFC = @r AND co.Sistema = 'Comercial' AND co.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema ad ON ad.RFC = @r AND ad.Sistema = 'ADD' AND ad.UUID = c.UUID
 LEFT JOIN (SELECT DISTINCT UUID FROM CfdiPoliza WHERE RFC = @r AND Nivel <> 'Otro') po ON po.UUID = c.UUID
-WHERE (c.RFCEmisor = @r OR c.RFCReceptor = @r) AND (@nom = 1 OR ISNULL(c.TipoComprobante, '') <> 'N')
-GROUP BY YEAR(c.FechaEmision), MONTH(c.FechaEmision), CASE WHEN c.RFCEmisor = @r THEN 'Emitidos' ELSE 'Recibidos' END";
+WHERE c.FechaEmision IS NOT NULL
+GROUP BY YEAR(c.FechaEmision), MONTH(c.FechaEmision), c.Direccion";
             using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 180 })
             {
                 cmd.Parameters.AddWithValue("@r", rfc); cmd.Parameters.AddWithValue("@nom", incluirNomina ? 1 : 0);
@@ -494,7 +562,7 @@ GROUP BY YEAR(c.FechaEmision), MONTH(c.FechaEmision), CASE WHEN c.RFCEmisor = @r
                     {
                         var f = Fila(l.GetInt32(0), l.GetInt32(1), l.GetString(2));
                         f.Descargados = l.GetInt32(3); f.EnDisco = l.GetInt32(4); f.EnComercial = l.GetInt32(5); f.ConDocumento = l.GetInt32(6); f.EnAdd = l.GetInt32(7); f.ConPoliza = l.GetInt32(8);
-                        f.FaltaDisco = l.GetInt32(9); f.FaltaComercial = l.GetInt32(10); f.FaltaAdd = l.GetInt32(11); f.SinPoliza = l.GetInt32(12);
+                        f.FaltaDisco = l.GetInt32(9); f.FaltaComercial = l.GetInt32(10); f.FaltaAdd = l.GetInt32(11); f.SinPoliza = l.GetInt32(12); f.SoloSistemas = l.GetInt32(13);
                     }
             }
             return filas.Values.OrderByDescending(f => f.Anio).ThenByDescending(f => f.Mes).ThenBy(f => f.Tipo).ToList();
@@ -505,28 +573,39 @@ GROUP BY YEAR(c.FechaEmision), MONTH(c.FechaEmision), CASE WHEN c.RFCEmisor = @r
         {
             string extra = filtro == "FaltaAdd" ? "AND c.EstatusSat = 'Vigente' AND ad.UUID IS NULL"
                 : filtro == "FaltaComercial" ? "AND c.EstatusSat = 'Vigente' AND co.UUID IS NULL"
-                : filtro == "SinPoliza" ? "AND c.EstatusSat = 'Vigente' AND po.UUID IS NULL"
-                : filtro == "FaltaDisco" ? "AND c.EstatusSat = 'Vigente' AND ISNULL(di.Estado, 'Sin archivo') <> 'Con archivo'" : "";
+                : filtro == "SinPoliza" ? "AND c.EstatusSat IN ('Vigente', 'Sin descargar') AND po.UUID IS NULL"
+                : filtro == "FaltaDisco" ? "AND c.Externo = 0 AND c.EstatusSat = 'Vigente' AND ISNULL(di.Estado, 'Sin archivo') <> 'Con archivo'"
+                : filtro == "SoloSistemas" ? "AND c.Externo = 1" : "";
             if (anio.HasValue) extra += " AND YEAR(c.FechaEmision) = @a";
             if (mes.HasValue) extra += " AND MONTH(c.FechaEmision) = @m";
-            if (tipo == "Emitidos") extra += " AND c.RFCEmisor = @r"; else if (tipo == "Recibidos") extra += " AND c.RFCReceptor = @r AND c.RFCEmisor <> @r";
+            if (tipo == "Emitidos" || tipo == "Recibidos") extra += " AND c.Direccion = @t";
+            if (filtro == "FaltaComercial") extra += " AND c.Externo = 0";
 
+            // El universo trae de Descargas los datos completos; de los «externos» (solo en el ADD) los que guarda CfdiExterno.
             string sql = @"
-SELECT TOP (@lim) c.UUID, c.FechaEmision, CASE WHEN c.RFCEmisor = @r THEN 'Emitido' ELSE 'Recibido' END, c.TipoComprobante,
-       CASE WHEN c.RFCEmisor = @r THEN c.RFCReceptor ELSE ISNULL(c.NombreEmisor, c.RFCEmisor) END,
-       ISNULL(c.Serie, '') + ISNULL(c.Folio, ''), ISNULL(c.Total, 0), c.EstatusSat, di.Estado, co.Estado, ad.Estado,
-       (SELECT COUNT(*) FROM CfdiPoliza p WHERE p.RFC = @r AND p.UUID = c.UUID AND p.Nivel <> 'Otro'), c.CfdiID
-FROM CfdiRecibido c
+WITH u AS (
+  SELECT c.UUID, c.FechaEmision, CASE WHEN c.RFCEmisor = @r THEN 'Emitidos' ELSE 'Recibidos' END AS Direccion, c.TipoComprobante, c.EstatusSat, 0 AS Externo, c.CfdiID,
+         CASE WHEN c.RFCEmisor = @r THEN c.RFCReceptor ELSE ISNULL(c.NombreEmisor, c.RFCEmisor) END AS Contraparte, ISNULL(c.Serie, '') + ISNULL(c.Folio, '') AS SerieFolio, ISNULL(c.Total, 0) AS Total
+  FROM CfdiRecibido c WHERE (c.RFCEmisor = @r OR c.RFCReceptor = @r) AND (@nom = 1 OR ISNULL(c.TipoComprobante, '') <> 'N')
+  UNION ALL
+  SELECT x.UUID, x.FechaEmision, CASE WHEN x.Direccion = 'Emitido' THEN 'Emitidos' ELSE 'Recibidos' END, x.TipoComprobante, 'Sin descargar', 1, 0,
+         ISNULL(x.Contraparte, ''), ISNULL(x.SerieFolio, ''), ISNULL(x.Total, 0)
+  FROM CfdiExterno x WHERE x.RFC = @r AND (@nom = 1 OR ISNULL(x.TipoComprobante, '') <> 'N') AND NOT EXISTS (SELECT 1 FROM CfdiRecibido c2 WHERE c2.UUID = x.UUID)
+)
+SELECT TOP (@lim) c.UUID, c.FechaEmision, CASE WHEN c.Direccion = 'Emitidos' THEN 'Emitido' ELSE 'Recibido' END, c.TipoComprobante, c.Contraparte, c.SerieFolio, c.Total, c.EstatusSat,
+       di.Estado, co.Estado, ad.Estado, (SELECT COUNT(*) FROM CfdiPoliza p WHERE p.RFC = @r AND p.UUID = c.UUID AND p.Nivel <> 'Otro'), c.CfdiID
+FROM u c
 LEFT JOIN CfdiEstadoSistema di ON di.RFC = @r AND di.Sistema = 'Disco' AND di.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema co ON co.RFC = @r AND co.Sistema = 'Comercial' AND co.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema ad ON ad.RFC = @r AND ad.Sistema = 'ADD' AND ad.UUID = c.UUID
 LEFT JOIN (SELECT DISTINCT UUID FROM CfdiPoliza WHERE RFC = @r AND Nivel <> 'Otro') po ON po.UUID = c.UUID
-WHERE (c.RFCEmisor = @r OR c.RFCReceptor = @r) AND (@nom = 1 OR ISNULL(c.TipoComprobante, '') <> 'N') " + extra + @"
+WHERE c.FechaEmision IS NOT NULL " + extra + @"
 ORDER BY c.FechaEmision DESC";
             var lista = new List<MapaCfdiFila>();
             using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 180 })
             {
                 cmd.Parameters.AddWithValue("@r", rfc); cmd.Parameters.AddWithValue("@nom", incluirNomina ? 1 : 0); cmd.Parameters.AddWithValue("@lim", limite);
+                if (tipo == "Emitidos" || tipo == "Recibidos") cmd.Parameters.AddWithValue("@t", tipo);
                 if (anio.HasValue) cmd.Parameters.AddWithValue("@a", anio.Value);
                 if (mes.HasValue) cmd.Parameters.AddWithValue("@m", mes.Value);
                 using (var l = cmd.ExecuteReader())

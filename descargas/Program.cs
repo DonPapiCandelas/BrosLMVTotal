@@ -315,7 +315,7 @@ namespace BrosLMV.Descargas
                     var filas = MapaCfdi.Calcular(connMapa, rfc, true);
                     Console.WriteLine("Totales: SAT " + filas.Sum(f => f.SatTotal) + " | descargados " + filas.Sum(f => f.Descargados) + " | en disco " + filas.Sum(f => f.EnDisco) +
                         " | Comercial " + filas.Sum(f => f.EnComercial) + " (con documento " + filas.Sum(f => f.ConDocumento) + ") | ADD " + filas.Sum(f => f.EnAdd) +
-                        " | con póliza " + filas.Sum(f => f.ConPoliza));
+                        " | con póliza " + filas.Sum(f => f.ConPoliza) + " | solo en el ADD (sin descargar) " + filas.Sum(f => f.SoloSistemas));
                     Console.WriteLine("Faltan (vigentes): en disco " + filas.Sum(f => f.FaltaDisco) + " | en Comercial " + filas.Sum(f => f.FaltaComercial) +
                         " | en ADD " + filas.Sum(f => f.FaltaAdd) + " | sin póliza " + filas.Sum(f => f.SinPoliza));
                     return resultados.Any(r => r.Estado == "Error") ? 1 : 0;

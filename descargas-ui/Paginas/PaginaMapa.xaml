@@ -62,6 +62,9 @@
               <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="95" ElementStyle="{StaticResource CeldaTexto}"/>
               <DataGridTextColumn Header="SAT" Binding="{Binding Sat}" Width="80" ElementStyle="{StaticResource CeldaNumero}"/>
               <DataGridTextColumn Header="TUS XML" Binding="{Binding Descargados}" Width="90" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTemplateColumn Header="SOLO EN ADD" Width="115">
+                <DataGridTemplateColumn.CellTemplate><DataTemplate><Border HorizontalAlignment="Left" Style="{Binding EstiloSoloAdd}"><TextBlock Text="{Binding SoloAdd}"/></Border></DataTemplate></DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
               <DataGridTextColumn Header="COMERCIAL" Binding="{Binding Comercial}" Width="105" ElementStyle="{StaticResource CeldaNumero}"/>
               <DataGridTextColumn Header="ADD" Binding="{Binding Add}" Width="80" ElementStyle="{StaticResource CeldaNumero}"/>
               <DataGridTextColumn Header="CON PÓLIZA" Binding="{Binding Poliza}" Width="105" ElementStyle="{StaticResource CeldaNumero}"/>
@@ -87,6 +90,7 @@
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
               <RadioButton x:Name="TabFaltaAdd" Content="Faltan en el ADD" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
+              <RadioButton x:Name="TabSoloAdd" Content="Solo en el ADD" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed" ToolTip="Están en el ADD pero no los has descargado del SAT."/>
               <RadioButton x:Name="TabFaltaComercial" Content="Faltan en Comercial" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
               <RadioButton x:Name="TabSinPoliza" Content="Sin póliza" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
               <RadioButton x:Name="TabTodos" Content="Todos" GroupName="TabsMapa" Style="{StaticResource Pestana}" IsChecked="True" Checked="Filtro_Changed"/>

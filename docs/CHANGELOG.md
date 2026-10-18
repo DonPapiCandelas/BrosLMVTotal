@@ -8,6 +8,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 2.7.1] — 2026-10-18 — Mapa de CFDI: lo que solo está en el ADD
+
+### Cambiado
+- El Mapa de CFDI incluye los CFDI que están en el ADD y no en Descargas («Solo en el ADD» = meses por descargar del SAT); «con póliza» cubre todo el ADD. Tabla nueva `CfdiExterno`.
+
 ## [Descargas 2.7.0] — 2026-10-18 — Mapa de CFDI
 
 ### Agregado
