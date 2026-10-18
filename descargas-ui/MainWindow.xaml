@@ -75,6 +75,7 @@
             <RadioButton x:Name="NavPanel" GroupName="Nav" Tag="panel" Content="Panel" ui:Ui.Glifo="&#xE80F;" Style="{StaticResource NavItem}" IsChecked="True" Checked="Nav_Checked"/>
             <RadioButton x:Name="NavCfdi" GroupName="Nav" Tag="cfdi" Content="CFDI" ui:Ui.Glifo="&#xE8A5;" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
             <RadioButton x:Name="NavDescargas" GroupName="Nav" Tag="descargas" Content="Descargas del SAT" ui:Ui.Glifo="&#xE896;" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+            <RadioButton x:Name="NavMapa" GroupName="Nav" Tag="mapa" Content="Mapa de CFDI" ui:Ui.Glifo="&#xE81E;" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
 
             <TextBlock Text="REVISIÓN" Style="{StaticResource NavSeccion}"/>
             <RadioButton x:Name="NavIndicadores" GroupName="Nav" Tag="indicadores" Content="Indicadores fiscales" ui:Ui.Glifo="&#xE7BA;" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>

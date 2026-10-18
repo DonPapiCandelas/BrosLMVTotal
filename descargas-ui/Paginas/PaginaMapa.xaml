@@ -1,0 +1,121 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaMapa"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <Grid Margin="32,26,32,24">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <ui:EncabezadoPagina Grid.Row="0" Titulo="Mapa de CFDI" Subtitulo="Dónde está cada CFDI: el SAT, tus XML, Comercial y Contabilidad (ADD y pólizas). Se lee de cada sistema; no se supone.">
+      <StackPanel Orientation="Horizontal">
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE74E;" Content="Exportar a Excel" Margin="0,0,8,0" Click="BtnExportar_Click"/>
+        <Button x:Name="BtnVerificar" Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE72C;" Content="Verificar ahora" Click="BtnVerificar_Click"/>
+      </StackPanel>
+    </ui:EncabezadoPagina>
+
+    <!-- Estado de la verificación -->
+    <Border Grid.Row="1" x:Name="Aviso" Style="{StaticResource BandaInfo}" Margin="0,18,0,0">
+      <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock x:Name="LblVerificacion" TextWrapping="Wrap" FontSize="13" VerticalAlignment="Center"/>
+        <CheckBox x:Name="ChkNomina" Grid.Column="1" Content="Incluir nómina" Margin="16,0,0,0" VerticalAlignment="Center" Checked="ChkNomina_Changed" Unchecked="ChkNomina_Changed"
+                  ToolTip="Los recibos de nómina suelen ser la mayoría de los XML y no se contabilizan uno por uno."/>
+      </Grid>
+    </Border>
+
+    <!-- Cifras -->
+    <Grid Grid.Row="2" Margin="0,16,0,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Style="{StaticResource Tarjeta}" Padding="18,14">
+        <StackPanel><TextBlock Text="SAT" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K1" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K1d" Style="{StaticResource TextoSecundario}"/></StackPanel>
+      </Border>
+      <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Padding="18,14">
+        <StackPanel><TextBlock Text="TUS XML" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K2" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K2d" Style="{StaticResource TextoSecundario}"/></StackPanel>
+      </Border>
+      <Border Grid.Column="4" Style="{StaticResource Tarjeta}" Padding="18,14">
+        <StackPanel><TextBlock Text="COMERCIAL PRO" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K3" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K3d" Style="{StaticResource TextoSecundario}"/></StackPanel>
+      </Border>
+      <Border Grid.Column="6" Style="{StaticResource Tarjeta}" Padding="18,14">
+        <StackPanel><TextBlock Text="ADD DE CONTABILIDAD" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K4" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K4d" Style="{StaticResource TextoSecundario}"/></StackPanel>
+      </Border>
+      <Border Grid.Column="8" Style="{StaticResource Tarjeta}" Padding="18,14">
+        <StackPanel><TextBlock Text="CON PÓLIZA" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K5" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K5d" Style="{StaticResource TextoSecundario}"/></StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Tabla por mes + detalle -->
+    <Grid Grid.Row="3" Margin="0,16,0,0">
+      <Grid.RowDefinitions><RowDefinition Height="*" MinHeight="150"/><RowDefinition Height="14"/><RowDefinition Height="1.5*" MinHeight="180"/></Grid.RowDefinitions>
+
+      <Border Grid.Row="0" Style="{StaticResource Tarjeta}" Padding="0">
+        <Grid>
+          <DataGrid x:Name="GridMapa" IsReadOnly="True" SelectionMode="Single" SelectionChanged="GridMapa_SelectionChanged">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="MES" Binding="{Binding MesTexto}" Width="90" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="95" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="SAT" Binding="{Binding Sat}" Width="80" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="TUS XML" Binding="{Binding Descargados}" Width="90" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="COMERCIAL" Binding="{Binding Comercial}" Width="105" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="ADD" Binding="{Binding Add}" Width="80" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="CON PÓLIZA" Binding="{Binding Poliza}" Width="105" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTemplateColumn Header="FALTAN EN ADD" Width="130">
+                <DataGridTemplateColumn.CellTemplate><DataTemplate><Border HorizontalAlignment="Left" Style="{Binding EstiloFaltaAdd}"><TextBlock Text="{Binding FaltaAdd}"/></Border></DataTemplate></DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="FALTAN EN COMERCIAL" Width="170">
+                <DataGridTemplateColumn.CellTemplate><DataTemplate><Border HorizontalAlignment="Left" Style="{Binding EstiloFaltaComercial}"><TextBlock Text="{Binding FaltaComercial}"/></Border></DataTemplate></DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="SIN PÓLIZA" Width="*">
+                <DataGridTemplateColumn.CellTemplate><DataTemplate><Border HorizontalAlignment="Left" Style="{Binding EstiloSinPoliza}"><TextBlock Text="{Binding SinPoliza}"/></Border></DataTemplate></DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <ui:EstadoVacio x:Name="Vacio" Visibility="Collapsed" Glifo="&#xE71D;" Titulo="Todavía no hay CFDI" Texto="Cuando descargues XML del SAT, aquí verás dónde está cada uno."/>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="2" Style="{StaticResource Tarjeta}" Padding="0">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <Grid Margin="18,12,18,8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+              <RadioButton x:Name="TabFaltaAdd" Content="Faltan en el ADD" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
+              <RadioButton x:Name="TabFaltaComercial" Content="Faltan en Comercial" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
+              <RadioButton x:Name="TabSinPoliza" Content="Sin póliza" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
+              <RadioButton x:Name="TabTodos" Content="Todos" GroupName="TabsMapa" Style="{StaticResource Pestana}" IsChecked="True" Checked="Filtro_Changed"/>
+            </StackPanel>
+            <TextBlock x:Name="LblAlcance" Grid.Column="1" Style="{StaticResource TextoSecundario}" VerticalAlignment="Center" Margin="16,0,0,0" TextTrimming="CharacterEllipsis"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+              <Button x:Name="BtnCargarAdd" Style="{StaticResource Ghost}" Content="Cargar al ADD" Margin="0,0,8,0" Click="BtnCargarAdd_Click" Visibility="Collapsed"
+                      ToolTip="Carga al ADD de Contabilidad los CFDI que faltan en lo que estás viendo (el mes seleccionado, o todos)."/>
+              <Button x:Name="BtnImportarComercial" Style="{StaticResource Ghost}" Content="Importar a Comercial" Click="BtnImportarComercial_Click" Visibility="Collapsed"
+                      ToolTip="Agrega a la lista de XML de Comercial los CFDI que faltan en lo que estás viendo. No crea documentos."/>
+            </StackPanel>
+          </Grid>
+          <DataGrid x:Name="GridDetalle" Grid.Row="1" IsReadOnly="True" MouseDoubleClick="GridDetalle_MouseDoubleClick">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="FECHA" Binding="{Binding FechaTexto}" Width="95" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="" Binding="{Binding Direccion}" Width="80" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="TIPO" Binding="{Binding TipoComprobante}" Width="50" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="CONTRAPARTE" Binding="{Binding Contraparte}" Width="*" ElementStyle="{StaticResource CeldaTexto}"/>
+              <DataGridTextColumn Header="FOLIO" Binding="{Binding SerieFolio}" Width="90" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="TOTAL" Binding="{Binding Total, StringFormat=N2}" Width="110" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="SAT" Binding="{Binding Estatus}" Width="90" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="XML" Binding="{Binding Disco}" Width="100" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="COMERCIAL" Binding="{Binding Comercial}" Width="110" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="ADD" Binding="{Binding Add}" Width="80" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="PÓLIZAS" Binding="{Binding Polizas}" Width="80" ElementStyle="{StaticResource CeldaNumero}"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

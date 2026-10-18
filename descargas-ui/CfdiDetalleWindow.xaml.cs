@@ -101,6 +101,7 @@ namespace BrosLMV.DescargasUI
                 : string.Join("; ", vinculos.Select(v => v.TipoVinculo + " — Documento #" + v.DocumentID + " (" + v.FechaVinculo.ToLocalTime().ToString("yyyy-MM-dd") + ")"));
 
             BtnAbrirCarpeta.IsEnabled = !string.IsNullOrEmpty(_rutaArchivoXml) && File.Exists(_rutaArchivoXml);
+            CargarSistemas(c.UUID, c.RFCEmisor, c.RFCReceptor);
 
             bool esPago = string.Equals(c.TipoComprobante, "P", StringComparison.OrdinalIgnoreCase);
             PanelPartidas.Visibility = esPago ? Visibility.Collapsed : Visibility.Visible;
@@ -146,6 +147,57 @@ namespace BrosLMV.DescargasUI
         };
 
         private static string Moneda(decimal? valor) => valor?.ToString("N2", CultureInfo.InvariantCulture) ?? "-";
+
+        // ---- En los sistemas (lo que dejo la ultima verificacion de «Mapa de CFDI») ----
+
+        private string _cadenaComercial;
+
+        private void CargarSistemas(Guid uuid, string rfcEmisor, string rfcReceptor)
+        {
+            try
+            {
+                var empresa = BrosSatDb.ObtenerEmpresas(_conn).FirstOrDefault(e => e.RFC == rfcEmisor || e.RFC == rfcReceptor);
+                if (empresa == null) { PanelSistemas.Visibility = Visibility.Collapsed; return; }
+                var verif = MapaCfdi.ObtenerVerificaciones(_conn, empresa.RFC);
+                if (verif.Count == 0) { ValSistemas.Text = "Todavía no se ha verificado dónde está este CFDI. Usa «Verificar ahora» en «Mapa de CFDI»."; PanelDocsComercial.Visibility = Visibility.Collapsed; PanelPolizas.Visibility = Visibility.Collapsed; return; }
+
+                var est = MapaCfdi.ObtenerEstados(_conn, empresa.RFC, uuid);
+                string Linea(string sistema)
+                {
+                    verif.TryGetValue(sistema, out var v);
+                    if (v == null || !v.Configurado) return SistemaCfdi.Nombre(sistema) + ": sin configurar";
+                    if (!v.Ok) return SistemaCfdi.Nombre(sistema) + ": no se pudo verificar";
+                    return SistemaCfdi.Nombre(sistema) + ": " + (est.TryGetValue(sistema, out var e) ? e.estado : "no está");
+                }
+                ValSistemas.Text = string.Join("   ·   ", new[] { SistemaCfdi.Disco, SistemaCfdi.Comercial, SistemaCfdi.Add, SistemaCfdi.Polizas }.Select(Linea));
+
+                // Comercial: documentos generados + «Ver documento».
+                _cadenaComercial = string.IsNullOrWhiteSpace(empresa.ComercialConexionSql) ? null : DpapiHelper.DescifrarConexionSql(empresa.ComercialConexionSql);
+                var docs = MapaCfdi.ObtenerDocumentosComercial(_conn, empresa.RFC, uuid);
+                GridDocsComercial.ItemsSource = docs;
+                PanelDocsComercial.Visibility = _cadenaComercial == null ? Visibility.Collapsed : Visibility.Visible;
+                if (docs.Count > 0) GridDocsComercial.SelectedIndex = 0;
+                if (docs.Count > 0 && ValVinculo.Text.StartsWith("Sin vincular"))
+                    ValVinculo.Text = string.Join("; ", docs.Select(d => "Documento " + d.Folio + (d.Cancelado ? " (cancelado)" : "")));
+
+                // Contabilidad: historial de polizas.
+                var polizas = MapaCfdi.ObtenerPolizas(_conn, empresa.RFC, uuid);
+                GridPolizas.ItemsSource = polizas;
+                PanelPolizas.Visibility = BrosSatDb.ObtenerContabilidad(_conn, empresa.RFC) == null ? Visibility.Collapsed : Visibility.Visible;
+            }
+            catch (Exception ex) { ValSistemas.Text = "No se pudo leer el estado en los sistemas: " + ex.Message; }
+        }
+
+        private void GridDocsComercial_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => BtnVerDocumento.IsEnabled = GridDocsComercial.SelectedItem is DocumentoComercialCfdi;
+        private void GridDocsComercial_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e) => AbrirDocumentoSeleccionado();
+        private void BtnVerDocumento_Click(object sender, RoutedEventArgs e) => AbrirDocumentoSeleccionado();
+
+        // No es modal: se pueden ver varios documentos y seguir usando Descargas.
+        private void AbrirDocumentoSeleccionado()
+        {
+            if (!(GridDocsComercial.SelectedItem is DocumentoComercialCfdi d) || _cadenaComercial == null) return;
+            new DocumentoComercialWindow(_cadenaComercial, d.DocumentId) { Owner = this }.Show();
+        }
 
         private async void BtnVerificarEstatus_Click(object sender, RoutedEventArgs e)
         {

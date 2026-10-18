@@ -36,7 +36,7 @@ namespace BrosLMV.DescargasUI
     internal static class VersionApp
     {
         // Misma version que el instalador (descargas-instalador\*.csproj); se cambia junto con ella.
-        public const string Actual = "2.6.1";
+        public const string Actual = "2.7.0";
     }
 
     public partial class MainWindow : Window
@@ -152,6 +152,23 @@ namespace BrosLMV.DescargasUI
             PintarSelectorEmpresa();
             Navegar(_sesion.Empresas.Count == 0 ? "empresas" : "panel");
             ProgramarResumen();
+            AbrirCfdiInicial();
+        }
+
+        // --cfdi <UUID>: abre el detalle de ese CFDI (sin bloquear la ventana principal).
+        private void AbrirCfdiInicial()
+        {
+            if (App.UuidInicial == Guid.Empty) return;
+            try
+            {
+                using (var cmd = new Microsoft.Data.SqlClient.SqlCommand("SELECT CfdiID FROM CfdiRecibido WHERE UUID = @u", _conn))
+                {
+                    cmd.Parameters.AddWithValue("@u", App.UuidInicial);
+                    var id = cmd.ExecuteScalar();
+                    if (id != null && id != DBNull.Value) new CfdiDetalleWindow(_conn, Convert.ToInt32(id)) { Owner = this }.Show();
+                }
+            }
+            catch { }
         }
 
         // El resumen (salud, indicadores, cobertura) se calcula despues de pintar la ventana para que abra de inmediato.
@@ -276,6 +293,7 @@ namespace BrosLMV.DescargasUI
                 case "indicadores": return new PaginaIndicadores(_sesion);
                 case "cobertura": return new PaginaCobertura(_sesion);
                 case "conciliacion": return new PaginaConciliacion(_sesion);
+                case "mapa": return new PaginaMapa(_sesion);
                 case "cancelaciones": return new PaginaCancelaciones(_sesion);
                 case "vinculos": return new PaginaVinculos(_sesion);
                 case "reportes": return new PaginaReportes(_sesion);

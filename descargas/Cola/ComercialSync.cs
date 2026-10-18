@@ -27,6 +27,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using BrosLMV.Descargas.Datos;
 using Microsoft.Data.SqlClient;
@@ -97,6 +98,32 @@ WHERE s.UUID = @u AND s.DocumentID <> 0;", comercial))
             Bitacora.Escribir("  " + empresa.Nombre + ": " + marcados + " CFDI cancelado(s) marcado(s) en Comercial" +
                 (conDocumento > 0 ? "; " + conDocumento + " tenian un documento vinculado y quedan en «Cancelaciones con documento» para revisar." : "."));
             return marcados;
+        }
+
+        // Importa a la lista de XML de Comercial SOLO estos CFDI (los «faltantes» de una celda del mapa). Misma regla que SincronizarTodoAsync:
+        // idempotente, solo con conexion directa a Comercial, nunca crea documentos ni polizas.
+        public static async Task<ResultadoSincronizacion> SincronizarUuidsAsync(SqlConnection conn, EmpresaFila empresa, ICollection<Guid> uuids, Action<string> progreso = null)
+        {
+            var resultado = new ResultadoSincronizacion();
+            if (string.IsNullOrWhiteSpace(empresa.ComercialConexionSql)) { resultado.SinCarpetaConfigurada = uuids.Count; return resultado; }
+            string cadena = DpapiHelper.DescifrarConexionSql(empresa.ComercialConexionSql);
+            var cfdis = BrosSatDb.ObtenerCfdiConArchivo(conn, empresa.RFC).Where(c => uuids.Contains(c.UUID)).ToList();
+            int n = 0;
+            foreach (var (uuid, ruta, esEmitido) in cfdis)
+            {
+                n++;
+                if (n % 25 == 0) progreso?.Invoke("Importando a Comercial " + n + " de " + cfdis.Count + "...");
+                if (!File.Exists(ruta)) { resultado.SinArchivoEnDisco++; continue; }
+                try
+                {
+                    var (r, error) = await ComercialImportador.ImportarAsync(cadena, File.ReadAllText(ruta), empresa.RFC, empresa.ComercialCarpetaXmlRecibidos, empresa.ComercialCarpetaXmlEmitidos).ConfigureAwait(false);
+                    if (r == ResultadoImportComercial.Error) { resultado.Errores++; Bitacora.EscribirError("    No se pudo importar " + uuid + " a Comercial: " + error); continue; }
+                    BrosSatDb.MarcarSincronizadoComercial(conn, uuid);
+                    if (esEmitido) resultado.ImportadosEmitidos++; else resultado.ImportadosRecibidos++;
+                }
+                catch (Exception ex) { resultado.Errores++; Bitacora.EscribirError("    No se pudo leer/importar " + uuid + ": " + ex.Message); }
+            }
+            return resultado;
         }
 
         public static async Task<ResultadoSincronizacion> SincronizarTodoAsync(SqlConnection conn, EmpresaFila empresa)

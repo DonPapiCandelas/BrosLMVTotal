@@ -54,7 +54,7 @@ namespace BrosLMV.Descargas
             bool autenticar = false, solicitar = false, auto = false, reparsear = false, autoTodas = false, verificarEstatus = false;
             bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false, mostrarConciliacion = false, mostrarVinculos = false;
             string exportarRespaldo = null, importarRespaldo = null, carpetaFiel = null;
-            bool cargarContabilidad = false; int maxContabilidad = 0;
+            bool cargarContabilidad = false; int maxContabilidad = 0; bool verificarSistemas = false;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -141,6 +141,8 @@ namespace BrosLMV.Descargas
                     // Sube al ADD de CONTPAQi Contabilidad lo descargado que aun no este alli (ver ContabilidadAdd.cs). Requiere --conn y --rfc;
                     // --max N limita cuantos XML manda en esta corrida (para probar o repartir una carga grande).
                     case "--cargar-contabilidad": cargarContabilidad = true; break;
+                    // Lee (solo lectura) donde esta cada CFDI: XML en disco, Comercial, ADD y polizas de Contabilidad, y imprime el resumen. Requiere --conn y --rfc.
+                    case "--verificar-sistemas": verificarSistemas = true; break;
                     case "--max": int.TryParse(Siguiente(args, ref i), out maxContabilidad); break;
                     case "--salud": mostrarSalud = true; break;
                     case "--conciliacion": mostrarConciliacion = true; break;
@@ -292,6 +294,32 @@ namespace BrosLMV.Descargas
                 if (todos.Count == 0) Console.WriteLine("Salud: todo en orden.");
                 foreach (var h in todos) Console.WriteLine(h.Nivel + " [" + h.Empresa + "] " + h.Tema + ": " + h.Detalle);
                 return todos.Any(h => h.Nivel == "CRITICO") ? 2 : 0;
+            }
+
+            if (verificarSistemas)
+            {
+                if (string.IsNullOrEmpty(conexionSql) || string.IsNullOrEmpty(rfc))
+                {
+                    Console.Error.WriteLine("--verificar-sistemas requiere --conn y --rfc.");
+                    return Uso();
+                }
+                using (var connMapa = new SqlConnection(conexionSql))
+                {
+                    connMapa.Open();
+                    EsquemaSql.Asegurar(connMapa);
+                    var empresaMapa = BrosSatDb.ObtenerEmpresas(connMapa).FirstOrDefault(x => x.RFC == rfc);
+                    if (empresaMapa == null) { Console.Error.WriteLine("No hay una empresa con ese RFC."); return 1; }
+                    var resultados = await MapaCfdi.VerificarTodoAsync(connMapa, empresaMapa, Console.WriteLine);
+                    foreach (var r in resultados)
+                        Console.WriteLine(SistemaCfdi.Nombre(r.Sistema) + ": " + r.Estado + (r.Ok ? " (" + r.Total + " CFDI)" : "") + (string.IsNullOrEmpty(r.Mensaje) ? "" : " - " + r.Mensaje));
+                    var filas = MapaCfdi.Calcular(connMapa, rfc, true);
+                    Console.WriteLine("Totales: SAT " + filas.Sum(f => f.SatTotal) + " | descargados " + filas.Sum(f => f.Descargados) + " | en disco " + filas.Sum(f => f.EnDisco) +
+                        " | Comercial " + filas.Sum(f => f.EnComercial) + " (con documento " + filas.Sum(f => f.ConDocumento) + ") | ADD " + filas.Sum(f => f.EnAdd) +
+                        " | con póliza " + filas.Sum(f => f.ConPoliza));
+                    Console.WriteLine("Faltan (vigentes): en disco " + filas.Sum(f => f.FaltaDisco) + " | en Comercial " + filas.Sum(f => f.FaltaComercial) +
+                        " | en ADD " + filas.Sum(f => f.FaltaAdd) + " | sin póliza " + filas.Sum(f => f.SinPoliza));
+                    return resultados.Any(r => r.Estado == "Error") ? 1 : 0;
+                }
             }
 
             if (cargarContabilidad)

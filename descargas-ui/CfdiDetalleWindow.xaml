@@ -76,6 +76,41 @@
           </StackPanel>
         </Grid>
 
+        <!-- En los sistemas: donde esta este CFDI (se llena con lo que lee «Mapa de CFDI»). -->
+        <StackPanel x:Name="PanelSistemas" Margin="0,18,0,4">
+          <TextBlock Text="EN LOS SISTEMAS" Style="{StaticResource Etiqueta}" FontWeight="SemiBold" Margin="0,0,0,4"/>
+          <TextBlock x:Name="ValSistemas" Style="{StaticResource Valor}" TextWrapping="Wrap"/>
+
+          <StackPanel x:Name="PanelDocsComercial" Margin="0,12,0,0">
+            <Grid>
+              <TextBlock Text="Documentos de Comercial Pro" Style="{StaticResource Etiqueta}" Margin="0"/>
+              <Button x:Name="BtnVerDocumento" Content="Ver documento" Style="{StaticResource Ghost}" HorizontalAlignment="Right" IsEnabled="False" Click="BtnVerDocumento_Click"/>
+            </Grid>
+            <DataGrid x:Name="GridDocsComercial" BorderThickness="1" BorderBrush="#E6E9EF" IsReadOnly="True" CanUserResizeRows="False" Margin="0,6,0,0" MouseDoubleClick="GridDocsComercial_MouseDoubleClick" SelectionChanged="GridDocsComercial_SelectionChanged">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Documento" Binding="{Binding Folio}" Width="*"/>
+                <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="110"/>
+                <DataGridTextColumn Header="Total" Binding="{Binding Total, StringFormat=N2}" Width="110"/>
+                <DataGridTextColumn Header="Estado" Binding="{Binding EstadoTexto}" Width="100"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </StackPanel>
+
+          <StackPanel x:Name="PanelPolizas" Margin="0,16,0,0">
+            <TextBlock Text="Pólizas de Contabilidad (historial)" Style="{StaticResource Etiqueta}" Margin="0"/>
+            <DataGrid x:Name="GridPolizas" BorderThickness="1" BorderBrush="#E6E9EF" IsReadOnly="True" CanUserResizeRows="False" Margin="0,6,0,0">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Póliza" Binding="{Binding Referencia}" Width="200"/>
+                <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="100"/>
+                <DataGridTextColumn Header="Rol" Binding="{Binding Rol}" Width="130"/>
+                <DataGridTextColumn Header="Concepto" Binding="{Binding Concepto}" Width="*"/>
+                <DataGridTextColumn Header="Cargos" Binding="{Binding Cargos, StringFormat=N2}" Width="100"/>
+                <DataGridTextColumn Header="Abonos" Binding="{Binding Abonos, StringFormat=N2}" Width="100"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </StackPanel>
+        </StackPanel>
+
         <!-- Para CFDI tipo Pago (REP) el Concepto es siempre un renglon generico sin informacion
              util (Pago, Importe=0): lo que de verdad importa ahi son los documentos que se estan
              pagando (complemento de Pagos), no partidas de producto/servicio. Se muestra uno u

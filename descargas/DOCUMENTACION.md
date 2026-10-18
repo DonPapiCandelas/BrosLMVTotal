@@ -4,6 +4,16 @@
 
 ## Historial de versiones del instalador
 
+### 2.7.0 — 2026-10-18 — Mapa de CFDI: dónde está cada CFDI
+
+- **Agregado: página «Mapa de CFDI»** (menú Trabajo). Para la empresa activa muestra, por mes y dirección (recibidos/emitidos), cuántos CFDI hay en **el SAT** (Metadata), **tus XML** (en disco), **Comercial Pro**, el **ADD de Contabilidad** y **pólizas**, y cuántos **faltan** en cada sistema (solo vigentes). Tarjetas con los totales, filtro «Incluir nómina» (por defecto sigue la opción de la empresa), pestañas *Faltan en el ADD / Faltan en Comercial / Sin póliza / Todos* y lista de CFDI de lo seleccionado (doble clic = detalle).
+- **La verdad se lee, no se supone**: **«Verificar ahora»** consulta cada sistema en solo lectura (XML en disco; `docDocumentCFDiSAT` + `docDocument` de Comercial; `Comprobante` del ADD; `AsocCFDIs` + `Polizas` + `MovimientosPoliza` de Contabilidad) y guarda el resultado (`CfdiEstadoSistema`, `VerificacionSistema`, `CfdiPoliza`, `CfdiDocumentoComercial`). Cada sistema es independiente: si uno falla o no está configurado, los demás siguen y el motivo se muestra. Las banderas «sincronizado» de antes solo dicen que BrosLMV lo mandó alguna vez.
+- **Acciones sobre lo que falta**: **Cargar al ADD** (con estimación de tiempo: ~50 XML/min) e **Importar a Comercial** actúan solo sobre lo que falta en lo que estás viendo (el mes seleccionado o todos) y después **vuelven a leer** ese sistema. **Exportar a Excel**: hoja *Por mes* y hoja *CFDI* (con el estado en cada sistema).
+- **Detalle de un CFDI → «En los sistemas»**: estado en cada sistema, **documentos de Comercial** generados con **«Ver documento»** (vista previa de solo lectura leída de SQL, funciona con Comercial cerrado y **no bloquea**: se pueden abrir varios) y el **historial de pólizas** de Contabilidad (póliza, fecha, rol —provisión / cobro / pago / cancelación—, concepto, cargos y abonos). Un CFDI puede estar en varias pólizas.
+- **Línea de comandos**: `--verificar-sistemas --rfc X --conn …` (imprime el resumen) y `--cfdi <UUID>` (abre Descargas directo en el detalle de ese CFDI).
+- **Esquema** (se crea solo): `CfdiEstadoSistema`, `VerificacionSistema`, `CfdiPoliza`, `CfdiDocumentoComercial`.
+- Probado en la empresa de prueba: los totales coinciden con las consultas directas (SAT 12,970 · XML 15,737 · Comercial 15,737 con 1 documento · ADD), y cargar los 15 emitidos de octubre al ADD bajó «faltan» de 15 a 0 releyendo el ADD. 67 pruebas automáticas.
+
 ### 2.6.1 — 2026-10-18 — Contabilidad: configuración a la vista
 
 - **Cambiado**: la conexión con Contabilidad ya no está escondida detrás de un clic derecho. Se configura en **Empresas y e.firma → Editar**, en la tarjeta nueva **«Integración con CONTPAQi Contabilidad»** (junto a la de Comercial): empresa de Contabilidad (se propone la que tiene el mismo RFC), usuario, contraseña, carga automática y **Probar acceso**. Funciona también al **agregar** una empresa nueva. La lista de empresas tiene la columna **Contabilidad** (Automática · ctXXX / Manual / Sin configurar). En «Descargas del SAT» hay un botón visible **Configurar Contabilidad** junto a «Cargar a Contabilidad». Si eliges una empresa de Contabilidad de otro RFC, avisa antes de guardar.

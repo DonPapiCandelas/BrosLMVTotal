@@ -359,6 +359,75 @@ CREATE TABLE IndicadorPersonalizado (
     Nivel INT NOT NULL DEFAULT 1,
     FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
+
+-- ===== Mapa de CFDI por sistema (2.7.0) =====
+-- La VERDAD de donde esta cada CFDI se lee de cada sistema (solo lectura) y se guarda aqui; las banderas viejas
+-- (FechaSincronizadoComercial / FechaCargadoContabilidad) solo dicen que BrosLMV lo mando alguna vez.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CfdiEstadoSistema')
+CREATE TABLE CfdiEstadoSistema (
+    RFC NVARCHAR(13) NOT NULL,
+    Sistema NVARCHAR(20) NOT NULL,          -- Disco / Comercial / ADD / Polizas
+    UUID UNIQUEIDENTIFIER NOT NULL,
+    Estado NVARCHAR(40) NOT NULL,
+    Detalle NVARCHAR(400) NULL,
+    FechaVerificado DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_CfdiEstadoSistema PRIMARY KEY (RFC, Sistema, UUID)
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_CfdiEstadoSistema_UUID')
+    CREATE INDEX IX_CfdiEstadoSistema_UUID ON CfdiEstadoSistema (UUID, Sistema);
+
+-- Cuando y como salio la ultima verificacion de cada sistema (Ok / Error / No configurado).
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'VerificacionSistema')
+CREATE TABLE VerificacionSistema (
+    RFC NVARCHAR(13) NOT NULL,
+    Sistema NVARCHAR(20) NOT NULL,
+    Estado NVARCHAR(20) NOT NULL,
+    Total INT NOT NULL DEFAULT 0,
+    Mensaje NVARCHAR(500) NULL,
+    FechaVerificado DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_VerificacionSistema PRIMARY KEY (RFC, Sistema)
+);
+
+-- Historial de polizas de Contabilidad de cada CFDI (un CFDI puede estar en varias: provision, pago, cancelacion...).
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CfdiPoliza')
+CREATE TABLE CfdiPoliza (
+    CfdiPolizaID BIGINT IDENTITY PRIMARY KEY,
+    RFC NVARCHAR(13) NOT NULL,
+    UUID UNIQUEIDENTIFIER NOT NULL,
+    GuidPoliza UNIQUEIDENTIFIER NULL,
+    Nivel NVARCHAR(12) NOT NULL,            -- Poliza / Movimiento / Otro
+    Origen NVARCHAR(30) NULL,               -- Contabilidad / Bancos ...
+    Ejercicio INT NULL,
+    Periodo INT NULL,
+    TipoPol INT NULL,
+    TipoNombre NVARCHAR(60) NULL,
+    Folio NVARCHAR(30) NULL,
+    Fecha DATETIME2 NULL,
+    Concepto NVARCHAR(300) NULL,
+    Cargos DECIMAL(18,2) NULL,
+    Abonos DECIMAL(18,2) NULL,
+    Rol NVARCHAR(30) NULL,                  -- Provision / diario, Cobro / ingreso, Pago / egreso, Cancelacion, Otro
+    FechaVerificado DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_CfdiPoliza_UUID')
+    CREATE INDEX IX_CfdiPoliza_UUID ON CfdiPoliza (UUID);
+
+-- Documentos de Comercial Pro generados a partir de cada CFDI (0, 1 o varios).
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CfdiDocumentoComercial')
+CREATE TABLE CfdiDocumentoComercial (
+    CfdiDocumentoComercialID BIGINT IDENTITY PRIMARY KEY,
+    RFC NVARCHAR(13) NOT NULL,
+    UUID UNIQUEIDENTIFIER NOT NULL,
+    DocumentID BIGINT NOT NULL,
+    ModuleID INT NULL,
+    Folio NVARCHAR(60) NULL,
+    Fecha DATETIME2 NULL,
+    Total DECIMAL(18,2) NULL,
+    Cancelado BIT NOT NULL DEFAULT 0,
+    FechaVerificado DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_CfdiDocumentoComercial_UUID')
+    CREATE INDEX IX_CfdiDocumentoComercial_UUID ON CfdiDocumentoComercial (UUID);
 ";
 
         public static void Asegurar(SqlConnection conn)

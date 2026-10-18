@@ -8,6 +8,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 2.7.0] — 2026-10-18 — Mapa de CFDI
+
+### Agregado
+- **Mapa de CFDI**: dónde está cada CFDI (SAT, tus XML, Comercial Pro, ADD y pólizas de Contabilidad) y qué falta en cada sistema, leído de cada sistema en solo lectura. Acciones «Cargar al ADD» / «Importar a Comercial» sobre lo que falta, exportación a Excel, y en el detalle del CFDI los **documentos de Comercial** («Ver documento», sin bloquear) y el **historial de pólizas**. Comandos `--verificar-sistemas` y `--cfdi`. Ver `descargas\DOCUMENTACION.md`.
+
+### Notas
+- El addon de Comercial no cambia. Esquema nuevo de Descargas (4 tablas), se crea solo. Plan completo: `docs\desarrollo\PLAN_MAPA_CFDI_Y_CONTABILIZADOR.md`.
+
 ## [Descargas 2.6.1] — 2026-10-18 — Contabilidad: configuración a la vista
 
 ### Cambiado

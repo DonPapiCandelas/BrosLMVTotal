@@ -1,6 +1,8 @@
 # Plan: Mapa de CFDI por sistema, Descargas sin Comercial y Contabilizador en Excel
 
-> Estado: **propuesta para aprobar** (2026-10-18). Nada de lo de abajo está implementado salvo la Fase 0.
+> Estado (2026-10-18): plan **aprobado**. **Fase 1 hecha en Descargas 2.7.0** (mapa, historial de pólizas, documento de Comercial con «Ver documento»; lo que quedó pendiente de la Fase 1 está al final de esta nota). Fases 1B en adelante, por hacer.
+>
+> Pendiente de la Fase 1: detalle del CFDI con «Abrir en Comercial» (hoy solo vista previa); columnas «chips» por sistema en la lista de CFDI; detectar XML que están en Comercial o el ADD pero no en disco; aclarar el rechazo del ADD a un CFDI de nómina emitido.
 > Parte de lo que ya existe en BrosLMV.Descargas 2.6.1 (carga al ADD de Contabilidad) y del análisis de una herramienta de
 > contabilización en Excel de referencia (`Entrenamiento\contabilidad\ANALISIS_CONTABILIZADOR_EXCEL_v812.md`, fuera de git).
 

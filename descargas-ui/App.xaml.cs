@@ -45,6 +45,8 @@ namespace BrosLMV.DescargasUI
         // Lo usa el boton de Comercial: pide traer al frente esta ventana y, opcionalmente, abrir la
         // empresa con ese RFC. Se pasa por un archivo pequeno porque el evento no lleva datos.
         public static string RfcInicial { get; private set; } = "";
+        // --cfdi <UUID>: abre Descargas directo en el detalle de ese CFDI (enlace desde otras herramientas).
+        public static Guid UuidInicial { get; private set; } = Guid.Empty;
         private static string ArchivoPedido => System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BrosLMV", "descargas_abrir.txt");
 
@@ -52,7 +54,10 @@ namespace BrosLMV.DescargasUI
         {
             base.OnStartup(e);
             for (int i = 0; i < e.Args.Length - 1; i++)
+            {
                 if (string.Equals(e.Args[i], "--rfc", StringComparison.OrdinalIgnoreCase)) RfcInicial = (e.Args[i + 1] ?? "").Trim().ToUpperInvariant();
+                if (string.Equals(e.Args[i], "--cfdi", StringComparison.OrdinalIgnoreCase) && Guid.TryParse(e.Args[i + 1], out var u)) UuidInicial = u;
+            }
 
             // Una excepcion en cualquier manejador de la interfaz (p. ej. doble clic en una celda de
             // una tabla de reportes, 2026-10-01) cerraba TODA la aplicacion. Ahora se anota en la

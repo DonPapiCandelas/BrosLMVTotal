@@ -120,7 +120,7 @@ namespace BrosLMV.Descargas.Cola
         }
 
         // Carga al ADD todo lo descargado de esta empresa que aun no este alli. Idempotente.
-        public static async Task<ResultadoContabilidad> CargarAsync(SqlConnection conn, string rfc, ContabilidadConfig cfg, Action<string> progreso = null, int maximo = 0)
+        public static async Task<ResultadoContabilidad> CargarAsync(SqlConnection conn, string rfc, ContabilidadConfig cfg, Action<string> progreso = null, int maximo = 0, ICollection<Guid> soloUuids = null)
         {
             var r = new ResultadoContabilidad();
             try
@@ -136,6 +136,7 @@ namespace BrosLMV.Descargas.Cola
                 var yaCargados = new List<Guid>();
                 foreach (var (uuid, ruta, emitido) in cfdis)
                 {
+                    if (soloUuids != null && !soloUuids.Contains(uuid)) continue;
                     if (enAdd.Contains(uuid.ToString().ToUpperInvariant())) { r.YaEstaban++; yaCargados.Add(uuid); continue; }
                     if (!File.Exists(ruta)) { r.SinArchivo++; continue; }
                     porCargar.Add((uuid, ruta, emitido));
@@ -176,7 +177,7 @@ namespace BrosLMV.Descargas.Cola
             catch (Exception ex) { Bitacora.EscribirError("  " + nombre + ": error al cargar a Contabilidad: " + ex.Message); }
         }
 
-        private static HashSet<string> UuidsEnAdd(SqlConnection conn, EmpresaContabilidadInfo emp)
+        internal static HashSet<string> UuidsEnAdd(SqlConnection conn, EmpresaContabilidadInfo emp)
         {
             var set = new HashSet<string>();
             using (var cmd = new SqlCommand("SELECT UUID FROM [document_" + emp.GuidDsl + "_metadata].dbo.Comprobante WHERE UUID IS NOT NULL", conn) { CommandTimeout = 120 })
