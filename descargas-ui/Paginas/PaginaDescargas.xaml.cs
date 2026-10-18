@@ -162,6 +162,8 @@ namespace BrosLMV.DescargasUI.Paginas
 
         private void BtnCargarContabilidad_ClicDerecho(object sender, System.Windows.Input.MouseButtonEventArgs e) { ConfigurarContabilidad(); e.Handled = true; }
 
+        private void BtnConfigurarContabilidad_Click(object sender, RoutedEventArgs e) => ConfigurarContabilidad();
+
         private bool ConfigurarContabilidad()
         {
             var dlg = new ContabilidadWindow(_s.Conn, _s.Empresa.RFC, _s.Empresa.Nombre) { Owner = Ventana };

@@ -8,6 +8,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 2.6.1] — 2026-10-18 — Contabilidad: configuración a la vista
+
+### Cambiado
+- La conexión con Contabilidad se configura en **Empresas y e.firma → Editar** (tarjeta «Integración con CONTPAQi Contabilidad», con Probar acceso), también al agregar una empresa; columna «Contabilidad» en la lista y botón «Configurar Contabilidad» en Descargas del SAT. Antes solo estaba detrás de un clic derecho.
+
 ## [3.2.2] — 2026-10-18 — Instalador: actualizar sin volver a escribir la conexión, y «Actualizar todas»
 
 ### Cambiado

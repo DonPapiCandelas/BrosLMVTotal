@@ -39,6 +39,7 @@ namespace BrosLMV.DescargasUI.Paginas
             public string TextoFirma { get; set; }
             public Style EstiloFirma { get; set; }
             public string TextoComercial { get; set; }
+            public string TextoContabilidad { get; set; }
             public string TextoCfdi => Fila.TotalCfdi.ToString("N0");
             public Visibility VisibleActiva { get; set; }
         }
@@ -83,9 +84,12 @@ namespace BrosLMV.DescargasUI.Paginas
 
             string comercial = !string.IsNullOrWhiteSpace(e.ComercialConexionSql) ? "Conectada (directo)"
                 : (!string.IsNullOrWhiteSpace(e.ComercialCarpetaXmlRecibidos) || !string.IsNullOrWhiteSpace(e.ComercialCarpetaXmlEmitidos)) ? "Solo carpetas" : "Sin configurar";
+            string contabilidad;
+            try { var cc = BrosSatDb.ObtenerContabilidad(_s.Conn, e.RFC); contabilidad = cc == null ? "Sin configurar" : (cc.CargaAutomatica ? "Automática · " : "Manual · ") + cc.BaseDatos; }
+            catch { contabilidad = "Sin configurar"; }
             return new EmpresaVista
             {
-                Fila = e, TextoFirma = texto, EstiloFirma = (Style)FindResource(estilo), TextoComercial = comercial,
+                Fila = e, TextoFirma = texto, EstiloFirma = (Style)FindResource(estilo), TextoComercial = comercial, TextoContabilidad = contabilidad,
                 VisibleActiva = _s.Empresa != null && _s.Empresa.EmpresaID == e.EmpresaID ? Visibility.Visible : Visibility.Collapsed
             };
         }

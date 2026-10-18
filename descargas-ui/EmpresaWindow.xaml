@@ -179,6 +179,41 @@
 
         <Border Style="{StaticResource Tarjeta}" Padding="16" Margin="0,4,0,4">
           <StackPanel>
+            <TextBlock Text="INTEGRACIÓN CON CONTPAQi CONTABILIDAD (OPCIONAL)" Foreground="#64748B" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10"/>
+            <TextBlock Foreground="#94A3B8" FontSize="11" Margin="0,0,0,10" TextWrapping="Wrap"
+                       Text="Carga los XML al ADD (Administrador de Documentos Digitales) de la empresa de Contabilidad, igual que el importador de CONTPAQi y sin abrir Contabilidad. Elige la empresa de Contabilidad de este RFC y el usuario con el que BrosLMV entra. Deja la empresa sin elegir si no usa Contabilidad."/>
+            <Grid Margin="0,0,0,10">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="Empresa de Contabilidad" Foreground="#64748B" FontSize="11"/>
+                <ComboBox x:Name="CmbContabilidad" Margin="0,3,0,0" Padding="6,5" MinHeight="30"/>
+              </StackPanel>
+              <Button Grid.Column="2" Content="Actualizar lista" Style="{StaticResource Ghost}" VerticalAlignment="Bottom" Click="ActualizarListaContabilidad_Click"/>
+            </Grid>
+            <Grid Margin="0,0,0,8">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="Usuario de Contabilidad" Foreground="#64748B" FontSize="11"/>
+                <TextBox x:Name="TxtContaUsuario" Text="SUPERVISOR" Padding="6,5" VerticalContentAlignment="Center" Margin="0,3,0,0"/>
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Text="Contraseña (vacía si el usuario no tiene)" Foreground="#64748B" FontSize="11"/>
+                <PasswordBox x:Name="PwdContaClave" Padding="6,5" VerticalContentAlignment="Center" Margin="0,3,0,0"/>
+              </StackPanel>
+            </Grid>
+            <CheckBox x:Name="ChkContaAuto" Content="Cargar automáticamente lo nuevo después de cada descarga" IsChecked="True" Margin="0,2,0,8"/>
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <Button Grid.Column="0" Content="Probar acceso" Style="{StaticResource Ghost}" Click="ProbarContabilidad_Click"/>
+              <TextBlock Grid.Column="2" x:Name="LblContaEstado" Text="" FontSize="11.5" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="#64748B"/>
+            </Grid>
+            <TextBlock Foreground="#94A3B8" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
+                       Text="La contraseña se guarda cifrada (DPAPI, atada a este equipo). Requiere CONTPAQi Contabilidad con su servidor de aplicaciones en este equipo."/>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Tarjeta}" Padding="16" Margin="0,4,0,4">
+          <StackPanel>
             <TextBlock Text="FILTRADO DE COMPROBANTES FISCALES" Foreground="#64748B" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10"/>
             <CheckBox x:Name="ChkOcultarNominas" Content="Ocultar comprobantes de Nómina (Tipo N) en el historial y reportes" IsChecked="True"/>
             <TextBlock Foreground="#94A3B8" FontSize="11" Margin="26,4,0,0" TextWrapping="Wrap"

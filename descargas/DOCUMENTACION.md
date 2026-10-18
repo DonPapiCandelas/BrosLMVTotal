@@ -4,6 +4,10 @@
 
 ## Historial de versiones del instalador
 
+### 2.6.1 — 2026-10-18 — Contabilidad: configuración a la vista
+
+- **Cambiado**: la conexión con Contabilidad ya no está escondida detrás de un clic derecho. Se configura en **Empresas y e.firma → Editar**, en la tarjeta nueva **«Integración con CONTPAQi Contabilidad»** (junto a la de Comercial): empresa de Contabilidad (se propone la que tiene el mismo RFC), usuario, contraseña, carga automática y **Probar acceso**. Funciona también al **agregar** una empresa nueva. La lista de empresas tiene la columna **Contabilidad** (Automática · ctXXX / Manual / Sin configurar). En «Descargas del SAT» hay un botón visible **Configurar Contabilidad** junto a «Cargar a Contabilidad». Si eliges una empresa de Contabilidad de otro RFC, avisa antes de guardar.
+
 ### 2.6.0 — 2026-10-17 — Carga de XML al ADD de CONTPAQi Contabilidad
 
 - **Agregado**: botón **Cargar a Contabilidad** (Descargas del SAT). Sube los XML descargados al ADD de la empresa de Contabilidad que elijas, igual que el importador de CONTPAQi, sin abrir Contabilidad. **Clic derecho** en el botón (o la primera vez que lo pulsas) abre la configuración: empresa de Contabilidad (se propone la que tiene el mismo RFC), usuario, contraseña (cifrada con DPAPI del equipo, puede ir vacía) y «Cargar automáticamente lo nuevo después de cada descarga». **Probar acceso** inicia y cierra sesión sin cargar nada.

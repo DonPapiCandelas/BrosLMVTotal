@@ -23,6 +23,7 @@
 // la plantilla de nombre de archivo por empresa, no solo al momento de crearla.
 
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Data.SqlClient;
@@ -80,6 +81,94 @@ namespace BrosLMV.DescargasUI
             }
 
             ActualizarPanelComercialAuth();
+            CargarContabilidad();
+        }
+
+        // ---- Contabilidad (ADD) ----
+
+        private ContabilidadConfig _contaActual;
+
+        private void CargarContabilidad()
+        {
+            _contaActual = _existente == null ? null : BrosSatDb.ObtenerContabilidad(_conn, _existente.RFC);
+            if (_contaActual != null)
+            {
+                TxtContaUsuario.Text = _contaActual.Usuario;
+                ChkContaAuto.IsChecked = _contaActual.CargaAutomatica;
+                if (_contaActual.ClaveCifrada != null && _contaActual.ClaveCifrada.Length > 0) PwdContaClave.Password = ContabilidadAdd.DescifrarClave(_contaActual);
+            }
+            LlenarEmpresasContabilidad();
+            // Al escribir el RFC de una empresa nueva se vuelve a proponer la de Contabilidad con ese RFC.
+            TxtRfc.LostFocus += (s, e) => { if (CmbContabilidad.SelectedItem == null) ProponerContabilidadPorRfc(); };
+        }
+
+        private void LlenarEmpresasContabilidad()
+        {
+            try
+            {
+                var lista = ContabilidadAdd.ListarEmpresas(_conn);
+                CmbContabilidad.ItemsSource = lista;
+                if (_contaActual != null)
+                    CmbContabilidad.SelectedItem = lista.FirstOrDefault(x => string.Equals(x.BaseDatos, _contaActual.BaseDatos, StringComparison.OrdinalIgnoreCase));
+                if (CmbContabilidad.SelectedItem == null) ProponerContabilidadPorRfc();
+                if (lista.Count == 0) EstadoConta("No se encontraron empresas de Contabilidad en este servidor SQL.", false);
+            }
+            catch (Exception ex) { EstadoConta("No se pudo leer la lista de empresas de Contabilidad: " + ex.Message, false); }
+        }
+
+        private void ProponerContabilidadPorRfc()
+        {
+            string rfc = (_existente?.RFC ?? TxtRfc.Text ?? "").Trim();
+            if (rfc.Length == 0 || !(CmbContabilidad.ItemsSource is System.Collections.Generic.List<EmpresaContabilidadInfo> lista)) return;
+            var m = lista.FirstOrDefault(x => string.Equals(x.Rfc, rfc, StringComparison.OrdinalIgnoreCase));
+            if (m != null) { CmbContabilidad.SelectedItem = m; EstadoConta("Se propuso la empresa de Contabilidad con el mismo RFC (" + rfc + ").", true); }
+        }
+
+        private void EstadoConta(string texto, bool ok)
+        {
+            LblContaEstado.Text = texto;
+            LblContaEstado.Foreground = ok ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(21, 128, 61))
+                                           : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(185, 28, 28));
+        }
+
+        private void ActualizarListaContabilidad_Click(object sender, RoutedEventArgs e) => LlenarEmpresasContabilidad();
+
+        // Devuelve null si no se eligio empresa de Contabilidad (= sin integracion).
+        private ContabilidadConfig LeerContabilidad(string rfc)
+        {
+            var emp = CmbContabilidad.SelectedItem as EmpresaContabilidadInfo;
+            if (emp == null) return null;
+            return new ContabilidadConfig
+            {
+                RFC = rfc, BaseDatos = emp.BaseDatos, Usuario = string.IsNullOrWhiteSpace(TxtContaUsuario.Text) ? "SUPERVISOR" : TxtContaUsuario.Text.Trim(),
+                ClaveCifrada = string.IsNullOrEmpty(PwdContaClave.Password) ? null : DpapiHelper.Cifrar(PwdContaClave.Password),
+                CargaAutomatica = ChkContaAuto.IsChecked == true
+            };
+        }
+
+        private async void ProbarContabilidad_Click(object sender, RoutedEventArgs e)
+        {
+            string rfc = (_existente?.RFC ?? TxtRfc.Text ?? "").Trim().ToUpperInvariant();
+            var cfg = LeerContabilidad(rfc);
+            if (cfg == null) { EstadoConta("Elige primero la empresa de Contabilidad.", false); return; }
+            var emp = (EmpresaContabilidadInfo)CmbContabilidad.SelectedItem;
+            if (rfc.Length > 0 && !string.Equals(emp.Rfc, rfc, StringComparison.OrdinalIgnoreCase))
+            { EstadoConta("El RFC de esa empresa de Contabilidad (" + emp.Rfc + ") no es el de esta empresa (" + rfc + ").", false); return; }
+            EstadoConta("Probando acceso...", true); Cursor = System.Windows.Input.Cursors.Wait;
+            try
+            {
+                string error = await ContabilidadAdd.ProbarAccesoAsync(_conn, cfg);
+                if (error == null) EstadoConta("Acceso correcto. Listo para cargar a «" + emp.Nombre + "».", true); else EstadoConta(error, false);
+            }
+            catch (Exception ex) { EstadoConta(ex.Message, false); }
+            finally { Cursor = System.Windows.Input.Cursors.Arrow; }
+        }
+
+        // Guarda (o quita) la integracion con Contabilidad de este RFC. El RFC ya se valido antes de guardar la empresa.
+        private void GuardarContabilidad(string rfc)
+        {
+            var cfg = LeerContabilidad(rfc);
+            if (cfg == null) BrosSatDb.QuitarContabilidad(_conn, rfc); else BrosSatDb.GuardarContabilidad(_conn, cfg);
         }
 
         // Pedido explicito del usuario 2026-08-19: "la conexion no me gusta asi, prefiero algo
@@ -254,6 +343,15 @@ namespace BrosLMV.DescargasUI
             string comercialEmitidos = string.IsNullOrWhiteSpace(TxtComercialEmitidos.Text) ? null : TxtComercialEmitidos.Text.Trim();
             string comercialConexion = ArmarConexionComercialCifrada();
 
+            // Contabilidad: si la empresa elegida no es de este RFC, se avisa ANTES de guardar nada.
+            string rfcGuardar = esEdicion ? _existente.RFC : TxtRfc.Text.Trim().ToUpperInvariant();
+            if (CmbContabilidad.SelectedItem is EmpresaContabilidadInfo ec && !string.Equals(ec.Rfc, rfcGuardar, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this, "La empresa de Contabilidad elegida tiene el RFC " + ec.Rfc + ", distinto al de esta empresa (" + rfcGuardar + ").\n\nElige la correcta o deja la lista sin elegir.",
+                    "Contabilidad", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             try
             {
                 bool ocultarNominas = ChkOcultarNominas.IsChecked == true;
@@ -263,6 +361,7 @@ namespace BrosLMV.DescargasUI
                     BrosSatDb.ActualizarEmpresa(_conn, _existente.EmpresaID, TxtNombre.Text.Trim(), TxtCer.Text.Trim(), TxtKey.Text.Trim(),
                         passwordCifrada, carpetaXml, estructura, TxtPlantilla.Text.Trim(), comercialRecibidos, comercialEmitidos, comercialConexion,
                         ocultarNominas);
+                    GuardarContabilidad(_existente.RFC);
                     SeGuardo = true;
                     DialogResult = true;
                     Close();
@@ -275,6 +374,7 @@ namespace BrosLMV.DescargasUI
                 int empresaId = BrosSatDb.GuardarEmpresaNueva(_conn, TxtNombre.Text.Trim(), rfc,
                     TxtCer.Text.Trim(), TxtKey.Text.Trim(), passwordCifradaNueva, carpetaXml, estructura, TxtPlantilla.Text.Trim(),
                     comercialRecibidos, comercialEmitidos, comercialConexion, anioInicio, ocultarNominas);
+                GuardarContabilidad(rfc);
                 SeGuardo = true;
 
                 // Pedido explicito del usuario 2026-08-19: "al instalar lo primero que haga sea

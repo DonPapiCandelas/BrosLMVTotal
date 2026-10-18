@@ -68,6 +68,7 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="COMERCIAL" Binding="{Binding TextoComercial}" Width="190" ElementStyle="{StaticResource CeldaAtenuada}"/>
+            <DataGridTextColumn Header="CONTABILIDAD" Binding="{Binding TextoContabilidad}" Width="210" ElementStyle="{StaticResource CeldaAtenuada}"/>
             <DataGridTextColumn Header="CFDI" Binding="{Binding TextoCfdi}" Width="90" ElementStyle="{StaticResource CeldaNumero}"/>
             <DataGridTextColumn Header="ÚLTIMA SOLICITUD" Binding="{Binding Fila.UltimoEstatus}" Width="160" ElementStyle="{StaticResource CeldaAtenuada}"/>
             <DataGridTemplateColumn Header="" Width="Auto">

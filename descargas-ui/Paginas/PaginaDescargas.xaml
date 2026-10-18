@@ -75,6 +75,8 @@
             <Button x:Name="BtnCargarContabilidad" Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE8F1;" Content="Cargar a Contabilidad" Margin="0,0,8,0" Click="BtnCargarContabilidad_Click"
                     ToolTip="Carga los XML descargados al ADD de CONTPAQi Contabilidad. Clic derecho para configurar la empresa y el usuario."
                     MouseRightButtonUp="BtnCargarContabilidad_ClicDerecho"/>
+            <Button Style="{StaticResource Subtle}" ui:Ui.Glifo="&#xE713;" Content="Configurar Contabilidad" Margin="0,0,8,0" Click="BtnConfigurarContabilidad_Click"
+                    ToolTip="Elige la empresa de Contabilidad, el usuario y la contraseña. También está en «Empresas y e.firma» → Editar."/>
             <Button Style="{StaticResource Subtle}" Content="Limpiar historial" Click="BtnLimpiarSolicitudes_Click" ToolTip="Oculta de esta vista lo antiguo. No borra ningún XML."/>
           </StackPanel>
         </Grid>
