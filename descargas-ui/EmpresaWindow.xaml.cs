@@ -82,6 +82,7 @@ namespace BrosLMV.DescargasUI
 
             ActualizarPanelComercialAuth();
             CargarContabilidad();
+            LlenarEmpresasPremium();
             _perfilInicial = _existente == null ? new PerfilEmpresa() : BrosSatDb.ObtenerPerfil(_conn, _existente.RFC);
             ChkPerfilComercial.IsChecked = _perfilInicial.ComercialPro; ChkPerfilConta.IsChecked = _perfilInicial.Contabilidad; ChkPerfilPremium.IsChecked = _perfilInicial.ComercialPremium;
             Perfil_Changed(null, null);
@@ -94,15 +95,35 @@ namespace BrosLMV.DescargasUI
         // Cada sistema marcado muestra su configuracion; sin marcar, se oculta (y al guardar se quita su integracion).
         private void Perfil_Changed(object sender, RoutedEventArgs e)
         {
-            if (CardComercialEmp == null || CardContaEmp == null) return;   // durante la carga
+            if (CardComercialEmp == null || CardContaEmp == null || CardPremiumEmp == null) return;   // durante la carga
+            CardPremiumEmp.Visibility = ChkPerfilPremium.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
             CardComercialEmp.Visibility = ChkPerfilComercial.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
             CardContaEmp.Visibility = ChkPerfilConta.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-            LblPerfilResumen.Text = ChkPerfilComercial.IsChecked != true && ChkPerfilConta.IsChecked != true
+            LblPerfilResumen.Text = ChkPerfilComercial.IsChecked != true && ChkPerfilConta.IsChecked != true && ChkPerfilPremium.IsChecked != true
                 ? "Esta empresa solo descarga y analiza los XML (sin integración)."
-                : "Se integrará con: " + string.Join(" + ", new[] { ChkPerfilComercial.IsChecked == true ? "Comercial Pro" : null, ChkPerfilConta.IsChecked == true ? "Contabilidad" : null }.Where(x => x != null)) + ".";
+                : "Se integrará con: " + string.Join(" + ", new[] { ChkPerfilComercial.IsChecked == true ? "Comercial Pro" : null, ChkPerfilPremium.IsChecked == true ? "Comercial Premium" : null, ChkPerfilConta.IsChecked == true ? "Contabilidad" : null }.Where(x => x != null)) + ".";
         }
 
-        private PerfilEmpresa PerfilElegido() => new PerfilEmpresa { ComercialPro = ChkPerfilComercial.IsChecked == true, Contabilidad = ChkPerfilConta.IsChecked == true, ComercialPremium = false };
+        private PerfilEmpresa PerfilElegido() => new PerfilEmpresa { ComercialPro = ChkPerfilComercial.IsChecked == true, Contabilidad = ChkPerfilConta.IsChecked == true, ComercialPremium = ChkPerfilPremium.IsChecked == true };
+
+        // ---- Comercial Premium (solo lectura) ----
+
+        private void ActualizarListaPremium_Click(object sender, RoutedEventArgs e) => LlenarEmpresasPremium();
+
+        private void LlenarEmpresasPremium()
+        {
+            try
+            {
+                var lista = ComercialPremium.ListarEmpresas(_conn);
+                string rfc = (_existente?.RFC ?? TxtRfc.Text ?? "").Trim();
+                var guardada = _existente == null ? null : BrosSatDb.ObtenerPremium(_conn, _existente.RFC);
+                CmbPremium.ItemsSource = lista;
+                CmbPremium.SelectedItem = lista.FirstOrDefault(x => guardada != null && string.Equals(x.BaseDatos, guardada.BaseDatos, StringComparison.OrdinalIgnoreCase))
+                                       ?? lista.FirstOrDefault(x => rfc.Length > 0 && string.Equals(x.Rfc, rfc, StringComparison.OrdinalIgnoreCase));
+                LblPremiumEstado.Text = lista.Count == 0 ? "No se encontraron empresas de Comercial Premium en este servidor SQL." : lista.Count + " empresa(s) de Premium encontrada(s)" + (CmbPremium.SelectedItem != null ? " · se propuso la de este RFC." : ".");
+            }
+            catch (Exception ex) { LblPremiumEstado.Text = "No se pudo leer la lista de Premium: " + ex.Message; }
+        }
 
         // ---- Contabilidad (ADD) ----
 
@@ -187,6 +208,8 @@ namespace BrosLMV.DescargasUI
         // Guarda (o quita) la integracion con Contabilidad de este RFC. El RFC ya se valido antes de guardar la empresa.
         private void GuardarContabilidad(string rfc)
         {
+            // Premium: primero la empresa elegida y luego el perfil (si se desmarca, GuardarPerfil borra su configuracion y sus lecturas).
+            if (ChkPerfilPremium.IsChecked == true && CmbPremium.SelectedItem is EmpresaPremiumInfo ep) BrosSatDb.GuardarPremium(_conn, new PremiumConfig { RFC = rfc, BaseDatos = ep.BaseDatos });
             BrosSatDb.GuardarPerfil(_conn, rfc, PerfilElegido());
             var cfg = ChkPerfilConta.IsChecked == true ? LeerContabilidad(rfc) : null;
             if (cfg == null) BrosSatDb.QuitarContabilidad(_conn, rfc); else BrosSatDb.GuardarContabilidad(_conn, cfg);
@@ -368,7 +391,8 @@ namespace BrosLMV.DescargasUI
             var perfil = PerfilElegido();
             bool teniaComercial = !string.IsNullOrEmpty(comercialRecibidos) || !string.IsNullOrEmpty(comercialEmitidos) || !string.IsNullOrEmpty(comercialConexion);
             bool teniaConta = CmbContabilidad.SelectedItem != null;
-            string quitar = (!perfil.ComercialPro && teniaComercial ? "• Comercial Pro (la conexión y las carpetas que tenías configuradas)\n" : "") + (!perfil.Contabilidad && teniaConta ? "• Contabilidad (la empresa y el usuario configurados)\n" : "");
+            bool teniaPremium = CmbPremium.SelectedItem != null;
+            string quitar = (!perfil.ComercialPremium && teniaPremium ? "• Comercial Premium (la empresa configurada)\n" : "") + (!perfil.ComercialPro && teniaComercial ? "• Comercial Pro (la conexión y las carpetas que tenías configuradas)\n" : "") + (!perfil.Contabilidad && teniaConta ? "• Contabilidad (la empresa y el usuario configurados)\n" : "");
             if (quitar.Length > 0 && MessageBox.Show(this, "Vas a dejar de usar con esta empresa:\n\n" + quitar + "\nSe quita su configuración de BrosLMV Descargas. Lo que ya se cargó o importó en esos sistemas se queda ahí.\n\n¿Continuar?", "Quitar sistema", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
             if (!perfil.ComercialPro) { comercialRecibidos = null; comercialEmitidos = null; comercialConexion = null; }
 

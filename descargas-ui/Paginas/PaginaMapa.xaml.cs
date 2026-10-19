@@ -27,6 +27,7 @@ namespace BrosLMV.DescargasUI.Paginas
             public string SoloAdd { get; set; }
             public Style EstiloSoloAdd { get; set; }
             public string Comercial { get; set; }
+            public string Premium { get; set; }
             public string Add { get; set; }
             public string Poliza { get; set; }
             public string FaltaAdd { get; set; }
@@ -59,7 +60,7 @@ namespace BrosLMV.DescargasUI.Paginas
 
         // ---- Estado de cada sistema ----
         // Un sistema que la empresa no usa no cuenta aunque queden lecturas viejas.
-        private bool Usa(string sistema) => sistema == SistemaCfdi.Comercial ? _s.Perfil.ComercialPro : (sistema == SistemaCfdi.Add || sistema == SistemaCfdi.Polizas) ? _s.Perfil.Contabilidad : true;
+        private bool Usa(string sistema) => sistema == SistemaCfdi.Comercial ? _s.Perfil.ComercialPro : sistema == SistemaCfdi.Premium ? _s.Perfil.ComercialPremium : (sistema == SistemaCfdi.Add || sistema == SistemaCfdi.Polizas) ? _s.Perfil.Contabilidad : true;
         private bool Ok(string sistema) => Usa(sistema) && _verif.TryGetValue(sistema, out var v) && v.Ok;
         private bool Configurado(string sistema) => Usa(sistema) && _verif.TryGetValue(sistema, out var v) && v.Configurado;
 
@@ -68,7 +69,7 @@ namespace BrosLMV.DescargasUI.Paginas
             Cargar();
             // Primera vez: no hay nada leido todavia, se lee solo para no mostrar una pantalla vacia.
             // (o cuando la empresa empieza a usar un sistema del que todavia no se ha leido nada).
-            bool faltaLeer = new[] { SistemaCfdi.Disco, SistemaCfdi.Comercial, SistemaCfdi.Add, SistemaCfdi.Polizas }.Any(x => Usa(x) && !_verif.ContainsKey(x));
+            bool faltaLeer = new[] { SistemaCfdi.Disco, SistemaCfdi.Comercial, SistemaCfdi.Premium, SistemaCfdi.Add, SistemaCfdi.Polizas }.Any(x => Usa(x) && !_verif.ContainsKey(x));
             if (faltaLeer && _filas.Count > 0) await VerificarAsync();
         }
 
@@ -77,12 +78,14 @@ namespace BrosLMV.DescargasUI.Paginas
         {
             var perfil = _s.Perfil;
             var com = perfil.ComercialPro ? Visibility.Visible : Visibility.Collapsed; var con = perfil.Contabilidad ? Visibility.Visible : Visibility.Collapsed;
-            CardComercial.Visibility = com; CardAdd.Visibility = con; CardPoliza.Visibility = con;
-            // columnas de la tabla por mes: 4 SOLO EN ADD · 5 COMERCIAL · 6 ADD · 7 CON POLIZA · 8 FALTAN EN ADD · 9 FALTAN EN COMERCIAL · 10 SIN POLIZA
-            foreach (int i in new[] { 4, 6, 7, 8, 10 }) GridMapa.Columns[i].Visibility = con;
-            foreach (int i in new[] { 5, 9 }) GridMapa.Columns[i].Visibility = com;
-            // detalle: 8 COMERCIAL · 9 ADD · 10 POLIZAS
-            GridDetalle.Columns[8].Visibility = com; GridDetalle.Columns[9].Visibility = con; GridDetalle.Columns[10].Visibility = con;
+            var pre = perfil.ComercialPremium ? Visibility.Visible : Visibility.Collapsed;
+            CardComercial.Visibility = com; CardPremium.Visibility = pre; CardAdd.Visibility = con; CardPoliza.Visibility = con;
+            // columnas de la tabla por mes: 4 SOLO EN ADD · 5 COMERCIAL · 6 PREMIUM · 7 ADD · 8 CON POLIZA · 9 FALTAN EN ADD · 10 FALTAN EN COMERCIAL · 11 SIN POLIZA
+            foreach (int i in new[] { 4, 7, 8, 9, 11 }) GridMapa.Columns[i].Visibility = con;
+            foreach (int i in new[] { 5, 10 }) GridMapa.Columns[i].Visibility = com;
+            GridMapa.Columns[6].Visibility = pre;
+            // detalle: 8 COMERCIAL · 9 PREMIUM · 10 ADD · 11 POLIZAS
+            GridDetalle.Columns[8].Visibility = com; GridDetalle.Columns[9].Visibility = pre; GridDetalle.Columns[10].Visibility = con; GridDetalle.Columns[11].Visibility = con;
         }
 
         private void Cargar()
@@ -126,7 +129,7 @@ namespace BrosLMV.DescargasUI.Paginas
             {
                 Fila = f, Sat = f.SatTotal > 0 ? f.SatTotal.ToString("N0") : "—", Descargados = f.Descargados.ToString("N0"),
                 SoloAdd = N(f.SoloSistemas, add), EstiloSoloAdd = (Style)FindResource(!add ? "PastillaNeutra" : f.SoloSistemas > 0 ? "PastillaInfo" : "PastillaNeutra"),
-                Comercial = N(f.EnComercial, com), Add = N(f.EnAdd, add), Poliza = N(f.ConPoliza, pol),
+                Comercial = N(f.EnComercial, com), Premium = f.Tipo == "Emitidos" ? N(f.EnPremium, Ok(SistemaCfdi.Premium)) : (Ok(SistemaCfdi.Premium) ? "n/a" : "—"), Add = N(f.EnAdd, add), Poliza = N(f.ConPoliza, pol),
                 FaltaAdd = N(f.FaltaAdd, add), FaltaComercial = N(f.FaltaComercial, com), SinPoliza = N(f.SinPoliza, pol),
                 EstiloFaltaAdd = Est(f.FaltaAdd, add), EstiloFaltaComercial = Est(f.FaltaComercial, com), EstiloSinPoliza = Est(f.SinPoliza, pol)
             }).ToList();
@@ -143,6 +146,13 @@ namespace BrosLMV.DescargasUI.Paginas
             if (Ok(SistemaCfdi.Comercial)) { K3.Text = _filas.Sum(f => f.EnComercial).ToString("N0"); int fa = _filas.Sum(f => f.FaltaComercial); K3d.Text = _filas.Sum(f => f.ConDocumento).ToString("N0") + " con documento · " + (fa > 0 ? fa.ToString("N0") + " faltan" : "nada falta"); }
             else { K3.Text = "—"; K3d.Text = Configurado(SistemaCfdi.Comercial) ? "no se pudo leer" : "sin configurar"; }
 
+            if (Ok(SistemaCfdi.Premium))
+            {
+                int emitidosPremium = _filas.Where(f => f.Tipo == "Emitidos").Sum(f => f.EnPremium), emitidos = _filas.Where(f => f.Tipo == "Emitidos").Sum(f => f.Descargados);
+                K6.Text = emitidosPremium.ToString("N0"); K6d.Text = "de " + emitidos.ToString("N0") + " emitidos tuyos · los recibidos no aplican";
+            }
+            else { K6.Text = "—"; K6d.Text = Configurado(SistemaCfdi.Premium) ? "no se pudo leer" : "sin configurar"; }
+
             if (Ok(SistemaCfdi.Add)) { K4.Text = _filas.Sum(f => f.EnAdd).ToString("N0"); int fa = _filas.Sum(f => f.FaltaAdd); K4d.Text = fa > 0 ? fa.ToString("N0") + " faltan" : "nada falta"; }
             else { K4.Text = "—"; K4d.Text = Configurado(SistemaCfdi.Add) ? "no se pudo leer" : "sin configurar"; }
 
@@ -155,10 +165,10 @@ namespace BrosLMV.DescargasUI.Paginas
             if (_verif.Count == 0) { Aviso.Style = (Style)FindResource("BandaInfo"); LblVerificacion.Text = "Todavía no se ha leído dónde está cada CFDI. Pulsa «Verificar ahora»."; return; }
             if (_s.Perfil.SoloDescargar) { Aviso.Style = (Style)FindResource("BandaInfo"); LblVerificacion.Text = "Esta empresa solo descarga y analiza los XML (no usa Comercial ni Contabilidad). Para ver también dónde está cada CFDI en esos sistemas, actívalos en «Empresas y e.firma» → Editar."; return; }
             var partes = new List<string>(); bool hayError = false;
-            foreach (var s in new[] { SistemaCfdi.Disco, SistemaCfdi.Comercial, SistemaCfdi.Add, SistemaCfdi.Polizas })
+            foreach (var s in new[] { SistemaCfdi.Disco, SistemaCfdi.Comercial, SistemaCfdi.Premium, SistemaCfdi.Add, SistemaCfdi.Polizas })
             {
                 if (!_verif.TryGetValue(s, out var v)) continue;
-                if (!v.Configurado) { if ((s == SistemaCfdi.Comercial && _s.Perfil.ComercialPro) || ((s == SistemaCfdi.Add || s == SistemaCfdi.Polizas) && _s.Perfil.Contabilidad)) partes.Add(SistemaCfdi.Nombre(s) + ": sin configurar"); continue; }
+                if (!v.Configurado) { if ((s == SistemaCfdi.Comercial && _s.Perfil.ComercialPro) || (s == SistemaCfdi.Premium && _s.Perfil.ComercialPremium) || ((s == SistemaCfdi.Add || s == SistemaCfdi.Polizas) && _s.Perfil.Contabilidad)) partes.Add(SistemaCfdi.Nombre(s) + ": sin configurar"); continue; }
                 if (!v.Ok) { hayError = true; partes.Add(SistemaCfdi.Nombre(s) + ": " + (v.Mensaje ?? "error")); continue; }
                 partes.Add(SistemaCfdi.Nombre(s) + " ✓ " + Hace(v.Fecha));
             }
@@ -317,19 +327,19 @@ namespace BrosLMV.DescargasUI.Paginas
                 using (var wb = new XLWorkbook())
                 {
                     var ws = wb.AddWorksheet("Por mes");
-                    string[] cab = { "Mes", "Tipo", "SAT reporta", "SAT vigentes", "Tus XML", "Solo en el ADD", "XML en disco", "En Comercial", "Con documento", "En el ADD", "Con póliza", "Faltan en el ADD", "Faltan en Comercial", "Sin póliza" };
+                    string[] cab = { "Mes", "Tipo", "SAT reporta", "SAT vigentes", "Tus XML", "Solo en el ADD", "XML en disco", "En Comercial", "Con documento", "En Premium", "En el ADD", "Con póliza", "Faltan en el ADD", "Faltan en Comercial", "Sin póliza" };
                     for (int i = 0; i < cab.Length; i++) ws.Cell(1, i + 1).Value = cab[i];
                     int r = 2;
                     foreach (var f in _filas)
                     {
-                        object[] v = { f.MesTexto, f.Tipo, f.SatTotal, f.SatVigentes, f.Descargados, f.SoloSistemas, f.EnDisco, f.EnComercial, f.ConDocumento, f.EnAdd, f.ConPoliza, f.FaltaAdd, f.FaltaComercial, f.SinPoliza };
+                        object[] v = { f.MesTexto, f.Tipo, f.SatTotal, f.SatVigentes, f.Descargados, f.SoloSistemas, f.EnDisco, f.EnComercial, f.ConDocumento, f.EnPremium, f.EnAdd, f.ConPoliza, f.FaltaAdd, f.FaltaComercial, f.SinPoliza };
                         for (int i = 0; i < v.Length; i++) ws.Cell(r, i + 1).Value = XLCellValue.FromObject(v[i]);
                         r++;
                     }
                     Encabezado(ws, cab.Length);
 
                     var ws2 = wb.AddWorksheet("CFDI");
-                    string[] cab2 = { "Fecha", "Dirección", "Tipo", "Contraparte", "Serie/Folio", "Total", "Estatus SAT", "XML", "Comercial", "ADD", "Pólizas", "UUID" };
+                    string[] cab2 = { "Fecha", "Dirección", "Tipo", "Contraparte", "Serie/Folio", "Total", "Estatus SAT", "XML", "Comercial", "Premium", "ADD", "Pólizas", "UUID" };
                     for (int i = 0; i < cab2.Length; i++) ws2.Cell(1, i + 1).Value = cab2[i];
                     int r2 = 2;
                     foreach (var c in MapaCfdi.ObtenerCfdis(_s.Conn, Rfc, IncluirNomina, "Todos", null, null, null, 1000000))
@@ -337,7 +347,7 @@ namespace BrosLMV.DescargasUI.Paginas
                         ws2.Cell(r2, 1).Value = c.Fecha; ws2.Cell(r2, 1).Style.DateFormat.Format = "yyyy-mm-dd";
                         ws2.Cell(r2, 2).Value = c.Direccion; ws2.Cell(r2, 3).Value = c.TipoComprobante; ws2.Cell(r2, 4).Value = c.Contraparte; ws2.Cell(r2, 5).Value = c.SerieFolio;
                         ws2.Cell(r2, 6).Value = c.Total; ws2.Cell(r2, 6).Style.NumberFormat.Format = "#,##0.00"; ws2.Cell(r2, 7).Value = c.Estatus; ws2.Cell(r2, 8).Value = c.Disco;
-                        ws2.Cell(r2, 9).Value = c.Comercial; ws2.Cell(r2, 10).Value = c.Add; ws2.Cell(r2, 11).Value = c.Polizas; ws2.Cell(r2, 12).Value = c.UuidTexto;
+                        ws2.Cell(r2, 9).Value = c.Comercial; ws2.Cell(r2, 10).Value = c.Premium; ws2.Cell(r2, 11).Value = c.Add; ws2.Cell(r2, 12).Value = c.Polizas; ws2.Cell(r2, 13).Value = c.UuidTexto;
                         r2++;
                     }
                     Encabezado(ws2, cab2.Length);

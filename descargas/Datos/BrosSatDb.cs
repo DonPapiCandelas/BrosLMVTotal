@@ -48,11 +48,17 @@ namespace BrosLMV.Descargas.Datos
     {
         public bool ComercialPro;
         public bool Contabilidad;
-        public bool ComercialPremium;       // reservado: aun no hay integracion
+        public bool ComercialPremium;       // solo lectura de los CFDI emitidos (admFoliosDigitales)
         public bool Deducido;               // true = no habia perfil guardado y se dedujo de la configuracion existente
         public bool SoloDescargar => !ComercialPro && !Contabilidad && !ComercialPremium;
         public string Resumen => SoloDescargar ? "Solo descarga y análisis de XML"
             : string.Join(" + ", new[] { ComercialPro ? "Comercial Pro" : null, ComercialPremium ? "Comercial Premium" : null, Contabilidad ? "Contabilidad" : null }.Where(x => x != null));
+    }
+
+    internal sealed class PremiumConfig
+    {
+        public string RFC;
+        public string BaseDatos;      // adXXX
     }
 
     internal sealed class ContabilidadConfig
@@ -1131,6 +1137,8 @@ WHERE RfcSolicitante = @Rfc AND Origen = 'Retroactivo' AND Tipo = @TipoRecEmi;";
             { cmd.Parameters.AddWithValue("@r", rfc); var v = cmd.ExecuteScalar(); p.ComercialPro = v != null && v != DBNull.Value && Convert.ToInt32(v) == 1; }
             using (var cmd = new SqlCommand("SELECT COUNT(*) FROM EmpresaContabilidad WHERE RFC = @r", conn))
             { cmd.Parameters.AddWithValue("@r", rfc); p.Contabilidad = Convert.ToInt32(cmd.ExecuteScalar()) > 0; }
+            using (var cmd = new SqlCommand("SELECT COUNT(*) FROM EmpresaPremium WHERE RFC = @r", conn))
+            { cmd.Parameters.AddWithValue("@r", rfc); p.ComercialPremium = Convert.ToInt32(cmd.ExecuteScalar()) > 0; }
             return p;
         }
 
@@ -1145,7 +1153,8 @@ WHEN NOT MATCHED THEN INSERT (RFC, ComercialPro, Contabilidad, ComercialPremium)
                 cmd.ExecuteNonQuery();
             }
             // Un sistema que la empresa ya no usa: se borra lo que el «Mapa de CFDI» habia leido de el (no se toca nada en el sistema mismo).
-            if (!p.ComercialPro) BorrarLecturas(conn, rfc, "DELETE FROM CfdiEstadoSistema WHERE RFC = @r AND Sistema = 'Comercial'", "DELETE FROM CfdiDocumentoComercial WHERE RFC = @r", "DELETE FROM VerificacionSistema WHERE RFC = @r AND Sistema = 'Comercial'");
+            if (!p.ComercialPro) BorrarLecturas(conn, rfc, "DELETE FROM CfdiEstadoSistema WHERE RFC = @r AND Sistema = 'Comercial'", "DELETE FROM CfdiDocumentoComercial WHERE RFC = @r AND Sistema = 'Comercial'", "DELETE FROM VerificacionSistema WHERE RFC = @r AND Sistema = 'Comercial'");
+            if (!p.ComercialPremium) BorrarLecturas(conn, rfc, "DELETE FROM CfdiEstadoSistema WHERE RFC = @r AND Sistema = 'Premium'", "DELETE FROM CfdiDocumentoComercial WHERE RFC = @r AND Sistema = 'Premium'", "DELETE FROM VerificacionSistema WHERE RFC = @r AND Sistema = 'Premium'", "DELETE FROM EmpresaPremium WHERE RFC = @r");
             if (!p.Contabilidad) BorrarLecturas(conn, rfc, "DELETE FROM CfdiEstadoSistema WHERE RFC = @r AND Sistema IN ('ADD', 'Polizas')", "DELETE FROM CfdiExterno WHERE RFC = @r", "DELETE FROM CfdiPoliza WHERE RFC = @r",
                 "DELETE FROM VerificacionSistema WHERE RFC = @r AND Sistema IN ('ADD', 'Polizas')");
         }
@@ -1154,6 +1163,27 @@ WHEN NOT MATCHED THEN INSERT (RFC, ComercialPro, Contabilidad, ComercialPremium)
         {
             foreach (var sql in sqls)
                 using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 120 }) { cmd.Parameters.AddWithValue("@r", rfc); cmd.ExecuteNonQuery(); }
+        }
+
+        // ===== Comercial Premium =====
+
+        public static PremiumConfig ObtenerPremium(SqlConnection conn, string rfc)
+        {
+            using (var cmd = new SqlCommand("SELECT BaseDatos FROM EmpresaPremium WHERE RFC = @r", conn))
+            {
+                cmd.Parameters.AddWithValue("@r", rfc);
+                var v = cmd.ExecuteScalar();
+                return v == null || v == DBNull.Value ? null : new PremiumConfig { RFC = rfc, BaseDatos = Convert.ToString(v) };
+            }
+        }
+
+        public static void GuardarPremium(SqlConnection conn, PremiumConfig c)
+        {
+            using (var cmd = new SqlCommand(@"
+MERGE EmpresaPremium AS t USING (SELECT @r AS RFC) AS s ON t.RFC = s.RFC
+WHEN MATCHED THEN UPDATE SET BaseDatos = @b
+WHEN NOT MATCHED THEN INSERT (RFC, BaseDatos) VALUES (@r, @b);", conn))
+            { cmd.Parameters.AddWithValue("@r", c.RFC); cmd.Parameters.AddWithValue("@b", c.BaseDatos); cmd.ExecuteNonQuery(); }
         }
 
         // ===== Contabilidad (ADD) =====

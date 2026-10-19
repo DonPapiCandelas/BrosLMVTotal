@@ -116,7 +116,7 @@
                        Text="BrosLMV Descargas funciona sola: baja, ordena y analiza los XML del SAT y genera expedientes en Excel. Si la empresa usa un sistema de CONTPAQi, márcalo para integrarlo; los que no marques no aparecen en la aplicación."/>
             <CheckBox x:Name="ChkPerfilComercial" Content="CONTPAQi Comercial Pro" Margin="0,0,0,6" Checked="Perfil_Changed" Unchecked="Perfil_Changed"/>
             <CheckBox x:Name="ChkPerfilConta" Content="CONTPAQi Contabilidad (ADD y pólizas)" Margin="0,0,0,6" Checked="Perfil_Changed" Unchecked="Perfil_Changed"/>
-            <CheckBox x:Name="ChkPerfilPremium" Content="CONTPAQi Comercial Premium" IsEnabled="False" Margin="0,0,0,6" ToolTip="Próximamente: todavía no hay integración con Comercial Premium."/>
+            <CheckBox x:Name="ChkPerfilPremium" Content="CONTPAQi Comercial Premium (solo lectura de los CFDI emitidos)" Margin="0,0,0,6" Checked="Perfil_Changed" Unchecked="Perfil_Changed"/>
             <TextBlock x:Name="LblPerfilResumen" Foreground="#64748B" FontSize="11.5" Margin="0,4,0,0" TextWrapping="Wrap"/>
           </StackPanel>
         </Border>
@@ -186,6 +186,23 @@
               <TextBlock Foreground="#94A3B8" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"
                          Text="Se guarda cifrada (DPAPI, atada a este equipo), igual que la contraseña de la FIEL. Deja el servidor en blanco si esta empresa no usa Comercial Pro."/>
             </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="CardPremiumEmp" Style="{StaticResource Tarjeta}" Padding="16" Margin="0,4,0,4">
+          <StackPanel>
+            <TextBlock Text="INTEGRACIÓN CON CONTPAQi COMERCIAL PREMIUM (OPCIONAL)" Foreground="#64748B" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10"/>
+            <TextBlock Foreground="#94A3B8" FontSize="11" Margin="0,0,0,10" TextWrapping="Wrap"
+                       Text="Elige la empresa de Comercial Premium de este RFC. BrosLMV solo LEE su base de datos para decirte qué CFDI emitidos ya timbró Premium, su documento y si están cancelados. No modifica nada en Premium. Premium no guarda los CFDI recibidos, así que ahí no hay nada que comparar."/>
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="Empresa de Comercial Premium" Foreground="#64748B" FontSize="11"/>
+                <ComboBox x:Name="CmbPremium" Margin="0,3,0,0" Padding="6,5" MinHeight="30"/>
+              </StackPanel>
+              <Button Grid.Column="2" Content="Actualizar lista" Style="{StaticResource Ghost}" VerticalAlignment="Bottom" Click="ActualizarListaPremium_Click"/>
+            </Grid>
+            <TextBlock x:Name="LblPremiumEstado" Text="" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="#64748B"/>
           </StackPanel>
         </Border>
 

@@ -4,6 +4,15 @@
 
 ## Historial de versiones del instalador
 
+### 3.0.0 — 2026-10-18 — Conector de solo lectura con Comercial Premium
+
+- **Agregado: Comercial Premium** como tercer sistema por empresa (Empresas y e.firma → Editar → «CONTPAQi Comercial Premium»). Se elige la base `adXXX` de Premium (se propone la del mismo RFC; «Actualizar lista» relee el servidor).
+- **Qué lee (solo lectura)**: `admFoliosDigitales` ⋈ `admDocumentos` ⋈ `admDocumentosModelo`. Por cada CFDI **emitido** que Descargas conoce dice si Premium lo timbró (**Timbrado / Cancelado / Pendiente**) y con qué documento (tipo, serie y folio, fecha, total). No escribe nada en Premium.
+- **Límite de Premium**: no guarda los CFDI **recibidos** (las compras no llevan UUID) y su ADD es propio por empresa; por eso en recibidos la columna dice «n/a». Detalle en `Entrenamiento\comercial_premium\ANALISIS_CFDI_PREMIUM.md`.
+- **Mapa de CFDI**: tarjeta y columna «Premium» (solo si la empresa lo usa), y en el detalle del CFDI aparecen sus documentos de Premium junto a los de Comercial Pro (sin «Ver documento» para Premium).
+- **Esquema** (se crea solo): `EmpresaPremium` y columna `Sistema` en `CfdiDocumentoComercial`. 75 pruebas automáticas.
+- **Pendiente**: crear documentos en Premium y comparar contra su ADD (hace falta ver un cliente real con ambos sistemas).
+
 ### 2.9.0 — 2026-10-18 — Perfil por empresa: Descargas sirve con o sin CONTPAQi
 
 - **Agregado: «Sistemas de CONTPAQi que usa esta empresa»** (Empresas y e.firma → Editar, y al agregar una empresa): *Comercial Pro*, *Contabilidad (ADD y pólizas)* y *Comercial Premium* (próximamente, aún sin integración). Descargas funciona **sola** —baja, ordena y analiza los XML, y genera expedientes en Excel—; cada sistema que marques activa su integración y sus pantallas, y **lo que no marques no aparece**.

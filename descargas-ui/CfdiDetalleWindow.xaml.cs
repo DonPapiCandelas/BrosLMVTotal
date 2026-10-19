@@ -169,16 +169,16 @@ namespace BrosLMV.DescargasUI
                     if (!v.Ok) return SistemaCfdi.Nombre(sistema) + ": no se pudo verificar";
                     return SistemaCfdi.Nombre(sistema) + ": " + (est.TryGetValue(sistema, out var e) ? e.estado : "no está");
                 }
-                ValSistemas.Text = string.Join("   ·   ", new[] { SistemaCfdi.Disco, SistemaCfdi.Comercial, SistemaCfdi.Add, SistemaCfdi.Polizas }.Select(Linea));
+                ValSistemas.Text = string.Join("   ·   ", new[] { SistemaCfdi.Disco, SistemaCfdi.Comercial, SistemaCfdi.Premium, SistemaCfdi.Add, SistemaCfdi.Polizas }.Select(Linea));
 
                 // Comercial: documentos generados + «Ver documento».
                 _cadenaComercial = string.IsNullOrWhiteSpace(empresa.ComercialConexionSql) ? null : DpapiHelper.DescifrarConexionSql(empresa.ComercialConexionSql);
                 var docs = MapaCfdi.ObtenerDocumentosComercial(_conn, empresa.RFC, uuid);
                 GridDocsComercial.ItemsSource = docs;
-                PanelDocsComercial.Visibility = _cadenaComercial == null ? Visibility.Collapsed : Visibility.Visible;
+                PanelDocsComercial.Visibility = _cadenaComercial == null && !docs.Any(d => d.Sistema == "Premium") ? Visibility.Collapsed : Visibility.Visible;
                 if (docs.Count > 0) GridDocsComercial.SelectedIndex = 0;
                 if (docs.Count > 0 && ValVinculo.Text.StartsWith("Sin vincular"))
-                    ValVinculo.Text = string.Join("; ", docs.Select(d => "Documento " + d.Folio + (d.Cancelado ? " (cancelado)" : "")));
+                    ValVinculo.Text = string.Join("; ", docs.Select(d => (d.Sistema == "Premium" ? "Premium " : "Documento ") + d.Folio + (d.Cancelado ? " (cancelado)" : "")));
 
                 // Contabilidad: historial de polizas.
                 var polizas = MapaCfdi.ObtenerPolizas(_conn, empresa.RFC, uuid);
@@ -188,14 +188,14 @@ namespace BrosLMV.DescargasUI
             catch (Exception ex) { ValSistemas.Text = "No se pudo leer el estado en los sistemas: " + ex.Message; }
         }
 
-        private void GridDocsComercial_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => BtnVerDocumento.IsEnabled = GridDocsComercial.SelectedItem is DocumentoComercialCfdi;
+        private void GridDocsComercial_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => BtnVerDocumento.IsEnabled = GridDocsComercial.SelectedItem is DocumentoComercialCfdi d && d.Sistema == "Comercial" && _cadenaComercial != null;
         private void GridDocsComercial_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e) => AbrirDocumentoSeleccionado();
         private void BtnVerDocumento_Click(object sender, RoutedEventArgs e) => AbrirDocumentoSeleccionado();
 
         // No es modal: se pueden ver varios documentos y seguir usando Descargas.
         private void AbrirDocumentoSeleccionado()
         {
-            if (!(GridDocsComercial.SelectedItem is DocumentoComercialCfdi d) || _cadenaComercial == null) return;
+            if (!(GridDocsComercial.SelectedItem is DocumentoComercialCfdi d) || d.Sistema != "Comercial" || _cadenaComercial == null) return;   // Premium: solo se informa, no hay vista previa
             new DocumentoComercialWindow(_cadenaComercial, d.DocumentId) { Owner = this }.Show();
         }
 

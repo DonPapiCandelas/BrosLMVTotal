@@ -39,9 +39,10 @@ namespace BrosLMV.Descargas.Datos
         public const string Comercial = "Comercial";
         public const string Add = "ADD";
         public const string Polizas = "Polizas";
-        public static readonly string[] Todos = { Disco, Comercial, Add, Polizas };
+        public const string Premium = "Premium";
+        public static readonly string[] Todos = { Disco, Comercial, Premium, Add, Polizas };
         public static string Nombre(string s) =>
-            s == Disco ? "XML en disco" : s == Comercial ? "Comercial Pro" : s == Add ? "ADD de Contabilidad" : s == Polizas ? "Pólizas de Contabilidad" : s;
+            s == Disco ? "XML en disco" : s == Comercial ? "Comercial Pro" : s == Premium ? "Comercial Premium" : s == Add ? "ADD de Contabilidad" : s == Polizas ? "Pólizas de Contabilidad" : s;
     }
 
     internal sealed class EstadoCfdi
@@ -74,6 +75,7 @@ namespace BrosLMV.Descargas.Datos
         public int EnDisco { get; set; }
         public int EnComercial { get; set; }
         public int ConDocumento { get; set; }
+        public int EnPremium { get; set; }        // emitidos que Premium timbro
         public int EnAdd { get; set; }
         public int ConPoliza { get; set; }
         public int SoloSistemas { get; set; }     // estan en el ADD pero NO en Descargas (faltan por bajar del SAT)
@@ -98,6 +100,7 @@ namespace BrosLMV.Descargas.Datos
         public string Estatus { get; set; }
         public string Disco { get; set; }
         public string Comercial { get; set; }
+        public string Premium { get; set; }
         public string Add { get; set; }
         public int Polizas { get; set; }
         public string UuidTexto => Uuid.ToString().ToUpperInvariant();
@@ -123,6 +126,7 @@ namespace BrosLMV.Descargas.Datos
 
     internal sealed class DocumentoComercialCfdi
     {
+        public string Sistema { get; set; } = "Comercial";     // Comercial / Premium
         public long DocumentId { get; set; }
         public int? ModuleId { get; set; }
         public string Folio { get; set; }
@@ -152,6 +156,9 @@ namespace BrosLMV.Descargas.Datos
             progreso?.Invoke("Revisando Comercial...");
             res.Add(await Ejecutar(conn, empresa.RFC, SistemaCfdi.Comercial, () => perfil.ComercialPro ? VerificarComercial(conn, empresa, uuids) : null));
 
+            progreso?.Invoke("Revisando Comercial Premium...");
+            res.Add(await Ejecutar(conn, empresa.RFC, SistemaCfdi.Premium, () => perfil.ComercialPremium ? VerificarPremium(conn, empresa.RFC, BrosSatDb.ObtenerPremium(conn, empresa.RFC), uuids) : null));
+
             var conta = perfil.Contabilidad ? BrosSatDb.ObtenerContabilidad(conn, empresa.RFC) : null;
             progreso?.Invoke("Revisando el ADD de Contabilidad...");
             res.Add(await Ejecutar(conn, empresa.RFC, SistemaCfdi.Add, () => VerificarAdd(conn, empresa.RFC, conta, uuids)));
@@ -170,6 +177,7 @@ namespace BrosLMV.Descargas.Datos
             {
                 case SistemaCfdi.Disco: return await Ejecutar(conn, empresa.RFC, sistema, () => VerificarDisco(conn, empresa.RFC));
                 case SistemaCfdi.Comercial: return await Ejecutar(conn, empresa.RFC, sistema, () => VerificarComercial(conn, empresa, uuids));
+                case SistemaCfdi.Premium: return await Ejecutar(conn, empresa.RFC, sistema, () => BrosSatDb.ObtenerPerfil(conn, empresa.RFC).ComercialPremium ? VerificarPremium(conn, empresa.RFC, BrosSatDb.ObtenerPremium(conn, empresa.RFC), uuids) : null);
                 case SistemaCfdi.Add: return await Ejecutar(conn, empresa.RFC, sistema, () => VerificarAdd(conn, empresa.RFC, conta, uuids));
                 case SistemaCfdi.Polizas: return await Ejecutar(conn, empresa.RFC, sistema, () => VerificarPolizas(conn, empresa.RFC, conta, uuids));
                 default: throw new ArgumentException("Sistema desconocido: " + sistema);
@@ -252,7 +260,39 @@ FROM docDocumentCFDiSAT s LEFT JOIN docDocument d ON d.DocumentID = s.DocumentID
                         estados.Add(new EstadoCfdi { Uuid = uuid, Estado = conDoc ? "Con documento" : "En lista", Detalle = detalle });
                     }
             }
-            GuardarDocumentosComercial(conn, empresa.RFC, docs);
+            GuardarDocumentosComercial(conn, empresa.RFC, "Comercial", docs);
+            return estados;
+        }
+
+        // Comercial Premium: CFDI que timbro (admFoliosDigitales) con su documento. Null = sin base de Premium configurada. Solo emitidos.
+        private static List<EstadoCfdi> VerificarPremium(SqlConnection conn, string rfc, PremiumConfig cfg, HashSet<Guid> uuids)
+        {
+            if (cfg == null) return null;
+            if (!Regex.IsMatch(cfg.BaseDatos ?? "", "^[A-Za-z0-9_]+$")) throw new InvalidOperationException("Nombre de base inválido.");
+            string ad = "[" + cfg.BaseDatos + "].dbo.";
+            var estados = new List<EstadoCfdi>();
+            var docs = new List<(Guid uuid, long id, int? modulo, string folio, DateTime? fecha, decimal total, bool cancelado)>();
+            using (var cmd = new SqlCommand(@"
+SELECT f.CUUID, f.CESTADO, f.CIDDOCTO, d.CIDDOCUMENTODE, m.CDESCRIPCION, d.CSERIEDOCUMENTO, d.CFOLIO, d.CFECHA, d.CTOTAL, d.CCANCELADO, f.CFECHACANC
+FROM " + ad + "admFoliosDigitales f LEFT JOIN " + ad + "admDocumentos d ON d.CIDDOCUMENTO = f.CIDDOCTO LEFT JOIN " + ad + "admDocumentosModelo m ON m.CIDDOCUMENTODE = d.CIDDOCUMENTODE WHERE f.CUUID <> ''", conn) { CommandTimeout = 300 })
+            using (var l = cmd.ExecuteReader())
+                while (l.Read())
+                {
+                    if (!Guid.TryParse(Convert.ToString(l.GetValue(0)), out var uuid) || !uuids.Contains(uuid)) continue;
+                    string estado = ComercialPremium.EstadoTexto(l.IsDBNull(1) ? 0 : Convert.ToInt32(l.GetValue(1)), true);
+                    string detalle = null;
+                    if (!l.IsDBNull(3))
+                    {
+                        string tipo = l.IsDBNull(4) ? "Documento" : Convert.ToString(l.GetValue(4)).Trim();
+                        string folio = tipo + " " + (l.IsDBNull(5) ? "" : Convert.ToString(l.GetValue(5)).Trim()) + (l.IsDBNull(6) ? "" : Convert.ToInt64(Convert.ToDouble(l.GetValue(6))).ToString());
+                        bool cancelado = estado == "Cancelado" || (!l.IsDBNull(9) && Convert.ToInt32(l.GetValue(9)) != 0);
+                        docs.Add((uuid, l.IsDBNull(2) ? 0 : Convert.ToInt64(l.GetValue(2)), Convert.ToInt32(l.GetValue(3)), folio, l.IsDBNull(7) ? (DateTime?)null : Convert.ToDateTime(l.GetValue(7)),
+                            l.IsDBNull(8) ? 0m : Convert.ToDecimal(l.GetValue(8)), cancelado));
+                        detalle = folio;
+                    }
+                    estados.Add(new EstadoCfdi { Uuid = uuid, Estado = estado, Detalle = detalle });
+                }
+            GuardarDocumentosComercial(conn, rfc, "Premium", docs);
             return estados;
         }
 
@@ -452,14 +492,15 @@ WHERE NOT EXISTS (SELECT 1 FROM " + ct + @"Polizas p WHERE p.Guid = a.GuidRef) A
             }
         }
 
-        private static void GuardarDocumentosComercial(SqlConnection conn, string rfc, List<(Guid uuid, long id, int? modulo, string folio, DateTime? fecha, decimal total, bool cancelado)> docs)
+        private static void GuardarDocumentosComercial(SqlConnection conn, string rfc, string sistema, List<(Guid uuid, long id, int? modulo, string folio, DateTime? fecha, decimal total, bool cancelado)> docs)
         {
             using (var tx = conn.BeginTransaction())
             {
-                using (var del = new SqlCommand("DELETE FROM CfdiDocumentoComercial WHERE RFC = @r", conn, tx)) { del.Parameters.AddWithValue("@r", rfc); del.ExecuteNonQuery(); }
+                using (var del = new SqlCommand("DELETE FROM CfdiDocumentoComercial WHERE RFC = @r AND Sistema = @s", conn, tx)) { del.Parameters.AddWithValue("@r", rfc); del.Parameters.AddWithValue("@s", sistema); del.ExecuteNonQuery(); }
                 foreach (var d in docs)
-                    using (var ins = new SqlCommand(@"INSERT INTO CfdiDocumentoComercial (RFC, UUID, DocumentID, ModuleID, Folio, Fecha, Total, Cancelado) VALUES (@r, @u, @d, @m, @f, @fe, @t, @c)", conn, tx))
+                    using (var ins = new SqlCommand(@"INSERT INTO CfdiDocumentoComercial (RFC, UUID, DocumentID, ModuleID, Folio, Fecha, Total, Cancelado, Sistema) VALUES (@r, @u, @d, @m, @f, @fe, @t, @c, @s)", conn, tx))
                     {
+                        ins.Parameters.AddWithValue("@s", sistema);
                         ins.Parameters.AddWithValue("@r", rfc); ins.Parameters.AddWithValue("@u", d.uuid); ins.Parameters.AddWithValue("@d", d.id);
                         ins.Parameters.AddWithValue("@m", (object)d.modulo ?? DBNull.Value); ins.Parameters.AddWithValue("@f", (object)Recortar(d.folio, 60) ?? DBNull.Value);
                         ins.Parameters.AddWithValue("@fe", (object)d.fecha ?? DBNull.Value); ins.Parameters.AddWithValue("@t", d.total); ins.Parameters.AddWithValue("@c", d.cancelado);
@@ -547,8 +588,10 @@ SELECT YEAR(c.FechaEmision), MONTH(c.FechaEmision), c.Direccion,
        SUM(CASE WHEN c.Externo = 0 AND c.EstatusSat = 'Vigente' AND co.UUID IS NULL THEN 1 ELSE 0 END),
        SUM(CASE WHEN c.EstatusSat = 'Vigente' AND ad.UUID IS NULL THEN 1 ELSE 0 END),
        SUM(CASE WHEN c.EstatusSat = 'Vigente' AND po.UUID IS NULL THEN 1 ELSE 0 END),
-       SUM(c.Externo)
+       SUM(c.Externo),
+       SUM(CASE WHEN pr.UUID IS NOT NULL THEN 1 ELSE 0 END)
 FROM u c
+LEFT JOIN CfdiEstadoSistema pr ON pr.RFC = @r AND pr.Sistema = 'Premium' AND pr.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema di ON di.RFC = @r AND di.Sistema = 'Disco' AND di.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema co ON co.RFC = @r AND co.Sistema = 'Comercial' AND co.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema ad ON ad.RFC = @r AND ad.Sistema = 'ADD' AND ad.UUID = c.UUID
@@ -563,7 +606,7 @@ GROUP BY YEAR(c.FechaEmision), MONTH(c.FechaEmision), c.Direccion";
                     {
                         var f = Fila(l.GetInt32(0), l.GetInt32(1), l.GetString(2));
                         f.Descargados = l.GetInt32(3); f.EnDisco = l.GetInt32(4); f.EnComercial = l.GetInt32(5); f.ConDocumento = l.GetInt32(6); f.EnAdd = l.GetInt32(7); f.ConPoliza = l.GetInt32(8);
-                        f.FaltaDisco = l.GetInt32(9); f.FaltaComercial = l.GetInt32(10); f.FaltaAdd = l.GetInt32(11); f.SinPoliza = l.GetInt32(12); f.SoloSistemas = l.GetInt32(13);
+                        f.FaltaDisco = l.GetInt32(9); f.FaltaComercial = l.GetInt32(10); f.FaltaAdd = l.GetInt32(11); f.SinPoliza = l.GetInt32(12); f.SoloSistemas = l.GetInt32(13); f.EnPremium = l.GetInt32(14);
                     }
             }
             return filas.Values.OrderByDescending(f => f.Anio).ThenByDescending(f => f.Mes).ThenBy(f => f.Tipo).ToList();
@@ -594,8 +637,9 @@ WITH u AS (
   FROM CfdiExterno x WHERE x.RFC = @r AND (@nom = 1 OR ISNULL(x.TipoComprobante, '') <> 'N') AND NOT EXISTS (SELECT 1 FROM CfdiRecibido c2 WHERE c2.UUID = x.UUID)
 )
 SELECT TOP (@lim) c.UUID, c.FechaEmision, CASE WHEN c.Direccion = 'Emitidos' THEN 'Emitido' ELSE 'Recibido' END, c.TipoComprobante, c.Contraparte, c.SerieFolio, c.Total, c.EstatusSat,
-       di.Estado, co.Estado, ad.Estado, (SELECT COUNT(*) FROM CfdiPoliza p WHERE p.RFC = @r AND p.UUID = c.UUID AND p.Nivel <> 'Otro'), c.CfdiID
+       di.Estado, co.Estado, ad.Estado, (SELECT COUNT(*) FROM CfdiPoliza p WHERE p.RFC = @r AND p.UUID = c.UUID AND p.Nivel <> 'Otro'), c.CfdiID, pr.Estado
 FROM u c
+LEFT JOIN CfdiEstadoSistema pr ON pr.RFC = @r AND pr.Sistema = 'Premium' AND pr.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema di ON di.RFC = @r AND di.Sistema = 'Disco' AND di.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema co ON co.RFC = @r AND co.Sistema = 'Comercial' AND co.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema ad ON ad.RFC = @r AND ad.Sistema = 'ADD' AND ad.UUID = c.UUID
@@ -615,7 +659,7 @@ ORDER BY c.FechaEmision DESC";
                         {
                             Uuid = l.GetGuid(0), Fecha = l.GetDateTime(1), Direccion = l.GetString(2), TipoComprobante = l.IsDBNull(3) ? "" : l.GetString(3).Trim(),
                             Contraparte = l.IsDBNull(4) ? "" : l.GetString(4), SerieFolio = l.GetString(5), Total = l.GetDecimal(6), Estatus = l.GetString(7),
-                            Disco = l.IsDBNull(8) ? "—" : l.GetString(8), Comercial = l.IsDBNull(9) ? "—" : l.GetString(9), Add = l.IsDBNull(10) ? "—" : l.GetString(10), Polizas = l.GetInt32(11), CfdiId = l.GetInt32(12)
+                            Disco = l.IsDBNull(8) ? "—" : l.GetString(8), Comercial = l.IsDBNull(9) ? "—" : l.GetString(9), Add = l.IsDBNull(10) ? "—" : l.GetString(10), Polizas = l.GetInt32(11), CfdiId = l.GetInt32(12), Premium = l.IsDBNull(13) ? "—" : l.GetString(13)
                         });
             }
             return lista;
@@ -644,13 +688,13 @@ ORDER BY c.FechaEmision DESC";
         public static List<DocumentoComercialCfdi> ObtenerDocumentosComercial(SqlConnection conn, string rfc, Guid uuid)
         {
             var lista = new List<DocumentoComercialCfdi>();
-            using (var cmd = new SqlCommand("SELECT DocumentID, ModuleID, Folio, Fecha, Total, Cancelado FROM CfdiDocumentoComercial WHERE RFC = @r AND UUID = @u ORDER BY Fecha", conn))
+            using (var cmd = new SqlCommand("SELECT DocumentID, ModuleID, Folio, Fecha, Total, Cancelado, Sistema FROM CfdiDocumentoComercial WHERE RFC = @r AND UUID = @u ORDER BY Fecha", conn))
             {
                 cmd.Parameters.AddWithValue("@r", rfc); cmd.Parameters.AddWithValue("@u", uuid);
                 using (var l = cmd.ExecuteReader())
                     while (l.Read())
                         lista.Add(new DocumentoComercialCfdi { DocumentId = l.GetInt64(0), ModuleId = l.IsDBNull(1) ? (int?)null : l.GetInt32(1), Folio = l.IsDBNull(2) ? null : l.GetString(2),
-                            Fecha = l.IsDBNull(3) ? (DateTime?)null : l.GetDateTime(3), Total = l.IsDBNull(4) ? 0m : l.GetDecimal(4), Cancelado = l.GetBoolean(5) });
+                            Fecha = l.IsDBNull(3) ? (DateTime?)null : l.GetDateTime(3), Total = l.IsDBNull(4) ? 0m : l.GetDecimal(4), Cancelado = l.GetBoolean(5), Sistema = l.GetString(6) });
             }
             return lista;
         }

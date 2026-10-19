@@ -57,6 +57,7 @@
     <Compile Include="..\descargas\Cola\ComercialImportador.cs" Link="Cola\ComercialImportador.cs" />
     <Compile Include="..\descargas\Cola\CargaManual.cs" Link="Cola\CargaManual.cs" />
     <Compile Include="..\descargas\Cola\ContabilidadAdd.cs" Link="Cola\ContabilidadAdd.cs" />
+    <Compile Include="..\descargas\Cola\ComercialPremium.cs" Link="Cola\ComercialPremium.cs" />
     <Compile Include="..\descargas\Datos\MapaCfdi.cs" Link="Datos\MapaCfdi.cs" />
     <Compile Include="..\descargas\Datos\Expediente.cs" Link="Datos\Expediente.cs" />
     <EmbeddedResource Include="..\descargas\Cola\CargaAdd.ps1" Link="Cola\CargaAdd.ps1" />

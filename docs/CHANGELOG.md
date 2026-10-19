@@ -8,6 +8,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 3.0.0] — 2026-10-18 — Comercial Premium (solo lectura)
+
+### Agregado
+- Tercer sistema por empresa: **Comercial Premium**. El Mapa de CFDI dice qué CFDI emitidos ya timbró Premium, su documento y si están cancelados. Solo lee; Premium no guarda recibidos. Ver `descargas\DOCUMENTACION.md`.
+
+### Notas
+- Sin cambios en el addon. Tabla nueva `EmpresaPremium` (se crea sola).
+
 ## [Descargas 2.9.0] — 2026-10-18 — Perfil por empresa
 
 ### Agregado

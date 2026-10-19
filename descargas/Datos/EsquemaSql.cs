@@ -370,6 +370,13 @@ CREATE TABLE EmpresaPerfil (
     FechaCambio DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
+-- Comercial Premium (3.0.0): la base adXXX de la empresa. Solo lectura; Premium solo registra los CFDI que timbra (emitidos).
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmpresaPremium')
+CREATE TABLE EmpresaPremium (
+    RFC NVARCHAR(13) NOT NULL PRIMARY KEY,
+    BaseDatos NVARCHAR(128) NOT NULL
+);
+
 -- ===== Mapa de CFDI por sistema (2.7.0) =====
 -- La VERDAD de donde esta cada CFDI se lee de cada sistema (solo lectura) y se guarda aqui; las banderas viejas
 -- (FechaSincronizadoComercial / FechaCargadoContabilidad) solo dicen que BrosLMV lo mando alguna vez.
@@ -451,6 +458,9 @@ CREATE TABLE CfdiDocumentoComercial (
     Cancelado BIT NOT NULL DEFAULT 0,
     FechaVerificado DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
+-- 3.0.0: el mismo registro sirve a Comercial Pro y a Comercial Premium.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CfdiDocumentoComercial') AND name = 'Sistema')
+    ALTER TABLE CfdiDocumentoComercial ADD Sistema NVARCHAR(20) NOT NULL DEFAULT 'Comercial';
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_CfdiDocumentoComercial_UUID')
     CREATE INDEX IX_CfdiDocumentoComercial_UUID ON CfdiDocumentoComercial (UUID);
 ";

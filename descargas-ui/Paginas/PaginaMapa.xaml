@@ -39,6 +39,9 @@
       <Border x:Name="CardComercial" Style="{StaticResource Tarjeta}" Padding="18,14" Margin="0,0,12,0">
         <StackPanel><TextBlock Text="COMERCIAL PRO" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K3" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K3d" Style="{StaticResource TextoSecundario}"/></StackPanel>
       </Border>
+      <Border x:Name="CardPremium" Style="{StaticResource Tarjeta}" Padding="18,14" Margin="0,0,12,0">
+        <StackPanel><TextBlock Text="COMERCIAL PREMIUM" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K6" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K6d" Style="{StaticResource TextoSecundario}"/></StackPanel>
+      </Border>
       <Border x:Name="CardAdd" Style="{StaticResource Tarjeta}" Padding="18,14" Margin="0,0,12,0">
         <StackPanel><TextBlock Text="ADD DE CONTABILIDAD" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K4" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K4d" Style="{StaticResource TextoSecundario}"/></StackPanel>
       </Border>
@@ -63,6 +66,7 @@
                 <DataGridTemplateColumn.CellTemplate><DataTemplate><Border HorizontalAlignment="Left" Style="{Binding EstiloSoloAdd}"><TextBlock Text="{Binding SoloAdd}"/></Border></DataTemplate></DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
               <DataGridTextColumn Header="COMERCIAL" Binding="{Binding Comercial}" Width="105" ElementStyle="{StaticResource CeldaNumero}"/>
+              <DataGridTextColumn Header="PREMIUM" Binding="{Binding Premium}" Width="95" ElementStyle="{StaticResource CeldaNumero}"/>
               <DataGridTextColumn Header="ADD" Binding="{Binding Add}" Width="80" ElementStyle="{StaticResource CeldaNumero}"/>
               <DataGridTextColumn Header="CON PÓLIZA" Binding="{Binding Poliza}" Width="105" ElementStyle="{StaticResource CeldaNumero}"/>
               <DataGridTemplateColumn Header="FALTAN EN ADD" Width="130">
@@ -111,6 +115,7 @@
               <DataGridTextColumn Header="SAT" Binding="{Binding Estatus}" Width="90" ElementStyle="{StaticResource CeldaAtenuada}"/>
               <DataGridTextColumn Header="XML" Binding="{Binding Disco}" Width="100" ElementStyle="{StaticResource CeldaAtenuada}"/>
               <DataGridTextColumn Header="COMERCIAL" Binding="{Binding Comercial}" Width="110" ElementStyle="{StaticResource CeldaAtenuada}"/>
+              <DataGridTextColumn Header="PREMIUM" Binding="{Binding Premium}" Width="100" ElementStyle="{StaticResource CeldaAtenuada}"/>
               <DataGridTextColumn Header="ADD" Binding="{Binding Add}" Width="80" ElementStyle="{StaticResource CeldaAtenuada}"/>
               <DataGridTextColumn Header="PÓLIZAS" Binding="{Binding Polizas}" Width="80" ElementStyle="{StaticResource CeldaNumero}"/>
             </DataGrid.Columns>

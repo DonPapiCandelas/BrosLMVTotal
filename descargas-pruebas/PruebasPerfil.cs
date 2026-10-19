@@ -66,5 +66,22 @@ namespace BrosLMV.Descargas.Pruebas
             Assert.True(BrosSatDb.ObtenerPerfil(_bd.Conn, rfc).SoloDescargar);
             Assert.Equal(0, _bd.Escalar<int>("SELECT COUNT(*) FROM CfdiEstadoSistema WHERE RFC='" + rfc + "' AND Sistema='Comercial'"));
         }
+
+        [Fact]
+        public void Premium_seGuardaSeDeduceYSePurga()
+        {
+            if (!_bd.Disponible) return;
+            const string rfc = "PRF010101PRF";
+            AltaEmpresa(rfc);
+            Assert.False(BrosSatDb.ObtenerPerfil(_bd.Conn, rfc).ComercialPremium);
+            BrosSatDb.GuardarPremium(_bd.Conn, new PremiumConfig { RFC = rfc, BaseDatos = "adX" });
+            Assert.Equal("adX", BrosSatDb.ObtenerPremium(_bd.Conn, rfc).BaseDatos);
+            Assert.True(BrosSatDb.ObtenerPerfil(_bd.Conn, rfc).ComercialPremium);          // se deduce de su configuracion
+            var u = Guid.NewGuid();
+            MapaCfdi.GuardarEstados(_bd.Conn, rfc, SistemaCfdi.Premium, new[] { new EstadoCfdi { Uuid = u, Estado = "Timbrado" } });
+            BrosSatDb.GuardarPerfil(_bd.Conn, rfc, new PerfilEmpresa { ComercialPremium = false });
+            Assert.Null(BrosSatDb.ObtenerPremium(_bd.Conn, rfc));
+            Assert.Equal(0, _bd.Escalar<int>("SELECT COUNT(*) FROM CfdiEstadoSistema WHERE RFC='" + rfc + "' AND Sistema='Premium'"));
+        }
     }
 }

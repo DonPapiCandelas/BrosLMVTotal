@@ -88,6 +88,7 @@
             </Grid>
             <DataGrid x:Name="GridDocsComercial" BorderThickness="1" BorderBrush="#E6E9EF" IsReadOnly="True" CanUserResizeRows="False" Margin="0,6,0,0" MouseDoubleClick="GridDocsComercial_MouseDoubleClick" SelectionChanged="GridDocsComercial_SelectionChanged">
               <DataGrid.Columns>
+                <DataGridTextColumn Header="Sistema" Binding="{Binding Sistema}" Width="80"/>
                 <DataGridTextColumn Header="Documento" Binding="{Binding Folio}" Width="*"/>
                 <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="110"/>
                 <DataGridTextColumn Header="Total" Binding="{Binding Total, StringFormat=N2}" Width="110"/>
