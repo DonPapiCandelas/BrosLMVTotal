@@ -103,6 +103,9 @@ namespace BrosLMV.DescargasUI.Paginas
                 TabSoloAdd.Visibility = Ok(SistemaCfdi.Add) && _filas.Any(f => f.SoloSistemas > 0) ? Visibility.Visible : Visibility.Collapsed;
                 TabFaltaComercial.Visibility = Ok(SistemaCfdi.Comercial) ? Visibility.Visible : Visibility.Collapsed;
                 TabSinPoliza.Visibility = Ok(SistemaCfdi.Polizas) ? Visibility.Visible : Visibility.Collapsed;
+                int distintos = _filas.Sum(f => f.TotalDistinto);
+                TabTotalDistinto.Visibility = (Ok(SistemaCfdi.Comercial) || Ok(SistemaCfdi.Premium)) && distintos > 0 ? Visibility.Visible : Visibility.Collapsed;
+                TabTotalDistinto.Content = "Total distinto (" + distintos.ToString("N0") + ")";
                 BtnCargarAdd.Visibility = Ok(SistemaCfdi.Add) ? Visibility.Visible : Visibility.Collapsed;
                 BtnCargarPremium.Visibility = Ok(SistemaCfdi.Premium) && !string.IsNullOrWhiteSpace(BrosSatDb.ObtenerPremium(_s.Conn, Rfc)?.Usuario) ? Visibility.Visible : Visibility.Collapsed;
                 BtnImportarComercial.Visibility = Ok(SistemaCfdi.Comercial) ? Visibility.Visible : Visibility.Collapsed;
@@ -189,7 +192,7 @@ namespace BrosLMV.DescargasUI.Paginas
         private MapaFila Seleccion => (GridMapa.SelectedItem as MapaVista)?.Fila;
 
         private string FiltroActual =>
-            TabFaltaAdd.IsChecked == true ? "FaltaAdd" : TabSoloAdd.IsChecked == true ? "SoloSistemas" : TabFaltaComercial.IsChecked == true ? "FaltaComercial" : TabSinPoliza.IsChecked == true ? "SinPoliza" : "Todos";
+            TabFaltaAdd.IsChecked == true ? "FaltaAdd" : TabSoloAdd.IsChecked == true ? "SoloSistemas" : TabFaltaComercial.IsChecked == true ? "FaltaComercial" : TabSinPoliza.IsChecked == true ? "SinPoliza" : TabTotalDistinto.IsChecked == true ? "TotalDistinto" : "Todos";
 
         private void GridMapa_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (!_cargando) CargarDetalle(); }
         private void Filtro_Changed(object sender, RoutedEventArgs e) { if (IsLoaded && !_cargando) CargarDetalle(); }
@@ -201,7 +204,7 @@ namespace BrosLMV.DescargasUI.Paginas
             {
                 // Una pestaña oculta no puede quedar activa.
                 if ((TabFaltaAdd.IsChecked == true && TabFaltaAdd.Visibility != Visibility.Visible) || (TabSoloAdd.IsChecked == true && TabSoloAdd.Visibility != Visibility.Visible) || (TabFaltaComercial.IsChecked == true && TabFaltaComercial.Visibility != Visibility.Visible) ||
-                    (TabSinPoliza.IsChecked == true && TabSinPoliza.Visibility != Visibility.Visible)) { _cargando = true; TabTodos.IsChecked = true; _cargando = false; }
+                    (TabSinPoliza.IsChecked == true && TabSinPoliza.Visibility != Visibility.Visible) || (TabTotalDistinto.IsChecked == true && TabTotalDistinto.Visibility != Visibility.Visible)) { _cargando = true; TabTodos.IsChecked = true; _cargando = false; }
                 var sel = Seleccion;
                 var lista = MapaCfdi.ObtenerCfdis(_s.Conn, Rfc, IncluirNomina, FiltroActual, sel?.Anio, sel?.Mes, sel?.Tipo, LimiteDetalle);
                 GridDetalle.ItemsSource = lista;

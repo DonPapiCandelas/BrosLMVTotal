@@ -54,6 +54,25 @@ namespace BrosLMV.Descargas.Pruebas
         }
 
         [Fact]
+        public void TotalDistinto_marcaElDocumentoQueNoCuadraConElCfdi()
+        {
+            if (!_bd.Disponible) return;
+            const string rfc = "TDI010101TDI";
+            var igual = Nuevo(rfc, false); var distinto = Nuevo(rfc, false); var cancelado = Nuevo(rfc, false); var sinDoc = Nuevo(rfc, false);
+            void Doc(Guid u, decimal total, bool canc, string sistema) =>
+                _bd.Ejecutar("INSERT INTO CfdiDocumentoComercial (RFC, UUID, DocumentID, Folio, Total, Cancelado, Sistema) VALUES ('" + rfc + "','" + u + "',1,'X'," + total.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + (canc ? 1 : 0) + ",'" + sistema + "')");
+            Doc(igual, 116m, false, "Comercial");
+            Doc(distinto, 100m, false, "Premium");           // al documento le falto una retencion
+            Doc(cancelado, 100m, true, "Comercial");          // cancelado: no cuenta
+            var filas = MapaCfdi.Calcular(_bd.Conn, rfc, false);
+            Assert.Equal(1, filas.Sum(f => f.TotalDistinto));
+            var lista = MapaCfdi.ObtenerCfdis(_bd.Conn, rfc, false, "TotalDistinto", null, null, null);
+            Assert.Single(lista); Assert.Equal(distinto, lista[0].Uuid);
+            var docs = MapaCfdi.ObtenerDocumentosComercial(_bd.Conn, rfc, distinto);
+            Assert.Equal(-16m, docs[0].Diferencia);
+        }
+
+        [Fact]
         public void GuardarEstados_reemplazaLoAnterior_ynoMezclaEmpresasNiSistemas()
         {
             if (!_bd.Disponible) return;

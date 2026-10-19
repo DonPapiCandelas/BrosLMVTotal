@@ -8,6 +8,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 3.2.0] — 2026-10-18
+
+### Agregado
+- **Validación de totales**: pestaña «Total distinto» en el Mapa y columnas Total CFDI / Diferencia en el detalle, cuando el documento de Comercial o Premium no cuadra con su CFDI (típicamente una retención sin capturar).
+
 ## [Descargas 3.1.0] — 2026-10-18
 
 ### Agregado

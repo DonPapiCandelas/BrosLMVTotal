@@ -175,6 +175,10 @@ namespace BrosLMV.DescargasUI
                 _cadenaComercial = string.IsNullOrWhiteSpace(empresa.ComercialConexionSql) ? null : DpapiHelper.DescifrarConexionSql(empresa.ComercialConexionSql);
                 var docs = MapaCfdi.ObtenerDocumentosComercial(_conn, empresa.RFC, uuid);
                 GridDocsComercial.ItemsSource = docs;
+                var conDif = docs.FirstOrDefault(d => d.Diferencia.HasValue);
+                LblDiferencia.Visibility = conDif == null ? Visibility.Collapsed : Visibility.Visible;
+                if (conDif != null) LblDiferencia.Text = "El total del documento (" + conDif.Total.ToString("N2") + ") no coincide con el del CFDI (" + conDif.TotalCfdi.Value.ToString("N2") + "): diferencia de " + conDif.DiferenciaTexto +
+                    ". Suele ser una retención, un descuento o un impuesto que falta en el documento.";
                 PanelDocsComercial.Visibility = _cadenaComercial == null && !docs.Any(d => d.Sistema == "Premium") ? Visibility.Collapsed : Visibility.Visible;
                 if (docs.Count > 0) GridDocsComercial.SelectedIndex = 0;
                 if (docs.Count > 0 && ValVinculo.Text.StartsWith("Sin vincular"))

@@ -93,6 +93,7 @@
               <RadioButton x:Name="TabFaltaAdd" Content="Faltan en el ADD" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
               <RadioButton x:Name="TabSoloAdd" Content="Solo en el ADD" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed" ToolTip="Están en el ADD pero no los has descargado del SAT."/>
               <RadioButton x:Name="TabFaltaComercial" Content="Faltan en Comercial" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
+              <RadioButton x:Name="TabTotalDistinto" Content="Total distinto" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed" ToolTip="El documento de Comercial o Premium tiene un total diferente al del CFDI (retención, descuento o impuesto que falta)."/>
               <RadioButton x:Name="TabSinPoliza" Content="Sin póliza" GroupName="TabsMapa" Style="{StaticResource Pestana}" Checked="Filtro_Changed"/>
               <RadioButton x:Name="TabTodos" Content="Todos" GroupName="TabsMapa" Style="{StaticResource Pestana}" IsChecked="True" Checked="Filtro_Changed"/>
             </StackPanel>

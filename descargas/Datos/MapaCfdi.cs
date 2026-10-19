@@ -83,6 +83,7 @@ namespace BrosLMV.Descargas.Datos
         public int FaltaComercial { get; set; }   // vigentes que no estan en la lista de Comercial
         public int FaltaAdd { get; set; }         // vigentes que no estan en el ADD
         public int SinPoliza { get; set; }        // vigentes que no estan en ninguna poliza
+        public int TotalDistinto { get; set; }    // CFDI cuyo documento (Comercial/Premium) tiene otro total
         public string MesTexto => new DateTime(Anio, Mes, 1).ToString("yyyy-MM");
     }
 
@@ -124,8 +125,26 @@ namespace BrosLMV.Descargas.Datos
         public string FechaTexto => Fecha.HasValue ? Fecha.Value.ToString("yyyy-MM-dd") : "";
     }
 
+    internal static class Diferencias
+    {
+        public const decimal Tolerancia = 0.01m;
+        // CFDI de Descargas (ingreso/egreso en pesos) cuyos documentos vigentes en Comercial/Premium suman un total distinto al del CFDI.
+        // Los pagos (total 0) y las monedas extranjeras no se comparan: el total del documento no es comparable sin tipo de cambio.
+        public const string Condicion = "td.UUID IS NOT NULL";
+        // LEFT JOIN a agregar a las consultas del universo (alias c = UUID del universo): trae una fila por CFDI con total distinto.
+        public const string Union = @"
+LEFT JOIN (SELECT k.UUID FROM CfdiRecibido k
+           JOIN (SELECT d.UUID, d.Sistema, SUM(d.Total) AS T FROM CfdiDocumentoComercial d WHERE d.RFC = @r AND d.Cancelado = 0 GROUP BY d.UUID, d.Sistema) s ON s.UUID = k.UUID
+           WHERE k.TipoComprobante IN ('I', 'E') AND k.Total > 0 AND ISNULL(k.Moneda, 'MXN') IN ('MXN', 'XXX') AND ABS(s.T - k.Total) > 0.01
+           GROUP BY k.UUID) td ON td.UUID = c.UUID";
+    }
+
     internal sealed class DocumentoComercialCfdi
     {
+        public decimal? TotalCfdi { get; set; }      // total del CFDI (null = no comparable: pago, moneda extranjera o sin descargar)
+        public decimal? Diferencia => TotalCfdi.HasValue && !Cancelado && Math.Abs(Total - TotalCfdi.Value) > Diferencias.Tolerancia ? Total - TotalCfdi.Value : (decimal?)null;
+        public string TotalCfdiTexto => TotalCfdi.HasValue ? TotalCfdi.Value.ToString("N2") : "";
+        public string DiferenciaTexto => Diferencia.HasValue ? Diferencia.Value.ToString("+#,##0.00;-#,##0.00") : "";
         public string Sistema { get; set; } = "Comercial";     // Comercial / Premium
         public long DocumentId { get; set; }
         public int? ModuleId { get; set; }
@@ -597,13 +616,15 @@ SELECT YEAR(c.FechaEmision), MONTH(c.FechaEmision), c.Direccion,
        SUM(CASE WHEN c.EstatusSat = 'Vigente' AND ad.UUID IS NULL THEN 1 ELSE 0 END),
        SUM(CASE WHEN c.EstatusSat = 'Vigente' AND po.UUID IS NULL THEN 1 ELSE 0 END),
        SUM(c.Externo),
-       SUM(CASE WHEN pr.UUID IS NOT NULL THEN 1 ELSE 0 END)
+       SUM(CASE WHEN pr.UUID IS NOT NULL THEN 1 ELSE 0 END),
+       SUM(CASE WHEN c.Externo = 0 AND " + Diferencias.Condicion + @" THEN 1 ELSE 0 END)
 FROM u c
 LEFT JOIN CfdiEstadoSistema pr ON pr.RFC = @r AND pr.Sistema = 'Premium' AND pr.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema di ON di.RFC = @r AND di.Sistema = 'Disco' AND di.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema co ON co.RFC = @r AND co.Sistema = 'Comercial' AND co.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema ad ON ad.RFC = @r AND ad.Sistema = 'ADD' AND ad.UUID = c.UUID
 LEFT JOIN (SELECT DISTINCT UUID FROM CfdiPoliza WHERE RFC = @r AND Nivel <> 'Otro') po ON po.UUID = c.UUID
+"+Diferencias.Union+@"
 WHERE c.FechaEmision IS NOT NULL
 GROUP BY YEAR(c.FechaEmision), MONTH(c.FechaEmision), c.Direccion";
             using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 180 })
@@ -614,7 +635,7 @@ GROUP BY YEAR(c.FechaEmision), MONTH(c.FechaEmision), c.Direccion";
                     {
                         var f = Fila(l.GetInt32(0), l.GetInt32(1), l.GetString(2));
                         f.Descargados = l.GetInt32(3); f.EnDisco = l.GetInt32(4); f.EnComercial = l.GetInt32(5); f.ConDocumento = l.GetInt32(6); f.EnAdd = l.GetInt32(7); f.ConPoliza = l.GetInt32(8);
-                        f.FaltaDisco = l.GetInt32(9); f.FaltaComercial = l.GetInt32(10); f.FaltaAdd = l.GetInt32(11); f.SinPoliza = l.GetInt32(12); f.SoloSistemas = l.GetInt32(13); f.EnPremium = l.GetInt32(14);
+                        f.FaltaDisco = l.GetInt32(9); f.FaltaComercial = l.GetInt32(10); f.FaltaAdd = l.GetInt32(11); f.SinPoliza = l.GetInt32(12); f.SoloSistemas = l.GetInt32(13); f.EnPremium = l.GetInt32(14); f.TotalDistinto = l.GetInt32(15);
                     }
             }
             return filas.Values.OrderByDescending(f => f.Anio).ThenByDescending(f => f.Mes).ThenBy(f => f.Tipo).ToList();
@@ -625,6 +646,7 @@ GROUP BY YEAR(c.FechaEmision), MONTH(c.FechaEmision), c.Direccion";
         {
             string extra = filtro == "FaltaAdd" ? "AND c.EstatusSat = 'Vigente' AND ad.UUID IS NULL"
                 : filtro == "FaltaComercial" ? "AND c.EstatusSat = 'Vigente' AND co.UUID IS NULL"
+                : filtro == "TotalDistinto" ? "AND c.Externo = 0 AND " + Diferencias.Condicion
                 : filtro == "FaltaPremium" ? "AND c.EstatusSat = 'Vigente' AND c.Externo = 0 AND pr.UUID IS NULL"
                 : filtro == "SinPoliza" ? "AND c.EstatusSat IN ('Vigente', 'Sin descargar') AND po.UUID IS NULL"
                 : filtro == "FaltaDisco" ? "AND c.Externo = 0 AND c.EstatusSat = 'Vigente' AND ISNULL(di.Estado, 'Sin archivo') <> 'Con archivo'"
@@ -653,6 +675,7 @@ LEFT JOIN CfdiEstadoSistema di ON di.RFC = @r AND di.Sistema = 'Disco' AND di.UU
 LEFT JOIN CfdiEstadoSistema co ON co.RFC = @r AND co.Sistema = 'Comercial' AND co.UUID = c.UUID
 LEFT JOIN CfdiEstadoSistema ad ON ad.RFC = @r AND ad.Sistema = 'ADD' AND ad.UUID = c.UUID
 LEFT JOIN (SELECT DISTINCT UUID FROM CfdiPoliza WHERE RFC = @r AND Nivel <> 'Otro') po ON po.UUID = c.UUID
+"+Diferencias.Union+@"
 WHERE c.FechaEmision IS NOT NULL " + extra + @"
 ORDER BY c.FechaEmision DESC";
             var lista = new List<MapaCfdiFila>();
@@ -705,6 +728,14 @@ ORDER BY c.FechaEmision DESC";
                         lista.Add(new DocumentoComercialCfdi { DocumentId = l.GetInt64(0), ModuleId = l.IsDBNull(1) ? (int?)null : l.GetInt32(1), Folio = l.IsDBNull(2) ? null : l.GetString(2),
                             Fecha = l.IsDBNull(3) ? (DateTime?)null : l.GetDateTime(3), Total = l.IsDBNull(4) ? 0m : l.GetDecimal(4), Cancelado = l.GetBoolean(5), Sistema = l.GetString(6) });
             }
+            // Total del CFDI para poder mostrar la diferencia (solo ingreso/egreso en pesos).
+            if (lista.Count > 0)
+                using (var cmd = new SqlCommand("SELECT TOP 1 Total FROM CfdiRecibido WHERE UUID = @u AND TipoComprobante IN ('I', 'E') AND Total > 0 AND ISNULL(Moneda, 'MXN') IN ('MXN', 'XXX')", conn))
+                {
+                    cmd.Parameters.AddWithValue("@u", uuid);
+                    var t = cmd.ExecuteScalar();
+                    if (t != null && t != DBNull.Value) foreach (var d in lista) d.TotalCfdi = Convert.ToDecimal(t);
+                }
             return lista;
         }
 

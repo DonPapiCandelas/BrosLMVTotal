@@ -86,12 +86,17 @@
               <TextBlock Text="Documentos de Comercial Pro" Style="{StaticResource Etiqueta}" Margin="0"/>
               <Button x:Name="BtnVerDocumento" Content="Ver documento" Style="{StaticResource Ghost}" HorizontalAlignment="Right" IsEnabled="False" Click="BtnVerDocumento_Click"/>
             </Grid>
+            <TextBlock x:Name="LblDiferencia" Visibility="Collapsed" Foreground="#B91C1C" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
             <DataGrid x:Name="GridDocsComercial" BorderThickness="1" BorderBrush="#E6E9EF" IsReadOnly="True" CanUserResizeRows="False" Margin="0,6,0,0" MouseDoubleClick="GridDocsComercial_MouseDoubleClick" SelectionChanged="GridDocsComercial_SelectionChanged">
               <DataGrid.Columns>
                 <DataGridTextColumn Header="Sistema" Binding="{Binding Sistema}" Width="80"/>
                 <DataGridTextColumn Header="Documento" Binding="{Binding Folio}" Width="*"/>
                 <DataGridTextColumn Header="Fecha" Binding="{Binding FechaTexto}" Width="110"/>
-                <DataGridTextColumn Header="Total" Binding="{Binding Total, StringFormat=N2}" Width="110"/>
+                <DataGridTextColumn Header="Total" Binding="{Binding Total, StringFormat=N2}" Width="100"/>
+                <DataGridTextColumn Header="Total CFDI" Binding="{Binding TotalCfdiTexto}" Width="100"/>
+                <DataGridTextColumn Header="Diferencia" Binding="{Binding DiferenciaTexto}" Width="100">
+                  <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="Foreground" Value="#B91C1C"/><Setter Property="FontWeight" Value="SemiBold"/></Style></DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
                 <DataGridTextColumn Header="Estado" Binding="{Binding EstadoTexto}" Width="100"/>
               </DataGrid.Columns>
             </DataGrid>

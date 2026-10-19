@@ -4,6 +4,12 @@
 
 ## Historial de versiones del instalador
 
+### 3.2.0 — 2026-10-18 — Validación: el total del documento contra el del CFDI
+
+- **Agregado**: el Mapa compara el total de cada documento de **Comercial Pro / Premium** contra el total de su CFDI. Si no cuadran (más de 0.01) aparece la pestaña **«Total distinto (N)»** con esos CFDI, y en el detalle del CFDI la tabla de documentos muestra **Total CFDI** y **Diferencia** en rojo con el aviso: suele ser una retención, un descuento o un impuesto que falta en el documento (caso real: compra de 3,480.00 para un CFDI de 3,382.50 porque no se capturó la retención).
+- **Qué se compara**: CFDI de Descargas de tipo ingreso/egreso en pesos; los pagos (total 0) y los CFDI en otra moneda no se comparan (el total del documento no es comparable sin tipo de cambio). Los documentos cancelados no cuentan; si un CFDI tiene varios documentos del mismo sistema se comparan sumados.
+- Sin cambios de esquema. 76 pruebas.
+
 ### 3.1.0 — 2026-10-18 — Cargar los XML al ADD de Comercial Premium
 
 - **Agregado**: Descargas carga los CFDI (recibidos y emitidos) al **ADD de Comercial Premium**, igual que ya hacía con Contabilidad. El ADD de Premium tiene el mismo esquema y se carga por el mismo servicio de CONTPAQi (SACI) con el `CGUIDDSL` y `CGUIDEMPRESA` de `admParametros`; se probó con la empresa de prueba y el usuario `SUPERVISOR` sin contraseña.
