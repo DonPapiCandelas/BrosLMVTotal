@@ -33,6 +33,10 @@ namespace BrosLMV.DescargasUI
         public List<EmpresaRow> Empresas { get; private set; } = new List<EmpresaRow>();
         public EmpresaRow Empresa { get; private set; }
 
+        // Que sistemas de CONTPAQi usa la empresa activa (Comercial Pro, Contabilidad...). Sin ninguno, Descargas solo descarga y analiza los XML.
+        internal PerfilEmpresa Perfil { get; private set; } = new PerfilEmpresa();
+        internal void RecargarPerfil() => Perfil = Empresa == null ? new PerfilEmpresa() : BrosSatDb.ObtenerPerfil(Conn, Empresa.RFC);
+
         public event Action EmpresaCambiada;
         public event Action EmpresasRecargadas;
         public event Action ResumenActualizado;
@@ -66,6 +70,7 @@ namespace BrosLMV.DescargasUI
             var elegida = lista.FirstOrDefault(x => string.Equals(x.RFC, previa, StringComparison.OrdinalIgnoreCase)) ?? lista.FirstOrDefault();
             bool cambio = !string.Equals(Empresa?.RFC, elegida?.RFC, StringComparison.OrdinalIgnoreCase);
             Empresa = elegida;
+            RecargarPerfil();
             if (cambio) Resumen = null;
             EmpresasRecargadas?.Invoke();
             if (cambio) EmpresaCambiada?.Invoke();
@@ -75,6 +80,7 @@ namespace BrosLMV.DescargasUI
         {
             if (e == null || string.Equals(Empresa?.RFC, e.RFC, StringComparison.OrdinalIgnoreCase)) return;
             Empresa = e;
+            RecargarPerfil();
             Resumen = null;
             EmpresaCambiada?.Invoke();
         }

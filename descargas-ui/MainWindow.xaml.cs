@@ -36,7 +36,7 @@ namespace BrosLMV.DescargasUI
     internal static class VersionApp
     {
         // Misma version que el instalador (descargas-instalador\*.csproj); se cambia junto con ella.
-        public const string Actual = "2.8.0";
+        public const string Actual = "2.9.0";
     }
 
     public partial class MainWindow : Window
@@ -145,11 +145,12 @@ namespace BrosLMV.DescargasUI
             PuntoConexion.Fill = (Brush)FindResource("PincelOk");
 
             _sesion = new Sesion(_conn, this);
-            _sesion.EmpresasRecargadas += PintarSelectorEmpresa;
-            _sesion.EmpresaCambiada += () => { _paginas.Clear(); PintarSelectorEmpresa(); ActualizarInsignias(); Navegar(_claveActual); ProgramarResumen(); };
+            _sesion.EmpresasRecargadas += () => { foreach (var k in _paginas.Keys.Where(k => k != _claveActual).ToList()) _paginas.Remove(k); PintarSelectorEmpresa(); AplicarPerfilEnMenu(); };
+            _sesion.EmpresaCambiada += () => { _paginas.Clear(); PintarSelectorEmpresa(); AplicarPerfilEnMenu(); ActualizarInsignias(); Navegar(_claveActual); ProgramarResumen(); };
             _sesion.ResumenActualizado += ActualizarInsignias;
             _sesion.RecargarEmpresas(string.IsNullOrEmpty(App.RfcInicial) ? null : App.RfcInicial);
             PintarSelectorEmpresa();
+            AplicarPerfilEnMenu();
             Navegar(_sesion.Empresas.Count == 0 ? "empresas" : "panel");
             ProgramarResumen();
             AbrirCfdiInicial();
@@ -169,6 +170,15 @@ namespace BrosLMV.DescargasUI
                 }
             }
             catch { }
+        }
+
+        // Lo que solo tiene sentido con Comercial Pro (vinculos con documentos, cancelaciones con documento) se oculta si la empresa no lo usa.
+        private void AplicarPerfilEnMenu()
+        {
+            bool comercial = _sesion?.Perfil?.ComercialPro == true;
+            var vis = comercial ? Visibility.Visible : Visibility.Collapsed;
+            NavVinculos.Visibility = vis; NavCancelaciones.Visibility = vis;
+            if (!comercial && (_claveActual == "vinculos" || _claveActual == "cancelaciones")) { _claveActual = "panel"; NavPanel.IsChecked = true; }
         }
 
         // El resumen (salud, indicadores, cobertura) se calcula despues de pintar la ventana para que abra de inmediato.

@@ -52,8 +52,16 @@ namespace BrosLMV.DescargasUI.Paginas
 
         // ---- Resumen y cola ----
 
+        // Los botones de un sistema solo aparecen si la empresa lo usa.
+        private void AplicarPerfil()
+        {
+            BtnSincronizarComercial.Visibility = _s.Perfil.ComercialPro ? Visibility.Visible : Visibility.Collapsed;
+            BtnCargarContabilidad.Visibility = BtnConfigurarContabilidad.Visibility = _s.Perfil.Contabilidad ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         private void CargarDetalle()
         {
+            AplicarPerfil();
             var emp = _s.Empresa;
             _solicitudes = BrosSatDb.ObtenerSolicitudesRecientes(_s.Conn, emp.RFC).Select(x => new SolicitudRow
             {

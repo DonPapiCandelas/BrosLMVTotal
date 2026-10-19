@@ -35,7 +35,7 @@
           </StackPanel>
           <Border Grid.Column="3" Background="{StaticResource PincelBorde}" Margin="0,16"/>
           <StackPanel Grid.Column="4" Margin="22,0,12,0" VerticalAlignment="Center">
-            <TextBlock Text="COMERCIAL" Style="{StaticResource TextoRotulo}"/>
+            <TextBlock x:Name="RotuloSistema" Text="COMERCIAL" Style="{StaticResource TextoRotulo}"/>
             <StackPanel Orientation="Horizontal" Margin="0,5,0,0"><Ellipse x:Name="PuntoComercial" Width="9" Height="9" Fill="{StaticResource PincelTexto3}" Margin="0,1,8,0"/><TextBlock x:Name="TxtComercial" Text="Calculando…" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></StackPanel>
           </StackPanel>
           <Border Grid.Column="5" Background="{StaticResource PincelBorde}" Margin="0,16"/>

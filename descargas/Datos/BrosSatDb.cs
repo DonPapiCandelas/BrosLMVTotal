@@ -19,6 +19,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Data.SqlClient;
 
 namespace BrosLMV.Descargas.Datos
@@ -40,6 +41,18 @@ namespace BrosLMV.Descargas.Datos
         public string ComercialConexionSql; // NULL = no automatizar el Importar (solo copiar archivo)
         public int? AnioInicioDescargas; // Año elegido para la descarga historica inicial (NULL = default viejo de 90 dias)
         public bool OcultarNominas = true; // Ocultar comprobantes de nómina (Tipo N) por defecto en UI y reportes
+    }
+
+    // Que sistemas de CONTPAQi usa una empresa. Descargas funciona sola (solo descarga y analiza los XML); cada sistema activa su integracion y sus pantallas.
+    internal sealed class PerfilEmpresa
+    {
+        public bool ComercialPro;
+        public bool Contabilidad;
+        public bool ComercialPremium;       // reservado: aun no hay integracion
+        public bool Deducido;               // true = no habia perfil guardado y se dedujo de la configuracion existente
+        public bool SoloDescargar => !ComercialPro && !Contabilidad && !ComercialPremium;
+        public string Resumen => SoloDescargar ? "Solo descarga y análisis de XML"
+            : string.Join(" + ", new[] { ComercialPro ? "Comercial Pro" : null, ComercialPremium ? "Comercial Premium" : null, Contabilidad ? "Contabilidad" : null }.Where(x => x != null));
     }
 
     internal sealed class ContabilidadConfig
@@ -1100,6 +1113,49 @@ WHERE RfcSolicitante = @Rfc AND Origen = 'Retroactivo' AND Tipo = @TipoRecEmi;";
         // desde SolicitudWorker (copia automatica en cada descarga nueva) y ComercialSync (backfill
         // manual). Por UUID porque es lo que ya se tiene a la mano en ambos puntos de llamada, sin
         // necesidad de conocer el CfdiID.
+        // ===== Perfil de la empresa =====
+
+        // Perfil guardado; si la empresa nunca lo tuvo, se DEDUCE de lo que ya hay configurado (conexion o carpetas de Comercial -> Comercial Pro; fila en
+        // EmpresaContabilidad -> Contabilidad), para que las empresas de antes sigan viendo lo mismo.
+        public static PerfilEmpresa ObtenerPerfil(SqlConnection conn, string rfc)
+        {
+            using (var cmd = new SqlCommand("SELECT ComercialPro, Contabilidad, ComercialPremium FROM EmpresaPerfil WHERE RFC = @r", conn))
+            {
+                cmd.Parameters.AddWithValue("@r", rfc);
+                using (var l = cmd.ExecuteReader())
+                    if (l.Read()) return new PerfilEmpresa { ComercialPro = l.GetBoolean(0), Contabilidad = l.GetBoolean(1), ComercialPremium = l.GetBoolean(2) };
+            }
+            var p = new PerfilEmpresa { Deducido = true };
+            using (var cmd = new SqlCommand(@"SELECT CASE WHEN NULLIF(LTRIM(RTRIM(ISNULL(ComercialConexionSql, ''))), '') IS NOT NULL OR NULLIF(LTRIM(RTRIM(ISNULL(ComercialCarpetaXmlRecibidos, ''))), '') IS NOT NULL
+                OR NULLIF(LTRIM(RTRIM(ISNULL(ComercialCarpetaXmlEmitidos, ''))), '') IS NOT NULL THEN 1 ELSE 0 END FROM Empresa WHERE RFC = @r", conn))
+            { cmd.Parameters.AddWithValue("@r", rfc); var v = cmd.ExecuteScalar(); p.ComercialPro = v != null && v != DBNull.Value && Convert.ToInt32(v) == 1; }
+            using (var cmd = new SqlCommand("SELECT COUNT(*) FROM EmpresaContabilidad WHERE RFC = @r", conn))
+            { cmd.Parameters.AddWithValue("@r", rfc); p.Contabilidad = Convert.ToInt32(cmd.ExecuteScalar()) > 0; }
+            return p;
+        }
+
+        public static void GuardarPerfil(SqlConnection conn, string rfc, PerfilEmpresa p)
+        {
+            using (var cmd = new SqlCommand(@"
+MERGE EmpresaPerfil AS t USING (SELECT @r AS RFC) AS s ON t.RFC = s.RFC
+WHEN MATCHED THEN UPDATE SET ComercialPro = @c, Contabilidad = @t, ComercialPremium = @p, FechaCambio = SYSUTCDATETIME()
+WHEN NOT MATCHED THEN INSERT (RFC, ComercialPro, Contabilidad, ComercialPremium) VALUES (@r, @c, @t, @p);", conn))
+            {
+                cmd.Parameters.AddWithValue("@r", rfc); cmd.Parameters.AddWithValue("@c", p.ComercialPro); cmd.Parameters.AddWithValue("@t", p.Contabilidad); cmd.Parameters.AddWithValue("@p", p.ComercialPremium);
+                cmd.ExecuteNonQuery();
+            }
+            // Un sistema que la empresa ya no usa: se borra lo que el «Mapa de CFDI» habia leido de el (no se toca nada en el sistema mismo).
+            if (!p.ComercialPro) BorrarLecturas(conn, rfc, "DELETE FROM CfdiEstadoSistema WHERE RFC = @r AND Sistema = 'Comercial'", "DELETE FROM CfdiDocumentoComercial WHERE RFC = @r", "DELETE FROM VerificacionSistema WHERE RFC = @r AND Sistema = 'Comercial'");
+            if (!p.Contabilidad) BorrarLecturas(conn, rfc, "DELETE FROM CfdiEstadoSistema WHERE RFC = @r AND Sistema IN ('ADD', 'Polizas')", "DELETE FROM CfdiExterno WHERE RFC = @r", "DELETE FROM CfdiPoliza WHERE RFC = @r",
+                "DELETE FROM VerificacionSistema WHERE RFC = @r AND Sistema IN ('ADD', 'Polizas')");
+        }
+
+        private static void BorrarLecturas(SqlConnection conn, string rfc, params string[] sqls)
+        {
+            foreach (var sql in sqls)
+                using (var cmd = new SqlCommand(sql, conn) { CommandTimeout = 120 }) { cmd.Parameters.AddWithValue("@r", rfc); cmd.ExecuteNonQuery(); }
+        }
+
         // ===== Contabilidad (ADD) =====
 
         public static ContabilidadConfig ObtenerContabilidad(SqlConnection conn, string rfc)

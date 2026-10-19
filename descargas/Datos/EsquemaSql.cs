@@ -360,6 +360,16 @@ CREATE TABLE IndicadorPersonalizado (
     FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
+-- ===== Perfil por empresa (2.9.0): que sistemas de CONTPAQi usa cada empresa. Sin fila = se deduce de lo que ya tenga configurado. =====
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmpresaPerfil')
+CREATE TABLE EmpresaPerfil (
+    RFC NVARCHAR(13) NOT NULL PRIMARY KEY,
+    ComercialPro BIT NOT NULL DEFAULT 0,
+    Contabilidad BIT NOT NULL DEFAULT 0,
+    ComercialPremium BIT NOT NULL DEFAULT 0,
+    FechaCambio DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
 -- ===== Mapa de CFDI por sistema (2.7.0) =====
 -- La VERDAD de donde esta cada CFDI se lee de cada sistema (solo lectura) y se guarda aqui; las banderas viejas
 -- (FechaSincronizadoComercial / FechaCargadoContabilidad) solo dicen que BrosLMV lo mando alguna vez.

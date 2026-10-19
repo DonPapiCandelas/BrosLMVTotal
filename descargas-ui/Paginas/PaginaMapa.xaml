@@ -29,27 +29,23 @@
     </Border>
 
     <!-- Cifras -->
-    <Grid Grid.Row="2" Margin="0,16,0,0">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
-      </Grid.ColumnDefinitions>
-      <Border Grid.Column="0" Style="{StaticResource Tarjeta}" Padding="18,14">
+    <UniformGrid Grid.Row="2" Rows="1" Margin="0,16,0,0">
+      <Border Style="{StaticResource Tarjeta}" Padding="18,14" Margin="0,0,12,0">
         <StackPanel><TextBlock Text="SAT" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K1" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K1d" Style="{StaticResource TextoSecundario}"/></StackPanel>
       </Border>
-      <Border Grid.Column="2" Style="{StaticResource Tarjeta}" Padding="18,14">
+      <Border Style="{StaticResource Tarjeta}" Padding="18,14" Margin="0,0,12,0">
         <StackPanel><TextBlock Text="TUS XML" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K2" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K2d" Style="{StaticResource TextoSecundario}"/></StackPanel>
       </Border>
-      <Border Grid.Column="4" Style="{StaticResource Tarjeta}" Padding="18,14">
+      <Border x:Name="CardComercial" Style="{StaticResource Tarjeta}" Padding="18,14" Margin="0,0,12,0">
         <StackPanel><TextBlock Text="COMERCIAL PRO" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K3" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K3d" Style="{StaticResource TextoSecundario}"/></StackPanel>
       </Border>
-      <Border Grid.Column="6" Style="{StaticResource Tarjeta}" Padding="18,14">
+      <Border x:Name="CardAdd" Style="{StaticResource Tarjeta}" Padding="18,14" Margin="0,0,12,0">
         <StackPanel><TextBlock Text="ADD DE CONTABILIDAD" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K4" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K4d" Style="{StaticResource TextoSecundario}"/></StackPanel>
       </Border>
-      <Border Grid.Column="8" Style="{StaticResource Tarjeta}" Padding="18,14">
+      <Border x:Name="CardPoliza" Style="{StaticResource Tarjeta}" Padding="18,14" Margin="0,0,12,0">
         <StackPanel><TextBlock Text="CON PÓLIZA" Style="{StaticResource TextoRotulo}"/><TextBlock x:Name="K5" Style="{StaticResource TextoCifra}" Text="—" Margin="0,6,0,0"/><TextBlock x:Name="K5d" Style="{StaticResource TextoSecundario}"/></StackPanel>
       </Border>
-    </Grid>
+    </UniformGrid>
 
     <!-- Tabla por mes + detalle -->
     <Grid Grid.Row="3" Margin="0,16,0,0">

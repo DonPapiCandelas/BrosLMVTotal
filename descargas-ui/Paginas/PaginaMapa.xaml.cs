@@ -58,14 +58,31 @@ namespace BrosLMV.DescargasUI.Paginas
         private bool IncluirNomina => ChkNomina.IsChecked == true;
 
         // ---- Estado de cada sistema ----
-        private bool Ok(string sistema) => _verif.TryGetValue(sistema, out var v) && v.Ok;
-        private bool Configurado(string sistema) => _verif.TryGetValue(sistema, out var v) && v.Configurado;
+        // Un sistema que la empresa no usa no cuenta aunque queden lecturas viejas.
+        private bool Usa(string sistema) => sistema == SistemaCfdi.Comercial ? _s.Perfil.ComercialPro : (sistema == SistemaCfdi.Add || sistema == SistemaCfdi.Polizas) ? _s.Perfil.Contabilidad : true;
+        private bool Ok(string sistema) => Usa(sistema) && _verif.TryGetValue(sistema, out var v) && v.Ok;
+        private bool Configurado(string sistema) => Usa(sistema) && _verif.TryGetValue(sistema, out var v) && v.Configurado;
 
         private async Task IniciarAsync()
         {
             Cargar();
             // Primera vez: no hay nada leido todavia, se lee solo para no mostrar una pantalla vacia.
-            if (_verif.Count == 0 && _filas.Count > 0) await VerificarAsync();
+            // (o cuando la empresa empieza a usar un sistema del que todavia no se ha leido nada).
+            bool faltaLeer = new[] { SistemaCfdi.Disco, SistemaCfdi.Comercial, SistemaCfdi.Add, SistemaCfdi.Polizas }.Any(x => Usa(x) && !_verif.ContainsKey(x));
+            if (faltaLeer && _filas.Count > 0) await VerificarAsync();
+        }
+
+        // Lo de un sistema que la empresa no usa no se muestra (ni tarjeta, ni columnas, ni pestañas).
+        private void AplicarPerfil()
+        {
+            var perfil = _s.Perfil;
+            var com = perfil.ComercialPro ? Visibility.Visible : Visibility.Collapsed; var con = perfil.Contabilidad ? Visibility.Visible : Visibility.Collapsed;
+            CardComercial.Visibility = com; CardAdd.Visibility = con; CardPoliza.Visibility = con;
+            // columnas de la tabla por mes: 4 SOLO EN ADD · 5 COMERCIAL · 6 ADD · 7 CON POLIZA · 8 FALTAN EN ADD · 9 FALTAN EN COMERCIAL · 10 SIN POLIZA
+            foreach (int i in new[] { 4, 6, 7, 8, 10 }) GridMapa.Columns[i].Visibility = con;
+            foreach (int i in new[] { 5, 9 }) GridMapa.Columns[i].Visibility = com;
+            // detalle: 8 COMERCIAL · 9 ADD · 10 POLIZAS
+            GridDetalle.Columns[8].Visibility = com; GridDetalle.Columns[9].Visibility = con; GridDetalle.Columns[10].Visibility = con;
         }
 
         private void Cargar()
@@ -73,6 +90,7 @@ namespace BrosLMV.DescargasUI.Paginas
             _cargando = true;
             try
             {
+                AplicarPerfil();
                 _verif = MapaCfdi.ObtenerVerificaciones(_s.Conn, Rfc);
                 _filas = MapaCfdi.Calcular(_s.Conn, Rfc, IncluirNomina);
                 PintarTabla();
@@ -135,11 +153,12 @@ namespace BrosLMV.DescargasUI.Paginas
         private void PintarAviso()
         {
             if (_verif.Count == 0) { Aviso.Style = (Style)FindResource("BandaInfo"); LblVerificacion.Text = "Todavía no se ha leído dónde está cada CFDI. Pulsa «Verificar ahora»."; return; }
+            if (_s.Perfil.SoloDescargar) { Aviso.Style = (Style)FindResource("BandaInfo"); LblVerificacion.Text = "Esta empresa solo descarga y analiza los XML (no usa Comercial ni Contabilidad). Para ver también dónde está cada CFDI en esos sistemas, actívalos en «Empresas y e.firma» → Editar."; return; }
             var partes = new List<string>(); bool hayError = false;
             foreach (var s in new[] { SistemaCfdi.Disco, SistemaCfdi.Comercial, SistemaCfdi.Add, SistemaCfdi.Polizas })
             {
                 if (!_verif.TryGetValue(s, out var v)) continue;
-                if (!v.Configurado) { partes.Add(SistemaCfdi.Nombre(s) + ": sin configurar"); continue; }
+                if (!v.Configurado) { if ((s == SistemaCfdi.Comercial && _s.Perfil.ComercialPro) || ((s == SistemaCfdi.Add || s == SistemaCfdi.Polizas) && _s.Perfil.Contabilidad)) partes.Add(SistemaCfdi.Nombre(s) + ": sin configurar"); continue; }
                 if (!v.Ok) { hayError = true; partes.Add(SistemaCfdi.Nombre(s) + ": " + (v.Mensaje ?? "error")); continue; }
                 partes.Add(SistemaCfdi.Nombre(s) + " ✓ " + Hace(v.Fecha));
             }

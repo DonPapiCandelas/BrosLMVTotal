@@ -82,7 +82,27 @@ namespace BrosLMV.DescargasUI
 
             ActualizarPanelComercialAuth();
             CargarContabilidad();
+            _perfilInicial = _existente == null ? new PerfilEmpresa() : BrosSatDb.ObtenerPerfil(_conn, _existente.RFC);
+            ChkPerfilComercial.IsChecked = _perfilInicial.ComercialPro; ChkPerfilConta.IsChecked = _perfilInicial.Contabilidad; ChkPerfilPremium.IsChecked = _perfilInicial.ComercialPremium;
+            Perfil_Changed(null, null);
         }
+
+        // ---- Sistemas que usa la empresa ----
+
+        private PerfilEmpresa _perfilInicial = new PerfilEmpresa();
+
+        // Cada sistema marcado muestra su configuracion; sin marcar, se oculta (y al guardar se quita su integracion).
+        private void Perfil_Changed(object sender, RoutedEventArgs e)
+        {
+            if (CardComercialEmp == null || CardContaEmp == null) return;   // durante la carga
+            CardComercialEmp.Visibility = ChkPerfilComercial.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            CardContaEmp.Visibility = ChkPerfilConta.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            LblPerfilResumen.Text = ChkPerfilComercial.IsChecked != true && ChkPerfilConta.IsChecked != true
+                ? "Esta empresa solo descarga y analiza los XML (sin integración)."
+                : "Se integrará con: " + string.Join(" + ", new[] { ChkPerfilComercial.IsChecked == true ? "Comercial Pro" : null, ChkPerfilConta.IsChecked == true ? "Contabilidad" : null }.Where(x => x != null)) + ".";
+        }
+
+        private PerfilEmpresa PerfilElegido() => new PerfilEmpresa { ComercialPro = ChkPerfilComercial.IsChecked == true, Contabilidad = ChkPerfilConta.IsChecked == true, ComercialPremium = false };
 
         // ---- Contabilidad (ADD) ----
 
@@ -167,7 +187,8 @@ namespace BrosLMV.DescargasUI
         // Guarda (o quita) la integracion con Contabilidad de este RFC. El RFC ya se valido antes de guardar la empresa.
         private void GuardarContabilidad(string rfc)
         {
-            var cfg = LeerContabilidad(rfc);
+            BrosSatDb.GuardarPerfil(_conn, rfc, PerfilElegido());
+            var cfg = ChkPerfilConta.IsChecked == true ? LeerContabilidad(rfc) : null;
             if (cfg == null) BrosSatDb.QuitarContabilidad(_conn, rfc); else BrosSatDb.GuardarContabilidad(_conn, cfg);
         }
 
@@ -343,9 +364,17 @@ namespace BrosLMV.DescargasUI
             string comercialEmitidos = string.IsNullOrWhiteSpace(TxtComercialEmitidos.Text) ? null : TxtComercialEmitidos.Text.Trim();
             string comercialConexion = ArmarConexionComercialCifrada();
 
+            // Un sistema desmarcado se quita: se confirma antes si ya tenia algo configurado. Lo ya importado/cargado en el sistema no se toca.
+            var perfil = PerfilElegido();
+            bool teniaComercial = !string.IsNullOrEmpty(comercialRecibidos) || !string.IsNullOrEmpty(comercialEmitidos) || !string.IsNullOrEmpty(comercialConexion);
+            bool teniaConta = CmbContabilidad.SelectedItem != null;
+            string quitar = (!perfil.ComercialPro && teniaComercial ? "• Comercial Pro (la conexión y las carpetas que tenías configuradas)\n" : "") + (!perfil.Contabilidad && teniaConta ? "• Contabilidad (la empresa y el usuario configurados)\n" : "");
+            if (quitar.Length > 0 && MessageBox.Show(this, "Vas a dejar de usar con esta empresa:\n\n" + quitar + "\nSe quita su configuración de BrosLMV Descargas. Lo que ya se cargó o importó en esos sistemas se queda ahí.\n\n¿Continuar?", "Quitar sistema", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+            if (!perfil.ComercialPro) { comercialRecibidos = null; comercialEmitidos = null; comercialConexion = null; }
+
             // Contabilidad: si la empresa elegida no es de este RFC, se avisa ANTES de guardar nada.
             string rfcGuardar = esEdicion ? _existente.RFC : TxtRfc.Text.Trim().ToUpperInvariant();
-            if (CmbContabilidad.SelectedItem is EmpresaContabilidadInfo ec && !string.Equals(ec.Rfc, rfcGuardar, StringComparison.OrdinalIgnoreCase))
+            if (ChkPerfilConta.IsChecked == true && CmbContabilidad.SelectedItem is EmpresaContabilidadInfo ec && !string.Equals(ec.Rfc, rfcGuardar, StringComparison.OrdinalIgnoreCase))
             {
                 MessageBox.Show(this, "La empresa de Contabilidad elegida tiene el RFC " + ec.Rfc + ", distinto al de esta empresa (" + rfcGuardar + ").\n\nElige la correcta o deja la lista sin elegir.",
                     "Contabilidad", MessageBoxButton.OK, MessageBoxImage.Warning);

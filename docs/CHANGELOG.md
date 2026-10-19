@@ -8,6 +8,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 2.9.0] — 2026-10-18 — Perfil por empresa
+
+### Agregado
+- **Sistemas de CONTPAQi por empresa** (Comercial Pro, Contabilidad; Comercial Premium próximamente): Descargas funciona sola y cada sistema marcado activa su integración y sus pantallas; lo no marcado se oculta (menú, Descargas, CFDI, Panel, Empresas, Mapa). Las empresas de antes conservan lo suyo: el perfil se deduce de su configuración. Ver `descargas\DOCUMENTACION.md`.
+
+### Notas
+- Sin cambios en el addon de Comercial. Tabla nueva `EmpresaPerfil` (se crea sola).
+
 ## [Descargas 2.8.0] — 2026-10-18 — Expediente de CFDI en Excel
 
 ### Agregado

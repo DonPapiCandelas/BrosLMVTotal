@@ -82,10 +82,11 @@ namespace BrosLMV.DescargasUI.Paginas
             }
             catch { texto = "No se pudo leer"; estilo = "PastillaAviso"; }
 
-            string comercial = !string.IsNullOrWhiteSpace(e.ComercialConexionSql) ? "Conectada (directo)"
+            var perfil = BrosSatDb.ObtenerPerfil(_s.Conn, e.RFC);
+            string comercial = !perfil.ComercialPro ? "No aplica" : !string.IsNullOrWhiteSpace(e.ComercialConexionSql) ? "Conectada (directo)"
                 : (!string.IsNullOrWhiteSpace(e.ComercialCarpetaXmlRecibidos) || !string.IsNullOrWhiteSpace(e.ComercialCarpetaXmlEmitidos)) ? "Solo carpetas" : "Sin configurar";
             string contabilidad;
-            try { var cc = BrosSatDb.ObtenerContabilidad(_s.Conn, e.RFC); contabilidad = cc == null ? "Sin configurar" : (cc.CargaAutomatica ? "Automática · " : "Manual · ") + cc.BaseDatos; }
+            try { var cc = BrosSatDb.ObtenerContabilidad(_s.Conn, e.RFC); contabilidad = !perfil.Contabilidad ? "No aplica" : cc == null ? "Sin configurar" : (cc.CargaAutomatica ? "Automática · " : "Manual · ") + cc.BaseDatos; }
             catch { contabilidad = "Sin configurar"; }
             return new EmpresaVista
             {

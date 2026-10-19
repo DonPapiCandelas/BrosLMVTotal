@@ -82,10 +82,29 @@ namespace BrosLMV.DescargasUI.Paginas
                 TxtFirma.Text = AntesDeParentesis(firma.Detalle); TxtFirma.ToolTip = firma.Detalle;
             }
 
+            // Sin Comercial Pro la celda habla del sistema que SI use la empresa (o dice que solo descarga).
+            if (!_s.Perfil.ComercialPro)
+            {
+                if (_s.Perfil.Contabilidad)
+                {
+                    RotuloSistema.Text = "CONTABILIDAD";
+                    var v = MapaCfdi.ObtenerVerificaciones(_s.Conn, emp.RFC);
+                    bool ok = v.TryGetValue(SistemaCfdi.Add, out var va) && va.Ok;
+                    PuntoComercial.Fill = P(ok ? "PincelOk" : "PincelTexto3"); TxtComercial.Text = ok ? "Conectada (ADD)" : "Sin verificar";
+                    TxtComercial.ToolTip = ok ? "Revisa «Mapa de CFDI» para ver qué falta cargar." : "Pulsa «Verificar ahora» en «Mapa de CFDI».";
+                }
+                else
+                {
+                    RotuloSistema.Text = "SISTEMAS CONTPAQi";
+                    PuntoComercial.Fill = P("PincelTexto3"); TxtComercial.Text = "Solo descarga"; TxtComercial.ToolTip = "Esta empresa no usa Comercial ni Contabilidad. Puedes activarlos en «Empresas y e.firma» → Editar.";
+                }
+            }
+            else { RotuloSistema.Text = "COMERCIAL"; }
             bool directa = !string.IsNullOrWhiteSpace(emp.ComercialConexionSql);
             bool carpetas = !string.IsNullOrWhiteSpace(emp.ComercialCarpetaXmlRecibidos) || !string.IsNullOrWhiteSpace(emp.ComercialCarpetaXmlEmitidos);
             var com = r.Salud.FirstOrDefault(h => h.Tema == "Comercial");
-            if (!directa && !carpetas) { PuntoComercial.Fill = P("PincelTexto3"); TxtComercial.Text = "Sin configurar"; TxtComercial.ToolTip = "Configúrala en «Empresas y e.firma»."; }
+            if (!_s.Perfil.ComercialPro) { /* ya pintado arriba */ }
+            else if (!directa && !carpetas) { PuntoComercial.Fill = P("PincelTexto3"); TxtComercial.Text = "Sin configurar"; TxtComercial.ToolTip = "Configúrala en «Empresas y e.firma»."; }
             else if (com != null && com.Nivel != NivelSalud.Ok) { PuntoComercial.Fill = PincelNivel(com.Nivel); TxtComercial.Text = "Pendiente de pasar"; TxtComercial.ToolTip = com.Detalle; }
             else { PuntoComercial.Fill = P("PincelOk"); TxtComercial.Text = directa ? "Conectada" : "Carpetas al día"; TxtComercial.ToolTip = com?.Detalle; }
 

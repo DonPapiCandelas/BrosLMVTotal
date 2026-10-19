@@ -45,6 +45,7 @@ namespace BrosLMV.DescargasUI.Paginas
             _conn = sesion.Conn;
             _empresa = sesion.Empresa;
             ChkOcultarNominas.IsChecked = _empresa.OcultarNominas;
+            BtnCrearDocumentos.Visibility = sesion.Perfil.ComercialPro ? Visibility.Visible : Visibility.Collapsed;   // solo con Comercial Pro
             Loaded += (s, e) => Cargar();
         }
 

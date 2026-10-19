@@ -144,14 +144,15 @@ namespace BrosLMV.Descargas.Datos
         {
             var res = new List<ResultadoVerificacion>();
             var uuids = UuidsDeEmpresa(conn, empresa.RFC);
+            var perfil = BrosSatDb.ObtenerPerfil(conn, empresa.RFC);
 
             progreso?.Invoke("Revisando los XML en disco...");
             res.Add(await Ejecutar(conn, empresa.RFC, SistemaCfdi.Disco, () => VerificarDisco(conn, empresa.RFC)));
 
             progreso?.Invoke("Revisando Comercial...");
-            res.Add(await Ejecutar(conn, empresa.RFC, SistemaCfdi.Comercial, () => VerificarComercial(conn, empresa, uuids)));
+            res.Add(await Ejecutar(conn, empresa.RFC, SistemaCfdi.Comercial, () => perfil.ComercialPro ? VerificarComercial(conn, empresa, uuids) : null));
 
-            var conta = BrosSatDb.ObtenerContabilidad(conn, empresa.RFC);
+            var conta = perfil.Contabilidad ? BrosSatDb.ObtenerContabilidad(conn, empresa.RFC) : null;
             progreso?.Invoke("Revisando el ADD de Contabilidad...");
             res.Add(await Ejecutar(conn, empresa.RFC, SistemaCfdi.Add, () => VerificarAdd(conn, empresa.RFC, conta, uuids)));
 
