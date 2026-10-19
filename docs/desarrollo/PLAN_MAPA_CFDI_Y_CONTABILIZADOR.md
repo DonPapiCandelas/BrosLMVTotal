@@ -92,6 +92,8 @@ Hoy ya se guardan conceptos, pagos y relaciones; **falta leer y guardar los comp
 
 ## 5. Fase 3 — Contabilizador en Excel
 
+> **Plan detallado y vigente: [`PLAN_CONTABILIZADOR.md`](PLAN_CONTABILIZADOR.md)** (2026-10-18: reglas por empresa, cuentas por tercero/rol/moneda, memoria de provisión, Excel vivo, fases 3.0–3.6). Lo de abajo es el planteamiento original.
+
 ### 5.1 Lo que se aprendió de la referencia
 Flujo: *XML (carpeta o ADD) → listado → padrón proveedor/cliente→cuenta → plantilla de asiento → vista previa editable con validaciones → registrar con el SDK → asociar CFDI a póliza y movimiento*. Detalle y debilidades en el análisis de `Entrenamiento\contabilidad\`.
 
