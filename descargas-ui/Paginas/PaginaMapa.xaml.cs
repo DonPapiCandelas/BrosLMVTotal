@@ -129,7 +129,7 @@ namespace BrosLMV.DescargasUI.Paginas
             {
                 Fila = f, Sat = f.SatTotal > 0 ? f.SatTotal.ToString("N0") : "—", Descargados = f.Descargados.ToString("N0"),
                 SoloAdd = N(f.SoloSistemas, add), EstiloSoloAdd = (Style)FindResource(!add ? "PastillaNeutra" : f.SoloSistemas > 0 ? "PastillaInfo" : "PastillaNeutra"),
-                Comercial = N(f.EnComercial, com), Premium = f.Tipo == "Emitidos" ? N(f.EnPremium, Ok(SistemaCfdi.Premium)) : (Ok(SistemaCfdi.Premium) ? "n/a" : "—"), Add = N(f.EnAdd, add), Poliza = N(f.ConPoliza, pol),
+                Comercial = N(f.EnComercial, com), Premium = N(f.EnPremium, Ok(SistemaCfdi.Premium)), Add = N(f.EnAdd, add), Poliza = N(f.ConPoliza, pol),
                 FaltaAdd = N(f.FaltaAdd, add), FaltaComercial = N(f.FaltaComercial, com), SinPoliza = N(f.SinPoliza, pol),
                 EstiloFaltaAdd = Est(f.FaltaAdd, add), EstiloFaltaComercial = Est(f.FaltaComercial, com), EstiloSinPoliza = Est(f.SinPoliza, pol)
             }).ToList();
@@ -148,8 +148,8 @@ namespace BrosLMV.DescargasUI.Paginas
 
             if (Ok(SistemaCfdi.Premium))
             {
-                int emitidosPremium = _filas.Where(f => f.Tipo == "Emitidos").Sum(f => f.EnPremium), emitidos = _filas.Where(f => f.Tipo == "Emitidos").Sum(f => f.Descargados);
-                K6.Text = emitidosPremium.ToString("N0"); K6d.Text = "de " + emitidos.ToString("N0") + " emitidos tuyos · los recibidos no aplican";
+                int enPremium = _filas.Sum(f => f.EnPremium), total = _filas.Sum(f => f.Descargados);
+                K6.Text = enPremium.ToString("N0"); K6d.Text = "de " + total.ToString("N0") + " tuyos (emitidos y recibidos)";
             }
             else { K6.Text = "—"; K6d.Text = Configurado(SistemaCfdi.Premium) ? "no se pudo leer" : "sin configurar"; }
 

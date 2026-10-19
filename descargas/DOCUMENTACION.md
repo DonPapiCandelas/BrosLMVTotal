@@ -4,6 +4,12 @@
 
 ## Historial de versiones del instalador
 
+### 3.0.1 — 2026-10-18 — Premium también registra recibidos
+
+- **Corrección**: Comercial Premium **sí guarda los CFDI recibidos** (los carga a su ADD, que tiene el mismo esquema que el de Contabilidad). Se comprobó con una compra real: `admFoliosDigitales` los registra con `CESTADO` 11 (cargado al ADD, sin documento) o 13 (asociado a una compra, con `CIDDOCTO` y `CIDDOCTODSL` = GuidDocument del ADD).
+- El Mapa y el detalle del CFDI ya muestran Premium también para **recibidos** («En el ADD (sin documento)» / «Con documento»); desaparece el «n/a». La tarjeta cuenta emitidos y recibidos.
+- **Pendiente**: cargar los recibidos de Descargas al ADD de Premium (mismo mecanismo SACI con el `CGUIDDSL` de `admParametros`; falta el usuario de Premium).
+
 ### 3.0.0 — 2026-10-18 — Conector de solo lectura con Comercial Premium
 
 - **Agregado: Comercial Premium** como tercer sistema por empresa (Empresas y e.firma → Editar → «CONTPAQi Comercial Premium»). Se elige la base `adXXX` de Premium (se propone la del mismo RFC; «Actualizar lista» relee el servidor).

@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // ComercialPremium.cs -- empresas de CONTPAQi Comercial Premium de este servidor SQL (bases adXXX). Solo lectura.
-// Premium solo registra en su base los CFDI que TIMBRA (emitidos) en admFoliosDigitales; ver Entrenamiento\comercial_premium\ANALISIS_CFDI_PREMIUM.md.
+// Premium registra en admFoliosDigitales los CFDI que TIMBRA (emitidos) y los que carga a su ADD (recibidos); ver Entrenamiento\comercial_premium\ANALISIS_CFDI_PREMIUM.md.
 
 using System;
 using System.Collections.Generic;
@@ -56,11 +56,11 @@ namespace BrosLMV.Descargas.Cola
             return lista;
         }
 
-        // Estado de un CFDI emitido en admFoliosDigitales.CESTADO.
+        // Estado en admFoliosDigitales.CESTADO: 2 timbrado, 3 cancelado, 1 pendiente; recibidos: 11 cargado al ADD sin documento, 13 asociado a un documento.
         public static string EstadoTexto(int estado, bool tieneUuid)
         {
             if (!tieneUuid) return "Pendiente";
-            switch (estado) { case 2: return "Timbrado"; case 3: return "Cancelado"; case 1: return "Pendiente"; default: return "Estado " + estado; }
+            switch (estado) { case 2: return "Timbrado"; case 3: return "Cancelado"; case 1: return "Pendiente"; case 11: return "En el ADD (sin documento)"; case 13: return "Con documento"; default: return "Estado " + estado; }
         }
     }
 }

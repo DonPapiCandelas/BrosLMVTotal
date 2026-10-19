@@ -8,6 +8,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 3.0.1] — 2026-10-18
+
+### Corregido
+- Comercial Premium también registra CFDI **recibidos**; el Mapa los muestra («En el ADD (sin documento)» / «Con documento») en vez de «n/a».
+
 ## [Descargas 3.0.0] — 2026-10-18 — Comercial Premium (solo lectura)
 
 ### Agregado

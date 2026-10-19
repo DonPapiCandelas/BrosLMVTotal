@@ -75,7 +75,7 @@ namespace BrosLMV.Descargas.Datos
         public int EnDisco { get; set; }
         public int EnComercial { get; set; }
         public int ConDocumento { get; set; }
-        public int EnPremium { get; set; }        // emitidos que Premium timbro
+        public int EnPremium { get; set; }        // CFDI que Premium timbro (emitidos) o cargo a su ADD (recibidos)
         public int EnAdd { get; set; }
         public int ConPoliza { get; set; }
         public int SoloSistemas { get; set; }     // estan en el ADD pero NO en Descargas (faltan por bajar del SAT)
@@ -264,7 +264,7 @@ FROM docDocumentCFDiSAT s LEFT JOIN docDocument d ON d.DocumentID = s.DocumentID
             return estados;
         }
 
-        // Comercial Premium: CFDI que timbro (admFoliosDigitales) con su documento. Null = sin base de Premium configurada. Solo emitidos.
+        // Comercial Premium: CFDI que timbro o cargo a su ADD (admFoliosDigitales) con su documento. Null = sin base de Premium configurada.
         private static List<EstadoCfdi> VerificarPremium(SqlConnection conn, string rfc, PremiumConfig cfg, HashSet<Guid> uuids)
         {
             if (cfg == null) return null;

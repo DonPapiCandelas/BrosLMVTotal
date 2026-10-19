@@ -116,7 +116,7 @@
                        Text="BrosLMV Descargas funciona sola: baja, ordena y analiza los XML del SAT y genera expedientes en Excel. Si la empresa usa un sistema de CONTPAQi, márcalo para integrarlo; los que no marques no aparecen en la aplicación."/>
             <CheckBox x:Name="ChkPerfilComercial" Content="CONTPAQi Comercial Pro" Margin="0,0,0,6" Checked="Perfil_Changed" Unchecked="Perfil_Changed"/>
             <CheckBox x:Name="ChkPerfilConta" Content="CONTPAQi Contabilidad (ADD y pólizas)" Margin="0,0,0,6" Checked="Perfil_Changed" Unchecked="Perfil_Changed"/>
-            <CheckBox x:Name="ChkPerfilPremium" Content="CONTPAQi Comercial Premium (solo lectura de los CFDI emitidos)" Margin="0,0,0,6" Checked="Perfil_Changed" Unchecked="Perfil_Changed"/>
+            <CheckBox x:Name="ChkPerfilPremium" Content="CONTPAQi Comercial Premium (solo lectura)" Margin="0,0,0,6" Checked="Perfil_Changed" Unchecked="Perfil_Changed"/>
             <TextBlock x:Name="LblPerfilResumen" Foreground="#64748B" FontSize="11.5" Margin="0,4,0,0" TextWrapping="Wrap"/>
           </StackPanel>
         </Border>
@@ -193,7 +193,7 @@
           <StackPanel>
             <TextBlock Text="INTEGRACIÓN CON CONTPAQi COMERCIAL PREMIUM (OPCIONAL)" Foreground="#64748B" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10"/>
             <TextBlock Foreground="#94A3B8" FontSize="11" Margin="0,0,0,10" TextWrapping="Wrap"
-                       Text="Elige la empresa de Comercial Premium de este RFC. BrosLMV solo LEE su base de datos para decirte qué CFDI emitidos ya timbró Premium, su documento y si están cancelados. No modifica nada en Premium. Premium no guarda los CFDI recibidos, así que ahí no hay nada que comparar."/>
+                       Text="Elige la empresa de Comercial Premium de este RFC. BrosLMV solo LEE su base de datos para decirte qué CFDI (emitidos y recibidos) ya registró Premium, con qué documento y si están cancelados. No modifica nada en Premium."/>
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0">
