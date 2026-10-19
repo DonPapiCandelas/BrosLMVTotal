@@ -21,7 +21,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
     <ProjectReference Include="..\descargas\BrosLMV.Descargas.csproj" />
+    <Compile Include="..\descargas-ui\ContaExcel.cs" Link="ContaExcel.cs" />
   </ItemGroup>
 
 </Project>

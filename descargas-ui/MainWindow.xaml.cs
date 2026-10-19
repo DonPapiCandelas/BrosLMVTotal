@@ -36,7 +36,7 @@ namespace BrosLMV.DescargasUI
     internal static class VersionApp
     {
         // Misma version que el instalador (descargas-instalador\*.csproj); se cambia junto con ella.
-        public const string Actual = "3.3.0";
+        public const string Actual = "3.4.0";
     }
 
     public partial class MainWindow : Window
@@ -179,6 +179,10 @@ namespace BrosLMV.DescargasUI
             var vis = comercial ? Visibility.Visible : Visibility.Collapsed;
             NavVinculos.Visibility = vis; NavCancelaciones.Visibility = vis;
             if (!comercial && (_claveActual == "vinculos" || _claveActual == "cancelaciones")) { _claveActual = "panel"; NavPanel.IsChecked = true; }
+            // Contabilizador: solo si la empresa usa Contabilidad.
+            var conta = _sesion?.Perfil?.Contabilidad == true ? Visibility.Visible : Visibility.Collapsed;
+            NavSeccionConta.Visibility = conta; NavTerceros.Visibility = conta;
+            if (conta != Visibility.Visible && _claveActual == "terceros") { _claveActual = "panel"; NavPanel.IsChecked = true; }
         }
 
         // El resumen (salud, indicadores, cobertura) se calcula despues de pintar la ventana para que abra de inmediato.
@@ -304,6 +308,7 @@ namespace BrosLMV.DescargasUI
                 case "cobertura": return new PaginaCobertura(_sesion);
                 case "conciliacion": return new PaginaConciliacion(_sesion);
                 case "mapa": return new PaginaMapa(_sesion);
+                case "terceros": return new PaginaTerceros(_sesion);
                 case "cancelaciones": return new PaginaCancelaciones(_sesion);
                 case "vinculos": return new PaginaVinculos(_sesion);
                 case "reportes": return new PaginaReportes(_sesion);

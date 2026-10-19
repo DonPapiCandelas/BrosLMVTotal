@@ -381,6 +381,45 @@ IF COL_LENGTH('EmpresaPremium', 'Usuario') IS NULL ALTER TABLE EmpresaPremium AD
 IF COL_LENGTH('EmpresaPremium', 'ClaveCifrada') IS NULL ALTER TABLE EmpresaPremium ADD ClaveCifrada VARBINARY(512) NULL;
 IF COL_LENGTH('EmpresaPremium', 'CargaAutomatica') IS NULL ALTER TABLE EmpresaPremium ADD CargaAutomatica BIT NOT NULL CONSTRAINT DF_EmpresaPremium_Auto DEFAULT 0;
 
+-- ===== Contabilizador (3.4.0): catalogo de cuentas de Contabilidad y terceros con cuentas por rol y moneda =====
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ContaCuentaCache')
+CREATE TABLE ContaCuentaCache (
+    RFC NVARCHAR(13) NOT NULL,
+    Codigo NVARCHAR(40) NOT NULL,
+    Nombre NVARCHAR(300) NULL,
+    Tipo NVARCHAR(5) NULL,
+    Moneda NVARCHAR(5) NOT NULL,
+    Afectable BIT NOT NULL,
+    EsBaja BIT NOT NULL,
+    UsaSegmento BIT NOT NULL,
+    FechaLectura DATETIME2 NOT NULL,
+    CONSTRAINT PK_ContaCuentaCache PRIMARY KEY (RFC, Codigo)
+);
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ContaTercero')
+CREATE TABLE ContaTercero (
+    RFC NVARCHAR(13) NOT NULL,                 -- empresa
+    Clave NVARCHAR(400) NOT NULL,              -- RFC del tercero (o RFC|NOMBRE si es generico)
+    TerceroRFC NVARCHAR(13) NULL,
+    Nombre NVARCHAR(300) NULL,
+    EsProveedor BIT NOT NULL DEFAULT 0,
+    EsCliente BIT NOT NULL DEFAULT 0,
+    CodigoConta NVARCHAR(40) NULL,             -- codigo del cliente/proveedor en Contabilidad
+    Origen NVARCHAR(15) NOT NULL,              -- Contabilidad / CFDI / Manual
+    NumCfdi INT NOT NULL DEFAULT 0,
+    CONSTRAINT PK_ContaTercero PRIMARY KEY (RFC, Clave)
+);
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ContaTerceroCuenta')
+CREATE TABLE ContaTerceroCuenta (
+    RFC NVARCHAR(13) NOT NULL,
+    Clave NVARCHAR(400) NOT NULL,
+    Rol NVARCHAR(40) NOT NULL,                 -- Provision, Gasto, Anticipo, Cliente, Ingreso...
+    Moneda NVARCHAR(5) NOT NULL,
+    Cuenta NVARCHAR(40) NOT NULL,
+    Origen NVARCHAR(15) NOT NULL,              -- Contabilidad (leida) / Manual / Aprendida
+    FechaCambio DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_ContaTerceroCuenta PRIMARY KEY (RFC, Clave, Rol, Moneda)
+);
+
 -- ===== Mapa de CFDI por sistema (2.7.0) =====
 -- La VERDAD de donde esta cada CFDI se lee de cada sistema (solo lectura) y se guarda aqui; las banderas viejas
 -- (FechaSincronizadoComercial / FechaCargadoContabilidad) solo dicen que BrosLMV lo mando alguna vez.

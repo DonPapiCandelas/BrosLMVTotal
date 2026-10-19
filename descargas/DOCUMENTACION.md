@@ -4,6 +4,16 @@
 
 ## Historial de versiones del instalador
 
+### 3.4.0 — 2026-10-18 — Contabilizador, fase 3.1: «Terceros y cuentas»
+
+- **Agregado**: sección **CONTABILIZADOR → Terceros y cuentas** (solo para empresas con Contabilidad). La cuenta de cada cliente y proveedor **por rol y por moneda**: provisión, gasto, provisión/gasto complementarias, anticipo, cliente, ingreso. Un proveedor puede tener cuenta en pesos, en dólares y en euros, y otra de anticipos; ya no depende del campo único de Contabilidad.
+- **Sincronizar con Contabilidad** (solo lectura): copia el catálogo de cuentas (moneda, afectable, baja, uso de segmento), los clientes y proveedores y las cuentas que ya tienen (la moneda de cada cuenta decide su fila), y agrega los terceros de **tus CFDI que Contabilidad no conoce** (filtro «Solo en tus CFDI»). Los terceros de Contabilidad sin RFC se emparejan por nombre con tus CFDI; los RFC genéricos (extranjero, público en general) se distinguen por nombre.
+- **Editar**: doble clic en un tercero abre sus cuentas; la cuenta debe existir, ser afectable y de la misma moneda (si es de otra moneda se guarda con aviso). **Lo que escribes es «Manual» y nunca se pisa al sincronizar.**
+- **Excel en masa**: *Exportar a Excel* genera un libro (sin macros) con la hoja «Asignaciones» (una fila por cuenta, listas desplegables de rol y moneda, nombre de la cuenta por fórmula, columna Acción = BORRAR), «Catálogo», «Listas» y «Cómo usar». *Importar de Excel* lee el libro, **valida todo antes** (errores, avisos) y solo aplica lo que confirmes.
+- **Esquema** (se crea solo): `ContaCuentaCache`, `ContaTercero`, `ContaTerceroCuenta`. Consola: `--sincronizar-conta --rfc X --conn …`. 81 pruebas (5 nuevas).
+- Probado con la empresa de prueba: 949 cuentas, 1,314 terceros (23 solo en CFDI) y 179 cuentas asignadas leídas.
+- **Pendiente de la fase 3.1**: crear cuentas y terceros en Contabilidad desde aquí (SDK) y aprender cuentas de pólizas históricas; la importación de los asientos nativos va con las reglas (fase 3.2).
+
 ### 3.3.0 — 2026-10-18 — Base del Contabilizador: servicio del SDK de Contabilidad
 
 - **Agregado** (`Cola\ContabilidadSdk.cs`): servicio que usa el SDK COM de Contabilidad desde Descargas (64 bits, sin puente): `ListarEmpresas`, `Abrir(alias, usuario, clave)`, `CrearPoliza` (todo o nada; relee Id, ejercicio, periodo, folio y GUID de póliza y movimientos), `AsociarCfdi` (a póliza o a movimiento) y `BorrarPoliza` (póliza + movimientos + asociaciones, base del «deshacer»). Todo en un hilo STA propio.

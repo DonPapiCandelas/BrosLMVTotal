@@ -8,6 +8,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 3.4.0] — 2026-10-18
+
+### Agregado
+- **Contabilizador · Terceros y cuentas**: sincroniza el catálogo y los clientes/proveedores de Contabilidad (solo lectura) y permite asignar a cada tercero cuentas por rol y moneda, a mano o en masa con Excel (exportar/importar con validación).
+
 ## [Descargas 3.3.0] — 2026-10-18
 
 ### Agregado

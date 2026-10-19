@@ -54,7 +54,7 @@ namespace BrosLMV.Descargas
             bool autenticar = false, solicitar = false, auto = false, reparsear = false, autoTodas = false, verificarEstatus = false;
             bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false, mostrarConciliacion = false, mostrarVinculos = false;
             string exportarRespaldo = null, importarRespaldo = null, carpetaFiel = null;
-            bool cargarContabilidad = false; bool cargarPremium = false; bool sdkProbar = false; string sdkEmpresa = null, sdkCuenta1 = null, sdkCuenta2 = null, sdkSegmento = null, sdkUuid = null; int maxContabilidad = 0; bool verificarSistemas = false; bool expedienteResumen = false; string expDesde = null, expHasta = null;
+            bool cargarContabilidad = false; bool cargarPremium = false; bool sdkProbar = false; bool sincronizarConta = false; string sdkEmpresa = null, sdkCuenta1 = null, sdkCuenta2 = null, sdkSegmento = null, sdkUuid = null; int maxContabilidad = 0; bool verificarSistemas = false; bool expedienteResumen = false; string expDesde = null, expHasta = null;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -146,6 +146,8 @@ namespace BrosLMV.Descargas
                     // Laboratorio del SDK de Contabilidad: con --sdk-empresa lista las empresas que ve el SDK; con --sdk-cuenta1/--sdk-cuenta2 crea una poliza
                     // de Diario de prueba (100 pesos), la relee, opcionalmente le asocia --sdk-uuid y LA BORRA. Usar solo en empresas de prueba.
                     case "--sdk-probar": sdkProbar = true; break;
+                    // Lee (solo lectura) el catalogo de cuentas y los clientes/proveedores de Contabilidad para el Contabilizador. Requiere --conn y --rfc.
+                    case "--sincronizar-conta": sincronizarConta = true; break;
                     case "--sdk-empresa": sdkEmpresa = Siguiente(args, ref i); break;
                     case "--sdk-cuenta1": sdkCuenta1 = Siguiente(args, ref i); break;
                     case "--sdk-cuenta2": sdkCuenta2 = Siguiente(args, ref i); break;
@@ -377,6 +379,20 @@ namespace BrosLMV.Descargas
                         ? "Contabilidad: " + r.Cargados + " cargados, " + r.YaEstaban + " ya estaban, " + r.NoSeCargaron + " rechazados, " + r.SinArchivo + " sin archivo."
                         : "Contabilidad: ERROR " + r.Error);
                     return r.Exito ? 0 : 1;
+                }
+            }
+
+            if (sincronizarConta)
+            {
+                if (string.IsNullOrEmpty(conexionSql) || string.IsNullOrEmpty(rfc)) { Console.Error.WriteLine("--sincronizar-conta requiere --conn y --rfc."); return Uso(); }
+                using (var cc = new SqlConnection(conexionSql))
+                {
+                    cc.Open(); EsquemaSql.Asegurar(cc);
+                    var cfgc = BrosSatDb.ObtenerContabilidad(cc, rfc);
+                    if (cfgc == null) { Console.Error.WriteLine("Ese RFC no tiene Contabilidad configurada."); return 1; }
+                    var rs = ContaDatos.Sincronizar(cc, rfc, cfgc.BaseDatos, Console.WriteLine);
+                    Console.WriteLine(rs.Ok ? "Cuentas " + rs.Cuentas + " | terceros " + rs.Terceros + " (nuevos por CFDI: " + rs.Descubiertos + ") | cuentas asignadas " + rs.Asignaciones : "ERROR " + rs.Error);
+                    return rs.Ok ? 0 : 1;
                 }
             }
 

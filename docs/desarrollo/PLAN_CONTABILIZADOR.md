@@ -1,6 +1,6 @@
 # Plan: Contabilizador de BrosLMV (pólizas de Contabilidad a partir de CFDI)
 
-> Estado (2026-10-18): decisiones del dueño tomadas (empezar por **compras y ventas**, luego pagos; reglas editadas **en la app**; **biblioteca de expresiones**; **sin nómina**; importar los asientos nativos). **Fase 3.0 hecha en Descargas 3.3.0** (servicio del SDK probado en vivo). Antes: plan para revisión. Sustituye y detalla la «Fase 3» de
+> Estado (2026-10-18): decisiones del dueño tomadas (empezar por **compras y ventas**, luego pagos; reglas editadas **en la app**; **biblioteca de expresiones**; **sin nómina**; importar los asientos nativos). **Fase 3.0 hecha en Descargas 3.3.0** (servicio del SDK probado en vivo). **Fase 3.1 (terceros y cuentas por rol/moneda, sincronización y Excel) hecha en 3.4.0**; falta crear cuentas/terceros por SDK y aprender de pólizas históricas (3.1.1). La importación de los asientos nativos va con las reglas (3.2). Antes: plan para revisión. Sustituye y detalla la «Fase 3» de
 > `PLAN_MAPA_CFDI_Y_CONTABILIZADOR.md`. Se apoya en lo que ya existe en Descargas 3.2.0 (descarga del SAT, mapa de CFDI por sistema,
 > carga al ADD de Contabilidad y de Premium, expediente en Excel) y en el análisis de cómo guarda CONTPAQi Contabilidad sus propios asientos.
 

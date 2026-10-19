@@ -1,0 +1,51 @@
+<UserControl x:Class="BrosLMV.DescargasUI.Paginas.PaginaTerceros"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:BrosLMV.DescargasUI.Controles">
+  <Grid Margin="32,26,32,24">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <ui:EncabezadoPagina Grid.Row="0" Titulo="Terceros y cuentas" Subtitulo="La cuenta de cada cliente y proveedor por rol y por moneda (provisión, gasto, anticipo…). Es la base para contabilizar los CFDI.">
+      <StackPanel Orientation="Horizontal">
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE8E5;" Content="Importar de Excel" Margin="0,0,8,0" Click="BtnImportar_Click" ToolTip="Lee un libro exportado desde aquí, con las cuentas que cambiaste, lo valida y lo aplica."/>
+        <Button Style="{StaticResource Ghost}" ui:Ui.Glifo="&#xE74E;" Content="Exportar a Excel" Margin="0,0,8,0" Click="BtnExportar_Click" ToolTip="Libro para asignar cuentas en masa, con listas de roles, monedas y el catálogo de cuentas."/>
+        <Button x:Name="BtnSincronizar" Style="{StaticResource Primary}" ui:Ui.Glifo="&#xE72C;" Content="Sincronizar con Contabilidad" Click="BtnSincronizar_Click"/>
+      </StackPanel>
+    </ui:EncabezadoPagina>
+
+    <Border Grid.Row="1" x:Name="Aviso" Style="{StaticResource BandaInfo}" Margin="0,18,0,0">
+      <TextBlock x:Name="LblEstado" TextWrapping="Wrap" FontSize="13" VerticalAlignment="Center"/>
+    </Border>
+
+    <WrapPanel Grid.Row="2" Margin="0,16,0,0">
+      <TextBox x:Name="TxtBuscar" Width="280" Margin="0,0,10,8" ui:Ui.Marca="Buscar por nombre, RFC o cuenta" TextChanged="Filtro_Changed"/>
+      <ComboBox x:Name="CmbFiltro" Width="260" Margin="0,0,10,8" SelectedIndex="0" SelectionChanged="Filtro_Changed">
+        <ComboBoxItem Content="Todos los terceros" Tag="todos"/>
+        <ComboBoxItem Content="Proveedores" Tag="proveedores"/>
+        <ComboBoxItem Content="Clientes" Tag="clientes"/>
+        <ComboBoxItem Content="Sin cuenta principal" Tag="sincuenta"/>
+        <ComboBoxItem Content="Con varias monedas" Tag="monedas"/>
+        <ComboBoxItem Content="Solo en tus CFDI (no están en Contabilidad)" Tag="cfdi"/>
+      </ComboBox>
+      <TextBlock x:Name="LblConteo" Style="{StaticResource TextoSecundario}" VerticalAlignment="Center" Margin="4,0,0,8"/>
+    </WrapPanel>
+
+    <DataGrid Grid.Row="3" x:Name="Grid" IsReadOnly="True" MouseDoubleClick="Grid_MouseDoubleClick">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="TERCERO" Binding="{Binding Nombre}" Width="*" ElementStyle="{StaticResource CeldaTexto}"/>
+        <DataGridTextColumn Header="RFC" Binding="{Binding Rfc}" Width="140" ElementStyle="{StaticResource CeldaAtenuada}"/>
+        <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="130" ElementStyle="{StaticResource CeldaAtenuada}"/>
+        <DataGridTextColumn Header="CFDI" Binding="{Binding NumCfdi}" Width="60" ElementStyle="{StaticResource CeldaNumero}"/>
+        <DataGridTextColumn Header="PROVISIÓN / CLIENTE" Binding="{Binding Principal}" Width="220" ElementStyle="{StaticResource CeldaTexto}"/>
+        <DataGridTextColumn Header="GASTO" Binding="{Binding Gasto}" Width="150" ElementStyle="{StaticResource CeldaTexto}"/>
+        <DataGridTextColumn Header="OTRAS" Binding="{Binding Otras}" Width="160" ElementStyle="{StaticResource CeldaAtenuada}"/>
+        <DataGridTextColumn Header="ESTADO" Binding="{Binding Estado}" Width="150" ElementStyle="{StaticResource CeldaAtenuada}"/>
+      </DataGrid.Columns>
+    </DataGrid>
+  </Grid>
+</UserControl>
