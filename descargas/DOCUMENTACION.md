@@ -4,6 +4,13 @@
 
 ## Historial de versiones del instalador
 
+### 3.3.0 — 2026-10-18 — Base del Contabilizador: servicio del SDK de Contabilidad
+
+- **Agregado** (`Cola\ContabilidadSdk.cs`): servicio que usa el SDK COM de Contabilidad desde Descargas (64 bits, sin puente): `ListarEmpresas`, `Abrir(alias, usuario, clave)`, `CrearPoliza` (todo o nada; relee Id, ejercicio, periodo, folio y GUID de póliza y movimientos), `AsociarCfdi` (a póliza o a movimiento) y `BorrarPoliza` (póliza + movimientos + asociaciones, base del «deshacer»). Todo en un hilo STA propio.
+- **Consola**: `--sdk-probar` lista las empresas que ve el SDK; con `--sdk-empresa ctXXX --sdk-cuenta1 … --sdk-cuenta2 … [--sdk-segmento …] [--sdk-uuid …]` crea una póliza de Diario **sin afectar** de prueba, la relee, asocia el CFDI y **la borra**. Solo para empresas de prueba.
+- **Probado en vivo** (laboratorio y empresa de prueba): crear, folio automático, asociar CFDI, borrar, repetido y entre empresas; los conteos de pólizas y asociaciones volvieron a su valor original.
+- No cambia nada que el usuario vea todavía; es la primera pieza del Contabilizador (plan: `docs\desarrollo\PLAN_CONTABILIZADOR.md`, fase 3.0).
+
 ### 3.2.0 — 2026-10-18 — Validación: el total del documento contra el del CFDI
 
 - **Agregado**: el Mapa compara el total de cada documento de **Comercial Pro / Premium** contra el total de su CFDI. Si no cuadran (más de 0.01) aparece la pestaña **«Total distinto (N)»** con esos CFDI, y en el detalle del CFDI la tabla de documentos muestra **Total CFDI** y **Diferencia** en rojo con el aviso: suele ser una retención, un descuento o un impuesto que falta en el documento (caso real: compra de 3,480.00 para un CFDI de 3,382.50 porque no se capturó la retención).

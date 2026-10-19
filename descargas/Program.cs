@@ -54,7 +54,7 @@ namespace BrosLMV.Descargas
             bool autenticar = false, solicitar = false, auto = false, reparsear = false, autoTodas = false, verificarEstatus = false;
             bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false, mostrarConciliacion = false, mostrarVinculos = false;
             string exportarRespaldo = null, importarRespaldo = null, carpetaFiel = null;
-            bool cargarContabilidad = false; bool cargarPremium = false; int maxContabilidad = 0; bool verificarSistemas = false; bool expedienteResumen = false; string expDesde = null, expHasta = null;
+            bool cargarContabilidad = false; bool cargarPremium = false; bool sdkProbar = false; string sdkEmpresa = null, sdkCuenta1 = null, sdkCuenta2 = null, sdkSegmento = null, sdkUuid = null; int maxContabilidad = 0; bool verificarSistemas = false; bool expedienteResumen = false; string expDesde = null, expHasta = null;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -143,6 +143,14 @@ namespace BrosLMV.Descargas
                     case "--cargar-contabilidad": cargarContabilidad = true; break;
                     // Igual, pero al ADD de Comercial Premium (la empresa y el usuario se configuran en la app). Requiere --conn y --rfc.
                     case "--cargar-premium": cargarPremium = true; break;
+                    // Laboratorio del SDK de Contabilidad: con --sdk-empresa lista las empresas que ve el SDK; con --sdk-cuenta1/--sdk-cuenta2 crea una poliza
+                    // de Diario de prueba (100 pesos), la relee, opcionalmente le asocia --sdk-uuid y LA BORRA. Usar solo en empresas de prueba.
+                    case "--sdk-probar": sdkProbar = true; break;
+                    case "--sdk-empresa": sdkEmpresa = Siguiente(args, ref i); break;
+                    case "--sdk-cuenta1": sdkCuenta1 = Siguiente(args, ref i); break;
+                    case "--sdk-cuenta2": sdkCuenta2 = Siguiente(args, ref i); break;
+                    case "--sdk-segmento": sdkSegmento = Siguiente(args, ref i); break;
+                    case "--sdk-uuid": sdkUuid = Siguiente(args, ref i); break;
                     // Lee (solo lectura) donde esta cada CFDI: XML en disco, Comercial, ADD y polizas de Contabilidad, y imprime el resumen. Requiere --conn y --rfc.
                     case "--verificar-sistemas": verificarSistemas = true; break;
                     // Resumen en pantalla del expediente de un periodo (lee los XML en disco): --expediente-resumen --rfc X --desde 2026-01-01 --hasta 2026-03-31 --conn ...
@@ -371,6 +379,8 @@ namespace BrosLMV.Descargas
                     return r.Exito ? 0 : 1;
                 }
             }
+
+            if (sdkProbar) return ProbarSdkContabilidad(sdkEmpresa, sdkCuenta1, sdkCuenta2, sdkSegmento, sdkUuid);
 
             if (cargarPremium)
             {
@@ -895,6 +905,41 @@ namespace BrosLMV.Descargas
                 cmd.Parameters.AddWithValue("@LockOwner", "Session");
                 cmd.ExecuteNonQuery();
             }
+        }
+
+        // Prueba de laboratorio del SDK de Contabilidad (ver ContabilidadSdk.cs). Crea una poliza, la relee, asocia un CFDI (si se da) y la borra.
+        private static int ProbarSdkContabilidad(string empresa, string cuenta1, string cuenta2, string segmento, string uuid)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(empresa))
+                {
+                    foreach (var (alias, nombre) in ContabilidadSdkSesion.ListarEmpresas()) Console.WriteLine(alias + " | " + nombre);
+                    return 0;
+                }
+                using (var s = ContabilidadSdkSesion.Abrir(empresa, null, null))
+                {
+                    Console.WriteLine("Empresa abierta: " + empresa);
+                    if (string.IsNullOrEmpty(cuenta1) || string.IsNullOrEmpty(cuenta2)) return 0;
+                    var p = new PolizaSdk { Tipo = TipoPolizaSdk.Diario, Afectar = false, Fecha = DateTime.Today, Concepto = "PRUEBA BROSLMV SDK (se borra sola)" };
+                    p.Movimientos.Add(new MovimientoSdk { Cuenta = cuenta1, Cargo = true, Importe = 100m, Concepto = "Prueba cargo", Referencia = "BROS-PRUEBA", Segmento = segmento });
+                    p.Movimientos.Add(new MovimientoSdk { Cuenta = cuenta2, Cargo = false, Importe = 100m, Concepto = "Prueba abono", Referencia = "BROS-PRUEBA", Segmento = segmento });
+                    var r = s.CrearPoliza(p);
+                    if (!r.Ok) { Console.WriteLine("CrearPoliza: ERROR " + r.Error); return 1; }
+                    Console.WriteLine("Poliza creada: Id=" + p.Id + " " + p.Periodo + "/" + p.Ejercicio + " numero=" + p.Numero + " guid=" + p.Guid + " movs=" + string.Join(",", p.Movimientos.ConvertAll(m => m.Guid)));
+                    int rc = 0;
+                    if (!string.IsNullOrEmpty(uuid))
+                    {
+                        var a1 = s.AsociarCfdi(uuid, p.Guid, false); Console.WriteLine("Asociar a poliza: " + (a1.Ok ? "ok" : "ERROR " + a1.Error));
+                        var a2 = s.AsociarCfdi(uuid, p.Movimientos[0].Guid, true); Console.WriteLine("Asociar a movimiento: " + (a2.Ok ? "ok" : "ERROR " + a2.Error));
+                        if (!a1.Ok || !a2.Ok) rc = 1;
+                    }
+                    var b = s.BorrarPoliza(p.Ejercicio, p.Periodo, p.Tipo, p.Numero);
+                    Console.WriteLine("Borrar: " + (b.Ok ? "ok" : "ERROR " + b.Error));
+                    return b.Ok ? rc : 1;
+                }
+            }
+            catch (Exception ex) { Console.WriteLine("SDK: ERROR " + ex.Message); return 1; }
         }
 
         private static async Task<int> SincronizarComercial(string conexionSql, string rfcFiltro)

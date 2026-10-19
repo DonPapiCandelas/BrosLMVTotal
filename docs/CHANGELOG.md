@@ -8,6 +8,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 3.3.0] — 2026-10-18
+
+### Agregado
+- Servicio interno del **SDK de Contabilidad** (crear póliza, asociar CFDI, borrar) y comando de laboratorio `--sdk-probar`. Primera pieza del Contabilizador; sin cambios visibles todavía.
+
 ## [Descargas 3.2.0] — 2026-10-18
 
 ### Agregado

@@ -1,13 +1,8 @@
 # SDK de CONTPAQi Contabilidad — cómo escribir pólizas directo (sin Comercial)
 
-> **Estado: investigado y confirmado contra material oficial de CONTPAQi + un prototipo
-> real (fuera de este repo). No probado todavía en vivo desde BrosLMV** — es la
-> referencia técnica lista para implementar, no una función ya shipped. Complementa al
-> [Motor de Asientos Contables](MOTOR_ASIENTOS_CONTABLES.md), que resuelve pólizas
-> *dentro* de Comercial; esto resuelve escribir pólizas **directo en Contabilidad**,
-> sin pasar por Comercial en absoluto — útil cuando la fuente del dato no es un
-> documento de Comercial (ej. un CFDI leído de disco) o cuando no se quiere depender
-> del botón nativo "Sincronizar con contabilidad".
+> **Estado (2026-10-18): probado en vivo** desde PowerShell de 64 bits (sin puente x86): conectar, crear póliza, asociar CFDI a póliza y
+> movimiento, leer y **borrar**. Es la base del [Contabilizador](desarrollo/PLAN_CONTABILIZADOR.md). Complementa al
+> [Motor de Asientos Contables](MOTOR_ASIENTOS_CONTABLES.md), que resuelve pólizas *dentro* de Comercial; esto escribe **directo en Contabilidad**.
 
 ## Qué es, y por qué es un SDK distinto
 
@@ -17,10 +12,8 @@ SDK — nada que ver con XEngine (el que usa `ctx.erp`) ni con el SDK viejo de
 
 - **ProgID / librería:** `SDKCONTPAQNGLib` (COM), GUID de la type library
   `{4A6A81F3-B2B3-448C-A557-A005091BE801}` v1.0.
-- **Igual que XEngineLib, es COM de 32 bits** — el mismo problema que ya resolvimos
-  para `BrosLMV.Runner`. La solución encontrada (en el prototipo, no en este repo
-  todavía) es idéntica en espíritu: un proceso puente x86 aparte que habla JSON por
-  stdin/stdout, para que la app principal (64 bits) nunca tenga que serlo.
+- **Es un servidor COM de 32 bits fuera de proceso** (`SDKCONTPAQNG.exe`): una aplicación de 64 bits **lo usa directamente**
+  (probado), no hace falta un puente x86.
 
 ## Conexión
 
@@ -102,11 +95,10 @@ if (ok == 0) { /* movimiento.getCodigoError() / .getMensajeError() */ }
 poliza.crea();   // confirma la póliza completa
 ```
 
-**Enums confirmados** (valores vistos en uso real; puede haber más miembros sin
-confirmar todavía — no asumir la lista completa sin volver a revisar el SDK):
-`ETIPOPOLIZA.TIPO_INGRESOS`, `ECLASEPOLIZA.CLASE_AFECTAR`,
-`ESISTORIGEN.ORIG_CONTPAQNG`, `ETIPOIMPORTEMOVPOLIZA.MOVPOLIZA_CARGO` /
-`MOVPOLIZA_ABONO`.
+**Enums confirmados** (leídos de la type library): tipo de póliza 1 Ingresos · 2 Egresos · 3 Diario · 4 Orden · 5 Estadísticas;
+clase 1 Afectar · 2 Sin afectar; `SistOrigen` 11 Contabilidad NG; `TipoMovto` 1 Cargo · 2 Abono; `TipoAsoc` de CFDI 0 Póliza · 1 Movimiento.
+Notas de uso (alias de empresa = nombre de la base `ctXXX`, `Numero = 0` automático, segmento de negocio obligatorio en algunas empresas,
+`crea()` devuelve el Id, `borra()` elimina póliza + movimientos + asociaciones de CFDI): ver el detalle en el laboratorio del 2026-10-18.
 
 ## Cómo se relaciona con el Motor de Asientos Contables
 
@@ -123,17 +115,10 @@ este SDK la escribe directo en Contabilidad cuando no se quiera depender del bot
 nativo de sincronización — pero **esto es una posibilidad de diseño, no algo
 implementado ni probado todavía.**
 
-## Pendiente antes de que esto sea una capacidad real de BrosLMV
-
-1. Construir el puente x86 (mismo patrón que `BrosLMV.Runner` para XEngineLib) como
-   componente propio, no solo como referencia de otro proyecto.
-2. Probar en vivo contra una instancia real de Contabilidad — nada de este documento
-   se ha corrido desde este repo, solo se confirmó leyendo material oficial y un
-   prototipo externo.
-3. Confirmar la lista completa de valores de los enums (`ETIPOPOLIZA`, `ECLASEPOLIZA`,
-   `ESISTORIGEN`, `ETIPOIMPORTEMOVPOLIZA`) — solo se vio un valor de cada uno en uso.
-4. Decidir el mapeo de cuentas Comercial↔Contabilidad si se combina con el Motor de
-   Asientos (los catálogos son independientes, con formatos de código distintos).
+## Pendiente
+1. Pólizas con cuentas en moneda extranjera (`ImporteME`), periodos cerrados, `guardaPolizasEnLote` y el control de IVA (`TSdkCausacionIVA`).
+2. Crear cuentas, proveedores y clientes por SDK (clases `TSdkCuenta`, `TSdkProveedor`, `TSdkCliente`).
+3. El mapeo de cuentas entre Comercial y Contabilidad si se combina con el Motor de Asientos (los catálogos son independientes).
 
 ## Nota sobre el SDK de Comercial Premium (descartado)
 
