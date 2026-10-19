@@ -110,6 +110,12 @@ namespace BrosLMV.Descargas.Cola
         public static string DescifrarClave(ContabilidadConfig cfg) =>
             cfg.ClaveCifrada == null || cfg.ClaveCifrada.Length == 0 ? "" : DpapiHelper.Descifrar(cfg.ClaveCifrada);
 
+        internal static async Task<string> ProbarAccesoEnAsync(EmpresaContabilidadInfo emp, string usuario, string clave)
+        {
+            var (_, error) = await EjecutarScriptAsync(emp, usuario, clave, new List<(Guid, string, bool)>(), null).ConfigureAwait(false);
+            return error;
+        }
+
         // Solo inicia y cierra sesion: confirma que el usuario/clave de Contabilidad sirven y que el servicio esta arriba.
         public static async Task<string> ProbarAccesoAsync(SqlConnection conn, ContabilidadConfig cfg)
         {
@@ -127,8 +133,22 @@ namespace BrosLMV.Descargas.Cola
             {
                 var emp = BuscarEmpresa(conn, cfg.BaseDatos);
                 if (emp == null) { r.Error = "No se encontró la empresa de Contabilidad «" + cfg.BaseDatos + "»."; return r; }
+                return await CargarEnAsync(conn, rfc, emp, cfg.Usuario, DescifrarClave(cfg), progreso, maximo, soloUuids, true).ConfigureAwait(false);
+            }
+            catch (Exception ex) { r.Error = ex.Message; }
+            return r;
+        }
+
+        // Nucleo de la carga: sirve igual para el ADD de Contabilidad y el de Comercial Premium (mismo esquema, mismo servicio SACI).
+        // marcarContabilidad: solo para Contabilidad (la bandera FechaCargadoContabilidad no aplica a Premium).
+        internal static async Task<ResultadoContabilidad> CargarEnAsync(SqlConnection conn, string rfc, EmpresaContabilidadInfo emp, string usuario, string clave,
+            Action<string> progreso, int maximo, ICollection<Guid> soloUuids, bool marcarContabilidad)
+        {
+            var r = new ResultadoContabilidad();
+            try
+            {
                 if (!string.Equals(emp.Rfc, rfc, StringComparison.OrdinalIgnoreCase))
-                { r.Error = "El RFC de la empresa de Contabilidad (" + emp.Rfc + ") no coincide con el de Descargas (" + rfc + ")."; return r; }
+                { r.Error = "El RFC de la empresa (" + emp.Rfc + ") no coincide con el de Descargas (" + rfc + ")."; return r; }
 
                 var enAdd = UuidsEnAdd(conn, emp);
                 var cfdis = BrosSatDb.ObtenerCfdiConArchivo(conn, rfc);
@@ -141,19 +161,19 @@ namespace BrosLMV.Descargas.Cola
                     if (!File.Exists(ruta)) { r.SinArchivo++; continue; }
                     porCargar.Add((uuid, ruta, emitido));
                 }
-                if (yaCargados.Count > 0) BrosSatDb.MarcarCargadoContabilidad(conn, rfc, yaCargados);
+                if (marcarContabilidad && yaCargados.Count > 0) BrosSatDb.MarcarCargadoContabilidad(conn, rfc, yaCargados);
                 if (maximo > 0 && porCargar.Count > maximo) porCargar = porCargar.Take(maximo).ToList();
                 if (porCargar.Count == 0) return r;
 
                 progreso?.Invoke("Cargando " + porCargar.Count + " XML al ADD de " + emp.Nombre + "...");
-                var (_, error) = await EjecutarScriptAsync(emp, cfg.Usuario, DescifrarClave(cfg), porCargar, progreso).ConfigureAwait(false);
+                var (_, error) = await EjecutarScriptAsync(emp, usuario, clave, porCargar, progreso).ConfigureAwait(false);
 
                 // Lo que cuenta es lo que de verdad quedo en el ADD, no lo que el servicio dice.
                 var despues = UuidsEnAdd(conn, emp);
                 var nuevos = porCargar.Where(x => despues.Contains(x.uuid.ToString().ToUpperInvariant())).Select(x => x.uuid).ToList();
                 r.Cargados = nuevos.Count;
                 r.NoSeCargaron = porCargar.Count - nuevos.Count;
-                if (nuevos.Count > 0) BrosSatDb.MarcarCargadoContabilidad(conn, rfc, nuevos);
+                if (marcarContabilidad && nuevos.Count > 0) BrosSatDb.MarcarCargadoContabilidad(conn, rfc, nuevos);
                 if (error != null && nuevos.Count == 0) r.Error = error;
             }
             catch (Exception ex) { r.Error = ex.Message; }

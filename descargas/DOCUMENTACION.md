@@ -4,6 +4,15 @@
 
 ## Historial de versiones del instalador
 
+### 3.1.0 — 2026-10-18 — Cargar los XML al ADD de Comercial Premium
+
+- **Agregado**: Descargas carga los CFDI (recibidos y emitidos) al **ADD de Comercial Premium**, igual que ya hacía con Contabilidad. El ADD de Premium tiene el mismo esquema y se carga por el mismo servicio de CONTPAQi (SACI) con el `CGUIDDSL` y `CGUIDEMPRESA` de `admParametros`; se probó con la empresa de prueba y el usuario `SUPERVISOR` sin contraseña.
+- **Configuración** (Empresas y e.firma → Editar → Premium): usuario, contraseña (cifrada con DPAPI, atada al equipo), «Probar acceso» y «Cargar automáticamente lo nuevo después de cada descarga» (apagado por defecto).
+- **Dónde se usa**: botón **«Cargar a Premium»** en el Mapa de CFDI (lo que falta en el mes que ves o en todos), la carga automática del servicio y de «Revisar pendientes», y la consola `--cargar-premium --rfc X --conn ... [--max N]`.
+- **Idempotente**: se confirma leyendo el `Comprobante` del ADD, no lo que diga el servicio, y lo que ya está no se repite.
+- **Mapa**: un XML cargado al ADD de Premium que Premium todavía no registra en `admFoliosDigitales` aparece como «En el ADD (sin documento)». Premium lo registra al asociarlo a un documento (estado «Con documento»).
+- **Esquema** (se crea solo): `EmpresaPremium` gana `Usuario`, `ClaveCifrada`, `CargaAutomatica`. 75 pruebas.
+
 ### 3.0.1 — 2026-10-18 — Premium también registra recibidos
 
 - **Corrección**: Comercial Premium **sí guarda los CFDI recibidos** (los carga a su ADD, que tiene el mismo esquema que el de Contabilidad). Se comprobó con una compra real: `admFoliosDigitales` los registra con `CESTADO` 11 (cargado al ADD, sin documento) o 13 (asociado a una compra, con `CIDDOCTO` y `CIDDOCTODSL` = GuidDocument del ADD).

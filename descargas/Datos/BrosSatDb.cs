@@ -59,6 +59,9 @@ namespace BrosLMV.Descargas.Datos
     {
         public string RFC;
         public string BaseDatos;      // adXXX
+        public string Usuario;        // para cargar al ADD de Premium; NULL/vacio = sin carga
+        public byte[] ClaveCifrada;   // DPAPI (equipo); NULL = clave vacia
+        public bool CargaAutomatica;
     }
 
     internal sealed class ContabilidadConfig
@@ -1169,11 +1172,15 @@ WHEN NOT MATCHED THEN INSERT (RFC, ComercialPro, Contabilidad, ComercialPremium)
 
         public static PremiumConfig ObtenerPremium(SqlConnection conn, string rfc)
         {
-            using (var cmd = new SqlCommand("SELECT BaseDatos FROM EmpresaPremium WHERE RFC = @r", conn))
+            using (var cmd = new SqlCommand("SELECT BaseDatos, Usuario, ClaveCifrada, CargaAutomatica FROM EmpresaPremium WHERE RFC = @r", conn))
             {
                 cmd.Parameters.AddWithValue("@r", rfc);
-                var v = cmd.ExecuteScalar();
-                return v == null || v == DBNull.Value ? null : new PremiumConfig { RFC = rfc, BaseDatos = Convert.ToString(v) };
+                using (var l = cmd.ExecuteReader())
+                    return l.Read() ? new PremiumConfig
+                    {
+                        RFC = rfc, BaseDatos = l.GetString(0), Usuario = l.IsDBNull(1) ? null : l.GetString(1),
+                        ClaveCifrada = l.IsDBNull(2) ? null : (byte[])l[2], CargaAutomatica = l.GetBoolean(3)
+                    } : null;
             }
         }
 
@@ -1181,9 +1188,15 @@ WHEN NOT MATCHED THEN INSERT (RFC, ComercialPro, Contabilidad, ComercialPremium)
         {
             using (var cmd = new SqlCommand(@"
 MERGE EmpresaPremium AS t USING (SELECT @r AS RFC) AS s ON t.RFC = s.RFC
-WHEN MATCHED THEN UPDATE SET BaseDatos = @b
-WHEN NOT MATCHED THEN INSERT (RFC, BaseDatos) VALUES (@r, @b);", conn))
-            { cmd.Parameters.AddWithValue("@r", c.RFC); cmd.Parameters.AddWithValue("@b", c.BaseDatos); cmd.ExecuteNonQuery(); }
+WHEN MATCHED THEN UPDATE SET BaseDatos = @b, Usuario = @u, ClaveCifrada = @c, CargaAutomatica = @a
+WHEN NOT MATCHED THEN INSERT (RFC, BaseDatos, Usuario, ClaveCifrada, CargaAutomatica) VALUES (@r, @b, @u, @c, @a);", conn))
+            {
+                cmd.Parameters.AddWithValue("@r", c.RFC); cmd.Parameters.AddWithValue("@b", c.BaseDatos);
+                cmd.Parameters.AddWithValue("@u", (object)c.Usuario ?? DBNull.Value);
+                cmd.Parameters.Add("@c", System.Data.SqlDbType.VarBinary, 512).Value = (object)c.ClaveCifrada ?? DBNull.Value;
+                cmd.Parameters.AddWithValue("@a", c.CargaAutomatica);
+                cmd.ExecuteNonQuery();
+            }
         }
 
         // ===== Contabilidad (ADD) =====

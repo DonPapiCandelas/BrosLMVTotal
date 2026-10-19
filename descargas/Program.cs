@@ -54,7 +54,7 @@ namespace BrosLMV.Descargas
             bool autenticar = false, solicitar = false, auto = false, reparsear = false, autoTodas = false, verificarEstatus = false;
             bool solicitarMetadataCatalogo = false, verificarMetadataCatalogo = false, autoSolicitarTodas = false, sincronizarComercial = false, inicializar = false, mostrarSalud = false, mostrarConciliacion = false, mostrarVinculos = false;
             string exportarRespaldo = null, importarRespaldo = null, carpetaFiel = null;
-            bool cargarContabilidad = false; int maxContabilidad = 0; bool verificarSistemas = false; bool expedienteResumen = false; string expDesde = null, expHasta = null;
+            bool cargarContabilidad = false; bool cargarPremium = false; int maxContabilidad = 0; bool verificarSistemas = false; bool expedienteResumen = false; string expDesde = null, expHasta = null;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -141,6 +141,8 @@ namespace BrosLMV.Descargas
                     // Sube al ADD de CONTPAQi Contabilidad lo descargado que aun no este alli (ver ContabilidadAdd.cs). Requiere --conn y --rfc;
                     // --max N limita cuantos XML manda en esta corrida (para probar o repartir una carga grande).
                     case "--cargar-contabilidad": cargarContabilidad = true; break;
+                    // Igual, pero al ADD de Comercial Premium (la empresa y el usuario se configuran en la app). Requiere --conn y --rfc.
+                    case "--cargar-premium": cargarPremium = true; break;
                     // Lee (solo lectura) donde esta cada CFDI: XML en disco, Comercial, ADD y polizas de Contabilidad, y imprime el resumen. Requiere --conn y --rfc.
                     case "--verificar-sistemas": verificarSistemas = true; break;
                     // Resumen en pantalla del expediente de un periodo (lee los XML en disco): --expediente-resumen --rfc X --desde 2026-01-01 --hasta 2026-03-31 --conn ...
@@ -366,6 +368,23 @@ namespace BrosLMV.Descargas
                     Console.WriteLine(r.Exito
                         ? "Contabilidad: " + r.Cargados + " cargados, " + r.YaEstaban + " ya estaban, " + r.NoSeCargaron + " rechazados, " + r.SinArchivo + " sin archivo."
                         : "Contabilidad: ERROR " + r.Error);
+                    return r.Exito ? 0 : 1;
+                }
+            }
+
+            if (cargarPremium)
+            {
+                if (string.IsNullOrEmpty(conexionSql) || string.IsNullOrEmpty(rfc)) { Console.Error.WriteLine("--cargar-premium requiere --conn y --rfc."); return Uso(); }
+                using (var connPre = new SqlConnection(conexionSql))
+                {
+                    connPre.Open();
+                    EsquemaSql.Asegurar(connPre);
+                    var cfg = BrosSatDb.ObtenerPremium(connPre, rfc);
+                    if (cfg == null) { Console.Error.WriteLine("Ese RFC no tiene Premium configurado."); return 1; }
+                    var r = await ComercialPremium.CargarAsync(connPre, rfc, cfg, Console.WriteLine, maxContabilidad);
+                    Console.WriteLine(r.Exito
+                        ? "Premium: " + r.Cargados + " cargados, " + r.YaEstaban + " ya estaban, " + r.NoSeCargaron + " rechazados, " + r.SinArchivo + " sin archivo."
+                        : "Premium: ERROR " + r.Error);
                     return r.Exito ? 0 : 1;
                 }
             }
@@ -945,6 +964,7 @@ namespace BrosLMV.Descargas
                                     empresa.ComercialCarpetaXmlRecibidos, empresa.ComercialCarpetaXmlEmitidos, empresa.ComercialConexionSql);
                             await ComercialSync.PropagarCancelacionesAsync(conn, empresa).ConfigureAwait(false);
                             await ContabilidadAdd.CargarAutomaticoAsync(conn, empresa.RFC, empresa.Nombre).ConfigureAwait(false);
+                            await ComercialPremium.CargarAutomaticoAsync(conn, empresa.RFC, empresa.Nombre).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {

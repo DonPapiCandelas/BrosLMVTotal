@@ -100,6 +100,8 @@
             <StackPanel Grid.Column="2" Orientation="Horizontal">
               <Button x:Name="BtnCargarAdd" Style="{StaticResource Ghost}" Content="Cargar al ADD" Margin="0,0,8,0" Click="BtnCargarAdd_Click" Visibility="Collapsed"
                       ToolTip="Carga al ADD de Contabilidad los CFDI que faltan en lo que estás viendo (el mes seleccionado, o todos)."/>
+              <Button x:Name="BtnCargarPremium" Style="{StaticResource Ghost}" Content="Cargar a Premium" Margin="0,0,8,0" Click="BtnCargarPremium_Click" Visibility="Collapsed"
+                      ToolTip="Carga al ADD de Comercial Premium los CFDI que faltan en lo que estás viendo (el mes seleccionado, o todos)."/>
               <Button x:Name="BtnImportarComercial" Style="{StaticResource Ghost}" Content="Importar a Comercial" Click="BtnImportarComercial_Click" Visibility="Collapsed"
                       ToolTip="Agrega a la lista de XML de Comercial los CFDI que faltan en lo que estás viendo. No crea documentos."/>
             </StackPanel>

@@ -376,6 +376,10 @@ CREATE TABLE EmpresaPremium (
     RFC NVARCHAR(13) NOT NULL PRIMARY KEY,
     BaseDatos NVARCHAR(128) NOT NULL
 );
+-- 3.1.0: usuario/clave para cargar los XML al ADD de Premium (mismo servicio SACI que Contabilidad).
+IF COL_LENGTH('EmpresaPremium', 'Usuario') IS NULL ALTER TABLE EmpresaPremium ADD Usuario NVARCHAR(100) NULL;
+IF COL_LENGTH('EmpresaPremium', 'ClaveCifrada') IS NULL ALTER TABLE EmpresaPremium ADD ClaveCifrada VARBINARY(512) NULL;
+IF COL_LENGTH('EmpresaPremium', 'CargaAutomatica') IS NULL ALTER TABLE EmpresaPremium ADD CargaAutomatica BIT NOT NULL CONSTRAINT DF_EmpresaPremium_Auto DEFAULT 0;
 
 -- ===== Mapa de CFDI por sistema (2.7.0) =====
 -- La VERDAD de donde esta cada CFDI se lee de cada sistema (solo lectura) y se guarda aqui; las banderas viejas

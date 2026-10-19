@@ -104,6 +104,7 @@ namespace BrosLMV.DescargasUI.Paginas
                 TabFaltaComercial.Visibility = Ok(SistemaCfdi.Comercial) ? Visibility.Visible : Visibility.Collapsed;
                 TabSinPoliza.Visibility = Ok(SistemaCfdi.Polizas) ? Visibility.Visible : Visibility.Collapsed;
                 BtnCargarAdd.Visibility = Ok(SistemaCfdi.Add) ? Visibility.Visible : Visibility.Collapsed;
+                BtnCargarPremium.Visibility = Ok(SistemaCfdi.Premium) && !string.IsNullOrWhiteSpace(BrosSatDb.ObtenerPremium(_s.Conn, Rfc)?.Usuario) ? Visibility.Visible : Visibility.Collapsed;
                 BtnImportarComercial.Visibility = Ok(SistemaCfdi.Comercial) ? Visibility.Visible : Visibility.Collapsed;
                 Vacio.Visibility = _filas.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -227,7 +228,7 @@ namespace BrosLMV.DescargasUI.Paginas
         private void Bloquear(bool bloqueado)
         {
             _ocupado = bloqueado;
-            BtnVerificar.IsEnabled = !bloqueado; BtnCargarAdd.IsEnabled = !bloqueado; BtnImportarComercial.IsEnabled = !bloqueado; ChkNomina.IsEnabled = !bloqueado;
+            BtnVerificar.IsEnabled = !bloqueado; BtnCargarAdd.IsEnabled = !bloqueado; BtnCargarPremium.IsEnabled = !bloqueado; BtnImportarComercial.IsEnabled = !bloqueado; ChkNomina.IsEnabled = !bloqueado;
             Cursor = bloqueado ? System.Windows.Input.Cursors.Wait : System.Windows.Input.Cursors.Arrow;
         }
 
@@ -279,6 +280,31 @@ namespace BrosLMV.DescargasUI.Paginas
                 var empresa = Sesion.AFila(_s.Empresa);
                 Estado("Leyendo de nuevo el ADD...");
                 await Task.Run(() => { MapaCfdi.VerificarUnoAsync(_s.Conn, empresa, SistemaCfdi.Add).GetAwaiter().GetResult(); MapaCfdi.VerificarUnoAsync(_s.Conn, empresa, SistemaCfdi.Polizas).GetAwaiter().GetResult(); });
+            }
+            catch (Exception ex) { MessageBox.Show(Ventana, "No se pudo cargar:\n\n" + ex.Message, "Mapa de CFDI", MessageBoxButton.OK, MessageBoxImage.Error); }
+            finally { Bloquear(false); Cargar(); }
+        }
+
+        private async void BtnCargarPremium_Click(object sender, RoutedEventArgs e)
+        {
+            if (_ocupado) return;
+            var cfg = BrosSatDb.ObtenerPremium(_s.Conn, Rfc);
+            if (cfg == null || string.IsNullOrWhiteSpace(cfg.Usuario)) { MessageBox.Show(Ventana, "Falta el usuario de Premium. Configúralo en «Empresas y e.firma» → Editar.", "Mapa de CFDI", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+            var faltan = Faltantes("FaltaPremium");
+            if (faltan.Count == 0) { MessageBox.Show(Ventana, "En lo que estás viendo no falta ningún CFDI vigente en Premium.", "Mapa de CFDI", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+            var sel = Seleccion;
+            if (MessageBox.Show(Ventana, "Se cargarán " + faltan.Count.ToString("N0") + " CFDI al ADD de Comercial Premium (" + (sel == null ? "todos los meses" : sel.MesTexto + " · " + sel.Tipo) + ").\n\nCONTPAQi procesa unos 50 por minuto. Mientras trabaja puedes seguir usando Descargas.\n\n¿Continuar?", "Cargar a Premium", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+
+            Bloquear(true);
+            try
+            {
+                var uuids = new HashSet<Guid>(faltan.Select(f => f.Uuid));
+                var r = await Task.Run(() => ComercialPremium.CargarAsync(_s.Conn, Rfc, cfg, Estado, 0, uuids));
+                if (!r.Exito) MessageBox.Show(Ventana, "No se pudo cargar a Premium:\n\n" + r.Error, "Mapa de CFDI", MessageBoxButton.OK, MessageBoxImage.Warning);
+                else MessageBox.Show(Ventana, r.Cargados.ToString("N0") + " CFDI cargados al ADD de Premium." + (r.NoSeCargaron > 0 ? "\n" + r.NoSeCargaron + " no se pudieron cargar (CONTPAQi los rechazó)." : ""), "Mapa de CFDI", MessageBoxButton.OK, MessageBoxImage.Information);
+                Estado("Leyendo de nuevo Premium...");
+                var empresa = Sesion.AFila(_s.Empresa);
+                await Task.Run(() => MapaCfdi.VerificarUnoAsync(_s.Conn, empresa, SistemaCfdi.Premium).GetAwaiter().GetResult());
             }
             catch (Exception ex) { MessageBox.Show(Ventana, "No se pudo cargar:\n\n" + ex.Message, "Mapa de CFDI", MessageBoxButton.OK, MessageBoxImage.Error); }
             finally { Bloquear(false); Cargar(); }

@@ -135,6 +135,7 @@ namespace BrosLMV.DescargasUI.Paginas
                     await SolicitudWorker.EjecutarPasadaAsync(_s.Conn, cert, llave, emp.CarpetaXml, emp.EstructuraCarpetas, emp.PlantillaNombreArchivo, emp.RFC,
                         emp.ComercialCarpetaXmlRecibidos, emp.ComercialCarpetaXmlEmitidos, emp.ComercialConexionSql);
                 await ContabilidadAdd.CargarAutomaticoAsync(_s.Conn, emp.RFC, emp.Nombre);
+                await ComercialPremium.CargarAutomaticoAsync(_s.Conn, emp.RFC, emp.Nombre);
             }, "Revisión de pendientes terminada.");
         }
 

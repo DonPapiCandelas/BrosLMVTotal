@@ -202,6 +202,19 @@
               </StackPanel>
               <Button Grid.Column="2" Content="Actualizar lista" Style="{StaticResource Ghost}" VerticalAlignment="Bottom" Click="ActualizarListaPremium_Click"/>
             </Grid>
+            <Grid Margin="0,10,0,0">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="Usuario de Premium (para cargar XML a su ADD)" Foreground="#64748B" FontSize="11"/>
+                <TextBox x:Name="TxtPremiumUsuario" Text="SUPERVISOR" Padding="6,5" VerticalContentAlignment="Center" Margin="0,3,0,0"/>
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Text="Contraseña (vacía si el usuario no tiene)" Foreground="#64748B" FontSize="11"/>
+                <PasswordBox x:Name="PwdPremiumClave" Padding="6,5" VerticalContentAlignment="Center" Margin="0,3,0,0"/>
+              </StackPanel>
+            </Grid>
+            <CheckBox x:Name="ChkPremiumAuto" Content="Cargar automáticamente lo nuevo después de cada descarga" IsChecked="False" Margin="0,10,0,8"/>
+            <Button Content="Probar acceso" Style="{StaticResource Ghost}" HorizontalAlignment="Left" Click="ProbarPremium_Click"/>
             <TextBlock x:Name="LblPremiumEstado" Text="" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="#64748B"/>
           </StackPanel>
         </Border>

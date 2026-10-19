@@ -108,6 +108,26 @@ namespace BrosLMV.DescargasUI
 
         // ---- Comercial Premium (solo lectura) ----
 
+        private PremiumConfig LeerPremium(string rfc)
+        {
+            if (!(CmbPremium.SelectedItem is EmpresaPremiumInfo ep)) return null;
+            return new PremiumConfig
+            {
+                RFC = rfc, BaseDatos = ep.BaseDatos, Usuario = string.IsNullOrWhiteSpace(TxtPremiumUsuario.Text) ? "SUPERVISOR" : TxtPremiumUsuario.Text.Trim(),
+                ClaveCifrada = string.IsNullOrEmpty(PwdPremiumClave.Password) ? null : DpapiHelper.Cifrar(PwdPremiumClave.Password),
+                CargaAutomatica = ChkPremiumAuto.IsChecked == true
+            };
+        }
+
+        private async void ProbarPremium_Click(object sender, RoutedEventArgs e)
+        {
+            var cfg = LeerPremium((_existente?.RFC ?? TxtRfc.Text ?? "").Trim());
+            if (cfg == null) { LblPremiumEstado.Text = "Elige primero la empresa de Premium."; return; }
+            LblPremiumEstado.Text = "Probando acceso...";
+            try { string error = await ComercialPremium.ProbarAccesoAsync(_conn, cfg); LblPremiumEstado.Text = error == null ? "Acceso correcto: se puede cargar al ADD de Premium." : error; }
+            catch (Exception ex) { LblPremiumEstado.Text = ex.Message; }
+        }
+
         private void ActualizarListaPremium_Click(object sender, RoutedEventArgs e) => LlenarEmpresasPremium();
 
         private void LlenarEmpresasPremium()
@@ -120,6 +140,7 @@ namespace BrosLMV.DescargasUI
                 CmbPremium.ItemsSource = lista;
                 CmbPremium.SelectedItem = lista.FirstOrDefault(x => guardada != null && string.Equals(x.BaseDatos, guardada.BaseDatos, StringComparison.OrdinalIgnoreCase))
                                        ?? lista.FirstOrDefault(x => rfc.Length > 0 && string.Equals(x.Rfc, rfc, StringComparison.OrdinalIgnoreCase));
+                if (guardada != null) { TxtPremiumUsuario.Text = string.IsNullOrWhiteSpace(guardada.Usuario) ? "SUPERVISOR" : guardada.Usuario; ChkPremiumAuto.IsChecked = guardada.CargaAutomatica; if (guardada.ClaveCifrada != null && guardada.ClaveCifrada.Length > 0) PwdPremiumClave.Password = ComercialPremium.DescifrarClave(guardada); }
                 LblPremiumEstado.Text = lista.Count == 0 ? "No se encontraron empresas de Comercial Premium en este servidor SQL." : lista.Count + " empresa(s) de Premium encontrada(s)" + (CmbPremium.SelectedItem != null ? " · se propuso la de este RFC." : ".");
             }
             catch (Exception ex) { LblPremiumEstado.Text = "No se pudo leer la lista de Premium: " + ex.Message; }
@@ -209,7 +230,7 @@ namespace BrosLMV.DescargasUI
         private void GuardarContabilidad(string rfc)
         {
             // Premium: primero la empresa elegida y luego el perfil (si se desmarca, GuardarPerfil borra su configuracion y sus lecturas).
-            if (ChkPerfilPremium.IsChecked == true && CmbPremium.SelectedItem is EmpresaPremiumInfo ep) BrosSatDb.GuardarPremium(_conn, new PremiumConfig { RFC = rfc, BaseDatos = ep.BaseDatos });
+            if (ChkPerfilPremium.IsChecked == true) { var pc = LeerPremium(rfc); if (pc != null) BrosSatDb.GuardarPremium(_conn, pc); }
             BrosSatDb.GuardarPerfil(_conn, rfc, PerfilElegido());
             var cfg = ChkPerfilConta.IsChecked == true ? LeerContabilidad(rfc) : null;
             if (cfg == null) BrosSatDb.QuitarContabilidad(_conn, rfc); else BrosSatDb.GuardarContabilidad(_conn, cfg);

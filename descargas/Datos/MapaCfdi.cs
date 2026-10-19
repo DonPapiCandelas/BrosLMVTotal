@@ -293,6 +293,14 @@ FROM " + ad + "admFoliosDigitales f LEFT JOIN " + ad + "admDocumentos d ON d.CID
                     estados.Add(new EstadoCfdi { Uuid = uuid, Estado = estado, Detalle = detalle });
                 }
             GuardarDocumentosComercial(conn, rfc, "Premium", docs);
+
+            // Cargado al ADD de Premium (p. ej. por BrosLMV) pero Premium aun no lo registra en admFoliosDigitales.
+            var yaEstan = new HashSet<Guid>(estados.Select(x => x.Uuid));
+            var emp = ComercialPremium.BuscarEmpresaAdd(conn, cfg.BaseDatos);
+            if (emp != null && !string.IsNullOrEmpty(emp.GuidDsl))
+                foreach (var s in ContabilidadAdd.UuidsEnAdd(conn, emp))
+                    if (Guid.TryParse(s, out var u) && uuids.Contains(u) && !yaEstan.Contains(u))
+                        estados.Add(new EstadoCfdi { Uuid = u, Estado = "En el ADD (sin documento)" });
             return estados;
         }
 
@@ -617,6 +625,7 @@ GROUP BY YEAR(c.FechaEmision), MONTH(c.FechaEmision), c.Direccion";
         {
             string extra = filtro == "FaltaAdd" ? "AND c.EstatusSat = 'Vigente' AND ad.UUID IS NULL"
                 : filtro == "FaltaComercial" ? "AND c.EstatusSat = 'Vigente' AND co.UUID IS NULL"
+                : filtro == "FaltaPremium" ? "AND c.EstatusSat = 'Vigente' AND c.Externo = 0 AND pr.UUID IS NULL"
                 : filtro == "SinPoliza" ? "AND c.EstatusSat IN ('Vigente', 'Sin descargar') AND po.UUID IS NULL"
                 : filtro == "FaltaDisco" ? "AND c.Externo = 0 AND c.EstatusSat = 'Vigente' AND ISNULL(di.Estado, 'Sin archivo') <> 'Con archivo'"
                 : filtro == "SoloSistemas" ? "AND c.Externo = 1" : "";

@@ -76,6 +76,9 @@ namespace BrosLMV.Descargas.Pruebas
             Assert.False(BrosSatDb.ObtenerPerfil(_bd.Conn, rfc).ComercialPremium);
             BrosSatDb.GuardarPremium(_bd.Conn, new PremiumConfig { RFC = rfc, BaseDatos = "adX" });
             Assert.Equal("adX", BrosSatDb.ObtenerPremium(_bd.Conn, rfc).BaseDatos);
+            BrosSatDb.GuardarPremium(_bd.Conn, new PremiumConfig { RFC = rfc, BaseDatos = "adX", Usuario = "SUPERVISOR", ClaveCifrada = new byte[] { 1, 2, 3 }, CargaAutomatica = true });
+            var pc = BrosSatDb.ObtenerPremium(_bd.Conn, rfc);
+            Assert.Equal("SUPERVISOR", pc.Usuario); Assert.Equal(new byte[] { 1, 2, 3 }, pc.ClaveCifrada); Assert.True(pc.CargaAutomatica);
             Assert.True(BrosSatDb.ObtenerPerfil(_bd.Conn, rfc).ComercialPremium);          // se deduce de su configuracion
             var u = Guid.NewGuid();
             MapaCfdi.GuardarEstados(_bd.Conn, rfc, SistemaCfdi.Premium, new[] { new EstadoCfdi { Uuid = u, Estado = "Timbrado" } });

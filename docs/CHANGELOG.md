@@ -8,6 +8,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [Descargas 3.1.0] — 2026-10-18
+
+### Agregado
+- **Cargar a Premium**: los XML se cargan al ADD de Comercial Premium con el mismo mecanismo que Contabilidad (botón en el Mapa, carga automática, consola `--cargar-premium`). Usuario y contraseña de Premium en Empresas y e.firma → Editar.
+
+### Notas
+- Columnas nuevas en `EmpresaPremium` (se crean solas).
+
 ## [Descargas 3.0.1] — 2026-10-18
 
 ### Corregido
