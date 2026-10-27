@@ -36,7 +36,7 @@ namespace BrosLMV.DescargasUI
     internal static class VersionApp
     {
         // Misma version que el instalador (descargas-instalador\*.csproj); se cambia junto con ella.
-        public const string Actual = "3.4.0";
+        public const string Actual = "3.5.0";
     }
 
     public partial class MainWindow : Window
@@ -309,6 +309,7 @@ namespace BrosLMV.DescargasUI
                 case "conciliacion": return new PaginaConciliacion(_sesion);
                 case "mapa": return new PaginaMapa(_sesion);
                 case "terceros": return new PaginaTerceros(_sesion);
+                case "bancos": return new PaginaBancos(_sesion);
                 case "cancelaciones": return new PaginaCancelaciones(_sesion);
                 case "vinculos": return new PaginaVinculos(_sesion);
                 case "reportes": return new PaginaReportes(_sesion);

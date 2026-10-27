@@ -77,6 +77,9 @@
             <RadioButton x:Name="NavDescargas" GroupName="Nav" Tag="descargas" Content="Descargas del SAT" ui:Ui.Glifo="&#xE896;" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
             <RadioButton x:Name="NavMapa" GroupName="Nav" Tag="mapa" Content="Mapa de CFDI" ui:Ui.Glifo="&#xE81E;" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
 
+            <TextBlock Text="BANCOS" Style="{StaticResource NavSeccion}"/>
+            <RadioButton x:Name="NavBancos" GroupName="Nav" Tag="bancos" Content="Estados de cuenta" ui:Ui.Glifo="&#xE825;" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+
             <TextBlock x:Name="NavSeccionConta" Text="CONTABILIZADOR" Style="{StaticResource NavSeccion}"/>
             <RadioButton x:Name="NavTerceros" GroupName="Nav" Tag="terceros" Content="Terceros y cuentas" ui:Ui.Glifo="&#xE716;" Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
 
