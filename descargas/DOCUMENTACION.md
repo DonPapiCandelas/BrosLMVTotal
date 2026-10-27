@@ -4,19 +4,6 @@
 
 ## Historial de versiones del instalador
 
-### 3.5.0 — 2026-10-27 — Bancos: estados de cuenta (fase 1 de la conciliación bancaria)
-
-- **Agregado**: sección **BANCOS → Estados de cuenta**. Se sube el archivo que da el banco (CSV, TXT o Excel .xlsx) y los movimientos quedan en la base local, listos para conciliar (la conciliación va en las fases siguientes: ver `docs\desarrollo\PLAN_CONCILIACION_BANCARIA.md`).
-- **Cuentas bancarias** (botón «Cuentas bancarias» o «Nueva cuenta…» dentro del importador): cada cuenta con su banco, número, CLABE y moneda. Puedes tener varias del mismo banco.
-- **El banco se sugiere y se puede cambiar.** Se detecta por el encabezado y el contenido del archivo (Afirme, American Express, Banamex, BanBajío, Banorte, Banregio, BBVA, Santander, Kapital…) o por el nombre del archivo; la lista de bancos queda abierta para elegir otro.
-- **A qué cuenta pertenece**: si el archivo trae el número de cuenta o CLABE (o los últimos 4 dígitos en el nombre) se asigna sola. Si el archivo **no dice de qué cuenta es** y tienes varias del mismo banco, se compara el saldo con el que abre el archivo contra el último saldo cargado de cada cuenta y se sugiere la que cuadra (pidiendo confirmación); si no hay forma de saberlo, **no elige: tú eliges** y «Importar» no se habilita hasta que lo hagas. Un archivo con varias cuentas se reparte por grupos.
-- **Se lee por encabezado, no por posición**: si el banco agrega o mueve una columna (Banorte agregó `MONEDA` en 2026 y rompió la carga de Logical) no pasa nada. Si algo sale mal, «Cómo leí el archivo» deja corregir cada columna, la fila del encabezado, el formato de fecha y si el importe positivo es cargo (tarjetas) con la tabla actualizándose al instante, y «Recordar este formato» lo guarda para los archivos con los mismos encabezados.
-- **Validaciones antes de guardar**: el saldo corrido debe cuadrar renglón por renglón (acepta archivos del más nuevo al más viejo y saldos de tarjeta de crédito); un importe que no es número bloquea la importación; avisa si el saldo inicial no es el último cargado (puede faltar un periodo) o si el número de cuenta del archivo no es el de la cuenta elegida.
-- **Sin duplicados**: cada renglón lleva una huella; cargar dos veces el mismo periodo (o un archivo que se encima) solo agrega lo nuevo, y dos renglones idénticos el mismo día siguen siendo dos movimientos. **Cargas anteriores** lista cada archivo y permite deshacer una carga.
-- **Datos extraídos del texto** de cada movimiento: clave de rastreo, RFC, CLABE, nombre y banco de la contraparte, y un tipo (SPEI recibido/enviado, comisión, IVA, traspaso, intereses, efectivo…). Son la base para empatar contra CFDI.
-- **Esquema** (se crea solo): `BancoCuenta`, `BancoPerfil`, `BancoImportacion`, `BancoMovimiento`. Todo local; nada sale del equipo. 132 pruebas (51 nuevas, con los ejemplos del PDF oficial de formatos).
-- **Pendiente**: PDF y `.xls` antiguo; probar HSBC, Hey Banco, Monex, Scotiabank y BBVA-xlsx con archivos reales (el PDF oficial no trae sus columnas: hoy se leen por inferencia y se pueden corregir y guardar).
-
 ### 3.4.0 — 2026-10-18 — Contabilizador, fase 3.1: «Terceros y cuentas»
 
 - **Agregado**: sección **CONTABILIZADOR → Terceros y cuentas** (solo para empresas con Contabilidad). La cuenta de cada cliente y proveedor **por rol y por moneda**: provisión, gasto, provisión/gasto complementarias, anticipo, cliente, ingreso. Un proveedor puede tener cuenta en pesos, en dólares y en euros, y otra de anticipos; ya no depende del campo único de Contabilidad.

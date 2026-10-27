@@ -8,11 +8,6 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
-## [Descargas 3.5.0] — 2026-10-27
-
-### Agregado
-- **Bancos · Estados de cuenta**: importa el archivo del banco (CSV, TXT, Excel) a la base local, con cuentas bancarias, banco sugerido (se puede elegir), cuenta sugerida por número o por saldo (si hay varias del mismo banco y el archivo no dice cuál, eliges tú), lectura por encabezado, validación del saldo corrido, sin duplicados y con deshacer por carga. Primera fase de la conciliación bancaria.
-
 ## [Descargas 3.4.0] — 2026-10-18
 
 ### Agregado

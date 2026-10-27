@@ -58,8 +58,6 @@
     <Compile Include="..\descargas\Cola\CargaManual.cs" Link="Cola\CargaManual.cs" />
     <Compile Include="..\descargas\Cola\ContabilidadAdd.cs" Link="Cola\ContabilidadAdd.cs" />
     <Compile Include="..\descargas\Datos\ContaDatos.cs" Link="Datos\ContaDatos.cs" />
-    <Compile Include="..\descargas\Datos\BancoArchivo.cs" Link="Datos\BancoArchivo.cs" />
-    <Compile Include="..\descargas\Datos\BancoDatos.cs" Link="Datos\BancoDatos.cs" />
     <Compile Include="..\descargas\Cola\ComercialPremium.cs" Link="Cola\ComercialPremium.cs" />
     <Compile Include="..\descargas\Datos\MapaCfdi.cs" Link="Datos\MapaCfdi.cs" />
     <Compile Include="..\descargas\Datos\Expediente.cs" Link="Datos\Expediente.cs" />
