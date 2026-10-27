@@ -277,7 +277,9 @@
     </Border>
 
     <!-- ================= CONTENIDO ================= -->
-    <Grid Grid.Column="1" Margin="32,26,32,22">
+    <!-- El contenido se desplaza si la ventana es mas chica que el diseno (pantallas pequenas o con escala alta): los botones de abajo siempre se alcanzan. -->
+    <ScrollViewer x:Name="svContenido" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+    <Grid Margin="32,26,32,22" MinHeight="640" MinWidth="700" Height="{Binding ViewportHeight, ElementName=svContenido}">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
@@ -483,5 +485,6 @@
         </Grid>
       </StackPanel>
     </Grid>
+    </ScrollViewer>
   </Grid>
 </Window>

@@ -28,6 +28,8 @@ namespace BrosLMV.Empresas
         public WelcomeWindow()
         {
             InitializeComponent();
+            // Nunca mas alta que el area de trabajo de la pantalla (pantallas chicas o con escala alta): el cuerpo se desplaza y el pie con los botones siempre se ve.
+            Height = Math.Min(Height, SystemParameters.WorkArea.Height);
             // Mostramos la versión del ADDON que se va a instalar (la que importa para saber
             // qué versión queda en el equipo), leída del payload embebido. Fallback: la del EXE.
             string ver = LeerVersionAddon();

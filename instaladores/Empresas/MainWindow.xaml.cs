@@ -186,6 +186,12 @@ SELECT db, instalado, version FROM #r ORDER BY db;";
         public MainWindow()
         {
             InitializeComponent();
+            // Nunca mas grande que el area de trabajo de la pantalla (barra de tareas aparte): en pantallas chicas o con escala alta el diseno de 1220x860 no cabia.
+            var area = SystemParameters.WorkArea;
+            MinWidth = Math.Min(MinWidth, area.Width); MinHeight = Math.Min(MinHeight, area.Height);
+            Width = Math.Min(Width, area.Width); Height = Math.Min(Height, area.Height);
+            Left = area.Left + (area.Width - Width) / 2; Top = area.Top + (area.Height - Height) / 2;
+            WindowStartupLocation = WindowStartupLocation.Manual;
             _provisionSql = LoadResourceText("provision_empresa.sql");
             grid.ItemsSource = _rows;
             _versionActual = Assembly.GetExecutingAssembly().GetName().Version;

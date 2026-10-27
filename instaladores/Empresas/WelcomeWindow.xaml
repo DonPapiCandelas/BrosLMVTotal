@@ -92,7 +92,8 @@
     </Border>
 
     <!-- Cuerpo -->
-    <StackPanel Grid.Row="1" Margin="44,26,44,0">
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="44,26,44,0">
       <TextBlock x:Name="lblTitulo" Text="Bienvenido al instalador de BrosLMV" FontSize="22" FontWeight="Bold" Foreground="#0F2037"/>
       <TextBlock x:Name="lblDescripcion" Foreground="#64748B" Margin="0,6,0,18" TextWrapping="Wrap"
                  Text="Se instala en C:\BrosLMV y registra la consola en CONTPAQi Comercial PRO. Todo viene incluido: no descarga nada de internet."/>
@@ -132,6 +133,7 @@
                  Text="Después, en el SERVIDOR, podrás registrar (provisionar) tus empresas. En una TERMINAL basta con instalar."/>
       <TextBlock Text="Requiere permisos de administrador y .NET Framework 4.8 (incluido en Windows 10/11 y Server). Fuera de C:\BrosLMV solo se registra el componente COM y el icono; se quita todo con el Desinstalador." Foreground="#94A3B8" FontSize="11" Margin="2,8,0,0" TextWrapping="Wrap"/>
     </StackPanel>
+    </ScrollViewer>
 
     <!-- Pie -->
     <Border Grid.Row="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="44,16">
