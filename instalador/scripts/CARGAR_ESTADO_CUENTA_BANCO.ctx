@@ -327,7 +327,9 @@ internal static class BancoCampos
         if (Regex.IsMatch(t, @"secretaria de la hac|\bsat\b|guia:|linea de captura")) return "Pago SAT";
         if (Regex.IsMatch(t, @"nomina|sueldo")) return "Nómina";
         if (Regex.IsMatch(t, @"interes|rendimiento|gat ")) return "Intereses";
-        if (Regex.IsMatch(t, @"isr|retencion|impuesto")) return "Impuestos";
+        if (Regex.IsMatch(t, @"\bisr\b|retencion|impuesto")) return "Impuestos";
+        if (Regex.IsMatch(t, @"cetes|nafin|\bgbm\b|inversion|inversi n|\bfondo\b")) return "Inversión";
+        if (Regex.IsMatch(t, @"deposito de tercero")) return "Depósito de tercero";
         if (Regex.IsMatch(t, @"traspaso|trasp ")) return "Traspaso";
         if (Regex.IsMatch(t, @"cheque")) return "Cheque";
         if (Regex.IsMatch(t, @"pago cuenta de tercero")) return "Pago a tercero";
@@ -427,6 +429,9 @@ internal static class BancoArchivo
             string linea = string.Join(",", filas[i]);
             foreach (Match x in Regex.Matches(linea, @"(?i)\b(?:cuenta|cta\.?|clabe|contrato)\b\W{0,4}(\d{6,18})\b"))
                 if (vistos.Add(x.Groups[1].Value)) det.CuentasPreambulo.Add(x.Groups[1].Value);
+            // Tarjetas: "Número de Tarjeta: ****12677" (el banco enmascara el número; basta con los últimos dígitos)
+            foreach (Match x in Regex.Matches(linea, @"(?i)\btarjeta\b[^0-9]{0,12}(\d{4,16})\b"))
+                if (vistos.Add(x.Groups[1].Value)) det.CuentasPreambulo.Add(x.Groups[1].Value);
         }
         for (int i = 0; i < hasta && i < filas.Count; i++)
         {
@@ -451,7 +456,8 @@ internal static class BancoArchivo
         if (cab.Contains("no. secuencia") && cab.Contains("codigo")) Pon("Afirme", 3, "Afirme CSV");
         if (cab.Contains("fecha de compra")) Pon("American Express", 3, "American Express CSV");
         if (todo.Contains("detalle de movimientos - depositos y retiros") || todo.Contains("movimiento de cuenta cheques")) Pon("Banamex", 3, "Banamex cheques CSV");
-        if (cab.Contains("pagos y depositos") && cab.Contains("compras")) Pon("Banamex", 2, "Tarjeta de crédito TXT");
+        // "Pagos y depósitos / Compras" lo usan tarjetas de más de un banco (Banamex en su documentación, BBVA Oro en archivos reales): no se adivina.
+        if (cab.Contains("pagos y depositos") && cab.Contains("compras")) { det.Perfil = "Tarjeta de crédito"; det.Notas.Add("Este formato de tarjeta lo usan varios bancos: elige el banco y la tarjeta."); }
         if (cab.StartsWith("#|fecha movimiento|hora|recibo") || todo.Contains("conecta banbajio")) Pon("BanBajío", 3, "BanBajío TXT");
         if (cab.Contains("cod. transac") || (cab.Contains("fecha de operacion") && cab.Contains("descripcion detallada"))) Pon("Banorte", 3, "Banorte cuenta");
         if (cab.Contains("tarjeta") && cab.Contains("fecha de operacion") && cab.Contains("importe")) Pon("Banorte", 2, "Banorte tarjeta");
@@ -503,7 +509,7 @@ internal static class BancoArchivo
         if (!mapa.Completo) { r.Errores.Add("Faltan columnas: se necesita al menos la fecha y el cargo, el abono o el importe."); return r; }
         string Celda(string[] f, int i) => i >= 0 && i < f.Length ? BancoTexto.Limpiar(f[i]) : "";
         var crudos = new List<BancoMov>();
-        int ignoradasConImporte = 0; var muestraIgnoradas = new List<string>();
+        int ignoradasConImporte = 0, enTransito = 0, infoMonedaExtranjera = 0; var muestraIgnoradas = new List<string>(); string tarjetaSeccion = "";
 
         for (int i = mapa.PrimeraFila; i < filas.Count; i++)
         {
@@ -511,6 +517,8 @@ internal static class BancoArchivo
             if (f.All(string.IsNullOrWhiteSpace)) continue;
             if (!BancoValor.Fecha(Celda(f, mapa.Fecha), mapa.FormatoFecha, out DateTime fecha))
             {
+                var sec = Regex.Match(Celda(f, mapa.Fecha), @"^(?i:(titular|adicional|digital|virtual))\s*\*?\s*(\d{4})$");   // renglon que abre la seccion de una tarjeta del mismo plastico/cuenta
+                if (sec.Success) { tarjetaSeccion = char.ToUpperInvariant(sec.Groups[1].Value[0]) + sec.Groups[1].Value.Substring(1).ToLowerInvariant() + " *" + sec.Groups[2].Value; continue; }
                 r.FilasIgnoradas++;
                 bool conImporte = new[] { mapa.Cargo, mapa.Abono, mapa.Importe }.Any(c => c >= 0 && BancoValor.EsMontoNoVacio(Celda(f, c)) && BancoValor.Monto(Celda(f, c), out decimal x) && x != 0);
                 if (conImporte && crudos.Count > 0 && Celda(f, mapa.Fecha).Length > 0) { ignoradasConImporte++; if (muestraIgnoradas.Count < 5) muestraIgnoradas.Add("fila " + n + ": «" + Celda(f, mapa.Fecha) + "»"); }
@@ -522,8 +530,8 @@ internal static class BancoArchivo
             {
                 if (!BancoValor.Monto(Celda(f, mapa.Cargo), out cargo)) { r.Errores.Add("Fila " + n + ": el cargo «" + Celda(f, mapa.Cargo) + "» no es un número."); ok = false; }
                 if (!BancoValor.Monto(Celda(f, mapa.Abono), out abono)) { r.Errores.Add("Fila " + n + ": el abono «" + Celda(f, mapa.Abono) + "» no es un número."); ok = false; }
-                if (cargo < 0) { abono += -cargo; cargo = 0; }          // algunos bancos muestran el retiro en negativo dentro de la columna de cargos
-                if (abono < 0) { cargo += -abono; abono = 0; }
+                if (cargo < 0) cargo = -cargo;                           // BBVA muestra el cargo con signo menos dentro de la columna de cargos: sigue siendo cargo
+                if (abono < 0) abono = -abono;                          // tarjetas BBVA: el pago a la tarjeta viene como abono con signo menos
             }
             else
             {
@@ -542,10 +550,20 @@ internal static class BancoArchivo
                 }
             }
             if (!ok) continue;
-            if (cargo == 0 && abono == 0) { r.FilasIgnoradas++; continue; }          // renglones informativos (saldo inicial, totales)
+            if (cargo == 0 && abono == 0)                                              // renglones informativos (saldo inicial, totales, importe en moneda extranjera)
+            {
+                r.FilasIgnoradas++;
+                if (Regex.IsMatch(Celda(f, mapa.Descripcion), @"^\d{1,2}/\d{1,2}/\d{2,4}\s+[\d.,]+\s+[A-Z]{3}$")) infoMonedaExtranjera++;
+                continue;
+            }
 
             decimal? saldo = null;
-            if (mapa.Saldo >= 0) { string cs = Celda(f, mapa.Saldo); if (BancoValor.EsMontoNoVacio(cs) && BancoValor.Monto(cs, out decimal sd)) saldo = sd; }
+            if (mapa.Saldo >= 0)
+            {
+                string cs = Celda(f, mapa.Saldo);
+                if (BancoValor.EsMontoNoVacio(cs) && BancoValor.Monto(cs, out decimal sd)) saldo = sd;
+                else if (BancoTexto.Norm(cs).Contains("transito")) enTransito++;      // aun no esta aplicado: sin saldo
+            }
 
             var mov = new BancoMov
             {
@@ -555,9 +573,12 @@ internal static class BancoArchivo
                 Detalle = string.Join(" | ", mapa.Detalle.Select(d => Celda(f, d)).Where(x => x.Length > 0 && x != "-"))
             };
             if (mov.Descripcion.Length == 0 && mov.Detalle.Length > 0) { mov.Descripcion = mov.Detalle; mov.Detalle = ""; }
+            if (tarjetaSeccion.Length > 0) mov.Detalle = (mov.Detalle.Length > 0 ? mov.Detalle + " | " : "") + tarjetaSeccion;
             crudos.Add(mov);
         }
         if (ignoradasConImporte > 0) r.Avisos.Add(ignoradasConImporte + " fila(s) con importe se ignoraron por no tener una fecha válida (" + string.Join("; ", muestraIgnoradas) + "). Si son movimientos, revisa el formato de fecha.");
+        if (infoMonedaExtranjera > 0) r.Avisos.Add(infoMonedaExtranjera + " renglón(es) solo informan el importe original en moneda extranjera (sin importe en pesos) y no se cargan: el cargo en pesos es el renglón de la compra.");
+        if (enTransito > 0) r.Avisos.Add(enTransito + " movimiento(s) están «En tránsito» (el banco aún no los aplica): se cargan sin saldo y no se vuelven a cargar cuando aparezcan aplicados.");
         if (crudos.Count == 0) { if (r.Errores.Count == 0) r.Errores.Add("No encontré ningún movimiento con fecha e importe. Revisa las columnas elegidas."); return r; }
 
         Ordenar(crudos, r);
@@ -724,11 +745,11 @@ internal class CuentaBanco
 List<CuentaBanco> LeerCuentas()
 {
     var rs = ctx.Query(
-        "SELECT f.FinancialEntityID, ISNULL(f.FinancialEntityName,'') AS Nombre, ISNULL(f.FinancialEntityNumber,'') AS Numero, ISNULL(f.CLABE,'') AS Clabe, ISNULL(f.BankName,'') AS Banco, " +
+        "SELECT f.FinancialEntityID, ISNULL(f.FinancialEntityName,'') AS Nombre, ISNULL(NULLIF(f.FinancialEntityNumber,''), ISNULL(f.CreditCardNumber,'')) AS Numero, ISNULL(f.CLABE,'') AS Clabe, ISNULL(f.BankName,'') AS Banco, " +
         "ISNULL(c.IntlSymbol,'') AS Moneda, ISNULL(f.BusinessEntityID,0) AS Emp, " +
         "(SELECT TOP 1 e.Balance FROM docEdoCtaBanco e WHERE e.FinancialEntityID=f.FinancialEntityID AND e.DeletedOn IS NULL ORDER BY e.DateAffectation DESC, e.EdoCtaID DESC) AS Saldo, " +
         "(SELECT TOP 1 e.DateAffectation FROM docEdoCtaBanco e WHERE e.FinancialEntityID=f.FinancialEntityID AND e.DeletedOn IS NULL ORDER BY e.DateAffectation DESC, e.EdoCtaID DESC) AS Fecha " +
-        "FROM orgFinancialEntity f LEFT JOIN engRefCurrency c ON c.CurrencyID=f.CurrencyID WHERE f.FinancialEntityTypeID=1 AND f.DeletedOn IS NULL ORDER BY f.FinancialEntityName");
+        "FROM orgFinancialEntity f LEFT JOIN engRefCurrency c ON c.CurrencyID=f.CurrencyID WHERE f.FinancialEntityTypeID IN (1,2) AND f.DeletedOn IS NULL ORDER BY f.FinancialEntityName");
     var lista = new List<CuentaBanco>();
     foreach (var r in rs)
         lista.Add(new CuentaBanco { Id = L(r["FinancialEntityID"]), Nombre = S(r["Nombre"]), Numero = S(r["Numero"]), Clabe = S(r["Clabe"]), Banco = S(r["Banco"]), Moneda = S(r["Moneda"]), EmpresaDuena = I(r["Emp"]),
@@ -737,6 +758,7 @@ List<CuentaBanco> LeerCuentas()
 }
 
 // Cuenta que parece ser, de mas a menos seguro: numero/CLABE/terminacion, saldo inicial = ultimo saldo cargado, unica del banco. null = que elija la persona.
+bool bancoSeguro = false;    // el banco lo eligió la persona o se reconoció por el contenido (no solo por el nombre del archivo)
 CuentaBanco SugerirCuenta(List<CuentaBanco> cuentas, string banco, string cuentaArchivo, decimal? saldoInicial, out string motivo)
 {
     motivo = "";
@@ -744,6 +766,9 @@ CuentaBanco SugerirCuenta(List<CuentaBanco> cuentas, string banco, string cuenta
     {
         var igual = cuentas.Where(c => BancoArchivo.MismaCuenta(cuentaArchivo, c.Numero) || BancoArchivo.MismaCuenta(cuentaArchivo, c.Clabe)).ToList();
         if (igual.Count == 1) { motivo = "por el número de cuenta del archivo"; return igual[0]; }
+        // El archivo SÍ dice de qué cuenta es: si no coincide con ninguna dada de alta, no se adivina por saldo ni por "única del banco".
+        motivo = igual.Count == 0 ? "El archivo dice que es de la cuenta " + cuentaArchivo + " y no hay una cuenta de banco dada de alta con ese número. Dala de alta en Tesorería › Cuentas Bancarias o elige la cuenta a mano." : "El número de cuenta del archivo coincide con varias cuentas: elige cuál es.";
+        return null;
     }
     var delBanco = string.IsNullOrEmpty(banco) ? cuentas : cuentas.Where(c => BancoTexto.Norm(c.Banco).Contains(BancoTexto.Norm(banco)) || BancoTexto.Norm(banco).Contains(BancoTexto.Norm(c.Banco)) && c.Banco.Length > 0).ToList();
     if (saldoInicial.HasValue)
@@ -751,7 +776,7 @@ CuentaBanco SugerirCuenta(List<CuentaBanco> cuentas, string banco, string cuenta
         var porSaldo = (delBanco.Count > 0 ? delBanco : cuentas).Where(c => c.UltimoSaldo.HasValue && Math.Abs(c.UltimoSaldo.Value - saldoInicial.Value) < 0.005m).ToList();
         if (porSaldo.Count == 1) { motivo = "porque el saldo inicial del archivo es el último saldo cargado de esa cuenta; confírmalo"; return porSaldo[0]; }
     }
-    if (delBanco.Count == 1 && !string.IsNullOrEmpty(banco)) { motivo = "es la única cuenta de ese banco"; return delBanco[0]; }
+    if (delBanco.Count == 1 && !string.IsNullOrEmpty(banco) && bancoSeguro) { motivo = "es la única cuenta de ese banco"; return delBanco[0]; }
     return null;
 }
 
@@ -959,7 +984,7 @@ g2.Controls.Add(chkNegCargo); g2.Controls.Add(btnReleer);
 
 // 3. Resumen y vista previa
 var g3 = new GroupBox { Text = "3. Revisa antes de cargar", Dock = DockStyle.Fill };
-var lblRes = new Label { Dock = DockStyle.Top, Height = 78, Padding = new Padding(8, 4, 8, 0) };
+var lblRes = new Label { Dock = DockStyle.Top, Height = 100, Padding = new Padding(8, 4, 8, 0) };
 var dgGrupos = new DataGridView { Dock = DockStyle.Top, Height = 0, AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false, BackgroundColor = Color.White, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, Visible = false };
 var dg = new DataGridView { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, RowHeadersVisible = false, BackgroundColor = Color.White, SelectionMode = DataGridViewSelectionMode.FullRowSelect, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None };
 g3.Controls.Add(dg); g3.Controls.Add(dgGrupos); g3.Controls.Add(lblRes);
@@ -1071,6 +1096,7 @@ void Actualizar()
     else if (nuevos == 0 && res.Errores.Count == 0) lblRes.Text += "Todos esos movimientos ya estaban cargados: no hay nada nuevo.";
     else if (duplicados.Count > 0) lblRes.Text += duplicados.Count + " ya estaban en el estado de cuenta y no se vuelven a cargar.";
     btnImportar.Enabled = res.Errores.Count == 0 && !faltaCuenta && nuevos > 0;
+    btnImportar.BackColor = btnImportar.Enabled ? Color.FromArgb(0x1F, 0x6F, 0x4A) : Color.FromArgb(0xB8, 0xBE, 0xC8);
     btnImportar.Text = nuevos > 0 ? "Cargar " + nuevos + " movimientos" : "Cargar movimientos";
 }
 
@@ -1087,7 +1113,7 @@ void Leer(bool reabrirMapa)
             var perfil = BuscarPerfil(mapaActual.Firma);
             if (perfil != null) { var r = BancoArchivo.Reubicar(hoja.Filas, perfil); if (r != null) { mapaActual = r; deteccion.Notas.Insert(0, "Usé el formato que ya habías guardado para este tipo de archivo."); } }
             LlenarCombosColumnas(); PonerMapaEnCombos();
-            int ib = deteccion.Banco.Length > 0 ? cboBanco.Items.IndexOf(deteccion.Banco) : 0; cboBanco.SelectedIndex = ib >= 0 ? ib : 0;
+            int ib = deteccion.Banco.Length > 0 ? cboBanco.Items.IndexOf(deteccion.Banco) : 0; cboBanco.SelectedIndex = ib >= 0 ? ib : 0; bancoSeguro = deteccion.Confianza >= 2 && ib > 0;
         }
         else LeerMapaDeCombos();
         res = mapaActual.Completo ? BancoArchivo.Interpretar(hoja.Filas, mapaActual) : new BancoResultado { Errores = { "No pude saber qué columnas son la fecha y los importes. Elígelas arriba y pulsa «Volver a leer»." } };
@@ -1098,6 +1124,7 @@ void Leer(bool reabrirMapa)
             string motivo; string banco = cboBanco.SelectedIndex > 0 ? (string)cboBanco.SelectedItem : "";
             var s = SugerirCuenta(cuentas, banco, deteccion?.CuentasPreambulo.FirstOrDefault() ?? res.Cuentas.FirstOrDefault(), res.SaldoInicial, out motivo);
             if (s != null) { cboCuenta.SelectedItem = s; lblSug.Text = "Cuenta sugerida " + motivo + "."; }
+            else if (motivo.Length > 0) lblSug.Text = motivo;
             else lblSug.Text = res.Cuentas.Count() > 1 ? "El archivo trae varias cuentas: asigna cada una abajo." : "No pude saber de qué cuenta es este archivo. Elígela arriba.";
         }
         Actualizar();
@@ -1124,8 +1151,11 @@ btnBuscar.Click += (_, __) => Seguro(() =>
         if (dlg.ShowDialog(frm) == DialogResult.OK) AbrirArchivo(dlg.FileName);
 });
 cboHoja.SelectedIndexChanged += (_, __) => { if (cargando || !(cboHoja.SelectedItem is HojaArchivo h)) return; hoja = h; Seguro(() => Leer(true)); };
-cboBanco.SelectedIndexChanged += (_, __) => { if (!cargando && res != null) Seguro(() => Actualizar()); };
-cboCuenta.SelectedIndexChanged += (_, __) => { if (!cargando && res != null) Seguro(() => { lblSug.Text = cboCuenta.SelectedItem is CuentaBanco c && res.SaldoInicial.HasValue && c.UltimoSaldo.HasValue && Math.Abs(c.UltimoSaldo.Value - res.SaldoInicial.Value) > 0.005m
+cboBanco.SelectedIndexChanged += (_, __) => { if (!cargando && res != null) Seguro(() => { bancoSeguro = cboBanco.SelectedIndex > 0; if (cboCuenta.SelectedIndex <= 0) Leer(false); else Actualizar(); }); };
+string CuentaDeclarada() => deteccion?.CuentasPreambulo.FirstOrDefault() ?? res?.Cuentas.FirstOrDefault() ?? "";
+cboCuenta.SelectedIndexChanged += (_, __) => { if (!cargando && res != null) Seguro(() => { string decl = CuentaDeclarada();
+    if (decl.Length > 0 && cboCuenta.SelectedItem is CuentaBanco cc && !BancoArchivo.MismaCuenta(decl, cc.Numero) && !BancoArchivo.MismaCuenta(decl, cc.Clabe)) lblSug.Text = "Cuidado: el archivo dice que es de la cuenta " + decl + " y la cuenta elegida es " + (cc.Numero.Length > 0 ? cc.Numero : "otra") + ".";
+    else lblSug.Text = cboCuenta.SelectedItem is CuentaBanco c && res.SaldoInicial.HasValue && c.UltimoSaldo.HasValue && Math.Abs(c.UltimoSaldo.Value - res.SaldoInicial.Value) > 0.005m
         ? "Aviso: el archivo abre con $" + Dinero(res.SaldoInicial.Value) + " y el último saldo cargado de esta cuenta es $" + Dinero(c.UltimoSaldo.Value) + " (" + (c.UltimaFecha.HasValue ? c.UltimaFecha.Value.ToString("dd/MM/yyyy") : "") + "). Puede faltar un periodo." : ""; Actualizar(); }); };
 btnReleer.Click += (_, __) => Seguro(() => Leer(false));
 dgGrupos.CellValueChanged += (_, e) => { if (cargando || e.RowIndex < 0 || e.ColumnIndex != 2) return; string g = (string)dgGrupos.Rows[e.RowIndex].Tag; string v = S(dgGrupos.Rows[e.RowIndex].Cells[2].Value); var c = cuentas.FirstOrDefault(x => x.ToString() == v); if (c != null) cuentaDeGrupo[g] = c; else cuentaDeGrupo.Remove(g); };
