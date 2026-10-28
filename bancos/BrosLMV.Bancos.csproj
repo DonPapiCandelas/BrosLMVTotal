@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Nucleo de BrosLMV Bancos: lectura de estados de cuenta y movimientos de bancos (CSV, TXT, Excel, PDF),
+    layouts como datos, validacion de saldo, claves anti-duplicados y escritura al estado de cuenta de Comercial.
+    Sin interfaz: la usan bancos-ui (WPF) y bancos-pruebas. net8 porque corre en un programa aparte, no dentro
+    de ComercialSP.exe (32 bits).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>BrosLMV.Bancos</AssemblyName>
+    <RootNamespace>BrosLMV.Bancos</RootNamespace>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
+    <PackageReference Include="PdfPig" Version="0.1.9" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+  </ItemGroup>
+
+</Project>

@@ -104,3 +104,13 @@ __pycache__/
 
 # salida de compilaciones de prueba del Runner
 /build/runner-security/
+
+# BrosLMV Bancos
+/bancos/obj/
+/bancos/bin/
+/bancos-pruebas/obj/
+/bancos-pruebas/bin/
+/bancos-ui/obj/
+/bancos-ui/bin/
+/bancos-instalador/obj/
+/bancos-instalador/bin/
