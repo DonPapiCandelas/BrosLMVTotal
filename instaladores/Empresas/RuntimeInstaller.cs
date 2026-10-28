@@ -32,7 +32,7 @@ namespace BrosLMV.Empresas
         const string Base = @"C:\BrosLMV";
         const string Clsid = "{E593D5A9-4BAA-4618-A5BB-F7E1F9B0359E}";
 
-        public static string Install()
+        public static string Install(bool instalarBancos = true)
         {
             var sb = new StringBuilder();
 
@@ -43,6 +43,7 @@ namespace BrosLMV.Empresas
             Directory.CreateDirectory(tmp);
             ExtractPayload(tmp);
 
+            foreach (var p in Process.GetProcessesByName("BrosLMV.BancosUI")) { try { p.Kill(); } catch { } }
             foreach (var d in new[] { "bin", @"bin\x86", "host", "runner", "workers", "runtimes", "scripts", "logs", "data" })
                 Directory.CreateDirectory(Path.Combine(Base, d));
 
@@ -169,6 +170,26 @@ namespace BrosLMV.Empresas
                 if (File.Exists(conn) && !File.Exists(connDst)) File.Copy(conn, connDst);
             }
             catch { }
+
+            // BrosLMV Bancos (opcional): el programa completo y autocontenido en C:\BrosLMV\Bancos. Se instala en cada equipo.
+            try
+            {
+                string srcBancos = Path.Combine(tmp, "bancos");
+                if (instalarBancos && Directory.Exists(srcBancos))
+                {
+                    string dst = Path.Combine(Base, "Bancos");
+                    Directory.CreateDirectory(dst);
+                    foreach (var f in Directory.GetFiles(srcBancos, "*", SearchOption.AllDirectories))
+                    {
+                        string rel = f.Substring(srcBancos.Length).TrimStart(Path.DirectorySeparatorChar);
+                        string destino = Path.Combine(dst, rel);
+                        Directory.CreateDirectory(Path.GetDirectoryName(destino));
+                        File.Copy(f, destino, true);
+                    }
+                    sb.Append("BrosLMV Bancos instalado. ");
+                }
+            }
+            catch (Exception ex) { sb.Append("BrosLMV Bancos no se pudo instalar: " + ex.Message + ". "); }
 
             sb.Append("Runtime instalado en C:\\BrosLMV. ");
             sb.Append(CopyIcon(Path.Combine(tmp, "BrosLMV.ico")));

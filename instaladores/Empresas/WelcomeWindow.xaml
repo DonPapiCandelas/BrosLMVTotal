@@ -129,6 +129,18 @@
         </Grid>
       </Border>
 
+      <Border Style="{StaticResource Tarjeta}">
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Icono}"><TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="#2563EB" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+          <StackPanel Grid.Column="1" Margin="14,0,0,0">
+            <TextBlock Text="BrosLMV Bancos" FontWeight="SemiBold" Foreground="#0F2037"/>
+            <TextBlock Text="Carga estados de cuenta y movimientos de bancos al estado de cuenta de Comercial, con editor de layouts. Se instala en cada equipo." Foreground="#64748B" FontSize="12" TextWrapping="Wrap"/>
+          </StackPanel>
+          <CheckBox x:Name="chkBancos" Grid.Column="2" IsChecked="True" VerticalAlignment="Center" Margin="12,0,0,0" ToolTip="Instalar BrosLMV Bancos"/>
+        </Grid>
+      </Border>
+
       <TextBlock x:Name="lblSiguiente" TextWrapping="Wrap" Foreground="#64748B" FontSize="12" Margin="2,6,0,0"
                  Text="Después, en el SERVIDOR, podrás registrar (provisionar) tus empresas. En una TERMINAL basta con instalar."/>
       <TextBlock Text="Requiere permisos de administrador y .NET Framework 4.8 (incluido en Windows 10/11 y Server). Fuera de C:\BrosLMV solo se registra el componente COM y el icono; se quita todo con el Desinstalador." Foreground="#94A3B8" FontSize="11" Margin="2,8,0,0" TextWrapping="Wrap"/>

@@ -93,6 +93,9 @@ namespace BrosLMV.Empresas
             catch { return null; }
         }
 
+        // Si se marco instalar BrosLMV Bancos (el programa de carga de estados de cuenta).
+        public bool InstalarBancos { get { return chkBancos.IsChecked == true; } }
+
         void btnInstalar_Click(object sender, RoutedEventArgs e) { DialogResult = true; }
         void btnSalir_Click(object sender, RoutedEventArgs e) { DialogResult = false; }
     }

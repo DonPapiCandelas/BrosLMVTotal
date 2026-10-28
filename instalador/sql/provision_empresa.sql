@@ -337,6 +337,69 @@ BEGIN
 END
 
 -- ============================================================
+-- 4c-bis) Botón "Bancos" (BrosLMV.ABRIR_BANCOS): abre el programa de carga de estados de cuenta y movimientos de bancos.
+--     Aparece JUNTO A LOS BOTONES NATIVOS del módulo "Estados de cuenta" (1115): se busca el grupo por el botón nativo
+--     "Relacionar Transacción" (los IDs de grupo no coinciden entre empresas). Si no se encuentra, queda en el grupo BrosLMV.
+--     El script (instalador\scripts\ABRIR_BANCOS.ctx) se distribuye como script compartido; el programa se instala por equipo.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM engRibbonControl WHERE ControlExecute='BrosLMV.ABRIR_BANCOS')
+BEGIN
+    DECLARE @cb NVARCHAR(MAX), @vb NVARCHAR(MAX);
+    ;WITH m(col,val,ord) AS (
+        SELECT col,val,ord FROM (VALUES
+            ('ControlIDBase','0',1),
+            ('ProductID','1',2),
+            ('ModuleID','0',3),
+            ('ControlCaption','''Bancos''',4),
+            ('ControlDescription','''Cargar estados de cuenta y movimientos de bancos (BrosLMV Bancos)''',5),
+            ('ControlExecute','''BrosLMV.ABRIR_BANCOS''',6),
+            ('IconFile','''BrosLMV.ico''',7),
+            ('SystemButton','0',8),
+            ('SystemButtonOrder','0',9),
+            ('SystemButtonBeginGroup','0',10),
+            ('SystemButtonParentID','0',11),
+            ('QuickAccessShow','0',12),
+            ('QuickAccessOrder','0',13),
+            ('ResID','0',14),
+            ('ResIDDescription','0',15)
+        ) v(col,val,ord)
+        WHERE col IN (SELECT name FROM sys.columns WHERE object_id=OBJECT_ID('dbo.engRibbonControl'))
+    )
+    SELECT @cb = STUFF((SELECT ','+QUOTENAME(col) FROM m ORDER BY ord FOR XML PATH('')),1,1,''),
+           @vb = STUFF((SELECT ','+val            FROM m ORDER BY ord FOR XML PATH('')),1,1,'');
+    EXEC('INSERT dbo.engRibbonControl ('+@cb+') VALUES ('+@vb+')');
+END
+IF COL_LENGTH('dbo.engRibbonControl','IconFile') IS NOT NULL
+    UPDATE engRibbonControl SET IconFile='BrosLMV.ico' WHERE ControlExecute='BrosLMV.ABRIR_BANCOS';
+DECLARE @ctrlB INT = (SELECT TOP 1 ControlID FROM engRibbonControl WHERE ControlExecute='BrosLMV.ABRIR_BANCOS');
+DECLARE @grpB INT = (SELECT TOP 1 m.RibbonGroupID FROM engRibbonMenu m INNER JOIN engRibbonControl c ON c.ControlID=m.ControlID
+                     WHERE c.ControlExecute='FinancialOperation.AssociateTransaction' AND m.ExtraMenuModuleID=1115);
+DECLARE @modB INT = 1115;
+IF @grpB IS NULL BEGIN SET @grpB = @grp; SET @modB = 0; END
+
+IF EXISTS (SELECT 1 FROM engRibbonMenu WHERE ControlID=@ctrlB)
+    UPDATE engRibbonMenu SET RibbonGroupID=@grpB, ExtraMenuModuleID=@modB WHERE ControlID=@ctrlB;
+ELSE
+BEGIN
+    DECLARE @cmb NVARCHAR(MAX), @vmb NVARCHAR(MAX);
+    ;WITH m(col,val,ord) AS (
+        SELECT col,val,ord FROM (VALUES
+            ('RibbonMenuIDBase','0',1),
+            ('RibbonGroupID',CAST(@grpB AS NVARCHAR(20)),2),
+            ('ControlID',CAST(@ctrlB AS NVARCHAR(20)),3),
+            ('ControlOrder','4',4),
+            ('ControlType','1',5),
+            ('ExtraMenuModuleID',CAST(@modB AS NVARCHAR(20)),6),
+            ('IfUserIDIs','0',7)
+        ) v(col,val,ord)
+        WHERE col IN (SELECT name FROM sys.columns WHERE object_id=OBJECT_ID('dbo.engRibbonMenu'))
+    )
+    SELECT @cmb = STUFF((SELECT ','+QUOTENAME(col) FROM m ORDER BY ord FOR XML PATH('')),1,1,''),
+           @vmb = STUFF((SELECT ','+val            FROM m ORDER BY ord FOR XML PATH('')),1,1,'');
+    EXEC('INSERT dbo.engRibbonMenu ('+@cmb+') VALUES ('+@vmb+')');
+END
+
+-- ============================================================
 -- 4d) RED DE SEGURIDAD -- reparar controles "Cotizador" NATIVOS secuestrados.
 --     Una versión previa del botón "Activar botón Cotizador" llegó a correr
 --     UPDATE engRibbonControl SET ControlExecute='BrosLMV.Cotizador' sobre los

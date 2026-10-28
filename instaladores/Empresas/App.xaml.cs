@@ -90,10 +90,11 @@ namespace BrosLMV.Empresas
                 try { splash = new ProgressWindow(); splash.Show(); }
                 catch (Exception ex) { FallarInicio("No se pudo abrir la ventana de progreso", ex); return; }
 
+                bool instalarBancos = welcome.InstalarBancos;
                 Task.Run(() =>
                 {
                     string status; bool ok;
-                    try { status = RuntimeInstaller.Install(); ok = true; }
+                    try { status = RuntimeInstaller.Install(instalarBancos); ok = true; }
                     catch (Exception ex) { status = "No se pudo instalar el runtime: " + ex.Message; ok = false; Log(ex); }
 
                     Dispatcher.Invoke(() =>

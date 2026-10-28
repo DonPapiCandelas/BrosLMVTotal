@@ -8,6 +8,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [BrosLMV Bancos] — 2026-10-27
+
+- **Programa nuevo, aparte, solo para Comercial.** Carga estados de cuenta y movimientos de bancos (CSV, TXT, Excel, `.xls` de texto, PDF de BBVA) al estado de cuenta nativo (`docEdoCtaBanco`).
+  Se abre únicamente desde el botón **Bancos** en *Estados de cuenta*; el instalador de BrosLMV trae el check «BrosLMV Bancos» (por equipo). Ver `docs\BANCOS.md`.
+- **Layouts como datos** (JSON, versionados, de fábrica y de la empresa) con editor, porcentaje de coincidencia, permisos por usuario y varios layouts por banco.
+- **Anti-duplicados** por hora, clave de rastreo y saldo antes de contar. Hora de la transacción leída cuando el archivo la trae.
+- Reemplaza al script `CARGAR_ESTADO_CUENTA_BANCO.ctx` (retirado; respaldo en la etiqueta `banco-script-ctx-final`). Prototipo en Descargas 3.5.0 revertido (etiqueta `banco-descargas-3.5.0`).
+
 ## [Descargas 3.4.0] — 2026-10-18
 
 ### Agregado

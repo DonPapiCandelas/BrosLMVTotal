@@ -1,0 +1,46 @@
+// lang: csharp
+// job: safe-offline
+// AppKey recomendado: ABRIR_BANCOS
+// Plantilla: Abrir BrosLMV Bancos
+// Categoria: Tesorería
+// Documentacion: ABRIR_BANCOS.html
+// Abre BrosLMV Bancos (carga de estados de cuenta y movimientos del banco, con editor de layouts) ya en la empresa y con el usuario que tienes abiertos.
+// Botón sugerido: Estados de cuenta / Tesorería. El programa solo se abre desde aquí.
+
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Windows.Forms;
+
+const string exe = @"C:\BrosLMV\Bancos\BrosLMV.BancosUI.exe";
+
+if (!File.Exists(exe))
+{
+    MessageBox.Show(
+        "BrosLMV Bancos no está instalado en este equipo.\n\n" +
+        "Vuelve a ejecutar el instalador de BrosLMV y marca «BrosLMV Bancos».\n\n" +
+        "(Se esperaba en: " + exe + ")",
+        "BrosLMV Bancos", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    return;
+}
+
+string servidor = "", baseDeDatos = "";
+using (var cn = ctx.OpenConn()) { servidor = cn.DataSource; baseDeDatos = cn.Database; }
+
+int empresa = ctx.erp.OwnedBusinessEntityId;
+int usuario = ctx.erp.UserId;
+string nombreEmpresa = "", nombreUsuario = "";
+try { var v = ctx.Scalar("SELECT TOP 1 ISNULL(CommercialName, OfficialName) FROM orgBusinessEntity WHERE BusinessEntityID = " + empresa); nombreEmpresa = v == null || v is DBNull ? "" : Convert.ToString(v).Trim(); } catch { }
+try { nombreUsuario = ctx.erp.UserName ?? ""; } catch { }
+
+string Arg(string s) => "\"" + (s ?? "").Replace("\"", "") + "\"";
+
+// Si ya estaba abierto para esta empresa, el programa solo se trae al frente.
+Process.Start(new ProcessStartInfo
+{
+    FileName = exe,
+    Arguments = "--servidor " + Arg(servidor) + " --bd " + Arg(baseDeDatos) + " --empresa " + empresa + " --usuario " + usuario + " --nombre-empresa " + Arg(nombreEmpresa) + " --nombre-usuario " + Arg(nombreUsuario),
+    UseShellExecute = false,
+    WorkingDirectory = Path.GetDirectoryName(exe)
+});
+return "Bancos abierto.";

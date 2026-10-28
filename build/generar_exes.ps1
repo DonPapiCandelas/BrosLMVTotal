@@ -78,6 +78,14 @@ if (Test-Path (Join-Path $inst "iconos")) {
     Copy-Item (Join-Path $inst "iconos") (Join-Path $pl "iconos") -Recurse -Force
 }
 Copy-Item (Join-Path $inst "assets\BrosLMV.ico") (Join-Path $pl "BrosLMV.ico") -Force
+
+# BrosLMV Bancos (programa aparte, opcional en el instalador): pruebas y publicacion autocontenida (no exige .NET instalado en el equipo).
+Write-Host "   BrosLMV Bancos: pruebas y publicacion..." -ForegroundColor Cyan
+dotnet test (Join-Path $root "bancos-pruebas") --nologo -v q
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: fallaron las pruebas de BrosLMV Bancos; no se genera el instalador." -ForegroundColor Red; exit 1 }
+dotnet publish (Join-Path $root "bancos-ui\BrosLMV.BancosUI.csproj") -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o (Join-Path $pl "bancos") --nologo -v q
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR publicando BrosLMV Bancos" -ForegroundColor Red; exit 1 }
+
 $zip = Join-Path $pInst "payload.zip"; if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $pl "*") -DestinationPath $zip -Force
 
