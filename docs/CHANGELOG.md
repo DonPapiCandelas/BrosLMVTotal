@@ -8,6 +8,10 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.2.3] — 2026-10-27 — Nuevo componente: BrosLMV Bancos
+
+- El instalador trae el check **BrosLMV Bancos** (por equipo) y el aprovisionamiento de empresa crea el botón **Bancos** en *Estados de cuenta*. El addon no cambia; sube la versión para distinguir este instalador del 3.2.2 (sin Bancos). Detalle abajo y en `docs\BANCOS.md`.
+
 ## [BrosLMV Bancos] — 2026-10-27
 
 - **Programa nuevo, aparte, solo para Comercial.** Carga estados de cuenta y movimientos de bancos (CSV, TXT, Excel, `.xls` de texto, PDF de BBVA) al estado de cuenta nativo (`docEdoCtaBanco`).
