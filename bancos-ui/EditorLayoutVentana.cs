@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using BrosLMV.Bancos.Carga;
 using BrosLMV.Bancos.Layouts;
@@ -37,6 +38,10 @@ namespace BrosLMV.BancosUI
         private string[] _campo = new string[0];
         private List<List<Condicion>> _otrosCaminos = new List<List<Condicion>>();
         private bool _construyendo;
+        private List<ReglaTipo> _tipos = new List<ReglaTipo>();
+        private List<ReglaExtraer> _extraer = new List<ReglaExtraer>();
+        private readonly StackPanel _panelTipos = new StackPanel(), _panelExtraer = new StackPanel(), _panelZonas = new StackPanel();
+        private readonly TextBox _zFila = new TextBox(), _zCargo = new TextBox(), _zAbono = new TextBox(), _zSaldo = new TextBox(), _zFechaX = new TextBox(), _zDescX = new TextBox(), _zAlcance = new TextBox();
 
         private readonly Grid _tabla = new Grid();
         private readonly TextBox _nombre = new TextBox(), _textoArchivo = new TextBox(), _nombreArchivo = new TextBox(), _textoPdf = new TextBox();
@@ -94,7 +99,7 @@ namespace BrosLMV.BancosUI
             var fila = new Grid { Margin = new Thickness(0, 10, 0, 0) };
             fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) }); fila.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var colF = new StackPanel(); colF.Children.Add(Etiqueta("Fecha")); _fecha.Items.Add("Día/mes (México)"); _fecha.Items.Add("Mes/día"); _fecha.SelectedIndex = 0; _fecha.SelectionChanged += (s, e) => { if (!_construyendo) Recalcular(); }; colF.Children.Add(_fecha);
-            var colE = new StackPanel(); colE.Children.Add(Etiqueta("Estrategia de PDF")); _estrategia.Items.Add("Impresión de BBVANet"); _estrategia.Items.Add("Impresión del export"); _estrategia.Items.Add("Estado de cuenta oficial"); _estrategia.SelectedIndex = 0; _estrategia.SelectionChanged += (s, e) => { if (!_construyendo) Recalcular(); }; colE.Children.Add(_estrategia);
+            var colE = new StackPanel(); colE.Children.Add(Etiqueta("Estrategia de PDF")); _estrategia.Items.Add("Impresión de BBVANet"); _estrategia.Items.Add("Impresión del export"); _estrategia.Items.Add("Estado de cuenta oficial"); _estrategia.Items.Add("Por zonas (cualquier banco)"); _estrategia.SelectedIndex = 0; _estrategia.SelectionChanged += (s, e) => { if (!_construyendo) { _panelZonas.Visibility = _esPdf && _estrategia.SelectedIndex == 3 ? Visibility.Visible : Visibility.Collapsed; Recalcular(); } }; colE.Children.Add(_estrategia);
             Grid.SetColumn(colF, 0); Grid.SetColumn(colE, 2); fila.Children.Add(colF); fila.Children.Add(colE);
             der.Children.Add(fila);
             _negCargo.Margin = new Thickness(0, 12, 0, 0); _negCargo.Click += (s, e) => Recalcular(); _divisa.Margin = new Thickness(0, 6, 0, 0); _divisa.Click += (s, e) => Recalcular();
@@ -103,6 +108,11 @@ namespace BrosLMV.BancosUI
             der.Children.Add(Etiqueta("El texto del archivo contiene")); _textoArchivo.TextChanged += (s, e) => { if (!_construyendo) Recalcular(); }; der.Children.Add(_textoArchivo);
             der.Children.Add(Etiqueta("El nombre del archivo contiene")); _nombreArchivo.TextChanged += (s, e) => { if (!_construyendo) Recalcular(); }; der.Children.Add(_nombreArchivo);
             der.Children.Add(Etiqueta("El PDF contiene")); _textoPdf.TextChanged += (s, e) => { if (!_construyendo) Recalcular(); }; der.Children.Add(_textoPdf);
+            ConstruirZonas(); der.Children.Add(_panelZonas);
+            der.Children.Add(Etiqueta("Tipo de movimiento (reglas propias)")); der.Children.Add(_panelTipos);
+            der.Children.Add(Izq(Tema.Boton("+ Regla de tipo", (s, e) => { _tipos.Add(new ReglaTipo()); PintarReglas(); }, false, true)));
+            der.Children.Add(Etiqueta("Campos que se sacan del concepto")); der.Children.Add(_panelExtraer);
+            der.Children.Add(Izq(Tema.Boton("+ Campo", (s, e) => { _extraer.Add(new ReglaExtraer { Campo = "referencia" }); PintarReglas(); }, false, true)));
             var cajaDer = new Border { Background = Tema.Superficie, BorderBrush = Tema.Linea, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = der } };
             Grid.SetColumn(cajaDer, 2); Grid.SetRow(cajaDer, 0); Grid.SetRowSpan(cajaDer, 3); raiz.Children.Add(cajaDer);
 
@@ -187,7 +197,14 @@ namespace BrosLMV.BancosUI
                 _fecha.SelectedIndex = l.Ajustes != null && l.Ajustes.FormatoFecha == "mdy" ? 1 : 0;
                 _negCargo.IsChecked = l.Ajustes == null || !l.Ajustes.ImporteNegativoEsCargo.HasValue || l.Ajustes.ImporteNegativoEsCargo.Value;
                 _divisa.IsChecked = l.Ajustes != null && l.Ajustes.CuentaDesdeDivisa;
-                _estrategia.SelectedIndex = l.Pdf != null && l.Pdf.Estrategia == "export" ? 1 : l.Pdf != null && l.Pdf.Estrategia == "estadocuenta" ? 2 : 0;
+                _estrategia.SelectedIndex = l.Pdf != null && l.Pdf.Estrategia == "export" ? 1 : l.Pdf != null && l.Pdf.Estrategia == "estadocuenta" ? 2 : l.Pdf != null && l.Pdf.Estrategia == "zonas" ? 3 : (_esPdf && l.Pdf == null ? 3 : 0);
+                var zo = l.Pdf ?? new PdfOpciones();
+                _zFila.Text = zo.FilaInicia; _zCargo.Text = zo.EncCargo; _zAbono.Text = zo.EncAbono; _zSaldo.Text = zo.EncSaldo;
+                _zFechaX.Text = zo.FechaXMax.ToString(System.Globalization.CultureInfo.InvariantCulture); _zDescX.Text = zo.DescXMin.ToString(System.Globalization.CultureInfo.InvariantCulture); _zAlcance.Text = zo.Alcance.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                _panelZonas.Visibility = _esPdf && _estrategia.SelectedIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
+                _tipos = (l.Tipos ?? new List<ReglaTipo>()).Select(x => new ReglaTipo { Patron = x.Patron, Tipo = x.Tipo, Cuando = x.Cuando }).ToList();
+                _extraer = (l.Extraer ?? new List<ReglaExtraer>()).Select(x => new ReglaExtraer { Campo = x.Campo, Patron = x.Patron }).ToList();
+                PintarReglas();
                 CargarReconocer(l);
                 _estrategia.IsEnabled = _esPdf; _textoPdf.IsEnabled = _esPdf; _fecha.IsEnabled = !_esPdf; _negCargo.IsEnabled = !_esPdf; _divisa.IsEnabled = !_esPdf; _sinEnc.IsEnabled = !_esPdf;
             }
@@ -300,7 +317,22 @@ namespace BrosLMV.BancosUI
             var arch = Lista(_nombreArchivo.Text); if (arch.Count > 0) camino.Add(new Condicion { En = "archivo", Contiene = arch });
             var pdf = Lista(_textoPdf.Text); if (_esPdf && pdf.Count > 0) camino.Add(new Condicion { En = "pdf", Contiene = pdf });
             l.Reconocer = new List<List<Condicion>>(); if (camino.Count > 0) l.Reconocer.Add(camino); l.Reconocer.AddRange(_otrosCaminos);
-            if (_esPdf) { l.Pdf = new PdfOpciones { Estrategia = _estrategia.SelectedIndex == 1 ? "export" : _estrategia.SelectedIndex == 2 ? "estadocuenta" : "bbvanet" }; l.Columnas = null; }
+            l.Tipos = _tipos.Where(x => !string.IsNullOrWhiteSpace(x.Patron) && !string.IsNullOrWhiteSpace(x.Tipo)).Select(x => new ReglaTipo { Patron = x.Patron, Tipo = x.Tipo.Trim(), Cuando = x.Cuando }).ToList();
+            l.Extraer = _extraer.Where(x => !string.IsNullOrWhiteSpace(x.Patron) && !string.IsNullOrWhiteSpace(x.Campo)).Select(x => new ReglaExtraer { Campo = x.Campo, Patron = x.Patron }).ToList();
+            if (l.Tipos.Count == 0) l.Tipos = null; if (l.Extraer.Count == 0) l.Extraer = null;
+            if (_esPdf)
+            {
+                var po = new PdfOpciones { Estrategia = _estrategia.SelectedIndex == 1 ? "export" : _estrategia.SelectedIndex == 2 ? "estadocuenta" : _estrategia.SelectedIndex == 3 ? "zonas" : "bbvanet" };
+                if (po.Estrategia == "zonas")
+                {
+                    po.FilaInicia = _zFila.Text.Trim(); po.EncCargo = _zCargo.Text.Trim(); po.EncAbono = _zAbono.Text.Trim(); po.EncSaldo = _zSaldo.Text.Trim();
+                    double d;
+                    if (double.TryParse(_zFechaX.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d)) po.FechaXMax = d;
+                    if (double.TryParse(_zDescX.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d)) po.DescXMin = d;
+                    if (double.TryParse(_zAlcance.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d)) po.Alcance = d;
+                }
+                l.Pdf = po; l.Columnas = null;
+            }
             else
             {
                 l.Pdf = null;
@@ -344,6 +376,8 @@ namespace BrosLMV.BancosUI
             string problema = null;
             if (l.Nombre.Length == 0) problema = "Falta el nombre";
             else if (l.Reconocer.Count == 0 || l.Reconocer[0].Count == 0) problema = "Falta cómo reconocer el archivo";
+            else if (_tipos.Concat<object>(_extraer).Any(r => !PatronValido(r is ReglaTipo ? ((ReglaTipo)r).Patron : ((ReglaExtraer)r).Patron))) problema = "Hay una regla con un patrón mal escrito";
+            else if (_esPdf && _estrategia.SelectedIndex == 3 && (!PatronValido(_zFila.Text) || _zFila.Text.Trim().Length == 0)) problema = "El patrón de la fecha del PDF está mal escrito";
             else if (!_esPdf && !_campo.Contains("fecha")) problema = "Falta marcar la columna de fecha";
             else if (!_esPdf && !(_campo.Contains("cargo") || _campo.Contains("abono") || _campo.Contains("importe"))) problema = "Falta marcar cargo, abono o importe";
             try
@@ -382,6 +416,59 @@ namespace BrosLMV.BancosUI
             if (problema != null) _aviso.Text = problema;
             _valido = problema == null;
             _guardar.IsEnabled = _valido && _puedeGuardar;
+        }
+
+        private static Button Izq(Button b) { b.HorizontalAlignment = HorizontalAlignment.Left; return b; }
+
+        private static bool PatronValido(string p)
+        {
+            if (string.IsNullOrEmpty(p)) return true;
+            try { new Regex(p); return true; } catch (ArgumentException) { return false; }
+        }
+
+        private void ConstruirZonas()
+        {
+            _panelZonas.Margin = new Thickness(0, 0, 0, 0);
+            Func<string, TextBox, UIElement> campo = (t, tb) =>
+            {
+                tb.TextChanged += (s, e) => { if (!_construyendo) Recalcular(); };
+                var g = new StackPanel { Margin = new Thickness(0, 0, 8, 6) }; g.Children.Add(Tema.Txt(t, 11, false, Tema.Texto2)); g.Children.Add(tb); return g;
+            };
+            _panelZonas.Children.Add(Etiqueta("Zonas del PDF"));
+            var f1 = new UniformGrid { Columns = 3 }; f1.Children.Add(campo("Título de cargo", _zCargo)); f1.Children.Add(campo("Título de abono", _zAbono)); f1.Children.Add(campo("Título de saldo", _zSaldo));
+            var f2 = new UniformGrid { Columns = 3 }; f2.Children.Add(campo("Fecha hasta X", _zFechaX)); f2.Children.Add(campo("Descripción desde X", _zDescX)); f2.Children.Add(campo("Alcance", _zAlcance));
+            _panelZonas.Children.Add(f1); _panelZonas.Children.Add(campo("La fecha empieza el renglón (patrón)", _zFila)); _panelZonas.Children.Add(f2);
+            _panelZonas.Visibility = Visibility.Collapsed;
+        }
+
+        private void PintarReglas()
+        {
+            _panelTipos.Children.Clear(); _panelExtraer.Children.Clear();
+            foreach (var r in _tipos.ToList())
+            {
+                var regla = r;
+                var fila = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+                var quitar = Tema.Boton("×", (s, e) => { _tipos.Remove(regla); PintarReglas(); Recalcular(); }, false, true); DockPanel.SetDock(quitar, Dock.Right); fila.Children.Add(quitar);
+                var cuando = new ComboBox { Width = 76 }; cuando.Items.Add("ambos"); cuando.Items.Add("cargo"); cuando.Items.Add("abono"); cuando.SelectedItem = string.IsNullOrEmpty(regla.Cuando) ? "ambos" : regla.Cuando;
+                cuando.SelectionChanged += (s, e) => { regla.Cuando = (string)cuando.SelectedItem; Recalcular(); }; DockPanel.SetDock(cuando, Dock.Right); fila.Children.Add(cuando);
+                var tipo = new TextBox { Text = regla.Tipo, Width = 110, Margin = new Thickness(6, 0, 6, 0), ToolTip = "Tipo que se le pone al movimiento" }; tipo.TextChanged += (s, e) => { regla.Tipo = tipo.Text; if (!_construyendo) Recalcular(); }; DockPanel.SetDock(tipo, Dock.Right); fila.Children.Add(tipo);
+                var patron = new TextBox { Text = regla.Patron, ToolTip = "Si el texto del movimiento (sin acentos ni mayúsculas) cumple este patrón" }; patron.TextChanged += (s, e) => { regla.Patron = patron.Text; patron.BorderBrush = PatronValido(patron.Text) ? Tema.Pincel("#CDD2DA") : Brushes.IndianRed; if (!_construyendo) Recalcular(); };
+                fila.Children.Add(patron);
+                _panelTipos.Children.Add(fila);
+            }
+            foreach (var r in _extraer.ToList())
+            {
+                var regla = r;
+                var fila = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+                var quitar = Tema.Boton("×", (s, e) => { _extraer.Remove(regla); PintarReglas(); Recalcular(); }, false, true); DockPanel.SetDock(quitar, Dock.Right); fila.Children.Add(quitar);
+                var campo = new ComboBox { Width = 118 };
+                foreach (var c in new[] { "referencia", "claveRastreo", "rfc", "clabe", "nombre", "banco" }) campo.Items.Add(c);
+                campo.SelectedItem = regla.Campo; campo.SelectionChanged += (s, e) => { regla.Campo = (string)campo.SelectedItem; Recalcular(); };
+                DockPanel.SetDock(campo, Dock.Left); fila.Children.Add(campo);
+                var patron = new TextBox { Text = regla.Patron, Margin = new Thickness(6, 0, 0, 0), ToolTip = "Expresión regular: se usa el grupo 1 si lo hay" }; patron.TextChanged += (s, e) => { regla.Patron = patron.Text; patron.BorderBrush = PatronValido(patron.Text) ? Tema.Pincel("#CDD2DA") : Brushes.IndianRed; if (!_construyendo) Recalcular(); };
+                fila.Children.Add(patron);
+                _panelExtraer.Children.Add(fila);
+            }
         }
 
         // ---------- guardar ----------

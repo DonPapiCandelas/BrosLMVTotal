@@ -28,6 +28,8 @@ namespace BrosLMV.Bancos.Motor
         public int Cuenta { get; set; } = -1;
         public int Moneda { get; set; } = -1;
         public int Hora { get; set; } = -1;
+        public List<BrosLMV.Bancos.Layouts.ReglaTipo> Tipos { get; set; }          // del layout: tipos propios del banco
+        public List<BrosLMV.Bancos.Layouts.ReglaExtraer> Extraer { get; set; }     // del layout: campos que se sacan del concepto
         public bool ImporteNegativoEsCargo { get; set; } = true;     // en tarjetas como Amex el importe positivo es la compra
         public string FormatoFecha { get; set; } = "auto";           // auto (dd/mm) | mdy
         public string Firma { get; set; } = "";                      // encabezado normalizado: identifica el formato para recordarlo

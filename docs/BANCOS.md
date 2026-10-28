@@ -31,7 +31,9 @@ Un layout es un dato (JSON): cómo **reconocer** el formato y cómo **leerlo**. 
 viven en `zzBrosBancoLayout` (versionados, con historial y volver a una versión anterior) y **ganan** al de fábrica con el mismo `id`.
 - `reconocer`: lista de caminos (O) de condiciones (Y) sobre el `encabezado`, el `texto` de las primeras filas, el nombre del `archivo` o el texto del `pdf`. Cada condición es `contiene`/`empieza` con varios valores (O). Da un **porcentaje** de coincidencia; el layout se usa solo cuando llega a su `umbral` (100 por defecto) y, entre varios, gana la mayor `confianza`.
 - `columnas`: campo → nombres de encabezado, o `#3` (columna 3, para archivos sin encabezado). `filaEncabezado` / `primeraFila` si hace falta. Campos: fecha, hora, descripcion, detalle, referencia, cargo, abono, importe, signo, saldo, cuenta, moneda.
-- `ajustes`: signo del importe, formato de fecha (`mdy`), cada divisa es una cuenta. `pdf.estrategia`: `bbvanet`, `export` o `estadocuenta`.
+- `ajustes`: signo del importe, formato de fecha (`mdy`), cada divisa es una cuenta.
+- `tipos`: reglas propias del banco (patrón sobre el texto sin acentos → tipo, solo para cargo, abono o ambos); ganan a las generales. `extraer`: saca referencia, clave de rastreo, RFC, CLABE, nombre o banco del concepto con una expresión regular (grupo 1).
+- `pdf.estrategia`: `zonas` (cualquier banco: la fila empieza con una fecha y los importes van a la columna cuyo **título** queda más cerca; se ajusta con los títulos de cargo/abono/saldo, el patrón de la fecha, y el alcance de la descripción), o las lecturas a mano de BBVA `export` y `estadocuenta`. `bbvanet` es `zonas` con los valores de fábrica.
 - Lo que el layout no dice lo deduce el motor por encabezado (alias conocidos), por eso un banco que agrega una columna no rompe la carga.
 
 **Editor** (pestaña Layouts → Nuevo layout, o «Abrir en Layouts» desde un archivo sin layout): se abre un archivo de muestra, se marca la fila del encabezado y qué es cada columna, se elige
@@ -47,9 +49,8 @@ con qué distinguirlos se empareja por conteo. Se hace en dos vueltas para que e
 Lo propio de BrosLMV (hora, rastreo, saldo, layout, hash del archivo) se guarda en `zzBrosEdoCtaCarga`, ligado a cada renglón; `docEdoCtaBanco` no se ensancha.
 
 ## Pruebas
-`dotnet test bancos-pruebas` (29 pruebas): regresión contra los 95 archivos reales de `Entrenamiento\Bancos` (privado, fuera del repo; se omite si no está; `BROSLMV_BANCOS_ACTUALIZAR_GOLDEN=1` acepta una mejora a propósito), layouts, anti-duplicados,
+`dotnet test bancos-pruebas` (35 pruebas): regresión contra los 95 archivos reales de `Entrenamiento\Bancos` (privado, fuera del repo; se omite si no está; `BROSLMV_BANCOS_ACTUALIZAR_GOLDEN=1` acepta una mejora a propósito), layouts, anti-duplicados,
 analizador y, contra el laboratorio `BROSLMV_DESARROLLO`, carga, deshacer, layouts versionados, configuración y permisos (se omiten sin SQL Server).
 
 ## Pendiente
-Registrar el botón con el instalador real y probarlo dentro de Comercial en una terminal; generar el instalador nuevo (decidir la versión); editor de reglas de tipo y de extracción de campos del concepto; zonas de PDF editables
-para bancos que no sean BBVA; `.xls` binario antiguo; PDF escaneado (sin OCR); empate contra cobros, pagos y CFDI (fases 2 a 4 del plan).
+Probar el botón dentro de Comercial en una terminal real; `.xls` binario antiguo; PDF escaneado (sin OCR); empate contra cobros, pagos y CFDI (fases 2 a 4 del plan).

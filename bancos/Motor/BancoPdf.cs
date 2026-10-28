@@ -13,7 +13,7 @@ using System.Text.RegularExpressions;
 
 namespace BrosLMV.Bancos.Motor
 {
-    public static class BancoPdf
+    public static partial class BancoPdf
     {
         private sealed class P { public string T; public double L, R, Y; public double C { get { return (L + R) / 2; } } }
         private sealed class Lin { public double Y; public List<P> W = new List<P>(); public string Txt { get { return string.Join(" ", W.Select(x => x.T)); } } }
@@ -83,7 +83,8 @@ namespace BrosLMV.Bancos.Motor
             {
                 case "estadocuenta": movs = EstadoCuenta(pags, notas, out cuenta); break;
                 case "export": movs = Export(pags, notas, out cuenta); break;
-                case "bbvanet": movs = BbvaNet(pags, out cuenta); break;
+                case "bbvanet":
+                case "zonas": movs = Zonas(pags, usado.Pdf, out cuenta); break;
                 default: throw new InvalidOperationException("El layout «" + usado.Nombre + "» no dice como leer el PDF (estrategia).");
             }
             notas.Insert(0, "PDF leído como " + usado.Nombre + ": " + movs.Count + " movimientos.");
@@ -111,51 +112,6 @@ namespace BrosLMV.Bancos.Motor
         }
 
         // ---------- A) impresion de BBVANet ----------
-        private static List<M> BbvaNet(List<List<P>> pags, out string cuenta)
-        {
-            cuenta = CuentaDe(pags[0]);
-            string t0 = string.Join(" ", Lineas(pags[0]).Select(l => l.Txt));
-            var mi = Regex.Match(t0, @"(\d{2})/(\d{2})/(\d{4})"); int anioImp = mi.Success ? int.Parse(mi.Groups[3].Value) : DateTime.Today.Year, mesImp = mi.Success ? int.Parse(mi.Groups[2].Value) : 12;
-            var res = new List<M>(); double cC = 0, cA = 0, cS = 0; bool hay = false;
-            foreach (var pg in pags)
-            {
-                var lins = Lineas(pg);
-                var cab = lins.FirstOrDefault(l => l.W.Any(w => w.T.Equals("Cargo", StringComparison.OrdinalIgnoreCase)) && l.W.Any(w => w.T.Equals("Saldo", StringComparison.OrdinalIgnoreCase)));
-                if (cab != null)
-                {
-                    cC = cab.W.First(w => w.T.Equals("Cargo", StringComparison.OrdinalIgnoreCase)).C; cA = cab.W.First(w => w.T.Equals("Abono", StringComparison.OrdinalIgnoreCase)).C; cS = cab.W.First(w => w.T.Equals("Saldo", StringComparison.OrdinalIgnoreCase)).C; hay = true;
-                }
-                if (!hay) continue;
-                double yCab = cab != null ? cab.Y : -1;
-                var filas = lins.Where(l => l.Y > yCab + 4 && l.W[0].L < 60 && Regex.IsMatch(l.W[0].T, @"^\d{2}-\d{2}$")).ToList();
-                if (filas.Count == 0) continue;
-                var bloques = filas.Select(f =>
-                {
-                    var m = new M(); var d = f.W[0].T.Split('-'); int mes = int.Parse(d[1]); int anio = mes > mesImp ? anioImp - 1 : anioImp;
-                    m.F = new DateTime(anio, mes, int.Parse(d[0]));
-                    foreach (var w in f.W.Where(x => Monto.IsMatch(x.T)))
-                    {
-                        double c = w.C; double dc = Math.Abs(c - cC), da = Math.Abs(c - cA), ds = Math.Abs(c - cS);
-                        if (ds <= dc && ds <= da) m.Saldo = Num(w.T); else if (dc <= da) m.Cargo = Num(w.T); else m.Abono = Num(w.T);
-                    }
-                    return new { M = m, Y = f.Y, L = new List<Lin>() };
-                }).ToList();
-                foreach (var l in lins.Where(x => x.Y > yCab + 4))
-                {
-                    string txt = l.Txt;
-                    if (Regex.IsMatch(txt, @"(?i)http|bbvanet|detalle de movimientos|^\d+/\d+$")) continue;
-                    bool esFila = filas.Contains(l);
-                    var b = bloques.OrderBy(x => Math.Abs(x.Y - l.Y)).First();
-                    if (!esFila && Math.Abs(b.Y - l.Y) > 30) continue;
-                    if (esFila) b = bloques[filas.IndexOf(l)];
-                    var trozo = new Lin { Y = l.Y, W = l.W.Where(w => w.L >= 62 && !Monto.IsMatch(w.T) && w.T != "$").ToList() };
-                    if (trozo.W.Count > 0) b.L.Add(trozo);
-                }
-                foreach (var b in bloques) { b.M.D = Desc(b.L.OrderBy(x => x.Y), w => true); res.Add(b.M); }
-            }
-            return res;
-        }
-
         // ---------- B) impresion del export (cargo/abono por cadena de saldos) ----------
         private static List<M> Export(List<List<P>> pags, List<string> notas, out string cuenta)
         {

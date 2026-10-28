@@ -31,7 +31,47 @@ namespace BrosLMV.Bancos.Motor
         private static readonly Regex FolioBbva = new Regex(@"/\s*(\d{7,12})\s+(\d{3})\s", RegexOptions.Compiled);
         private static readonly Dictionary<string, string> CodigosBanco = new Dictionary<string, string> { { "002", "Banamex" }, { "012", "BBVA" }, { "014", "Santander" }, { "021", "HSBC" }, { "030", "BanBajío" }, { "036", "Inbursa" }, { "044", "Scotiabank" }, { "072", "Banorte" }, { "127", "Azteca" }, { "137", "BanCoppel" }, { "138", "Ualá" }, { "646", "STP" }, { "699", "Fondeadora" }, { "721", "Mercado Pago" } };
 
-        public static void Extraer(BancoMov m)
+        // Con reglas del layout: primero lo que dice el layout (extraer y tipo), y lo general solo donde el layout no dijo nada.
+    public static void Extraer(BancoMov m, BancoMapa mapa)
+    {
+        Extraer(m);
+        if (mapa == null) return;
+        string t = (m.Descripcion + " " + m.Detalle).Trim();
+        if (mapa.Extraer != null)
+            foreach (var r in mapa.Extraer)
+            {
+                try
+                {
+                    var x = Regex.Match(t, r.Patron, RegexOptions.IgnoreCase);
+                    if (!x.Success) continue;
+                    string v = (x.Groups.Count > 1 ? x.Groups[1].Value : x.Value).Trim();
+                    switch ((r.Campo ?? "").ToLowerInvariant())
+                    {
+                        case "clavederastreo": case "rastreo": m.ClaveRastreo = v; break;
+                        case "rfc": m.RfcContraparte = v.ToUpperInvariant(); break;
+                        case "clabe": m.ClabeContraparte = v; break;
+                        case "nombre": m.NombreContraparte = v; break;
+                        case "banco": m.BancoContraparte = v; break;
+                        case "referencia": m.Referencia = v; break;
+                    }
+                }
+                catch (ArgumentException) { }          // patron mal escrito: se ignora (el editor lo avisa)
+            }
+        if (mapa.Tipos != null)
+        {
+            string n = BancoTexto.Norm(t);
+            foreach (var r in mapa.Tipos)
+            {
+                string cuando = (r.Cuando ?? "ambos").ToLowerInvariant();
+                if (cuando == "cargo" && m.Cargo <= 0) continue;
+                if (cuando == "abono" && m.Abono <= 0) continue;
+                try { if (Regex.IsMatch(n, r.Patron, RegexOptions.IgnoreCase)) { m.Tipo = r.Tipo; break; } }
+                catch (ArgumentException) { }
+            }
+        }
+    }
+
+    public static void Extraer(BancoMov m)
         {
             string t = (m.Descripcion + " " + m.Detalle).Trim();
             if (t.Length == 0) return;

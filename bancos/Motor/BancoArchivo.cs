@@ -141,10 +141,11 @@ namespace BrosLMV.Bancos.Motor
                 det.Layout = l;
                 det.Banco = l.Banco; det.Confianza = l.Confianza; det.Perfil = l.Nombre;
                 det.Notas.AddRange(l.Notas);
+                det.Mapa.Tipos = l.Tipos; det.Mapa.Extraer = l.Extraer;
                 if (l.Columnas != null && l.Columnas.Count > 0)
                 {
                     var m = MapaDeLayout(l, filas, filaDe[l], det.Mapa);
-                    if (m != null) { det.Mapa = m; det.MapaPorEncabezado = m.FilaEncabezado >= 0; det.Notas.RemoveAll(x => x.StartsWith("El archivo no trae encabezado reconocible")); }
+                    if (m != null) { m.Tipos = l.Tipos; m.Extraer = l.Extraer; det.Mapa = m; det.MapaPorEncabezado = m.FilaEncabezado >= 0; det.Notas.RemoveAll(x => x.StartsWith("El archivo no trae encabezado reconocible")); }
                 }
                 if (l.Ajustes != null)
                 {
@@ -338,7 +339,7 @@ namespace BrosLMV.Bancos.Motor
             for (int k = 0; k < crudos.Count; k++)
             {
                 var m = crudos[k]; m.Orden = k + 1;
-                BancoCampos.Extraer(m);
+                BancoCampos.Extraer(m, mapa);
                 string clave = m.Fecha.ToString("yyyyMMdd") + "|" + m.Cargo.ToString("0.00", CultureInfo.InvariantCulture) + "|" + m.Abono.ToString("0.00", CultureInfo.InvariantCulture) + "|" +
                     (m.Saldo.HasValue ? m.Saldo.Value.ToString("0.00", CultureInfo.InvariantCulture) : "") + "|" + BancoTexto.Norm(m.Descripcion) + "|" + BancoTexto.Norm(m.Referencia) + "|" + m.CuentaArchivo;
                 vistos.TryGetValue(clave, out int veces); vistos[clave] = veces + 1;

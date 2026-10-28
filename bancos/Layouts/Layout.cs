@@ -26,6 +26,8 @@ namespace BrosLMV.Bancos.Layouts
         public int PrimeraFila { get; set; }                            // primera fila de datos (1 = primera); 0 = la que sigue al encabezado
         public Ajustes Ajustes { get; set; } = new Ajustes();
         public List<string> Notas { get; set; } = new List<string>();
+        public List<ReglaTipo> Tipos { get; set; }                       // reglas propias del banco: ganan a las generales
+        public List<ReglaExtraer> Extraer { get; set; }                 // campos que se sacan del concepto
         public PdfOpciones Pdf { get; set; }
 
         private static readonly JsonSerializerOptions Opc = new JsonSerializerOptions
@@ -47,16 +49,26 @@ namespace BrosLMV.Bancos.Layouts
         public List<string> Empieza { get; set; }
     }
 
+    // Si el texto del movimiento (sin acentos ni mayusculas) cumple el patron (expresion regular), el movimiento es de ese tipo. Las reglas se prueban en orden.
+    public class ReglaTipo
+    {
+        public string Patron { get; set; } = "";
+        public string Tipo { get; set; } = "";
+        public string Cuando { get; set; } = "ambos";           // cargo | abono | ambos
+    }
+
+    // Saca un campo del texto del movimiento con una expresion regular (el grupo 1 si lo hay, si no todo lo que coincide).
+    public class ReglaExtraer
+    {
+        public string Campo { get; set; } = "";                 // claveRastreo | rfc | clabe | nombre | banco | referencia
+        public string Patron { get; set; } = "";
+    }
+
     // Ajustes sobre lo que el motor ya deduce por encabezado: solo se escribe lo que difiere.
     public class Ajustes
     {
         public bool? ImporteNegativoEsCargo { get; set; }
         public string FormatoFecha { get; set; }                // auto (dd/mm) | mdy
         public bool CuentaDesdeDivisa { get; set; }             // cada divisa es una cuenta distinta (Monex)
-    }
-
-    public class PdfOpciones
-    {
-        public string Estrategia { get; set; } = "";            // bbvanet | export | estadocuenta
     }
 }
