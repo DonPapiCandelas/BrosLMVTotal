@@ -20,6 +20,7 @@ Si vas a construir un botón nuevo, empieza aquí: casi siempre ya tenemos la pi
 | **QRCoder** | 1.6 | MIT | **Códigos QR** como imagen (SAT, pagos, enlaces) | PDF de documentos (QR de verificación del SAT) |
 | **Newtonsoft.Json** | 13.0.3 | MIT | **JSON**: leer/escribir objetos, consumir APIs | Disponible para scripts |
 | **MailKit / MimeKit** (+ BouncyCastle.Cryptography) | 4.18.1 | MIT | **Correo**: enviar y leer (SMTP, IMAP, POP3), HTML, adjuntos, OAuth, TLS moderno. Más robusto que `System.Net.Mail` | Disponible para scripts (estados de cuenta por correo, avisos de cobranza) |
+| **PdfPig** (UglyToad.PdfPig + Core, Fonts, Tokens, Tokenization, DocumentLayoutAnalysis) | 0.1.9 | Apache-2.0 | **Leer texto de un PDF con la posición de cada palabra** (sin OCR) | «Cargar estado de cuenta» (PDF de BBVA) |
 | **PDFsharp** (+ PdfSharp.\* de apoyo) | 6.2.4 | MIT | **PDF por código**: dibujar texto/líneas/imágenes, **unir, partir, reordenar, marcar de agua**, proteger con contraseña | Disponible para scripts |
 | **MigraDoc** (DocumentObjectModel, Rendering, RtfRendering) | 6.2.4 | MIT | **Reportes en PDF/RTF con párrafos, tablas, encabezados y pies** sin escribir HTML; trabaja sobre PDFsharp | Disponible para scripts |
 | **ZXing.Net** (`zxing`, `zxing.presentation`) | 0.16.11 | Apache-2.0 | **Códigos de barras** (Code128, EAN, ITF…) y lectura de QR/barras en imágenes | Disponible para scripts |

@@ -1,10 +1,16 @@
 #r "C:\BrosLMV\lib\ClosedXML.dll"
 // lang: csharp
+// job: safe-offline
+#r "C:\BrosLMV\lib\UglyToad.PdfPig.Core.dll"
+#r "C:\BrosLMV\lib\UglyToad.PdfPig.Fonts.dll"
+#r "C:\BrosLMV\lib\UglyToad.PdfPig.Tokens.dll"
+#r "C:\BrosLMV\lib\UglyToad.PdfPig.Tokenization.dll"
+#r "C:\BrosLMV\lib\UglyToad.PdfPig.dll"
+#r "C:\BrosLMV\lib\UglyToad.PdfPig.DocumentLayoutAnalysis.dll"
 // AppKey recomendado: CARGAR_ESTADO_CUENTA_BANCO
 // Plantilla: Cargar estado de cuenta o movimientos del banco (C# · ventana Windows Forms)
 // Categoria: Tesorería
 // Documentacion: CARGAR_ESTADO_CUENTA_BANCO.html
-// job: safe-offline
 // Carga un archivo del banco (CSV, TXT, Excel) al estado de cuenta nativo de Comercial (docEdoCtaBanco). Se lee por ENCABEZADO, no por posición;
 // el banco y la cuenta se sugieren pero se pueden elegir. Todo es local: el archivo no sale del equipo. Botón sugerido: Tesorería › Cuentas Bancarias.
 
@@ -688,6 +694,240 @@ internal static class BancoArchivo
     }
 }
 
+// ======================================================================================================================
+//  PDF de BBVA -> misma tabla de texto que un CSV (PdfPig lee las palabras con su posicion; no hay OCR: el PDF debe traer texto)
+//    A) impresion de BBVANet "Detalle de movimientos" (fecha dd-MM, cargo/abono/saldo por columna, descripcion arriba y abajo del renglon)
+//    B) impresion del export de BBVANet (tabla HTML en PDF: las columnas se mueven, el cargo/abono se decide por el saldo)
+//    C) estado de cuenta oficial (OPER/LIQ/COD., columnas fijas, saldo solo al cierre de algunos dias; se cuadra con los totales que declara)
+// ======================================================================================================================
+internal static class BancoPdf
+{
+    private sealed class P { public string T; public double L, R, Y; public double C { get { return (L + R) / 2; } } }
+    private sealed class Lin { public double Y; public List<P> W = new List<P>(); public string Txt { get { return string.Join(" ", W.Select(x => x.T)); } } }
+    private sealed class M { public DateTime F; public string D = ""; public decimal Cargo, Abono; public decimal? Saldo; public double Centro = -1; }
+
+    private static readonly Regex Monto = new Regex(@"^(\d{1,3}(,\d{3})+|\d{1,3})\.\d{2}$", RegexOptions.Compiled);
+    private static readonly Dictionary<string, int> Meses = new Dictionary<string, int> { { "ENE", 1 }, { "FEB", 2 }, { "MAR", 3 }, { "ABR", 4 }, { "MAY", 5 }, { "JUN", 6 }, { "JUL", 7 }, { "AGO", 8 }, { "SEP", 9 }, { "OCT", 10 }, { "NOV", 11 }, { "DIC", 12 } };
+    private static decimal Num(string s) { return decimal.Parse(s.Replace(",", ""), CultureInfo.InvariantCulture); }
+
+    private static List<List<P>> Paginas(string ruta)
+    {
+        var res = new List<List<P>>();
+        using (var doc = UglyToad.PdfPig.PdfDocument.Open(ruta))
+            foreach (var pag in doc.GetPages())
+            {
+                var l = new List<P>();
+                foreach (var w in pag.GetWords())
+                {
+                    string t = (w.Text ?? "").Trim(); if (t.Length == 0) continue;
+                    l.Add(new P { T = t, L = w.BoundingBox.Left, R = w.BoundingBox.Right, Y = pag.Height - w.BoundingBox.Top });
+                }
+                res.Add(l);
+            }
+        return res;
+    }
+
+    private static List<Lin> Lineas(List<P> ws)
+    {
+        var lins = new List<Lin>();
+        foreach (var w in ws.OrderBy(x => x.Y).ThenBy(x => x.L))
+        {
+            var l = lins.LastOrDefault();
+            if (l == null || Math.Abs(w.Y - l.Y) > 2.5) { l = new Lin { Y = w.Y }; lins.Add(l); }
+            l.W.Add(w);
+        }
+        foreach (var l in lins) l.W = l.W.OrderBy(x => x.L).ToList();
+        return lins;
+    }
+
+    // Devuelve la tabla (preambulo "Cuenta: N", encabezado, renglones) y notas para la persona.
+    public static List<string[]> Leer(string ruta, List<string> notas)
+    {
+        var pags = Paginas(ruta);
+        if (pags.Count == 0 || pags.All(p => p.Count == 0)) throw new InvalidOperationException("Este PDF no trae texto (parece una imagen escaneada). Pide al banco el archivo de movimientos en CSV, TXT o Excel.");
+        string n = BancoTexto.Norm(string.Join(" ", pags.Take(2).SelectMany(p => p.Select(w => w.T))));
+        var movs = new List<M>(); string cuenta = ""; string capa;
+        if (n.Contains("detalle de movimientos realizados")) { capa = "estado de cuenta oficial de BBVA"; movs = EstadoCuenta(pags, notas, out cuenta); }
+        else if (n.Contains("bdxt") || (n.Contains("concepto / referencia") && !n.Contains("detalle de movimientos"))) { capa = "impresión del export de BBVANet"; movs = Export(pags, notas, out cuenta); }
+        else if (n.Contains("detalle de movimientos")) { capa = "impresión de BBVANet"; movs = BbvaNet(pags, out cuenta); }
+        else throw new InvalidOperationException("No reconozco este PDF. Por ahora se leen los de BBVA (impresión de BBVANet, impresión del export y estado de cuenta oficial).");
+        notas.Insert(0, "PDF leído como " + capa + ": " + movs.Count + " movimientos.");
+        var filas = new List<string[]>();
+        if (cuenta.Length > 0) filas.Add(new[] { "Cuenta: " + cuenta, "", "", "", "" });
+        filas.Add(new[] { "Fecha", "Concepto / Referencia", "Cargo", "Abono", "Saldo" });
+        var ci2 = CultureInfo.InvariantCulture;
+        foreach (var m in movs)
+            filas.Add(new[] { m.F.ToString("yyyy-MM-dd", ci2), m.D, m.Cargo != 0 ? m.Cargo.ToString("0.00", ci2) : "", m.Abono != 0 ? m.Abono.ToString("0.00", ci2) : "", m.Saldo.HasValue ? m.Saldo.Value.ToString("0.00", ci2) : "" });
+        return filas;
+    }
+
+    private static string Desc(IEnumerable<Lin> lins, Func<P, bool> incluir)
+    {
+        var partes = new List<string>();
+        foreach (var l in lins) { var t = string.Join(" ", l.W.Where(incluir).Select(w => w.T)); if (t.Length > 0) partes.Add(t); }
+        return string.Join(" / ", partes);
+    }
+
+    private static string CuentaDe(List<P> pagina)
+    {
+        string t = string.Join(" ", Lineas(pagina).Select(l => l.Txt));
+        var m = Regex.Match(t, @"(?i)cuenta:?\s*(\d{6,18})"); if (m.Success) return m.Groups[1].Value;
+        m = Regex.Match(t, @"(?i)No\.\s*(?:de\s+)?Cuenta\s+(\d{6,18})"); return m.Success ? m.Groups[1].Value : "";
+    }
+
+    // ---------- A) impresion de BBVANet ----------
+    private static List<M> BbvaNet(List<List<P>> pags, out string cuenta)
+    {
+        cuenta = CuentaDe(pags[0]);
+        string t0 = string.Join(" ", Lineas(pags[0]).Select(l => l.Txt));
+        var mi = Regex.Match(t0, @"(\d{2})/(\d{2})/(\d{4})"); int anioImp = mi.Success ? int.Parse(mi.Groups[3].Value) : DateTime.Today.Year, mesImp = mi.Success ? int.Parse(mi.Groups[2].Value) : 12;
+        var res = new List<M>(); double cC = 0, cA = 0, cS = 0; bool hay = false;
+        foreach (var pg in pags)
+        {
+            var lins = Lineas(pg);
+            var cab = lins.FirstOrDefault(l => l.W.Any(w => w.T.Equals("Cargo", StringComparison.OrdinalIgnoreCase)) && l.W.Any(w => w.T.Equals("Saldo", StringComparison.OrdinalIgnoreCase)));
+            if (cab != null)
+            {
+                cC = cab.W.First(w => w.T.Equals("Cargo", StringComparison.OrdinalIgnoreCase)).C; cA = cab.W.First(w => w.T.Equals("Abono", StringComparison.OrdinalIgnoreCase)).C; cS = cab.W.First(w => w.T.Equals("Saldo", StringComparison.OrdinalIgnoreCase)).C; hay = true;
+            }
+            if (!hay) continue;
+            double yCab = cab != null ? cab.Y : -1;
+            var filas = lins.Where(l => l.Y > yCab + 4 && l.W[0].L < 60 && Regex.IsMatch(l.W[0].T, @"^\d{2}-\d{2}$")).ToList();
+            if (filas.Count == 0) continue;
+            var bloques = filas.Select(f =>
+            {
+                var m = new M(); var d = f.W[0].T.Split('-'); int mes = int.Parse(d[1]); int anio = mes > mesImp ? anioImp - 1 : anioImp;
+                m.F = new DateTime(anio, mes, int.Parse(d[0]));
+                foreach (var w in f.W.Where(x => Monto.IsMatch(x.T)))
+                {
+                    double c = w.C; double dc = Math.Abs(c - cC), da = Math.Abs(c - cA), ds = Math.Abs(c - cS);
+                    if (ds <= dc && ds <= da) m.Saldo = Num(w.T); else if (dc <= da) m.Cargo = Num(w.T); else m.Abono = Num(w.T);
+                }
+                return new { M = m, Y = f.Y, L = new List<Lin>() };
+            }).ToList();
+            foreach (var l in lins.Where(x => x.Y > yCab + 4))
+            {
+                string txt = l.Txt;
+                if (Regex.IsMatch(txt, @"(?i)http|bbvanet|detalle de movimientos|^\d+/\d+$")) continue;
+                bool esFila = filas.Contains(l);
+                var b = bloques.OrderBy(x => Math.Abs(x.Y - l.Y)).First();
+                if (!esFila && Math.Abs(b.Y - l.Y) > 30) continue;
+                if (esFila) b = bloques[filas.IndexOf(l)];
+                var trozo = new Lin { Y = l.Y, W = l.W.Where(w => w.L >= 62 && !Monto.IsMatch(w.T) && w.T != "$").ToList() };
+                if (trozo.W.Count > 0) b.L.Add(trozo);
+            }
+            foreach (var b in bloques) { b.M.D = Desc(b.L.OrderBy(x => x.Y), w => true); res.Add(b.M); }
+        }
+        return res;
+    }
+
+    // ---------- B) impresion del export (cargo/abono por cadena de saldos) ----------
+    private static List<M> Export(List<List<P>> pags, List<string> notas, out string cuenta)
+    {
+        cuenta = "";
+        var res = new List<M>(); M act = null; var toks = new List<P>(); var desc = new List<string>();
+        Action cerrar = () =>
+        {
+            if (act == null) return;
+            var mt = toks.Where(w => Monto.IsMatch(w.T)).ToList();
+            if (mt.Count >= 2) { act.Saldo = Num(mt[mt.Count - 1].T); var imp = mt[mt.Count - 2]; decimal v = Num(imp.T); act.Centro = imp.C; if (imp.C < 395) act.Cargo = v; else act.Abono = v; }
+            else if (mt.Count == 1) { act.Saldo = Num(mt[0].T); }
+            act.D = string.Join(" ", toks.Where(w => !Monto.IsMatch(w.T) && w.T != "$").Select(w => w.T));
+            res.Add(act); act = null; toks = new List<P>();
+        };
+        foreach (var pg in pags)
+            foreach (var l in Lineas(pg))
+            {
+                string txt = l.Txt;
+                if (Regex.IsMatch(txt, @"(?i)bbvanet\.com|^https?:|^D.a\s+Concepto|^\d{1,2}/\d{1,2}/\d{2},")) continue;
+                if (Regex.IsMatch(l.W[0].T, @"^\d{2}-\d{2}-\d{4}$") && l.W[0].L < 60)
+                {
+                    cerrar();
+                    var d = l.W[0].T.Split('-'); act = new M { F = new DateTime(int.Parse(d[2]), int.Parse(d[1]), int.Parse(d[0])) };
+                    toks.AddRange(l.W.Skip(1));
+                }
+                else if (act != null) toks.AddRange(l.W);
+            }
+        cerrar();
+        // El cargo o abono real lo dice el saldo: del mas nuevo al mas viejo, saldo[i] = saldo[i+1] +/- importe[i].
+        int corregidos = 0, sinSaldo = 0;
+        for (int i = 0; i < res.Count; i++)
+        {
+            var m = res[i]; decimal imp = m.Cargo + m.Abono; if (imp == 0 || !m.Saldo.HasValue) { sinSaldo++; continue; }
+            if (i + 1 >= res.Count || !res[i + 1].Saldo.HasValue) continue;
+            decimal dif = m.Saldo.Value - res[i + 1].Saldo.Value;
+            if (Math.Abs(dif - imp) < 0.011m && m.Abono == 0) { m.Abono = imp; m.Cargo = 0; corregidos++; }
+            else if (Math.Abs(dif + imp) < 0.011m && m.Cargo == 0) { m.Cargo = imp; m.Abono = 0; corregidos++; }
+        }
+        if (corregidos > 0) notas.Add("En " + corregidos + " renglón(es) el cargo o abono se decidió por el cambio de saldo, porque la columna del PDF no era clara.");
+        return res;
+    }
+
+    // ---------- C) estado de cuenta oficial ----------
+    private static List<M> EstadoCuenta(List<List<P>> pags, List<string> notas, out string cuenta)
+    {
+        cuenta = CuentaDe(pags[0]);
+        string t0 = string.Join(" ", Lineas(pags[0]).Select(l => l.Txt));
+        var per = Regex.Match(t0, @"DEL\s+(\d{2})/(\d{2})/(\d{4})\s+AL\s+(\d{2})/(\d{2})/(\d{4})");
+        int anioFin = per.Success ? int.Parse(per.Groups[6].Value) : DateTime.Today.Year, mesFin = per.Success ? int.Parse(per.Groups[5].Value) : 12;
+        var res = new List<M>(); M act = null; var tramos = new List<string>();
+        Action cerrar = () => { if (act != null) { act.D = string.Join(" / ", tramos); res.Add(act); act = null; tramos = new List<string>(); } };
+        foreach (var pg in pags)
+        {
+            var lins = Lineas(pg);
+            var op = pg.FirstOrDefault(w => w.T.StartsWith("OPERACI", StringComparison.OrdinalIgnoreCase) && w.L > 450);
+            if (op == null) continue;
+            var cargos = pg.FirstOrDefault(w => w.T == "CARGOS" && Math.Abs(w.Y - op.Y) < 4 && w.L > 300); var abonos = pg.FirstOrDefault(w => w.T == "ABONOS" && Math.Abs(w.Y - op.Y) < 4 && w.L > 300);
+            var liq = pg.FirstOrDefault(w => w.T.StartsWith("LIQUIDACI", StringComparison.OrdinalIgnoreCase) && w.L > 500);
+            if (cargos == null || abonos == null) continue;
+            double rC = cargos.R, rA = abonos.R, rS = op.R, rL = liq != null ? liq.R : op.R + 68;
+            foreach (var l in lins.Where(x => x.Y > op.Y + 6))
+            {
+                string txt = l.Txt;
+                if (Regex.IsMatch(txt, @"^(Estado de Cuenta|PAGINA|No\.|Estimado Cliente)")) continue;
+                bool fila = l.W.Count >= 3 && l.W[0].L < 30 && Regex.IsMatch(l.W[0].T, @"^\d{2}/[A-Za-z]{3}$") && Regex.IsMatch(l.W[1].T, @"^\d{2}/[A-Za-z]{3}$");
+                IEnumerable<P> cuerpo;
+                if (fila)
+                {
+                    cerrar();
+                    var d = l.W[0].T.Split('/'); int mes; if (!Meses.TryGetValue(d[1].ToUpperInvariant(), out mes)) continue;
+                    act = new M { F = new DateTime(mes > mesFin ? anioFin - 1 : anioFin, mes, int.Parse(d[0])) };
+                    cuerpo = l.W.Skip(2);
+                }
+                else { if (act == null || l.W[0].L < 80) continue; cuerpo = l.W; }
+                var textos = new List<string>();
+                foreach (var w in cuerpo)
+                {
+                    if (w.R > 340 && Monto.IsMatch(w.T))
+                    {
+                        double dc = Math.Abs(w.R - rC), da = Math.Abs(w.R - rA), ds = Math.Abs(w.R - rS), dl = Math.Abs(w.R - rL); double mn = Math.Min(Math.Min(dc, da), Math.Min(ds, dl));
+                        if (mn > 14) { textos.Add(w.T); continue; }
+                        if (mn == dc) act.Cargo = Num(w.T); else if (mn == da) act.Abono = Num(w.T); else if (mn == ds) act.Saldo = Num(w.T);
+                    }
+                    else textos.Add(w.T);
+                }
+                if (textos.Count > 0) tramos.Add(string.Join(" ", textos));
+            }
+        }
+        cerrar();
+        // El propio estado de cuenta declara cuantos depositos y retiros hubo: si no cuadra, la lectura esta incompleta.
+        try
+        {
+            var lin1 = Lineas(pags[0]);
+            int Declarado(string patron) { foreach (var l in lin1) { var m = Regex.Match(l.Txt, patron); if (m.Success) return int.Parse(m.Groups[1].Value); } return -1; }
+            int dAb = Declarado(@"(?i)Dep.sitos\s*/\s*Abonos\s*\(\+\)\s+(\d+)"), dCa = Declarado(@"(?i)Retiros\s*/\s*Cargos\s*\(-\)\s+(\d+)");
+            int nAb = res.Count(m => m.Abono != 0), nCa = res.Count(m => m.Cargo != 0);
+            if (dAb >= 0 && dCa >= 0)
+            {
+                if (dAb == nAb && dCa == nCa) notas.Add("Cuadra con lo que declara el estado de cuenta: " + dAb + " depósitos y " + dCa + " retiros.");
+                else notas.Add("OJO: el estado de cuenta declara " + dAb + " depósitos y " + dCa + " retiros, pero se leyeron " + nAb + " y " + nCa + ". Revisa el detalle.");
+            }
+        }
+        catch { }
+        return res;
+    }
+}
+
 internal static class BancoXlsx
 {
     
@@ -949,6 +1189,7 @@ string DeshacerUltima()
 }
 
 // ---------- Archivo ----------
+var notasLectura = new List<string>();      // avisos del lector de PDF (que formato era, si cuadra con los totales que declara)
 internal class HojaArchivo { public string Nombre; public List<string[]> Filas; public override string ToString() => Nombre + " (" + Filas.Count + " filas)"; }
 
 List<HojaArchivo> LeerArchivo(string ruta)
@@ -962,7 +1203,7 @@ List<HojaArchivo> LeerArchivo(string ruta)
         if (cab[0] == 0xD0 && cab[1] == 0xCF && cab[2] == 0x11 && cab[3] == 0xE0) throw new InvalidOperationException("Este .xls es un Excel antiguo (binario) y todavía no se lee. Guárdalo como .xlsx o como CSV desde Excel.");
         return new List<HojaArchivo> { new HojaArchivo { Nombre = System.IO.Path.GetFileName(ruta), Filas = BancoTexto.Leer(ruta) } };
     }
-    if (ext == ".pdf") throw new InvalidOperationException("El PDF todavía no se lee. Pide al banco el archivo de movimientos en CSV, TXT o Excel.");
+    if (ext == ".pdf") { notasLectura.Clear(); return new List<HojaArchivo> { new HojaArchivo { Nombre = System.IO.Path.GetFileName(ruta), Filas = BancoPdf.Leer(ruta, notasLectura) } }; }
     return new List<HojaArchivo> { new HojaArchivo { Nombre = System.IO.Path.GetFileName(ruta), Filas = BancoTexto.Leer(ruta) } };
 }
 
@@ -1088,7 +1329,7 @@ void Actualizar()
             (res.SaldoVerificado ? (res.RupturasSaldo == 0 ? " · el saldo corrido cuadra renglón por renglón" : " · " + res.RupturasSaldo + " renglones donde el saldo NO cuadra") : " · sin saldo en el archivo para verificar"));
     }
     foreach (var a in res.Avisos.Take(3)) sb.AppendLine("Aviso: " + a);
-    foreach (var n in (deteccion?.Notas ?? new List<string>()).Take(1)) sb.AppendLine(n);
+    foreach (var n in (deteccion?.Notas ?? new List<string>()).Take(3)) sb.AppendLine(n);
     lblRes.Text = sb.ToString();
     lblRes.ForeColor = res.Errores.Count > 0 ? Color.FromArgb(0xB0, 0x2A, 0x2A) : Color.FromArgb(0x1F, 0x2A, 0x3C);
 
@@ -1151,6 +1392,7 @@ void Leer(bool reabrirMapa)
         {
             deteccion = BancoArchivo.Detectar(hoja.Filas, System.IO.Path.GetFileName(rutaArchivo));
             mapaActual = deteccion.Mapa;
+            deteccion.Notas.AddRange(notasLectura);
             var perfil = BuscarPerfil(mapaActual.Firma);
             if (perfil != null) { var r = BancoArchivo.Reubicar(hoja.Filas, perfil); if (r != null) { mapaActual = r; deteccion.Notas.Insert(0, "Usé el formato que ya habías guardado para este tipo de archivo."); } }
             LlenarCombosColumnas(); PonerMapaEnCombos();
@@ -1188,7 +1430,7 @@ void Seguro(Action a) { try { a(); } catch (Exception ex) { cargando = false; Me
 
 btnBuscar.Click += (_, __) => Seguro(() =>
 {
-    using (var dlg = new OpenFileDialog { Title = "Estado de cuenta o movimientos del banco", Filter = "Movimientos (*.csv;*.txt;*.xlsx;*.xlsm;*.xls)|*.csv;*.txt;*.xlsx;*.xlsm;*.xls|Todos|*.*" })
+    using (var dlg = new OpenFileDialog { Title = "Estado de cuenta o movimientos del banco", Filter = "Movimientos (*.csv;*.txt;*.xlsx;*.xlsm;*.xls;*.pdf)|*.csv;*.txt;*.xlsx;*.xlsm;*.xls;*.pdf|Todos|*.*" })
         if (dlg.ShowDialog(frm) == DialogResult.OK) AbrirArchivo(dlg.FileName);
 });
 cboHoja.SelectedIndexChanged += (_, __) => { if (cargando || !(cboHoja.SelectedItem is HojaArchivo h)) return; hoja = h; Seguro(() => Leer(true)); };

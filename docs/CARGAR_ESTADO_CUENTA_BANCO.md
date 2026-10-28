@@ -36,3 +36,12 @@ Registrar el botón en el ribbon (Crear botón), espejo en Python, PDF y `.xls` 
 - **Traslapes sin duplicar** (laboratorio, archivos 1-11, 1-18 y 1-25 de marzo a la misma cuenta): 333 nuevos; luego 157 nuevos + 333 ya cargados; luego 228 nuevos + 272 ya cargados. Quedaron 718 distintos.
 - Tipos nuevos: ventas de terminal, comisión de terminal (tasa de descuento), IMSS/Infonavit, cargo domiciliado, seguro, crédito/tarjeta, TEF.
 - Los BBVA TXT **no traen número de cuenta**: con varias cuentas la única pista es el saldo con el que abre cada archivo.
+
+## Monex y PDF de BBVA (2026-10-27)
+- **Monex** (`.xls` que en realidad es texto con tabuladores): una divisa por grupo (MXP/USD/EUR se ligan a su cuenta por la moneda), fecha de liquidación, importe con signo, sin saldo, ignora la tabla de órdenes de pago y avisa de los movimientos «En proceso de revisión». Un `.xls` binario de verdad todavía no se lee.
+- **PDF de BBVA** con texto (sin OCR), leídos con **PdfPig** (MIT, DLL en `C:\BrosLMV\lib`, se baja con `build\descargar_librerias_externas.ps1`): tres diseños.
+  1. *Impresión de BBVANet* («Detalle de movimientos»): cargo/abono/saldo por la posición de la columna; la descripción va arriba y abajo del renglón de fecha. Año tomado de la fecha de impresión.
+  2. *Impresión del export*: las columnas se mueven (es una tabla HTML impresa), así que cargo o abono se decide por el cambio de saldo.
+  3. *Estado de cuenta oficial*: columnas fijas, fechas OPER/LIQ, saldo solo al cierre de algunos días; se compara con los depósitos y retiros que declara el propio PDF y se avisa si no cuadran.
+- **Prueba (10 PDF reales):** 0 saltos de saldo en las impresiones; los 3 estados de cuenta cuadran exacto con lo declarado (13/72, 8/86, 6/10). El mismo mes de la misma cuenta cargado por los tres formatos se reconoce como los mismos movimientos (84 + 0 nuevos + 1 nuevo = 85, con los mismos totales de cargos y abonos).
+- Otros bancos en PDF y PDF escaneado (imagen) no se leen: el script lo avisa.

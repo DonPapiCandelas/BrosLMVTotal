@@ -47,6 +47,7 @@ $csproj = @"
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <PackageReference Include="ZXing.Net" Version="0.16.11" />
     <PackageReference Include="CsvHelper" Version="33.1.0" />
+    <PackageReference Include="PdfPig" Version="0.1.9" />
   </ItemGroup>
 </Project>
 "@
