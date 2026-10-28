@@ -8,6 +8,10 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.2.4] — 2026-10-27 — Instalador de empresas: lista y botones visibles
+
+- Corrige la ventana de empresas del instalador 3.2.3: la lista salía con filas vacías y los botones de abajo quedaban cortados (el contenido iba dentro de un desplazamiento con una altura que no contaba el margen). Vuelve al diseño de siempre y la ventana sigue limitándose al área de trabajo de la pantalla.
+
 ## [3.2.3] — 2026-10-27 — Nuevo componente: BrosLMV Bancos
 
 - El instalador trae el check **BrosLMV Bancos** (por equipo) y el aprovisionamiento de empresa crea el botón **Bancos** en *Estados de cuenta*. El addon no cambia; sube la versión para distinguir este instalador del 3.2.2 (sin Bancos). Detalle abajo y en `docs\BANCOS.md`.

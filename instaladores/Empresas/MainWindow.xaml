@@ -1,7 +1,7 @@
 <Window x:Class="BrosLMV.Empresas.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="BrosLMV — Empresas" Height="860" Width="1220" MinHeight="700" MinWidth="1040"
+        Title="BrosLMV — Empresas" Height="860" Width="1220" MinHeight="600" MinWidth="980"
         WindowStartupLocation="CenterScreen" Background="#EEF2F7" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/assets/app_icon.png" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
   <Window.Resources>
@@ -277,9 +277,7 @@
     </Border>
 
     <!-- ================= CONTENIDO ================= -->
-    <!-- El contenido se desplaza si la ventana es mas chica que el diseno (pantallas pequenas o con escala alta): los botones de abajo siempre se alcanzan. -->
-    <ScrollViewer x:Name="svContenido" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-    <Grid Margin="32,26,32,22" MinHeight="640" MinWidth="700" Height="{Binding ViewportHeight, ElementName=svContenido}">
+    <Grid Grid.Column="1" Margin="32,26,32,22">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
@@ -485,6 +483,5 @@
         </Grid>
       </StackPanel>
     </Grid>
-    </ScrollViewer>
   </Grid>
 </Window>
