@@ -18,3 +18,6 @@ Script `instalador\scripts\CARGAR_ESTADO_CUENTA_BANCO.ctx` (C#, ventana Windows 
 ## Pendiente
 Registrar el botón en el ribbon (Crear botón), espejo en Python, PDF y `.xls` antiguo, y las fases siguientes (empate contra CFDI/cobros/pagos): ver
 `docs\desarrollo\PLAN_CONCILIACION_BANCARIA.md`. Probado en el laboratorio BROSLMV_DESARROLLO (importar, ver en `vwLBSEdoCtaList`, duplicados y deshacer).
+
+## Formatos probados con archivo real
+- **BBVA, movimientos en TXT** (`Entrenamiento\Bancos\BBVA Bancomer`): tabuladores, encabezado `Día / Concepto / Referencia / cargo / Abono / Saldo`, fecha `dd-MM-yyyy`, del más nuevo al más viejo, saldo con comas. No trae número de cuenta ni saldo inicial (se deduce del primer renglón): la cuenta sale del nombre de archivo, del saldo o de que sea la única de BBVA. Del concepto se extrae el banco de la contraparte (pegado al tipo o por código 014, 699…), el folio como referencia y el tipo (Comisión, IVA, Pago SAT, Nómina, SPEI, Pago a tercero).

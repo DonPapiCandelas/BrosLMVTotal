@@ -287,6 +287,11 @@ internal static class BancoCampos
     private static readonly Regex BancoInst = new Regex(@"(?i)(?:instituci[oó]n\s+contraparte|banco\s+(?:ordenante|emisor))\s*[:=]\s*(.+?)(?=\s+ordenante|\s*\||,|$)", RegexOptions.Compiled);
     private static readonly Regex BancoSpei = new Regex(@"(?i)spei\s+(?:enviado|recibido)\s+(?:de\s+|a\s+)?([A-Za-zÁÉÍÓÚáéíóúñ]+)", RegexOptions.Compiled);
 
+    // BBVA (movimientos en TXT): "SPEI ENVIADO SANTANDER/0045504497  014 0150626PAGO DE NOMINA" -> banco pegado al tipo, folio, codigo de banco (014), referencia numerica y concepto.
+    private static readonly Regex BancoBbva = new Regex(@"(?i)spei\s+(?:enviado|recibido)\s*([A-Za-zÁÉÍÓÚáéíóúñ ]+?)\s*/", RegexOptions.Compiled);
+    private static readonly Regex FolioBbva = new Regex(@"/\s*(\d{7,12})\s+(\d{3})\s", RegexOptions.Compiled);
+    private static readonly Dictionary<string, string> CodigosBanco = new Dictionary<string, string> { { "002", "Banamex" }, { "012", "BBVA" }, { "014", "Santander" }, { "021", "HSBC" }, { "030", "BanBajío" }, { "036", "Inbursa" }, { "044", "Scotiabank" }, { "072", "Banorte" }, { "127", "Azteca" }, { "137", "BanCoppel" }, { "138", "Ualá" }, { "646", "STP" }, { "699", "Fondeadora" }, { "721", "Mercado Pago" } };
+
     public static void Extraer(BancoMov m)
     {
         string t = (m.Descripcion + " " + m.Detalle).Trim();
@@ -300,7 +305,14 @@ internal static class BancoCampos
         if (nombre.Length == 0) nombre = Primero(NombreA, t);
         m.NombreContraparte = nombre.Length > 120 ? nombre.Substring(0, 120) : nombre;
         string banco = Primero(BancoInst, t);
+        if (banco.Length == 0) banco = Primero(BancoBbva, t);
         if (banco.Length == 0) banco = Primero(BancoSpei, t);
+        var fb = FolioBbva.Match(t);
+        if (fb.Success)
+        {
+            if (m.Referencia.Length == 0) m.Referencia = fb.Groups[1].Value;
+            string nb; if (banco.Length == 0 && CodigosBanco.TryGetValue(fb.Groups[2].Value, out nb)) banco = nb;
+        }
         m.BancoContraparte = banco.Length > 60 ? banco.Substring(0, 60) : banco;
         m.Tipo = Clasificar(t, m.Cargo, m.Abono);
     }
@@ -311,11 +323,14 @@ internal static class BancoCampos
     {
         string t = BancoTexto.Norm(texto);
         if (Regex.IsMatch(t, @"\biva\b")) return "IVA";
-        if (Regex.IsMatch(t, @"comision|com\.|membresia|manejo de cuenta|anualidad|cuota")) return "Comisión";
+        if (Regex.IsMatch(t, @"comision|com\.|membresia|manejo de cuenta|anualidad|cuota|serv banca internet|serv bca|ops serv")) return "Comisión";
+        if (Regex.IsMatch(t, @"secretaria de la hac|\bsat\b|guia:|linea de captura")) return "Pago SAT";
+        if (Regex.IsMatch(t, @"nomina|sueldo")) return "Nómina";
         if (Regex.IsMatch(t, @"interes|rendimiento|gat ")) return "Intereses";
         if (Regex.IsMatch(t, @"isr|retencion|impuesto")) return "Impuestos";
         if (Regex.IsMatch(t, @"traspaso|trasp ")) return "Traspaso";
         if (Regex.IsMatch(t, @"cheque")) return "Cheque";
+        if (Regex.IsMatch(t, @"pago cuenta de tercero")) return "Pago a tercero";
         if (Regex.IsMatch(t, @"spei")) return abono > 0 ? "SPEI recibido" : "SPEI enviado";
         if (Regex.IsMatch(t, @"efectivo|deposito en ventanilla|retiro cajero|cajero")) return "Efectivo";
         if (Regex.IsMatch(t, @"tpv|adq|terminal|venta tarjeta|comercio")) return "Terminal / adquirente";
