@@ -27,6 +27,7 @@ namespace BrosLMV.Bancos.Motor
         public int Saldo { get; set; } = -1;
         public int Cuenta { get; set; } = -1;
         public int Moneda { get; set; } = -1;
+        public int Hora { get; set; } = -1;
         public bool ImporteNegativoEsCargo { get; set; } = true;     // en tarjetas como Amex el importe positivo es la compra
         public string FormatoFecha { get; set; } = "auto";           // auto (dd/mm) | mdy
         public string Firma { get; set; } = "";                      // encabezado normalizado: identifica el formato para recordarlo

@@ -15,6 +15,7 @@ namespace BrosLMV.Bancos.Motor
     public sealed class BancoMov
     {
         public DateTime Fecha;
+        public TimeSpan? Hora;               // hora de la transaccion cuando el archivo la trae (columna Hora o dentro de la fecha)
         public int Orden;
         public int FilaOrigen;
         public string Descripcion = "", Detalle = "", Referencia = "", CuentaArchivo = "", Moneda = "";

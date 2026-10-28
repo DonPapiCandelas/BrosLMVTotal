@@ -26,6 +26,7 @@ namespace BrosLMV.Bancos.Motor
         private static readonly string[] ASaldo = { "saldo", "saldos", "saldo final" };
         private static readonly string[] ACuenta = { "cuenta", "cuenta/movimiento", "no. cuenta", "numero de cuenta", "num. cuenta", "no cuenta" };
         private static readonly string[] AMoneda = { "moneda", "divisa" };
+        private static readonly string[] AHora = { "hora", "hora movimiento", "hora operacion" };
 
         private static int Buscar(string[] celdas, string[] alias, HashSet<int> usadas)
         {
@@ -57,6 +58,7 @@ namespace BrosLMV.Bancos.Motor
             m.Referencia = Tomar(AReferencia);
             m.Cuenta = Tomar(ACuenta);
             m.Moneda = Tomar(AMoneda);
+            m.Hora = Tomar(AHora);
             for (int i = 0; i < c.Length; i++) if (!usadas.Contains(i) && ADetalle.Contains(c[i])) { m.Detalle.Add(i); usadas.Add(i); }
             if (m.Fecha < 0 || (m.Cargo < 0 && m.Abono < 0 && m.Importe < 0)) return null;
             if (m.Signo >= 0 && m.Importe < 0) { m.Signo = -1; }                          // "Cargo/Abono" sin importe aparte no sirve como signo
@@ -210,6 +212,7 @@ namespace BrosLMV.Bancos.Motor
                     case "saldo": m.Saldo = idx; break;
                     case "cuenta": m.Cuenta = idx; break;
                     case "moneda": m.Moneda = idx; break;
+                    case "hora": m.Hora = idx; break;
                 }
             }
             if (fila >= 0 && fila < filas.Count) m.Firma = FirmaDe(filas[fila]); else m.Firma = "sin-encabezado|" + l.Id;
@@ -313,7 +316,7 @@ namespace BrosLMV.Bancos.Motor
 
                 var mov = new BancoMov
                 {
-                    Fecha = fecha, FilaOrigen = n, Cargo = cargo, Abono = abono, Saldo = saldo,
+                    Fecha = fecha, Hora = BancoValor.HoraDe(Celda(f, mapa.Hora)) ?? BancoValor.HoraDe(Celda(f, mapa.Fecha)), FilaOrigen = n, Cargo = cargo, Abono = abono, Saldo = saldo,
                     Descripcion = Celda(f, mapa.Descripcion), Referencia = Celda(f, mapa.Referencia),
                     CuentaArchivo = Celda(f, mapa.Cuenta), Moneda = Celda(f, mapa.Moneda).ToUpperInvariant(),
                     Detalle = string.Join(" | ", mapa.Detalle.Select(d => Celda(f, d)).Where(x => x.Length > 0 && x != "-"))

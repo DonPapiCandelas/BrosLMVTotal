@@ -45,7 +45,7 @@ namespace BrosLMV.Bancos.Motor
             try
             {
                 if (c.IsEmpty()) return "";
-                if (c.DataType == XLDataType.DateTime) return c.GetDateTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                if (c.DataType == XLDataType.DateTime) { var d = c.GetDateTime(); return d.ToString(d.TimeOfDay == TimeSpan.Zero ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture); }
                 if (c.DataType == XLDataType.Number) return c.GetDouble().ToString("0.############", CultureInfo.InvariantCulture);
                 return (c.GetString() ?? "").Trim();
             }

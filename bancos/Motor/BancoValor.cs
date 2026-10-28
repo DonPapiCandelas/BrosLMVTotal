@@ -62,6 +62,15 @@ namespace BrosLMV.Bancos.Motor
         }
 
         // "$1,234.56", "-$150.00", "(1,234.56)", "1234.56-", "-", "" -> numero. Vacio y "-" valen 0 (asi vienen los bancos cuando no hay cargo o abono).
+        // "06:53", "11:35:00", "2026-03-25 06:53:10". Medianoche exacta no cuenta como hora: los archivos que solo traen fecha la ponen asi.
+        public static TimeSpan? HoraDe(string texto)
+        {
+            var m = Regex.Match(texto ?? "", @"(?<!\d)([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?(?!\d)");
+            if (!m.Success) return null;
+            var t = new TimeSpan(int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture), m.Groups[3].Success ? int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture) : 0);
+            return t == TimeSpan.Zero ? (TimeSpan?)null : t;
+        }
+
         public static bool Monto(string texto, out decimal valor)
         {
             valor = 0; string s = BancoTexto.Limpiar(texto);
