@@ -218,7 +218,8 @@ internal static class BancoValor
         if (compacta.Success)
         {
             string t = compacta.Value; int primero = int.Parse(t.Substring(0, 4), CultureInfo.InvariantCulture);
-            if (primero >= 1990 && primero <= 2100) { a = primero; b = int.Parse(t.Substring(4, 2)); c = int.Parse(t.Substring(6, 2)); return Armar(a, b, c, out fecha); }
+            // yyyyMMdd y ddMMyyyy se confunden ("20032026" = 20/03/2026 empieza con 2003): se prueba yyyyMMdd y, si no es fecha valida, ddMMyyyy.
+            if (primero >= 1990 && primero <= 2100 && Armar(primero, int.Parse(t.Substring(4, 2)), int.Parse(t.Substring(6, 2)), out fecha)) return true;
             return Armar(int.Parse(t.Substring(4, 4)), int.Parse(t.Substring(2, 2)), int.Parse(t.Substring(0, 2)), out fecha);
         }
         var m3 = Regex.Match(s, @"^(\d{1,4})[\s/\-\.](\d{1,2})[\s/\-\.](\d{1,4})$");
@@ -323,7 +324,14 @@ internal static class BancoCampos
     {
         string t = BancoTexto.Norm(texto);
         if (Regex.IsMatch(t, @"\biva\b")) return "IVA";
-        if (Regex.IsMatch(t, @"comision|com\.|membresia|manejo de cuenta|anualidad|cuota|serv banca internet|serv bca|ops serv")) return "Comisión";
+        if (Regex.IsMatch(t, @"tasa de desc|sobretasa|bonif tasa|apli tasa")) return "Comisión terminal";
+        if (Regex.IsMatch(t, @"ventas? (debito|credito|nal)|deposito ventas del dia|terminales punto de venta")) return "Ventas terminal";
+        if (Regex.IsMatch(t, @"comision|com\.|membresia|manejo de cuenta|anualidad|cuota|serv banca internet|serv bca|ops serv|emision libramie|libramiento chq")) return "Comisión";
+        if (Regex.IsMatch(t, @"imss|infonavit|afore|sipare")) return "IMSS / Infonavit";
+        if (Regex.IsMatch(t, @"cobro automatico recibo|recibo no\.|domiciliacion")) return "Cargo domiciliado";
+        if (Regex.IsMatch(t, @"pago seguro|pago vida|seguro")) return "Seguro";
+        if (Regex.IsMatch(t, @"disposicion tarjeta de credito|disp\. t\. negocios|pago con cargo en cuenta")) return "Crédito / tarjeta";
+        if (Regex.IsMatch(t, @"\btef (recibido|enviado)")) return abono > 0 ? "TEF recibido" : "TEF enviado";
         if (Regex.IsMatch(t, @"secretaria de la hac|\bsat\b|guia:|linea de captura")) return "Pago SAT";
         if (Regex.IsMatch(t, @"nomina|sueldo")) return "Nómina";
         if (Regex.IsMatch(t, @"interes|rendimiento|gat ")) return "Intereses";
@@ -578,6 +586,7 @@ internal static class BancoArchivo
         }
         if (ignoradasConImporte > 0) r.Avisos.Add(ignoradasConImporte + " fila(s) con importe se ignoraron por no tener una fecha válida (" + string.Join("; ", muestraIgnoradas) + "). Si son movimientos, revisa el formato de fecha.");
         if (infoMonedaExtranjera > 0) r.Avisos.Add(infoMonedaExtranjera + " renglón(es) solo informan el importe original en moneda extranjera (sin importe en pesos) y no se cargan: el cargo en pesos es el renglón de la compra.");
+        if (crudos.Count == 500) r.Avisos.Add("El archivo trae exactamente 500 movimientos: el banco limita la exportación a 500 y puede faltar el inicio o el final del periodo. Descárgalo por periodos más cortos.");
         if (enTransito > 0) r.Avisos.Add(enTransito + " movimiento(s) están «En tránsito» (el banco aún no los aplica): se cargan sin saldo y no se vuelven a cargar cuando aparezcan aplicados.");
         if (crudos.Count == 0) { if (r.Errores.Count == 0) r.Errores.Add("No encontré ningún movimiento con fecha e importe. Revisa las columnas elegidas."); return r; }
 
@@ -625,7 +634,12 @@ internal static class BancoArchivo
         if (desc) movs.Reverse();
         // El archivo puede mezclar fechas fuera de orden por cuenta; se ordena estable por fecha (el orden del archivo manda dentro del dia).
         var estable = movs.Select((m, i) => (m, i)).OrderBy(x => x.m.Fecha).ThenBy(x => x.i).Select(x => x.m).ToList();
-        if (!estable.SequenceEqual(movs)) { movs.Clear(); movs.AddRange(estable); if (conSaldo) { r.RupturasSaldo = Rupturas(movs, deuda); } }
+        // Con saldo, el orden que cuadra manda sobre la fecha: BBVA lista un movimiento del sabado (aplicado el lunes) entre los del lunes.
+        if (!estable.SequenceEqual(movs))
+        {
+            int rotEstable = conSaldo ? Rupturas(estable, deuda) : 0;
+            if (!conSaldo || rotEstable < r.RupturasSaldo) { movs.Clear(); movs.AddRange(estable); if (conSaldo) r.RupturasSaldo = rotEstable; }
+        }
         r.Descendente = desc; r.SaldoDeuda = deuda;
         if (conSaldo && r.RupturasSaldo > 0)
             r.Avisos.Add("El saldo no cuadra en " + r.RupturasSaldo + " renglón(es): falta algún movimiento, el archivo está incompleto o se mezclaron cuentas.");

@@ -27,3 +27,12 @@ Registrar el botón en el ribbon (Crear botón), espejo en Python, PDF y `.xls` 
 - **BBVA Perfiles** (cuenta, sin número): `Depósitos / Retiros / Saldo` con `$`. Sin pista de cuenta, se elige.
 - «Única cuenta del banco» solo se usa si el banco se reconoció por el contenido o lo eligió la persona, no por el nombre del archivo.
 - Las tarjetas (`orgFinancialEntity.FinancialEntityTypeID = 2`) también son destino válido.
+
+## Prueba con la carpeta de archivos reales (2026-10-27)
+80 archivos de `Entrenamiento\Bancos`: **29,386 movimientos, ningún error de lectura, 0.8 % sin tipo**. 61 TXT de BBVA, 9 CSV de Santander, 4 de Banorte (cuenta) y los de tarjeta y Perfiles.
+- **Orden por saldo, no por fecha.** BBVA lista un movimiento del sábado (aplicado el lunes) entre los del lunes; reordenar por fecha rompía el saldo corrido. Con saldo manda el orden que cuadra. Pasaron de 3–6 renglones rotos por archivo a 0 (quedan 5 archivos con 1 salto que **sí está en los datos del banco**: el saldo reinicia igual al abono).
+- **Tope de 500.** 42 archivos traen exactamente 500 movimientos: BBVA limita la exportación y puede faltar el inicio o el final. Se avisa.
+- **Fechas `ddMMyyyy` pegadas** (Santander `'20032026'`) se confundían con `yyyyMMdd`; ahora se prueba la válida.
+- **Traslapes sin duplicar** (laboratorio, archivos 1-11, 1-18 y 1-25 de marzo a la misma cuenta): 333 nuevos; luego 157 nuevos + 333 ya cargados; luego 228 nuevos + 272 ya cargados. Quedaron 718 distintos.
+- Tipos nuevos: ventas de terminal, comisión de terminal (tasa de descuento), IMSS/Infonavit, cargo domiciliado, seguro, crédito/tarjeta, TEF.
+- Los BBVA TXT **no traen número de cuenta**: con varias cuentas la única pista es el saldo con el que abre cada archivo.
