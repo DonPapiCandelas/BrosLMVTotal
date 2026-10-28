@@ -21,7 +21,7 @@ namespace BrosLMV.BancosUI
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
-            DispatcherUnhandledException += (s, ev) => { MessageBox.Show(ev.Exception.Message, "Bancos", MessageBoxButton.OK, MessageBoxImage.Warning); ev.Handled = true; };
+            DispatcherUnhandledException += (s, ev) => { if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("BROSLMV_BANCOS_SHOT"))) { File.WriteAllText(Environment.GetEnvironmentVariable("BROSLMV_BANCOS_SHOT") + ".error.txt", ev.Exception.ToString()); ev.Handled = true; Shutdown(); return; } MessageBox.Show(ev.Exception.Message, "Bancos", MessageBoxButton.OK, MessageBoxImage.Warning); ev.Handled = true; };
 
             var ctx = Contexto.DeArgumentos(e.Args);
             bool dev = Environment.GetEnvironmentVariable("BROSLMV_BANCOS_DEV") == "1";
@@ -68,7 +68,10 @@ namespace BrosLMV.BancosUI
                     {
                         string filtro = (Environment.GetEnvironmentVariable("BROSLMV_BANCOS_MUESTRA") ?? "").ToLowerInvariant();
                         var m = _ventana.Bandeja.Archivos.FirstOrDefault(x => x.Nombre.ToLowerInvariant().Contains(filtro) && x.Hoja != null) ?? _ventana.Bandeja.Archivos.FirstOrDefault(x => x.Hoja != null);
-                        var ed = new EditorLayoutVentana(_ventana.Ctx, null, m, true, _ventana.Bandeja.Layouts) { Owner = _ventana };
+                        string idLayout = Environment.GetEnvironmentVariable("BROSLMV_BANCOS_LAYOUT");
+                        var lay = string.IsNullOrEmpty(idLayout) ? null : _ventana.Bandeja.Layouts.FirstOrDefault(x => x.Id == idLayout);
+                        if (Environment.GetEnvironmentVariable("BROSLMV_BANCOS_SINMUESTRA") == "1") m = null;
+                        var ed = new EditorLayoutVentana(_ventana.Ctx, lay, m, true, _ventana.Bandeja.Layouts) { Owner = _ventana };
                         ed.Show(); ed.UpdateLayout(); quien = ed;
                     }
                     bool cargar = Environment.GetEnvironmentVariable("BROSLMV_BANCOS_AUTOCARGAR") == "1";

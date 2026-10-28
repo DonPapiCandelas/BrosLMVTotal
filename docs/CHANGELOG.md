@@ -8,6 +8,12 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.2.5] — 2026-10-27 — Bancos: editor de layouts rehecho
+
+- El editor de layouts muestra siempre la **definición** del layout (cómo se reconoce, qué columnas lee, reglas), con o sin archivo de muestra, en frases claras y solo con lo que aplica a su formato (tabla o PDF).
+- Corrige que un layout de fábrica abierto con su propio archivo dijera «no reconoce el archivo de muestra».
+- Las formas alternativas de reconocer un layout («O bien») se ven y se pueden quitar.
+
 ## [3.2.4] — 2026-10-27 — Instalador de empresas: lista y botones visibles
 
 - Corrige la ventana de empresas del instalador 3.2.3: la lista salía con filas vacías y los botones de abajo quedaban cortados (el contenido iba dentro de un desplazamiento con una altura que no contaba el margen). Vuelve al diseño de siempre y la ventana sigue limitándose al área de trabajo de la pantalla.

@@ -164,7 +164,7 @@ namespace BrosLMV.Bancos.Motor
         }
 
         // Fila (0-based) de encabezado de un layout con columnas propias: la que dice FilaEncabezado o la primera que trae todos los nombres. MinValue = no esta.
-        private static int FilaEncabezadoDe(BrosLMV.Bancos.Layouts.Layout l, List<string[]> filas)
+        public static int FilaEncabezadoDe(BrosLMV.Bancos.Layouts.Layout l, List<string[]> filas)
         {
             if (l.FilaEncabezado > 0) return l.FilaEncabezado - 1 < filas.Count ? l.FilaEncabezado - 1 : int.MinValue;
             var nombres = l.Columnas.Values.SelectMany(v => v).Where(n => !n.StartsWith("#")).Select(n => BancoTexto.Norm(n)).Where(n => n.Length > 0).Distinct().ToList();
