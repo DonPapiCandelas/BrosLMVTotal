@@ -1,0 +1,50 @@
+{
+  "id": "bbva-xlsx-tarjeta",
+  "banco": "BBVA",
+  "nombre": "Excel de tarjeta de crédito",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "fecha"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "descripcion"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "cargo"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "abono"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "saldo"
+        ]
+      },
+      {
+        "en": "texto",
+        "contiene": [
+          "numero de tarjeta"
+        ]
+      }
+    ]
+  ]
+}

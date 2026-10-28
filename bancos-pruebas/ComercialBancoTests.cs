@@ -124,6 +124,32 @@ namespace BrosLMV.Bancos.Pruebas
         }
 
         [Fact]
+        public void LosPermisosDeLayoutsRespetanElModoElegido()
+        {
+            string cad; var cb = Laboratorio(out cad); if (cb == null) return;
+            var usuarios = cb.Usuarios();
+            var admin = usuarios.FirstOrDefault(u => u.Administrador); var otro = usuarios.FirstOrDefault(u => !u.Administrador);
+            if (admin == null || otro == null) return;
+            string antes = cb.Config("layouts.permiso", ""), antesU = cb.Config("layouts.usuarios", "");
+            try
+            {
+                cb.PonerConfig("layouts.permiso", "todos");
+                Assert.True(cb.PuedeEditarLayouts(otro.Id));
+                cb.PonerConfig("layouts.permiso", "admin");
+                Assert.True(cb.PuedeEditarLayouts(admin.Id));
+                Assert.False(cb.PuedeEditarLayouts(otro.Id));
+                cb.PonerConfig("layouts.permiso", "usuarios"); cb.PonerConfig("layouts.usuarios", otro.Id.ToString());
+                Assert.True(cb.PuedeEditarLayouts(otro.Id));
+                cb.PonerConfig("layouts.usuarios", "");
+                Assert.False(cb.PuedeEditarLayouts(otro.Id));
+            }
+            finally
+            {
+                using (var cn = new SqlConnection(cad)) { cn.Open(); using (var c = cn.CreateCommand()) { c.CommandText = "DELETE FROM zzBrosBancoConfig WHERE Clave IN ('layouts.permiso','layouts.usuarios')"; c.ExecuteNonQuery(); } }
+            }
+        }
+
+        [Fact]
         public void LaConfiguracionDeLaEmpresaSeGuardaYSeLee()
         {
             string cad; var cb = Laboratorio(out cad); if (cb == null) return;

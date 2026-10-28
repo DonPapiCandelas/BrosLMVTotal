@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    BrosLMV Bancos: el programa de escritorio (WPF) que carga estados de cuenta y movimientos de bancos al estado de cuenta
+    de Comercial y edita layouts. Solo se abre desde el boton de Comercial (Tesoreria): recibe la empresa por argumentos.
+    Toda la logica vive en ..\bancos (BrosLMV.Bancos); aqui solo hay ventanas.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>BrosLMV.BancosUI</AssemblyName>
+    <RootNamespace>BrosLMV.BancosUI</RootNamespace>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\bancos\BrosLMV.Bancos.csproj" />
+    <PackageReference Include="System.Threading.AccessControl" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

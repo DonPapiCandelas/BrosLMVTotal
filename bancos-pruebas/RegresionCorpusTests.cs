@@ -44,6 +44,16 @@ namespace BrosLMV.Bancos.Pruebas
             string golden = carpeta == null ? null : Path.Combine(carpeta, "golden_lote.tsv");
             if (golden == null || !File.Exists(golden)) return;       // sin la carpeta privada no hay nada que comparar
 
+            // Para dar por buena una mejora a proposito: BROSLMV_BANCOS_ACTUALIZAR_GOLDEN=1 reescribe la referencia con lo que sale ahora.
+            if (Environment.GetEnvironmentVariable("BROSLMV_BANCOS_ACTUALIZAR_GOLDEN") == "1")
+            {
+                var lineas = new List<string> { string.Join("	", Cols) };
+                foreach (var ruta in Directory.GetFiles(carpeta, "*.*", SearchOption.AllDirectories).OrderBy(x => x))
+                    if (Lector.EsArchivoDeBanco(ruta)) lineas.Add(string.Join("	", Resumen(carpeta, ruta)));
+                File.WriteAllLines(golden, lineas, new System.Text.UTF8Encoding(true));
+                return;
+            }
+
             var esperado = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
             foreach (var linea in File.ReadAllLines(golden).Skip(1))
             {

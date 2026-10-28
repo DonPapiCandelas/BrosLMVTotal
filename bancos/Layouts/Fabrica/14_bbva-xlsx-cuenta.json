@@ -1,0 +1,56 @@
+{
+  "id": "bbva-xlsx-cuenta",
+  "banco": "BBVA",
+  "nombre": "Excel de cuenta",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "fecha"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "descripcion"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "cargo"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "abono"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "saldo"
+        ]
+      },
+      {
+        "en": "texto",
+        "contiene": [
+          "detalle de movimientos"
+        ]
+      },
+      {
+        "en": "texto",
+        "contiene": [
+          "cuenta:"
+        ]
+      }
+    ]
+  ]
+}

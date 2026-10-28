@@ -117,13 +117,22 @@ WHERE e.FinancialEntityID=@c AND e.DeletedOn IS NULL AND e.DateAffectation >= @a
         // Todo o nada. Los movimientos que ya existian NO se mandan aqui: los filtra quien llama con Duplicados.Marcar.
         public ResultadoCarga Cargar(long cuenta, IEnumerable<BancoMov> movs, string archivo, string archivoHash, string layoutId)
         {
+            return CargarGrupos(new[] { new KeyValuePair<long, IEnumerable<BancoMov>>(cuenta, movs) }, archivo, archivoHash, layoutId);
+        }
+
+        // Un archivo puede traer varias cuentas (Monex: una por divisa): se cargan todas en la MISMA transaccion, o ninguna.
+        public ResultadoCarga CargarGrupos(IEnumerable<KeyValuePair<long, IEnumerable<BancoMov>>> grupos, string archivo, string archivoHash, string layoutId)
+        {
             var lote = Guid.NewGuid(); int n = 0;
             using (var cn = Abrir())
             using (var tx = cn.BeginTransaction())
             {
                 try
                 {
-                    foreach (var m in movs.OrderBy(x => x.Fecha).ThenBy(x => x.Orden))
+                    foreach (var grupo in grupos)
+                    {
+                    long cuenta = grupo.Key;
+                    foreach (var m in grupo.Value.OrderBy(x => x.Fecha).ThenBy(x => x.Orden))
                     {
                         long id;
                         using (var c = Cmd(cn, @"SET NOCOUNT ON; INSERT INTO docEdoCtaBanco (OwnedBusinessEntityID, DateAffectation, FinancialEntityID, Description, Debit, Credit, Balance, Reference, CreatedOn, CreatedBy, UserID, FinancialOperationID)
@@ -149,6 +158,7 @@ VALUES (@l,@u,@c,@e,@a,@t,@k,@r,@n,@h,@s,@ly,@ah,@bc,@cl)", tx))
                             c.ExecuteNonQuery();
                         }
                         n++;
+                    }
                     }
                     tx.Commit();
                 }
@@ -232,12 +242,48 @@ WHERE l.Lote=@l AND l.Deshecho=0 AND e.DeletedOn IS NULL AND ISNULL(e.FinancialO
             return lista;
         }
 
+        // Quita el ajuste de la empresa: vuelve a usarse el layout de fabrica (el historial se conserva).
+        public void QuitarLayout(string id)
+        {
+            using (var cn = Abrir())
+            using (var c = Cmd(cn, "UPDATE zzBrosBancoLayout SET Activo=0 WHERE Id=@i"))
+            { c.Parameters.AddWithValue("@i", id); c.ExecuteNonQuery(); }
+        }
+
         // Volver a una version anterior = guardarla como version nueva (el historial nunca se pierde).
         public int RestaurarLayout(string id, int version)
         {
             var l = HistorialDeLayout(id).FirstOrDefault(x => x.Version == version);
             if (l == null) throw new InvalidOperationException("No existe la version " + version + " del layout " + id + ".");
             return GuardarLayout(l);
+        }
+
+        // ---------- usuarios de Comercial ----------
+        public class Usuario { public int Id; public string Nombre = ""; public bool Administrador; public override string ToString() { return Nombre; } }
+
+        public List<Usuario> Usuarios()
+        {
+            var lista = new List<Usuario>();
+            using (var cn = Abrir())
+            using (var c = Cmd(cn, "SELECT UserID, ISNULL(UserName,''), ISNULL(UserGroupID,0) FROM engUser WHERE DeletedOn IS NULL ORDER BY UserName"))
+            using (var r = c.ExecuteReader())
+                while (r.Read()) lista.Add(new Usuario { Id = Convert.ToInt32(r.GetValue(0)), Nombre = r.GetString(1), Administrador = Convert.ToInt32(r.GetValue(2)) == 1 });
+            return lista;
+        }
+
+        public bool EsAdministrador(int usuario)
+        {
+            return Usuarios().Any(u => u.Id == usuario && u.Administrador);
+        }
+
+        // Quien puede crear o cambiar layouts: todos (predeterminado), solo administradores o usuarios elegidos.
+        public bool PuedeEditarLayouts(int usuario)
+        {
+            string modo = Config("layouts.permiso", "todos");
+            if (modo == "admin") return EsAdministrador(usuario);
+            if (modo == "usuarios")
+                return EsAdministrador(usuario) || Config("layouts.usuarios", "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Any(x => x.Trim() == usuario.ToString());
+            return true;
         }
 
         // ---------- configuracion de la empresa ----------

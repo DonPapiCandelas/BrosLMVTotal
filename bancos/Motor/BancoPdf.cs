@@ -54,6 +54,13 @@ namespace BrosLMV.Bancos.Motor
         }
 
         // Devuelve la tabla (preambulo "Cuenta: N", encabezado, renglones) y notas para la persona.
+        // Texto de las primeras paginas, el mismo que ven las condiciones de "pdf contiene".
+        public static string TextoInicial(string ruta)
+        {
+            var pags = Paginas(ruta);
+            return string.Join(" ", pags.Take(2).SelectMany(p => p.Select(w => w.T)));
+        }
+
         public static List<string[]> Leer(string ruta, List<string> notas)
         {
             BrosLMV.Bancos.Layouts.Layout usado;

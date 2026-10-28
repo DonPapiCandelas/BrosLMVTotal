@@ -1,0 +1,47 @@
+{
+  "id": "cuenta-depositos-retiros",
+  "banco": "",
+  "nombre": "Cuenta · depósitos y retiros",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 0,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "fecha"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "descripcion"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "depositos"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "retiros"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "saldo"
+        ]
+      }
+    ]
+  ],
+  "notas": [
+    "Este formato no dice el banco: elige la cuenta."
+  ]
+}
