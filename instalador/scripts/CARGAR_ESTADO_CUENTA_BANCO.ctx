@@ -289,7 +289,10 @@ internal static class BancoCampos
     private static readonly Regex BancoSpei = new Regex(@"(?i)spei\s+(?:enviado|recibido)\s+(?:de\s+|a\s+)?([A-Za-zÁÉÍÓÚáéíóúñ]+)", RegexOptions.Compiled);
 
     // BBVA (movimientos en TXT): "SPEI ENVIADO SANTANDER/0045504497  014 0150626PAGO DE NOMINA" -> banco pegado al tipo, folio, codigo de banco (014), referencia numerica y concepto.
-    private static readonly Regex BancoBbva = new Regex(@"(?i)spei\s+(?:enviado|recibido)\s*([A-Za-zÁÉÍÓÚáéíóúñ ]+?)\s*/", RegexOptions.Compiled);
+    // Monex: "Nombre Beneficiario: X | Clave de Rastreo: ..." y "Nombre Receptor: BBVA MEXICO |"
+    private static readonly Regex NombreBenef = new Regex(@"(?i)nombre\s+beneficiario\s*:\s*(.+?)\s*(?:\||$)", RegexOptions.Compiled);
+    private static readonly Regex BancoReceptor = new Regex(@"(?i)nombre\s+receptor\s*:\s*(.+?)\s*(?:\||$)", RegexOptions.Compiled);
+    private static readonly Regex BancoBbva =new Regex(@"(?i)spei\s+(?:enviado|recibido)\s*([A-Za-zÁÉÍÓÚáéíóúñ ]+?)\s*/", RegexOptions.Compiled);
     private static readonly Regex FolioBbva = new Regex(@"/\s*(\d{7,12})\s+(\d{3})\s", RegexOptions.Compiled);
     private static readonly Dictionary<string, string> CodigosBanco = new Dictionary<string, string> { { "002", "Banamex" }, { "012", "BBVA" }, { "014", "Santander" }, { "021", "HSBC" }, { "030", "BanBajío" }, { "036", "Inbursa" }, { "044", "Scotiabank" }, { "072", "Banorte" }, { "127", "Azteca" }, { "137", "BanCoppel" }, { "138", "Ualá" }, { "646", "STP" }, { "699", "Fondeadora" }, { "721", "Mercado Pago" } };
 
@@ -304,9 +307,11 @@ internal static class BancoCampos
         string nombre = Primero(NombreOrdenante, t);
         if (nombre.Length == 0) nombre = Primero(NombreDel, t);
         if (nombre.Length == 0) nombre = Primero(NombreA, t);
+        if (nombre.Length == 0) nombre = Primero(NombreBenef, t);
         m.NombreContraparte = nombre.Length > 120 ? nombre.Substring(0, 120) : nombre;
         string banco = Primero(BancoInst, t);
         if (banco.Length == 0) banco = Primero(BancoBbva, t);
+        if (banco.Length == 0) banco = Primero(BancoReceptor, t);
         if (banco.Length == 0) banco = Primero(BancoSpei, t);
         var fb = FolioBbva.Match(t);
         if (fb.Success)
@@ -323,6 +328,9 @@ internal static class BancoCampos
     public static string Clasificar(string texto, decimal cargo, decimal abono)
     {
         string t = BancoTexto.Norm(texto);
+        if (Regex.IsMatch(t, @"^comision")) return "Comisión";                                  // Monex: "Comision Por Transferencia ... Retiro de Comisión e IVA"
+        if (Regex.IsMatch(t, @"^(cliente (compra|vende) divisas|deposito generado por venta de divisas|retiro para cubrir compra de divisas)")) return "Compraventa de divisas";
+        if (Regex.IsMatch(t, @"^en proceso de revision")) return "En revisión";
         if (Regex.IsMatch(t, @"\biva\b")) return "IVA";
         if (Regex.IsMatch(t, @"tasa de desc|sobretasa|bonif tasa|apli tasa")) return "Comisión terminal";
         if (Regex.IsMatch(t, @"ventas? (debito|credito|nal)|deposito ventas del dia|terminales punto de venta")) return "Ventas terminal";
@@ -354,7 +362,7 @@ internal static class BancoCampos
 internal static class BancoArchivo
 {
     // ---------- Encabezados ----------
-    private static readonly string[] AFecha = { "fecha", "fecha movimiento", "fecha (dd/mm/aa)", "fecha y hora", "dia", "fecha operacion", "fecha de operacion", "fecha valor", "fecha de movimiento" };
+    private static readonly string[] AFecha = { "fecha de liquidacion", "fecha","fecha movimiento", "fecha (dd/mm/aa)", "fecha y hora", "dia", "fecha operacion", "fecha de operacion", "fecha valor", "fecha de movimiento" };
     private static readonly string[] ADescripcion = { "descripcion", "concepto / referencia", "concepto", "detalle", "descripcion del movimiento" };
     private static readonly string[] ADetalle = { "descripcion detallada", "descripcion larga", "concepto", "referencia ampliada", "detalle", "descripcion corta" };
     private static readonly string[] AReferencia = { "referencia", "recibo", "referencia numerica", "num. referencia" };
@@ -473,9 +481,12 @@ internal static class BancoArchivo
         if (cab.Contains("referencia ampliada") || cab.Contains("concepto / referencia")) Pon("BBVA", 3, "BBVA TXT");
         if (cab.Contains("cta ordenante") || cab.Contains("banco participante") || (cab.Contains("cargo/abono") && cab.Contains("clave de rastreo"))) Pon("Santander", 3, "Santander CSV");
         if (cab.Contains("cuenta/movimiento") && cab.Contains("estado")) Pon("Kapital", 3, "Kapital CSV");
+        // Monex: "Movimientos del Contrato", una divisa por bloque (MXP/USD/EUR son cuentas distintas), importe con signo, sin saldo, fecha de liquidacion.
+        if (cab.Contains("emisora serie") && cab.Contains("fecha de liquidacion")) Pon("Monex", 3, "Monex contrato");
         foreach (var par in new[] { ("afirme", "Afirme"), ("amex", "American Express"), ("american", "American Express"), ("banamex", "Banamex"), ("citibanamex", "Banamex"), ("bajio", "BanBajío"), ("banorte", "Banorte"),
             ("banregio", "Banregio"), ("bbva", "BBVA"), ("bancomer", "BBVA"), ("hsbc", "HSBC"), ("hey", "Hey Banco"), ("kapital", "Kapital"), ("monex", "Monex"), ("santander", "Santander"), ("scotia", "Scotiabank") })
             if (arch.Contains(par.Item1)) Pon(par.Item2, 1, "Por nombre del archivo");
+        if (det.Perfil == "Monex contrato") { det.Mapa.Cuenta = det.Mapa.Moneda; det.Notas.Add("Monex: cada divisa (MXP, USD, EUR) es una cuenta distinta; asigna cada una a su cuenta. El archivo no trae saldo: no se puede validar el saldo corrido."); }
         if (det.Banco.Length == 0) det.Notas.Add("No reconocí el banco por el contenido: elígelo en la lista (si el formato es nuevo, revisa las columnas y guárdalo como perfil).");
     }
 
@@ -523,6 +534,7 @@ internal static class BancoArchivo
         {
             var f = filas[i]; int n = i + 1;
             if (f.All(string.IsNullOrWhiteSpace)) continue;
+            if (BancoTexto.Norm(Celda(f, 0)).StartsWith("ordenes de pago")) break;          // Monex: despues de los movimientos viene otra tabla (ordenes de pago pendientes o canceladas)
             if (!BancoValor.Fecha(Celda(f, mapa.Fecha), mapa.FormatoFecha, out DateTime fecha))
             {
                 var sec = Regex.Match(Celda(f, mapa.Fecha), @"^(?i:(titular|adicional|digital|virtual))\s*\*?\s*(\d{4})$");   // renglon que abre la seccion de una tarjeta del mismo plastico/cuenta
@@ -585,6 +597,8 @@ internal static class BancoArchivo
             crudos.Add(mov);
         }
         if (ignoradasConImporte > 0) r.Avisos.Add(ignoradasConImporte + " fila(s) con importe se ignoraron por no tener una fecha válida (" + string.Join("; ", muestraIgnoradas) + "). Si son movimientos, revisa el formato de fecha.");
+        int enRevision = crudos.Count(x => BancoTexto.Norm(x.Descripcion).StartsWith("en proceso de revision"));
+        if (enRevision > 0) r.Avisos.Add(enRevision + " movimiento(s) están «En proceso de revisión» en el banco: aún no son definitivos; conviene cargarlos cuando se apliquen.");
         if (infoMonedaExtranjera > 0) r.Avisos.Add(infoMonedaExtranjera + " renglón(es) solo informan el importe original en moneda extranjera (sin importe en pesos) y no se cargan: el cargo en pesos es el renglón de la compra.");
         if (crudos.Count == 500) r.Avisos.Add("El archivo trae exactamente 500 movimientos: el banco limita la exportación a 500 y puede faltar el inicio o el final del periodo. Descárgalo por periodos más cortos.");
         if (enTransito > 0) r.Avisos.Add(enTransito + " movimiento(s) están «En tránsito» (el banco aún no los aplica): se cargan sin saldo y no se vuelven a cargar cuando aparezcan aplicados.");
@@ -776,6 +790,13 @@ bool bancoSeguro = false;    // el banco lo eligió la persona o se reconoció p
 CuentaBanco SugerirCuenta(List<CuentaBanco> cuentas, string banco, string cuentaArchivo, decimal? saldoInicial, out string motivo)
 {
     motivo = "";
+    string divisa = Regex.IsMatch(cuentaArchivo ?? "", @"^[A-Za-z]{3}$") ? cuentaArchivo.ToUpperInvariant().Replace("MXP", "MXN") : "";       // Monex: el "grupo" del archivo es la divisa
+    if (divisa.Length > 0)
+    {
+        var porDivisa = cuentas.Where(c => (string.IsNullOrEmpty(banco) || BancoTexto.Norm(c.Nombre + " " + c.Banco).Contains(BancoTexto.Norm(banco))) && c.Moneda.ToUpperInvariant() == divisa).ToList();
+        if (porDivisa.Count == 1) { motivo = "por la divisa " + divisa; return porDivisa[0]; }
+        return null;
+    }
     if (!string.IsNullOrEmpty(cuentaArchivo))
     {
         var igual = cuentas.Where(c => BancoArchivo.MismaCuenta(cuentaArchivo, c.Numero) || BancoArchivo.MismaCuenta(cuentaArchivo, c.Clabe)).ToList();
@@ -934,7 +955,13 @@ List<HojaArchivo> LeerArchivo(string ruta)
 {
     string ext = System.IO.Path.GetExtension(ruta).ToLowerInvariant();
     if (ext == ".xlsx" || ext == ".xlsm") return BancoXlsx.Leer(ruta);
-    if (ext == ".xls") throw new InvalidOperationException("El formato Excel antiguo (.xls) todavía no se lee. Guárdalo como .xlsx o como CSV desde Excel.");
+    if (ext == ".xls")
+    {
+        // Muchos bancos (Monex) llaman .xls a un archivo de texto: se lee como texto. Un Excel antiguo de verdad (cabecera D0 CF 11 E0) todavia no.
+        var cab = new byte[4]; using (var fs = System.IO.File.OpenRead(ruta)) fs.Read(cab, 0, 4);
+        if (cab[0] == 0xD0 && cab[1] == 0xCF && cab[2] == 0x11 && cab[3] == 0xE0) throw new InvalidOperationException("Este .xls es un Excel antiguo (binario) y todavía no se lee. Guárdalo como .xlsx o como CSV desde Excel.");
+        return new List<HojaArchivo> { new HojaArchivo { Nombre = System.IO.Path.GetFileName(ruta), Filas = BancoTexto.Leer(ruta) } };
+    }
     if (ext == ".pdf") throw new InvalidOperationException("El PDF todavía no se lee. Pide al banco el archivo de movimientos en CSV, TXT o Excel.");
     return new List<HojaArchivo> { new HojaArchivo { Nombre = System.IO.Path.GetFileName(ruta), Filas = BancoTexto.Leer(ruta) } };
 }
