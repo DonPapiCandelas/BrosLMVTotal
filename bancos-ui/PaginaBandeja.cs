@@ -348,7 +348,7 @@ namespace BrosLMV.BancosUI
         }
 
         // ---------- cargar ----------
-        private async void CargarListos()
+        public async void CargarListos()
         {
             var listos = _items.Where(i => i.Estado == EstadoArchivo.Listo).ToList();
             if (listos.Count == 0) return;

@@ -71,7 +71,9 @@ namespace BrosLMV.BancosUI
                         var ed = new EditorLayoutVentana(_ventana.Ctx, null, m, true, _ventana.Bandeja.Layouts) { Owner = _ventana };
                         ed.Show(); ed.UpdateLayout(); quien = ed;
                     }
-                    var t2 = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+                    bool cargar = Environment.GetEnvironmentVariable("BROSLMV_BANCOS_AUTOCARGAR") == "1";
+                    if (cargar) _ventana.Bandeja.CargarListos();
+                    var t2 = new DispatcherTimer { Interval = TimeSpan.FromSeconds(cargar ? 5 : 1.5) };
                     t2.Tick += (s2, e2) => { t2.Stop(); Foto(foto, quien); Shutdown(); };
                     t2.Start();
                 };
