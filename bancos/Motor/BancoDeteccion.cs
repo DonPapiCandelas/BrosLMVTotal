@@ -21,5 +21,7 @@ namespace BrosLMV.Bancos.Motor
         public List<string> CuentasPreambulo = new List<string>();   // numeros de cuenta/CLABE que el archivo menciona antes de la tabla
         public List<string> Notas = new List<string>();
         public bool MapaPorEncabezado;       // false: se infirmo mirando el contenido (confianza baja)
+        public BrosLMV.Bancos.Layouts.Layout Layout;                                      // el layout que se uso (null si solo se infirio)
+        public List<BrosLMV.Bancos.Layouts.Coincidencia> Coincidencias = new List<BrosLMV.Bancos.Layouts.Coincidencia>();   // todos los layouts probados, con su porcentaje
     }
 }

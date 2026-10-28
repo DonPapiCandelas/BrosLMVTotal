@@ -18,12 +18,12 @@ namespace BrosLMV.Bancos.Motor
             return Array.IndexOf(Extensiones, Path.GetExtension(ruta).ToLowerInvariant()) >= 0;
         }
 
-        public static List<HojaArchivo> Leer(string ruta, List<string> notas)
+        public static List<HojaArchivo> Leer(string ruta, List<string> notas, IEnumerable<BrosLMV.Bancos.Layouts.Layout> layouts = null)
         {
             string ext = Path.GetExtension(ruta).ToLowerInvariant();
             string nombre = Path.GetFileName(ruta);
             if (ext == ".xlsx" || ext == ".xlsm") return BancoXlsx.Leer(ruta);
-            if (ext == ".pdf") return new List<HojaArchivo> { new HojaArchivo { Nombre = nombre, Filas = BancoPdf.Leer(ruta, notas) } };
+            if (ext == ".pdf") { BrosLMV.Bancos.Layouts.Layout usado; var filasPdf = BancoPdf.Leer(ruta, notas, layouts, out usado); return new List<HojaArchivo> { new HojaArchivo { Nombre = nombre, Filas = filasPdf, LayoutPdf = usado } }; }
             if (ext == ".xls")
             {
                 // Muchos bancos (Monex) llaman .xls a un archivo de texto. Un Excel antiguo de verdad (cabecera D0 CF 11 E0) todavia no se lee.

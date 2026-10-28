@@ -1,0 +1,32 @@
+{
+  "id": "monex-contrato",
+  "banco": "Monex",
+  "nombre": "Monex contrato",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "emisora serie"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "fecha de liquidacion"
+        ]
+      }
+    ]
+  ],
+  "ajustes": {
+    "cuentaDesdeDivisa": true
+  },
+  "notas": [
+    "Monex: cada divisa (MXP, USD, EUR) es una cuenta distinta; asigna cada una a su cuenta. El archivo no trae saldo: no se puede validar el saldo corrido."
+  ]
+}

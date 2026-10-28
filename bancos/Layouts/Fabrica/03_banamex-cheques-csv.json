@@ -1,0 +1,21 @@
+{
+  "id": "banamex-cheques-csv",
+  "banco": "Banamex",
+  "nombre": "Banamex cheques CSV",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "texto",
+        "contiene": [
+          "detalle de movimientos - depositos y retiros",
+          "movimiento de cuenta cheques"
+        ]
+      }
+    ]
+  ]
+}

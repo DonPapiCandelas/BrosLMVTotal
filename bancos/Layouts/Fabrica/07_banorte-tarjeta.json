@@ -1,0 +1,32 @@
+{
+  "id": "banorte-tarjeta",
+  "banco": "Banorte",
+  "nombre": "Banorte tarjeta",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 2,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "tarjeta"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "fecha de operacion"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "importe"
+        ]
+      }
+    ]
+  ]
+}

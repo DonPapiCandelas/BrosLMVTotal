@@ -1,0 +1,23 @@
+{
+  "id": "amex-csv",
+  "banco": "American Express",
+  "nombre": "American Express CSV",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "fecha de compra"
+        ]
+      }
+    ]
+  ],
+  "ajustes": {
+    "importeNegativoEsCargo": false
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "bbva-pdf-bbvanet",
+  "banco": "BBVA",
+  "nombre": "PDF · impresión de BBVANet",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "pdf",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "pdf",
+        "contiene": [
+          "detalle de movimientos"
+        ]
+      }
+    ]
+  ],
+  "pdf": {
+    "estrategia": "bbvanet"
+  }
+}

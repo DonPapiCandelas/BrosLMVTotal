@@ -11,6 +11,7 @@ namespace BrosLMV.Bancos.Motor
     {
         public string Nombre;
         public List<string[]> Filas;
+        public BrosLMV.Bancos.Layouts.Layout LayoutPdf;   // solo PDF: el layout con el que se leyo
         public override string ToString() { return Nombre + " (" + Filas.Count + " filas)"; }
     }
 }

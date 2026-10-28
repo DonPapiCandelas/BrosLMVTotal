@@ -3,6 +3,7 @@
 // GPL-3.0-or-later. Ver LICENSE en la raiz del repositorio.
 
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -55,15 +56,30 @@ namespace BrosLMV.Bancos.Motor
         // Devuelve la tabla (preambulo "Cuenta: N", encabezado, renglones) y notas para la persona.
         public static List<string[]> Leer(string ruta, List<string> notas)
         {
+            BrosLMV.Bancos.Layouts.Layout usado;
+            return Leer(ruta, notas, null, out usado);
+        }
+
+        // El layout (de fabrica o de la empresa) que coincide con el texto del PDF dice con que estrategia se lee.
+        public static List<string[]> Leer(string ruta, List<string> notas, IEnumerable<BrosLMV.Bancos.Layouts.Layout> layouts, out BrosLMV.Bancos.Layouts.Layout usado)
+        {
+            usado = null;
             var pags = Paginas(ruta);
             if (pags.Count == 0 || pags.All(p => p.Count == 0)) throw new InvalidOperationException("Este PDF no trae texto (parece una imagen escaneada). Pide al banco el archivo de movimientos en CSV, TXT o Excel.");
-            string n = BancoTexto.Norm(string.Join(" ", pags.Take(2).SelectMany(p => p.Select(w => w.T))));
-            var movs = new List<M>(); string cuenta = ""; string capa;
-            if (n.Contains("detalle de movimientos realizados")) { capa = "estado de cuenta oficial de BBVA"; movs = EstadoCuenta(pags, notas, out cuenta); }
-            else if (n.Contains("bdxt") || (n.Contains("concepto / referencia") && !n.Contains("detalle de movimientos"))) { capa = "impresión del export de BBVANet"; movs = Export(pags, notas, out cuenta); }
-            else if (n.Contains("detalle de movimientos")) { capa = "impresión de BBVANet"; movs = BbvaNet(pags, out cuenta); }
-            else throw new InvalidOperationException("No reconozco este PDF. Por ahora se leen los de BBVA (impresión de BBVANet, impresión del export y estado de cuenta oficial).");
-            notas.Insert(0, "PDF leído como " + capa + ": " + movs.Count + " movimientos.");
+            string texto = string.Join(" ", pags.Take(2).SelectMany(p => p.Select(w => w.T)));
+            var huella = BrosLMV.Bancos.Layouts.Catalogo.HuellaDe(new List<string[]>(), -1, Path.GetFileName(ruta), texto);
+            var elegido = BrosLMV.Bancos.Layouts.Catalogo.Elegir(BrosLMV.Bancos.Layouts.Catalogo.Probar(layouts ?? BrosLMV.Bancos.Layouts.Catalogo.DeFabrica(), huella, "pdf"));
+            if (elegido == null) throw new InvalidOperationException("No reconozco este PDF. Por ahora se leen los de BBVA (impresión de BBVANet, impresión del export y estado de cuenta oficial); para otro, crea un layout en el editor.");
+            usado = elegido.Layout;
+            var movs = new List<M>(); string cuenta = "";
+            switch ((usado.Pdf != null ? usado.Pdf.Estrategia : "").ToLowerInvariant())
+            {
+                case "estadocuenta": movs = EstadoCuenta(pags, notas, out cuenta); break;
+                case "export": movs = Export(pags, notas, out cuenta); break;
+                case "bbvanet": movs = BbvaNet(pags, out cuenta); break;
+                default: throw new InvalidOperationException("El layout «" + usado.Nombre + "» no dice como leer el PDF (estrategia).");
+            }
+            notas.Insert(0, "PDF leído como " + usado.Nombre + ": " + movs.Count + " movimientos.");
             var filas = new List<string[]>();
             if (cuenta.Length > 0) filas.Add(new[] { "Cuenta: " + cuenta, "", "", "", "" });
             filas.Add(new[] { "Fecha", "Concepto / Referencia", "Cargo", "Abono", "Saldo" });

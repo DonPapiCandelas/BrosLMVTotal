@@ -1,0 +1,20 @@
+{
+  "id": "banregio-texto",
+  "banco": "Banregio",
+  "nombre": "Banregio CSV",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 2,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "texto",
+        "contiene": [
+          "banregio"
+        ]
+      }
+    ]
+  ]
+}

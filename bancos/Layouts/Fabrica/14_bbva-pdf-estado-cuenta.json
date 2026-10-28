@@ -1,0 +1,23 @@
+{
+  "id": "bbva-pdf-estado-cuenta",
+  "banco": "BBVA",
+  "nombre": "PDF · estado de cuenta oficial",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "pdf",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "pdf",
+        "contiene": [
+          "detalle de movimientos realizados"
+        ]
+      }
+    ]
+  ],
+  "pdf": {
+    "estrategia": "estadocuenta"
+  }
+}

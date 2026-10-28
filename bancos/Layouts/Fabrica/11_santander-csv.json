@@ -1,0 +1,42 @@
+{
+  "id": "santander-csv",
+  "banco": "Santander",
+  "nombre": "Santander CSV",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "cta ordenante"
+        ]
+      }
+    ],
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "banco participante"
+        ]
+      }
+    ],
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "cargo/abono"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "clave de rastreo"
+        ]
+      }
+    ]
+  ]
+}

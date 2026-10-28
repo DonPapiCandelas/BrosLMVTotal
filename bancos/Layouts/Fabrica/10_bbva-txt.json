@@ -1,0 +1,21 @@
+{
+  "id": "bbva-txt",
+  "banco": "BBVA",
+  "nombre": "BBVA TXT",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "referencia ampliada",
+          "concepto / referencia"
+        ]
+      }
+    ]
+  ]
+}

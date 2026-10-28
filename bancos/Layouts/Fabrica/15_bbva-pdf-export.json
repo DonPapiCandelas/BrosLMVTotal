@@ -1,0 +1,23 @@
+{
+  "id": "bbva-pdf-export",
+  "banco": "BBVA",
+  "nombre": "PDF · impresión del export",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "pdf",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "pdf",
+        "contiene": [
+          "bdxt"
+        ]
+      }
+    ]
+  ],
+  "pdf": {
+    "estrategia": "export"
+  }
+}

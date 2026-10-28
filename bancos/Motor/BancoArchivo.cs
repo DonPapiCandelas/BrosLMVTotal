@@ -79,7 +79,7 @@ namespace BrosLMV.Bancos.Motor
         }
 
         // ---------- Deteccion ----------
-        public static BancoDeteccion Detectar(List<string[]> filas, string nombreArchivo)
+        public static BancoDeteccion Detectar(List<string[]> filas, string nombreArchivo, IEnumerable<BrosLMV.Bancos.Layouts.Layout> layouts = null)
         {
             var det = new BancoDeteccion();
             int tope = Math.Min(filas.Count, 80);
@@ -89,6 +89,8 @@ namespace BrosLMV.Bancos.Motor
                 if (m != null) { det.Mapa = m; det.MapaPorEncabezado = true; break; }
             }
             if (!det.MapaPorEncabezado) { det.Mapa = InferirSinEncabezado(filas); det.Notas.Add("El archivo no trae encabezado reconocible: las columnas se infirieron por su contenido. Revísalas."); }
+
+            Banco(filas, det, nombreArchivo, layouts ?? BrosLMV.Bancos.Layouts.Catalogo.DeFabrica());
 
             // Cuentas mencionadas arriba de la tabla (preambulo) o en una columna de cuenta.
             int hasta = det.Mapa.FilaEncabezado >= 0 ? det.Mapa.FilaEncabezado : Math.Min(filas.Count, 12);
@@ -109,38 +111,109 @@ namespace BrosLMV.Bancos.Motor
                 if (num != null && vistos.Add(num)) det.CuentasPreambulo.Add(num);
             }
 
-            Banco(filas, det, nombreArchivo);
             if (det.Banco == "American Express") det.Mapa.ImporteNegativoEsCargo = false;
             return det;
         }
 
-        private static void Banco(List<string[]> filas, BancoDeteccion det, string nombreArchivo)
+        // Los layouts (de fabrica o de la empresa) deciden el banco y el perfil. Si ninguno coincide, quedan las pistas del nombre del archivo.
+        private static readonly (string, string)[] PistasDeNombre = { ("afirme", "Afirme"), ("amex", "American Express"), ("american", "American Express"), ("banamex", "Banamex"), ("citibanamex", "Banamex"), ("bajio", "BanBajío"), ("banorte", "Banorte"),
+            ("banregio", "Banregio"), ("bbva", "BBVA"), ("bancomer", "BBVA"), ("hsbc", "HSBC"), ("hey", "Hey Banco"), ("kapital", "Kapital"), ("monex", "Monex"), ("santander", "Santander"), ("scotia", "Scotiabank") };
+
+        private static void Banco(List<string[]> filas, BancoDeteccion det, string nombreArchivo, IEnumerable<BrosLMV.Bancos.Layouts.Layout> layouts)
         {
-            string cab = det.Mapa.FilaEncabezado >= 0 ? string.Join("|", NormFila(filas[det.Mapa.FilaEncabezado])) : "";
-            string todo = BancoTexto.Norm(string.Join(" ", filas.Take(40).Select(f => string.Join(" ", f))));
-            string arch = BancoTexto.Norm(System.IO.Path.GetFileNameWithoutExtension(nombreArchivo ?? ""));
-
-            void Pon(string banco, int conf, string perfil) { if (conf > det.Confianza) { det.Banco = banco; det.Confianza = conf; det.Perfil = perfil; } }
-
-            if (cab.Contains("no. secuencia") && cab.Contains("codigo")) Pon("Afirme", 3, "Afirme CSV");
-            if (cab.Contains("fecha de compra")) Pon("American Express", 3, "American Express CSV");
-            if (todo.Contains("detalle de movimientos - depositos y retiros") || todo.Contains("movimiento de cuenta cheques")) Pon("Banamex", 3, "Banamex cheques CSV");
-            // "Pagos y depósitos / Compras" lo usan tarjetas de más de un banco (Banamex en su documentación, BBVA Oro en archivos reales): no se adivina.
-            if (cab.Contains("pagos y depositos") && cab.Contains("compras")) { det.Perfil = "Tarjeta de crédito"; det.Notas.Add("Este formato de tarjeta lo usan varios bancos: elige el banco y la tarjeta."); }
-            if (cab.StartsWith("#|fecha movimiento|hora|recibo") || todo.Contains("conecta banbajio")) Pon("BanBajío", 3, "BanBajío TXT");
-            if (cab.Contains("cod. transac") || (cab.Contains("fecha de operacion") && cab.Contains("descripcion detallada"))) Pon("Banorte", 3, "Banorte cuenta");
-            if (cab.Contains("tarjeta") && cab.Contains("fecha de operacion") && cab.Contains("importe")) Pon("Banorte", 2, "Banorte tarjeta");
-            if (todo.Contains("banregio") || cab.Contains("clasificacion")) Pon("Banregio", cab.Contains("clasificacion") ? 3 : 2, "Banregio CSV");
-            if (cab.Contains("referencia ampliada") || cab.Contains("concepto / referencia")) Pon("BBVA", 3, "BBVA TXT");
-            if (cab.Contains("cta ordenante") || cab.Contains("banco participante") || (cab.Contains("cargo/abono") && cab.Contains("clave de rastreo"))) Pon("Santander", 3, "Santander CSV");
-            if (cab.Contains("cuenta/movimiento") && cab.Contains("estado")) Pon("Kapital", 3, "Kapital CSV");
-            // Monex: "Movimientos del Contrato", una divisa por bloque (MXP/USD/EUR son cuentas distintas), importe con signo, sin saldo, fecha de liquidacion.
-            if (cab.Contains("emisora serie") && cab.Contains("fecha de liquidacion")) Pon("Monex", 3, "Monex contrato");
-            foreach (var par in new[] { ("afirme", "Afirme"), ("amex", "American Express"), ("american", "American Express"), ("banamex", "Banamex"), ("citibanamex", "Banamex"), ("bajio", "BanBajío"), ("banorte", "Banorte"),
-                ("banregio", "Banregio"), ("bbva", "BBVA"), ("bancomer", "BBVA"), ("hsbc", "HSBC"), ("hey", "Hey Banco"), ("kapital", "Kapital"), ("monex", "Monex"), ("santander", "Santander"), ("scotia", "Scotiabank") })
-                if (arch.Contains(par.Item1)) Pon(par.Item2, 1, "Por nombre del archivo");
-            if (det.Perfil == "Monex contrato") { det.Mapa.Cuenta = det.Mapa.Moneda; det.Notas.Add("Monex: cada divisa (MXP, USD, EUR) es una cuenta distinta; asigna cada una a su cuenta. El archivo no trae saldo: no se puede validar el saldo corrido."); }
+            // Cada layout se prueba con SU fila de encabezado (si trae columnas propias) o con la que dedujo el motor.
+            var filaDe = new Dictionary<BrosLMV.Bancos.Layouts.Layout, int>();
+            det.Coincidencias = new List<BrosLMV.Bancos.Layouts.Coincidencia>();
+            foreach (var l in layouts.Where(x => string.Equals(x.Formato, "tabla", StringComparison.OrdinalIgnoreCase)))
+            {
+                int fila = det.Mapa.FilaEncabezado;
+                if (l.Columnas != null && l.Columnas.Count > 0) { int f = FilaEncabezadoDe(l, filas); if (f != int.MinValue) fila = f; }
+                filaDe[l] = fila;
+                var huella = BrosLMV.Bancos.Layouts.Catalogo.HuellaDe(filas, fila, nombreArchivo, null);
+                det.Coincidencias.Add(new BrosLMV.Bancos.Layouts.Coincidencia { Layout = l, Porcentaje = BrosLMV.Bancos.Layouts.Catalogo.Porcentaje(l, huella) });
+            }
+            var elegido = BrosLMV.Bancos.Layouts.Catalogo.Elegir(det.Coincidencias);
+            if (elegido != null)
+            {
+                var l = elegido.Layout;
+                det.Layout = l;
+                det.Banco = l.Banco; det.Confianza = l.Confianza; det.Perfil = l.Nombre;
+                det.Notas.AddRange(l.Notas);
+                if (l.Columnas != null && l.Columnas.Count > 0)
+                {
+                    var m = MapaDeLayout(l, filas, filaDe[l], det.Mapa);
+                    if (m != null) { det.Mapa = m; det.MapaPorEncabezado = m.FilaEncabezado >= 0; det.Notas.RemoveAll(x => x.StartsWith("El archivo no trae encabezado reconocible")); }
+                }
+                if (l.Ajustes != null)
+                {
+                    if (l.Ajustes.ImporteNegativoEsCargo.HasValue) det.Mapa.ImporteNegativoEsCargo = l.Ajustes.ImporteNegativoEsCargo.Value;
+                    if (!string.IsNullOrEmpty(l.Ajustes.FormatoFecha)) det.Mapa.FormatoFecha = l.Ajustes.FormatoFecha;
+                    if (l.Ajustes.CuentaDesdeDivisa) det.Mapa.Cuenta = det.Mapa.Moneda;
+                }
+            }
+            if (det.Confianza == 0)
+            {
+                string arch = BancoTexto.Norm(System.IO.Path.GetFileNameWithoutExtension(nombreArchivo ?? ""));
+                foreach (var par in PistasDeNombre)
+                    if (arch.Contains(par.Item1)) { det.Banco = par.Item2; det.Confianza = 1; det.Perfil = "Por nombre del archivo"; break; }
+            }
             if (det.Banco.Length == 0) det.Notas.Add("No reconocí el banco por el contenido: elígelo en la lista (si el formato es nuevo, revisa las columnas y guárdalo como perfil).");
+        }
+
+        // Fila (0-based) de encabezado de un layout con columnas propias: la que dice FilaEncabezado o la primera que trae todos los nombres. MinValue = no esta.
+        private static int FilaEncabezadoDe(BrosLMV.Bancos.Layouts.Layout l, List<string[]> filas)
+        {
+            if (l.FilaEncabezado > 0) return l.FilaEncabezado - 1 < filas.Count ? l.FilaEncabezado - 1 : int.MinValue;
+            var nombres = l.Columnas.Values.SelectMany(v => v).Where(n => !n.StartsWith("#")).Select(n => BancoTexto.Norm(n)).Where(n => n.Length > 0).Distinct().ToList();
+            if (nombres.Count == 0) return -1;                                   // todo por posicion: la tabla no tiene encabezado
+            for (int i = 0; i < Math.Min(filas.Count, 120); i++)
+            {
+                var celdas = NormFila(filas[i]);
+                if (nombres.All(n => celdas.Contains(n))) return i;
+            }
+            return int.MinValue;
+        }
+
+        private static int ColumnaDe(List<string> nombres, string[] celdas)
+        {
+            foreach (var n in nombres ?? new List<string>())
+            {
+                if (n.StartsWith("#") && int.TryParse(n.Substring(1), out int pos)) return pos - 1;
+                int i = Array.IndexOf(celdas, BancoTexto.Norm(n));
+                if (i >= 0) return i;
+            }
+            return -1;
+        }
+
+        // Mapa de columnas que dicta el layout; lo que el layout no menciona se conserva de lo que dedujo el motor.
+        private static BancoMapa MapaDeLayout(BrosLMV.Bancos.Layouts.Layout l, List<string[]> filas, int fila, BancoMapa deducido)
+        {
+            var celdas = fila >= 0 && fila < filas.Count ? NormFila(filas[fila]) : new string[0];
+            var m = deducido.FilaEncabezado == fila ? deducido.Copiar() : new BancoMapa { FilaEncabezado = fila };
+            if (deducido.FilaEncabezado != fila) { m.Fecha = m.Descripcion = m.Referencia = m.Cargo = m.Abono = m.Importe = m.Signo = m.Saldo = m.Cuenta = m.Moneda = -1; m.Detalle = new List<int>(); }
+            m.FilaEncabezado = fila;
+            m.PrimeraFila = l.PrimeraFila > 0 ? l.PrimeraFila - 1 : fila + 1;
+            foreach (var kv in l.Columnas)
+            {
+                string campo = kv.Key.ToLowerInvariant();
+                if (campo == "detalle") { m.Detalle = kv.Value.Select(n => ColumnaDe(new List<string> { n }, celdas)).Where(i => i >= 0).ToList(); continue; }
+                int idx = ColumnaDe(kv.Value, celdas);
+                switch (campo)
+                {
+                    case "fecha": m.Fecha = idx; break;
+                    case "descripcion": m.Descripcion = idx; break;
+                    case "referencia": m.Referencia = idx; break;
+                    case "cargo": m.Cargo = idx; break;
+                    case "abono": m.Abono = idx; break;
+                    case "importe": m.Importe = idx; break;
+                    case "signo": m.Signo = idx; break;
+                    case "saldo": m.Saldo = idx; break;
+                    case "cuenta": m.Cuenta = idx; break;
+                    case "moneda": m.Moneda = idx; break;
+                }
+            }
+            if (fila >= 0 && fila < filas.Count) m.Firma = FirmaDe(filas[fila]); else m.Firma = "sin-encabezado|" + l.Id;
+            return m;
         }
 
         // Sin encabezado: la columna de fechas es la que casi siempre parsea como fecha, las de importes las que parsean como monto.

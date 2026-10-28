@@ -1,0 +1,26 @@
+{
+  "id": "afirme-csv",
+  "banco": "Afirme",
+  "nombre": "Afirme CSV",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "no. secuencia"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "codigo"
+        ]
+      }
+    ]
+  ]
+}

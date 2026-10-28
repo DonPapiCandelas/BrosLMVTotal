@@ -1,0 +1,28 @@
+{
+  "id": "banbajio-txt",
+  "banco": "BanBajío",
+  "nombre": "BanBajío TXT",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "empieza": [
+          "#|fecha movimiento|hora|recibo"
+        ]
+      }
+    ],
+    [
+      {
+        "en": "texto",
+        "contiene": [
+          "conecta banbajio"
+        ]
+      }
+    ]
+  ]
+}

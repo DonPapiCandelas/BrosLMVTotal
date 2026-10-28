@@ -1,0 +1,34 @@
+{
+  "id": "banorte-cuenta",
+  "banco": "Banorte",
+  "nombre": "Banorte cuenta",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "cod. transac"
+        ]
+      }
+    ],
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "fecha de operacion"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "descripcion detallada"
+        ]
+      }
+    ]
+  ]
+}

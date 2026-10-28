@@ -1,0 +1,29 @@
+{
+  "id": "tarjeta-credito-generica",
+  "banco": "",
+  "nombre": "Tarjeta de crédito",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "tabla",
+  "confianza": 0,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "encabezado",
+        "contiene": [
+          "pagos y depositos"
+        ]
+      },
+      {
+        "en": "encabezado",
+        "contiene": [
+          "compras"
+        ]
+      }
+    ]
+  ],
+  "notas": [
+    "Este formato de tarjeta lo usan varios bancos: elige el banco y la tarjeta."
+  ]
+}
