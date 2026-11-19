@@ -22,6 +22,8 @@ namespace BrosLMV.Bancos.Carga
         public CuentaBanco Cuenta;                   // donde se cargan (null = falta elegir)
         public SugerenciaCuenta Sugerencia = new SugerenciaCuenta();
         public bool Confirmada;                      // la persona la confirmo o la eligio
+        public string AvisoContinuidad = "";         // el saldo inicial del archivo no continua el ultimo saldo que Comercial tiene de la cuenta
+        public bool ContinuidadConfirmada;           // la persona ya vio el aviso y quiere cargar asi
         public HashSet<BancoMov> Repetidos = new HashSet<BancoMov>();
         public int Nuevos { get { return Movs.Count - Repetidos.Count; } }
         public IEnumerable<BancoMov> MovsNuevos { get { return Movs.Where(m => !Repetidos.Contains(m)); } }
@@ -57,6 +59,7 @@ namespace BrosLMV.Bancos.Carga
     }
 
     public delegate List<Existente> BuscarExistentes(long cuenta, DateTime desde, DateTime hasta);
+    public delegate SaldoPrevio BuscarSaldoPrevio(long cuenta, DateTime fecha);
 
     public static class Analizador
     {
@@ -65,7 +68,7 @@ namespace BrosLMV.Bancos.Carga
             using (var sha = SHA256.Create()) using (var fs = File.OpenRead(ruta)) return BitConverter.ToString(sha.ComputeHash(fs)).Replace("-", "");
         }
 
-        public static AnalisisArchivo Analizar(string ruta, IEnumerable<Layout> layouts, List<CuentaBanco> cuentas, BuscarExistentes existentes)
+        public static AnalisisArchivo Analizar(string ruta, IEnumerable<Layout> layouts, List<CuentaBanco> cuentas, BuscarExistentes existentes, BuscarSaldoPrevio saldoPrevio = null)
         {
             var a = new AnalisisArchivo { Ruta = ruta, Nombre = Path.GetFileName(ruta) };
             try
@@ -96,7 +99,7 @@ namespace BrosLMV.Bancos.Carga
                     g.Cuenta = g.Sugerencia.Cuenta;
                     g.Confirmada = g.Sugerencia.Segura;
                 }
-                Reevaluar(a, existentes);
+                Reevaluar(a, existentes, saldoPrevio);
             }
             catch (Exception ex)
             {
@@ -109,28 +112,46 @@ namespace BrosLMV.Bancos.Carga
         }
 
         // Despues de elegir o confirmar cuentas: repetidos por grupo y estado final.
-        public static void Reevaluar(AnalisisArchivo a, BuscarExistentes existentes)
+        public static void Reevaluar(AnalisisArchivo a, BuscarExistentes existentes, BuscarSaldoPrevio saldoPrevio = null)
         {
             foreach (var g in a.Grupos)
             {
                 g.Repetidos = new HashSet<BancoMov>();
                 if (g.Cuenta != null && existentes != null && g.Movs.Count > 0)
                     g.Repetidos = Duplicados.Marcar(g.Movs, existentes(g.Cuenta.Id, g.Movs.Min(m => m.Fecha), g.Movs.Max(m => m.Fecha)));
+                g.AvisoContinuidad = g.Cuenta != null && saldoPrevio != null ? Continuidad(g, saldoPrevio) : "";
             }
             var r = a.Resultado;
             if (a.Layout == null) { a.Estado = EstadoArchivo.SinLayout; a.Chip = "Sin layout"; return; }
             if (a.Grupos.Any(g => g.Cuenta == null)) { a.Estado = EstadoArchivo.Revisar; a.Chip = a.Grupos.Count > 1 ? "Falta elegir cuentas" : "Elige la cuenta"; return; }
             if (a.TotalNuevos == 0) { a.Estado = EstadoArchivo.YaCargado; a.Chip = "Ya cargado"; return; }
             if (a.Grupos.Any(g => !g.Confirmada)) { a.Estado = EstadoArchivo.Revisar; a.Chip = "Confirma la cuenta"; return; }
+            if (a.Grupos.Any(g => g.AvisoContinuidad.Length > 0 && !g.ContinuidadConfirmada)) { a.Estado = EstadoArchivo.Revisar; a.Chip = "El saldo no continúa"; return; }
             if (r != null && r.RupturasSaldo > 0) { a.Estado = EstadoArchivo.Revisar; a.Chip = "El saldo no cuadra"; return; }
             if (r != null && r.Movs.Count == 500) { a.Estado = EstadoArchivo.Revisar; a.Chip = "Tope de 500 movimientos"; return; }
             a.Estado = EstadoArchivo.Listo; a.Chip = "Listo";
         }
 
-        public static void Asignar(AnalisisArchivo a, GrupoCuenta g, CuentaBanco cuenta, BuscarExistentes existentes)
+        public static void Asignar(AnalisisArchivo a, GrupoCuenta g, CuentaBanco cuenta, BuscarExistentes existentes, BuscarSaldoPrevio saldoPrevio = null)
         {
-            g.Cuenta = cuenta; g.Confirmada = cuenta != null;
-            Reevaluar(a, existentes);
+            g.Cuenta = cuenta; g.Confirmada = cuenta != null; g.ContinuidadConfirmada = false;
+            Reevaluar(a, existentes, saldoPrevio);
+        }
+
+        // El saldo con que empieza el archivo (saldo del primer movimiento menos lo que ese movimiento movio) debe ser el que Comercial ya tiene de la cuenta.
+        // Si no coincide, probablemente falta un periodo por cargar, o la cuenta elegida no es la del archivo. Sin saldos en el archivo o sin nada previo, no hay con que comparar.
+        private static string Continuidad(GrupoCuenta g, BuscarSaldoPrevio saldoPrevio)
+        {
+            var primero = g.Movs.OrderBy(m => m.Orden).FirstOrDefault();
+            if (primero == null || !primero.Saldo.HasValue || primero.Saldo.Value == 0m) return "";
+            if (g.Movs.Count > 1 && g.Movs.Select(m => m.Saldo).Distinct().Count() == 1) return "";      // un solo saldo para todo el archivo: no es saldo por movimiento
+            decimal inicial = Math.Round(primero.Saldo.Value - primero.Abono + primero.Cargo, 2);
+            SaldoPrevio previo;
+            try { previo = saldoPrevio(g.Cuenta.Id, primero.Fecha); } catch { return ""; }          // sin conexion o sin permiso no se inventa un aviso
+            if (previo == null || previo.Saldos.Count == 0) return "";
+            if (previo.Saldos.Any(s => Math.Abs(s - inicial) <= 0.01m)) return "";
+            var ci = new System.Globalization.CultureInfo("es-MX");
+            return "El archivo empieza con saldo " + inicial.ToString("C2", ci) + " y lo último que hay cargado en esta cuenta es " + previo.Ultimo.ToString("C2", ci) + " (" + previo.Fecha.ToString("dd/MM/yyyy") + "): puede faltar un periodo o ser otra cuenta.";
         }
     }
 }

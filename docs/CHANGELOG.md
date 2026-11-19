@@ -8,6 +8,15 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.2.6] — 2026-11-11 — Bancos: revisión de renglones repetidos
+
+- **Nuevo botón «Duplicados…»** en la bandeja de Bancos: busca en el estado de cuenta el **mismo movimiento cargado varias veces** (lo dejó otro cargador, una carga manual repetida…) y deja darlos de baja. Es el mismo movimiento cuando coinciden cuenta, fecha, cargo, abono, **saldo después del movimiento** y descripción: el saldo distingue dos movimientos iguales del mismo día. Sin saldo guardado no agrupa nada.
+- Se conserva una copia de cada movimiento (la ligada a un movimiento bancario y, si no hay, la más antigua). Los renglones **ligados nunca se tocan**. La baja es como la de Comercial (`DeletedOn`, nunca `DELETE`), guarda copia completa en `zzBrosEdoCtaBaja` y se puede **restaurar**.
+- **Aviso automático**: al abrir y después de cargar, si ya hay renglones repetidos en los últimos 45 días lo dice en la barra inferior.
+- Contexto: durante el cambio desde otro cargador, ese cargador volvió a insertar en cada ejecución los movimientos de un mismo día (decenas de copias, con `OrderNumber` nuevo cada vez). Bancos ya evitaba agregar un renglón que existe (compara uno a uno por hora, rastreo y saldo), pero no limpiaba las copias que otro dejó. Ver `docs\BANCOS.md`, «Cambio desde otro cargador».
+- **Más robusto**: antes de dar de baja se revisa de nuevo el estado de cuenta (no se deja sin copia un movimiento si la conservada ya cambió); «Restaurar» solo devuelve lo que sigue como lo dejó la baja y dice cuántos no restauró; las cuentas con saldo de cierre del día se omiten y se avisa. **Continuidad de saldo**: un archivo cuyo saldo inicial no continúa lo último cargado en la cuenta pide confirmar («Cargar así»). **Otro cargador**: aviso si otra herramienta (marca `TransactionSyncFyID`) agregó renglones en los últimos 3 días.
+- Pruebas: nuevas de lógica pura (incluido el caso real de 9 movimientos × 14 copias = 117 sobrantes, saldo de cierre, continuidad) y 4 contra el laboratorio (carga, detecta, da de baja, revalida, restaura sin revivir lo borrado a mano, saldo previo).
+
 ## [3.2.5] — 2026-10-27 — Bancos: editor de layouts rehecho
 
 - El editor de layouts muestra siempre la **definición** del layout (cómo se reconoce, qué columnas lee, reglas), con o sin archivo de muestra, en frases claras y solo con lo que aplica a su formato (tabla o PDF).

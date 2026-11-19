@@ -102,6 +102,123 @@ namespace BrosLMV.Bancos.Pruebas
         }
 
         [Fact]
+        public void LosRenglonesRepetidosQueYaEstabanSeDetectanSeDanDeBajaYSeRestauran()
+        {
+            string cad; var cb = Laboratorio(out cad); if (cb == null) return;
+            var cuenta = cb.Cuentas().FirstOrDefault(c => c.Tipo == 1); if (cuenta == null) return;
+            var f = new DateTime(2031, 3, 10);
+            var lotes = new List<Guid>();
+            try
+            {
+                // el mismo movimiento cargado tres veces (como hizo otro cargador) y otro movimiento distinto
+                for (int i = 0; i < 3; i++) lotes.Add(cb.Cargar(cuenta.Id, new[] { Mov(1, f, 0, 777m, 7777m, null, "SPEI RECIBIDO REPETIDO") }, "rep" + i + ".csv", "HASH-REP" + i, "bbva-txt").Lote);
+                lotes.Add(cb.Cargar(cuenta.Id, new[] { Mov(2, f, 0, 5m, 7782m, null, "OTRO MOVIMIENTO") }, "otro.csv", "HASH-OTRO", "bbva-txt").Lote);
+
+                var g = Assert.Single(cb.DuplicadosExistentes(f, cuenta.Id));
+                Assert.Equal(2, g.Sobrantes.Count);
+                Assert.Contains("2 renglones", cb.DarDeBajaDuplicados(g.Sobrantes.Select(x => x.EdoCtaId)));
+                Assert.Equal(2, cb.Renglones(f, cuenta.Id).Count);                 // la copia conservada y el otro movimiento
+                Assert.Empty(cb.DuplicadosExistentes(f, cuenta.Id));
+                Assert.Contains("2 renglones", cb.RestaurarUltimaBaja());
+                Assert.Equal(4, cb.Renglones(f, cuenta.Id).Count);
+            }
+            finally
+            {
+                using (var cn = new SqlConnection(cad))
+                {
+                    cn.Open();
+                    foreach (var l in lotes)
+                        using (var c = cn.CreateCommand()) { c.CommandText = "DELETE FROM zzBrosEdoCtaBaja WHERE EdoCtaID IN (SELECT EdoCtaID FROM zzBrosEdoCtaCarga WHERE Lote=@l)"; c.Parameters.AddWithValue("@l", l); c.ExecuteNonQuery(); }
+                }
+                foreach (var l in lotes) Limpiar(cad, l);
+            }
+        }
+
+        private static void Sql(string cad, string sql)
+        {
+            using (var cn = new SqlConnection(cad)) { cn.Open(); using (var c = cn.CreateCommand()) { c.CommandText = sql; c.ExecuteNonQuery(); } }
+        }
+
+        [Fact]
+        public void LaBajaRevisaDeNuevoYNoDejaSinCopiaUnMovimientoSiLaConservadaYaSeBorro()
+        {
+            string cad; var cb = Laboratorio(out cad); if (cb == null) return;
+            var cuenta = cb.Cuentas().FirstOrDefault(c => c.Tipo == 1); if (cuenta == null) return;
+            var f = new DateTime(2031, 4, 11);
+            var lotes = new List<Guid>();
+            try
+            {
+                for (int i = 0; i < 3; i++) lotes.Add(cb.Cargar(cuenta.Id, new[] { Mov(1, f, 0, 321m, 3210m, null, "SPEI REVALIDAR") }, "rev" + i + ".csv", "HASH-REV" + i, "bbva-txt").Lote);
+                lotes.Add(cb.Cargar(cuenta.Id, new[] { Mov(2, f, 0, 5m, 3215m, null, "OTRO") }, "rev-otro.csv", "HASH-REV-OTRO", "bbva-txt").Lote);
+
+                var g = Assert.Single(cb.DuplicadosExistentes(f, cuenta.Id));
+                var ids = g.Sobrantes.Select(x => x.EdoCtaId).ToList();
+                Assert.Equal(2, ids.Count);
+
+                // mientras la lista estaba en pantalla alguien dio de baja la copia que se iba a conservar
+                Sql(cad, "UPDATE docEdoCtaBanco SET DeletedOn=GETDATE(), DeletedBy=99 WHERE EdoCtaID=" + g.Conservar.EdoCtaId);
+                var msg = cb.DarDeBajaDuplicados(ids);
+                Assert.Contains("baja 1 renglones", msg);                                 // una de las dos pasa a ser la que se conserva
+                Assert.Equal(2, cb.Renglones(f, cuenta.Id).Count);                         // queda UNA copia del movimiento mas el otro movimiento
+            }
+            finally
+            {
+                foreach (var l in lotes) Sql(cad, "DELETE FROM zzBrosEdoCtaBaja WHERE EdoCtaID IN (SELECT EdoCtaID FROM zzBrosEdoCtaCarga WHERE Lote='" + l + "')");
+                foreach (var l in lotes) Limpiar(cad, l);
+            }
+        }
+
+        [Fact]
+        public void RestaurarNoRevivePorTodoLoQueAlguienBorroDespuesAMano()
+        {
+            string cad; var cb = Laboratorio(out cad); if (cb == null) return;
+            var cuenta = cb.Cuentas().FirstOrDefault(c => c.Tipo == 1); if (cuenta == null) return;
+            var f = new DateTime(2031, 5, 12);
+            var lotes = new List<Guid>();
+            try
+            {
+                for (int i = 0; i < 3; i++) lotes.Add(cb.Cargar(cuenta.Id, new[] { Mov(1, f, 0, 654m, 6540m, null, "SPEI RESTAURAR") }, "res" + i + ".csv", "HASH-RES" + i, "bbva-txt").Lote);
+                lotes.Add(cb.Cargar(cuenta.Id, new[] { Mov(2, f, 0, 5m, 6545m, null, "OTRO") }, "res-otro.csv", "HASH-RES-OTRO", "bbva-txt").Lote);
+                var g = Assert.Single(cb.DuplicadosExistentes(f, cuenta.Id));
+                Assert.Contains("2 renglones", cb.DarDeBajaDuplicados(g.Sobrantes.Select(x => x.EdoCtaId)));
+
+                // alguien volvio a borrar a mano (otro usuario, otra hora) uno de los dos que dio de baja Bancos
+                Sql(cad, "UPDATE docEdoCtaBanco SET DeletedOn=DATEADD(second, 7, DeletedOn), DeletedBy=99 WHERE EdoCtaID=" + g.Sobrantes[0].EdoCtaId);
+                var msg = cb.RestaurarUltimaBaja();
+                Assert.Contains("restauraron 1 renglones", msg);
+                Assert.Contains("1 no se restauraron", msg);
+                Assert.Equal(3, cb.Renglones(f, cuenta.Id).Count);                         // la conservada, la restaurada y el otro movimiento
+                Assert.Contains("No hay bajas", cb.RestaurarUltimaBaja());                 // la baja quedo cerrada: no se vuelve a ofrecer
+            }
+            finally
+            {
+                foreach (var l in lotes) Sql(cad, "DELETE FROM zzBrosEdoCtaBaja WHERE EdoCtaID IN (SELECT EdoCtaID FROM zzBrosEdoCtaCarga WHERE Lote='" + l + "')");
+                foreach (var l in lotes) Limpiar(cad, l);
+            }
+        }
+
+        [Fact]
+        public void SinLaColumnaDeOtroCargadorNoSeAvisaNadaYLaContinuidadDeSaldoVeLoUltimoCargado()
+        {
+            string cad; var cb = Laboratorio(out cad); if (cb == null) return;
+            var cuenta = cb.Cuentas().FirstOrDefault(c => c.Tipo == 1); if (cuenta == null) return;
+            var f = new DateTime(2031, 6, 15);
+            Guid lote = Guid.Empty;
+            try
+            {
+                lote = cb.Cargar(cuenta.Id, new[] { Mov(1, f, 0, 100m, 4100m, null, "UNO"), Mov(2, f, 10m, 0, 4090m, null, "DOS") }, "cont.csv", "HASH-CONT", "bbva-txt").Lote;
+                var sp = cb.SaldoAnterior(cuenta.Id, f.AddDays(1));
+                Assert.NotNull(sp);
+                Assert.Equal(f, sp.Fecha);
+                Assert.Equal(4090m, sp.Ultimo);                                            // el ultimo renglon cargado del dia
+                Assert.Contains(4100m, sp.Saldos);
+                Assert.Null(cb.SaldoAnterior(cuenta.Id, new DateTime(1990, 1, 1)));        // nada antes: primera carga
+                Assert.NotNull(cb.OtrosCargadores(3));                                    // sin la columna (laboratorio) o sin renglones ajenos: lista vacia, sin truenos
+            }
+            finally { if (lote != Guid.Empty) Limpiar(cad, lote); }
+        }
+
+        [Fact]
         public void LosLayoutsDeLaEmpresaSeVersionanYSePuedeVolverAUnaAnterior()
         {
             string cad; var cb = Laboratorio(out cad); if (cb == null) return;

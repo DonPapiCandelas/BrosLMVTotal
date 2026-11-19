@@ -27,3 +27,4 @@ Comercial, que se abre desde un botón en *Estados de cuenta*. Cómo funciona ho
 - **Cero duplicados:** hora de la transacción, clave de rastreo y saldo antes de contar. Cada carga se puede deshacer.
 - **Campos de la contraparte** (clave de rastreo, RFC, CLABE, nombre, banco) y **tipo** (SPEI, comisión, IVA, traspaso…): son la llave para empatar en la fase 2.
 - **Todo local**: el estado de cuenta nunca sale del equipo.
+- **Hecho en la 3.2.6 (2026-11-11):** «Revisión de duplicados existentes» (botón «Duplicados…», baja guiada que respeta lo ligado, restaurable) y aviso al abrir y tras cargar. Ver `docs\BANCOS.md`, «Cambio desde otro cargador».

@@ -41,6 +41,37 @@ namespace BrosLMV.Bancos.Pruebas
         }
 
         [Fact]
+        public void SiElSaldoInicialNoContinuaLoQueYaHayCargadoPideConfirmarYSiContinuaNoDiceNada()
+        {
+            var cta = new CuentaBanco { Id = 1, Nombre = "BBVA OPERACION", Banco = "BBVA BANCOMER", Numero = "0123456789" };
+            var a = Analizador.Analizar(Archivo("mov.txt", BbvaTxt), null, Cuentas(cta), Nada);
+            Analizador.Asignar(a, a.Grupos[0], cta, Nada);
+            Assert.Equal(EstadoArchivo.Listo, a.Estado);
+
+            // el archivo empieza con 2,060.04 (2,057.96 + 2.08): si Comercial se quedo en otro saldo, falta un periodo o es otra cuenta
+            BuscarSaldoPrevio otro = (c, f) => new SaldoPrevio { Fecha = new DateTime(2026, 5, 30), Ultimo = 900m, Saldos = new List<decimal> { 800m, 900m } };
+            Analizador.Asignar(a, a.Grupos[0], cta, Nada, otro);
+            Assert.Equal(EstadoArchivo.Revisar, a.Estado);
+            Assert.Equal("El saldo no continúa", a.Chip);
+            Assert.Contains("2,060.04", a.Grupos[0].AvisoContinuidad);
+            a.Grupos[0].ContinuidadConfirmada = true;                          // la persona lo vio y quiere cargar asi
+            Analizador.Reevaluar(a, Nada, otro);
+            Assert.Equal(EstadoArchivo.Listo, a.Estado);
+
+            // si coincide con cualquiera de los saldos de ese dia (un archivo que empieza a media jornada), no hay aviso
+            BuscarSaldoPrevio igual = (c, f) => new SaldoPrevio { Fecha = new DateTime(2026, 6, 2), Ultimo = 2060.04m, Saldos = new List<decimal> { 1000m, 2060.04m } };
+            Analizador.Asignar(a, a.Grupos[0], cta, Nada, igual);
+            Assert.Equal(EstadoArchivo.Listo, a.Estado);
+            Assert.Equal("", a.Grupos[0].AvisoContinuidad);
+
+            // primera carga de la cuenta (nada previo) o un error al consultar: tampoco se inventa un aviso
+            Analizador.Asignar(a, a.Grupos[0], cta, Nada, (c, f) => null);
+            Assert.Equal("", a.Grupos[0].AvisoContinuidad);
+            Analizador.Asignar(a, a.Grupos[0], cta, Nada, (c, f) => { throw new InvalidOperationException("sin conexion"); });
+            Assert.Equal("", a.Grupos[0].AvisoContinuidad);
+        }
+
+        [Fact]
         public void ConVariasCuentasDelMismoBancoYSinPistasNoEligeSola()
         {
             var a = Analizador.Analizar(Archivo("mov.txt", BbvaTxt), null, Cuentas(new CuentaBanco { Id = 1, Nombre = "BBVA A", Banco = "BBVA" }, new CuentaBanco { Id = 2, Nombre = "BBVA B", Banco = "BBVA" }), Nada);

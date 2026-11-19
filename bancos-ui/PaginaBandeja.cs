@@ -81,6 +81,9 @@ namespace BrosLMV.BancosUI
             var deshacer = Tema.Boton("Deshacer última", (s, e) => DeshacerUltima());
             deshacer.Margin = new Thickness(0, 0, 8, 0);
             DockPanel.SetDock(deshacer, Dock.Right); pie.Children.Add(deshacer);
+            var duplicados = Tema.Boton("Duplicados…", (s, e) => AbrirDuplicados());
+            duplicados.Margin = new Thickness(0, 0, 8, 0);
+            DockPanel.SetDock(duplicados, Dock.Right); pie.Children.Add(duplicados);
             pie.Children.Add(_resumen);
             Grid.SetRow(pie, 3); _raiz.Children.Add(pie);
         }
@@ -99,6 +102,7 @@ namespace BrosLMV.BancosUI
             }
             catch (Exception ex) { _mensaje = "No se pudo leer la empresa: " + ex.Message; }
             _iniciado.TrySetResult(true);
+            await AvisarSiHayRepetidos();
             PonerCarpeta(_carpeta, false);
             Pintar();
             Escanear();
@@ -174,7 +178,7 @@ namespace BrosLMV.BancosUI
                 if (_items.Any(i => string.Equals(i.Ruta, r, StringComparison.OrdinalIgnoreCase)) || !_enAnalisis.Add(r)) continue;
                 string ruta = r;
                 _items.Add(new AnalisisArchivo { Ruta = ruta, Nombre = Path.GetFileName(ruta), Estado = EstadoArchivo.Revisar, Chip = "Leyendo…" });
-                Task.Run(() => { _iniciado.Task.Wait(); EsperarArchivo(ruta); return Analizador.Analizar(ruta, _layouts, _cuentas, (c, d, h) => _ctx.Banco.Existentes(c, d, h)); }).ContinueWith(t =>
+                Task.Run(() => { _iniciado.Task.Wait(); EsperarArchivo(ruta); return Analizador.Analizar(ruta, _layouts, _cuentas, (c, d, h) => _ctx.Banco.Existentes(c, d, h), (c, f) => _ctx.Banco.SaldoAnterior(c, f)); }).ContinueWith(t =>
                     Dispatcher.Invoke(() =>
                     {
                         _enAnalisis.Remove(ruta);
@@ -300,18 +304,29 @@ namespace BrosLMV.BancosUI
                 {
                     var c = combo.SelectedItem as CuentaBanco;
                     if (c == null || c == gg.Cuenta && gg.Confirmada) return;
-                    Analizador.Asignar(a, gg, c, (cc, d, h) => _ctx.Banco.Existentes(cc, d, h));
+                    Analizador.Asignar(a, gg, c, (cc, d, h) => _ctx.Banco.Existentes(cc, d, h), (cc, ff) => _ctx.Banco.SaldoAnterior(cc, ff));
                     Pintar();
                 };
                 f.Children.Add(combo);
                 if (g.Cuenta != null && !g.Confirmada)
                 {
-                    var conf = Tema.Boton("Confirmar", (s, e) => { gg.Confirmada = true; Analizador.Reevaluar(a, (cc, d, h) => _ctx.Banco.Existentes(cc, d, h)); Pintar(); }, false, true);
+                    var conf = Tema.Boton("Confirmar", (s, e) => { gg.Confirmada = true; Analizador.Reevaluar(a, (cc, d, h) => _ctx.Banco.Existentes(cc, d, h), (cc, ff) => _ctx.Banco.SaldoAnterior(cc, ff)); Pintar(); }, false, true);
                     conf.Margin = new Thickness(8, 0, 0, 0); f.Children.Add(conf);
                 }
                 cab.Children.Add(f);
                 if (!string.IsNullOrEmpty(g.Sugerencia.Motivo) && (g.Cuenta == null || !g.Confirmada))
                     cab.Children.Add(new TextBlock { Text = (g.Cuenta == null ? "" : "Sugerida: ") + g.Sugerencia.Motivo, FontSize = 12, Foreground = Tema.Texto2, Margin = new Thickness(a.Grupos.Count > 1 ? 130 : 56, 2, 0, 0), TextWrapping = TextWrapping.Wrap });
+                if (g.AvisoContinuidad.Length > 0)
+                {
+                    var fc = new DockPanel { Margin = new Thickness(a.Grupos.Count > 1 ? 130 : 56, 4, 0, 0), LastChildFill = true };
+                    if (!g.ContinuidadConfirmada)
+                    {
+                        var asi = Tema.Boton("Cargar así", (s, e) => { gg.ContinuidadConfirmada = true; Analizador.Reevaluar(a, (cc, d, h) => _ctx.Banco.Existentes(cc, d, h), (cc, ff) => _ctx.Banco.SaldoAnterior(cc, ff)); Pintar(); }, false, true);
+                        asi.Margin = new Thickness(8, 0, 0, 0); DockPanel.SetDock(asi, Dock.Right); fc.Children.Add(asi);
+                    }
+                    fc.Children.Add(new TextBlock { Text = g.AvisoContinuidad, FontSize = 12, Foreground = Tema.Texto2, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
+                    cab.Children.Add(fc);
+                }
             }
 
             var notas = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
@@ -370,6 +385,7 @@ namespace BrosLMV.BancosUI
             });
             _mensaje = error != null ? "No se cargó: " + error : "Cargados " + total.ToString("#,##0") + " movimientos de " + archivos + (archivos == 1 ? " archivo" : " archivos");
             try { _cuentas = await Task.Run(() => _ctx.Banco.Cuentas()); } catch { }
+            if (error == null) await AvisarSiHayRepetidos();
             foreach (var a in _items.Where(i => i.Estado == EstadoArchivo.Listo && !File.Exists(i.Ruta)).ToList()) { _items.Remove(a); if (_sel == a) _sel = null; }
             foreach (var a in _items.ToList()) if (a.Estado != EstadoArchivo.SinLayout && a.Estado != EstadoArchivo.Error) Reanalizar(a);
             Pintar();
@@ -386,6 +402,36 @@ namespace BrosLMV.BancosUI
                 File.Move(a.Ruta, destino);
             }
             catch { }
+        }
+
+        // Si el estado de cuenta ya trae el mismo movimiento varias veces (lo dejo otro cargador), lo avisa sin tocar nada.
+        private async Task AvisarSiHayRepetidos()
+        {
+            try
+            {
+                var grupos = await Task.Run(() => _ctx.Banco.DuplicadosExistentes(DateTime.Today.AddDays(-45)));
+                int sobran = RevisionDuplicados.TotalSobrantes(grupos);
+                if (sobran > 0) _mensaje = (string.IsNullOrEmpty(_mensaje) ? "" : _mensaje + " · ") + "Ojo: hay " + sobran + " renglones repetidos en el estado de cuenta (no los cargó Bancos). Revísalos en «Duplicados…».";
+            }
+            catch { }
+            try
+            {
+                var otros = await Task.Run(() => _ctx.Banco.OtrosCargadores(3));
+                if (otros.Count > 0)
+                {
+                    var o = otros[0];
+                    _mensaje = (string.IsNullOrEmpty(_mensaje) ? "" : _mensaje + " · ") + "Otro cargador (" + o.Nombre + ") agregó " + o.Renglones + " renglones desde el " + o.Desde.ToString("dd/MM") + ": si sigue cargando a la vez que Bancos aparecerán repetidos.";
+                }
+            }
+            catch { }
+        }
+
+        private void AbrirDuplicados()
+        {
+            var v = new VentanaDuplicados(_ctx, _dueno);
+            v.ShowDialog();
+            if (v.Cambio) { foreach (var a in _items.ToList()) Reanalizar(a); }
+            Pintar();
         }
 
         private async void DeshacerUltima()
