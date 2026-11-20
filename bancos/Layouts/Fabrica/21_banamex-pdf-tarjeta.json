@@ -1,0 +1,29 @@
+{
+  "id": "banamex-pdf-tarjeta",
+  "banco": "Banamex",
+  "nombre": "PDF · estado de cuenta de tarjeta de crédito",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "pdf",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "pdf",
+        "contiene": [
+          "estado de cuenta mensual"
+        ]
+      },
+      {
+        "en": "pdf",
+        "contiene": [
+          "clabe interbancaria"
+        ]
+      }
+    ]
+  ],
+  "pdf": {
+    "estrategia": "banamextarjeta"
+  }
+}
