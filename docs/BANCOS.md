@@ -24,6 +24,7 @@ cada terminal (`C:\BrosLMV\bin\broslmv_cred.dat`); sin ella prueba autenticació
   (falta elegir o confirmar cuenta, saldo que no cuadra, tope de 500), *Ya cargado*, *Sin layout* o *Error*. Detalle con cuenta, avisos y vista previa de movimientos (repetidos en gris).
 - **Carga todo o nada**, un archivo con varias cuentas (Monex por divisa) en una sola transacción. Los archivos de la carpeta pasan a `Procesados\aaaa-mm`. **Deshacer última** da de baja lo cargado (como lo hace Comercial: `DeletedOn`) mientras no tenga movimiento ligado.
 - **Formatos:** CSV, TXT, Excel (.xlsx), `.xls` que en realidad es texto (Monex) y PDF de BBVA con texto (impresión de BBVANet, impresión del export y estado de cuenta oficial; se leen con PdfPig, sin OCR).
+- **Cuentas de la empresa:** la lista sale de *Cuentas bancarias y tarjetas* de Comercial (`orgFinancialEntity`, tipos 1 y 2) **solo del titular propio** (`orgBusinessEntity.IsOwned = 1`). Esa tabla también guarda las cuentas de cada proveedor y cliente (cientos o miles en una base real); sin ese filtro la lista se llenaba de «Cuenta Proveedor» y no se reconocía la cuenta del archivo (corregido en la 3.2.7).
 - **Cuenta:** la elige el layout/archivo por número de cuenta, CLABE, últimos dígitos o divisa; si el archivo dice una cuenta que no existe, avisa y no adivina; con varias cuentas del mismo banco y sin pistas no elige sola. Lo sugerido por saldo o por ser la única del banco **se confirma**.
 
 ## Layouts

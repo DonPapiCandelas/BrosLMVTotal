@@ -97,7 +97,10 @@ CREATE TABLE zzBrosBancoConfig (Clave NVARCHAR(100) NOT NULL PRIMARY KEY, Valor 
  (SELECT TOP 1 e.Balance FROM docEdoCtaBanco e WHERE e.FinancialEntityID=f.FinancialEntityID AND e.DeletedOn IS NULL ORDER BY e.DateAffectation DESC, e.EdoCtaID DESC),
  (SELECT TOP 1 e.DateAffectation FROM docEdoCtaBanco e WHERE e.FinancialEntityID=f.FinancialEntityID AND e.DeletedOn IS NULL ORDER BY e.DateAffectation DESC, e.EdoCtaID DESC)
 FROM orgFinancialEntity f LEFT JOIN engRefCurrency cu ON cu.CurrencyID=f.CurrencyID
-WHERE f.FinancialEntityTypeID IN (1,2) AND f.DeletedOn IS NULL ORDER BY f.FinancialEntityName"))
+WHERE f.FinancialEntityTypeID IN (1,2) AND f.DeletedOn IS NULL
+  -- solo las cuentas de la empresa: Comercial guarda en la misma tabla las cuentas de cada proveedor y cliente (cientos en una base real)
+  AND EXISTS (SELECT 1 FROM orgBusinessEntity b WHERE b.BusinessEntityID = f.BusinessEntityID AND b.IsOwned = 1)
+ORDER BY f.FinancialEntityName"))
             using (var r = c.ExecuteReader())
                 while (r.Read())
                     lista.Add(new CuentaBanco

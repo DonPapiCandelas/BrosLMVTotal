@@ -8,6 +8,11 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.2.7] — 2026-11-20 — Bancos: solo las cuentas de la empresa
+
+- **Corregido:** en bases de clientes Bancos no detectaba las cuentas bancarias. Comercial guarda en la misma tabla (`orgFinancialEntity`) las cuentas de la empresa **y** las de cada proveedor y cliente (cientos o miles en una base real: «Cuenta Proveedor», con CLABE repetida). Bancos las traía todas, la lista de cuentas salía llena de ajenas y la cuenta del archivo coincidía con varias o con ninguna. Ahora solo trae las cuentas de la empresa (las del titular marcado como propio, `orgBusinessEntity.IsOwned = 1`).
+- Pruebas: nueva prueba contra el laboratorio (una cuenta de proveedor no aparece en la lista). Para volver atrás: revertir el commit de esta versión.
+
 ## [3.2.6] — 2026-11-11 — Bancos: revisión de renglones repetidos
 
 - **Nuevo botón «Duplicados…»** en la bandeja de Bancos: busca en el estado de cuenta el **mismo movimiento cargado varias veces** (lo dejó otro cargador, una carga manual repetida…) y deja darlos de baja. Es el mismo movimiento cuando coinciden cuenta, fecha, cargo, abono, **saldo después del movimiento** y descripción: el saldo distingue dos movimientos iguales del mismo día. Sin saldo guardado no agrupa nada.
