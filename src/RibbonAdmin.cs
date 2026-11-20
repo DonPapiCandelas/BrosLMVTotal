@@ -50,6 +50,7 @@ namespace BrosLMV
         public string EjecutaNuevo;      // cambiar la función que ejecuta el botón (p. ej. de OtroProducto.X a BrosLMV.X); vacío = no cambia
         public bool PermitirAjeno;       // el usuario confirmó que edita un botón que NO es de BrosLMV
         public bool SoloPropiedades;     // solo nombre/descripción/ícono/función; NO toca dónde aparece (obligatorio para botones ajenos)
+        public bool Confirmado;          // la persona vio cuántos lugares toca y lo aceptó (obligatorio cuando son varios)
     }
 
     internal class RibbonAdmin
@@ -61,12 +62,14 @@ namespace BrosLMV
         // corre en otro hilo y un objeto COM de Comercial no se puede llamar desde ahí. Después todo el SQL usa una SqlConnection propia.
         private readonly string _cs;
         private readonly int _userId;
+        private readonly int _moduloActivo;   // el módulo que había abierto al lanzar el asistente (0 = ninguno / no se pudo saber)
 
         public RibbonAdmin(ScriptContext ctx)
         {
             _ctx = ctx;
             _cs = ctx.CadenaSql();
             _userId = ctx.UserIdReal();
+            try { _moduloActivo = ctx.ModuloActivo(); } catch { _moduloActivo = 0; }
         }
 
         private SqlConnection Abrir() { var c = new SqlConnection(_cs); c.Open(); return c; }
@@ -133,6 +136,8 @@ namespace BrosLMV
                 string db = Convert.ToString(Escalar(c, null, "SELECT DB_NAME()"));
                 res["empresa"] = db;
                 res["usuarioId"] = _userId;
+                res["moduloActivo"] = _moduloActivo;
+                res["moduloActivoNombre"] = _moduloActivo == 0 ? null : Escalar(c, null, "SELECT TOP 1 ModuleName FROM engModule WHERE ModuleID=@m", "@m", _moduloActivo);
 
                 // ModuleID = pestaña propia de un módulo (0 = compartida); DRL = tipo de vista donde se muestra (drlGrid = listas, NULL = siempre).
                 res["tabs"] = Filas(c, "SELECT RibbonTabID AS id, TabCaption AS caption, TabOrder AS orden, ModuleID AS modulo, DRL AS drl FROM engRibbonTab ORDER BY TabOrder, TabCaption")
@@ -300,6 +305,8 @@ namespace BrosLMV
                     try
                     {
                         if (!string.Equals(db, actual, StringComparison.OrdinalIgnoreCase)) c.ChangeDatabase(db);
+                        // varios lugares = hay que haberlo confirmado (la pantalla lo pide; esto evita que otra llamada lo salte)
+                        if (!s.Confirmado && !s.SoloPropiedades) { var plan = PlanEn(c, s); if ((bool)plan["requiere"]) throw new Exception("Falta confirmar: " + plan["motivo"]); }
                         r["controlId"] = PublicarEn(c, s);
                         r["ok"] = true;
                     }
@@ -309,6 +316,41 @@ namespace BrosLMV
                 }
             }
             return resultados;
+        }
+
+        // ---------------------------------------------------------------- plan (qué pasaría, sin escribir nada)
+        // Dónde caería el botón con estos datos: por cada módulo, la pestaña y la sección que se usarían y si se crearían nuevas. La pantalla lo muestra
+        // antes de crear y exige confirmar cuando son varios lugares (un botón «en todos los módulos» o en la pestaña propia de muchos módulos).
+        public Dictionary<string, object> Plan(BotonSpec s)
+        {
+            using (var c = Abrir()) return PlanEn(c, s);
+        }
+
+        private Dictionary<string, object> PlanEn(SqlConnection c, BotonSpec s)
+        {
+            var lugares = new List<Dictionary<string, object>>();
+            if (s.SoloPropiedades || string.IsNullOrWhiteSpace(s.TabCaption) || string.IsNullOrWhiteSpace(s.GroupCaption))
+                return new Dictionary<string, object> { { "lugares", lugares }, { "total", 0 }, { "requiere", false }, { "motivo", "" } };
+            var nombres = Filas(c, "SELECT ModuleID AS id, ModuleName AS nombre FROM engModule WHERE DeletedOn IS NULL").ToDictionary(x => L(x["id"]), x => Convert.ToString(x["nombre"]));
+            var mods = s.Modules.Count == 0 ? new List<long> { 0 } : s.Modules.Distinct().ToList();
+            string tabCap = s.TabCaption.Trim(), grpCap = s.GroupCaption.Trim();
+            var grupos = new HashSet<string>(); int tabsPropias = 0;
+            foreach (var m in mods)
+            {
+                var tab = Filas(c, "SELECT TOP 1 RibbonTabID AS id, ModuleID AS modulo FROM engRibbonTab WHERE TabCaption=@c AND (ModuleID=@m OR ModuleID=0) ORDER BY CASE WHEN ModuleID=@m THEN 0 ELSE 1 END, TabOrder", null, "@c", tabCap, "@m", m);
+                bool tabNueva = tab.Count == 0, propia = !tabNueva && L(tab[0]["modulo"]) > 0;
+                object grpId = tabNueva ? null : Escalar(c, null, "SELECT TOP 1 RibbonGroupID FROM engRibbonGroup WHERE RibbonTabID=@t AND GroupCaption=@g ORDER BY GroupOrder", "@t", tab[0]["id"], "@g", grpCap);
+                grupos.Add(tabNueva ? "nueva:" + tabCap : (grpId == null ? "nueva:" + L(tab[0]["id"]) : "g" + L(grpId)));
+                if (propia) tabsPropias++;
+                lugares.Add(new Dictionary<string, object> {
+                    { "modulo", m }, { "moduloNombre", m == 0 ? "Todos los módulos" : (nombres.ContainsKey(m) ? nombres[m] : "Módulo " + m) },
+                    { "tab", tabCap }, { "grupo", grpCap }, { "tabNueva", tabNueva }, { "grupoNuevo", grpId == null }, { "tabPropia", propia } });
+            }
+            string motivo = "";
+            if (mods.Contains(0)) motivo = "El botón aparecerá en todos los módulos donde se vea esa pestaña.";
+            else if (lugares.Count > 3) motivo = "El botón aparecerá en " + lugares.Count + " módulos.";
+            else if (tabsPropias > 1) motivo = "«" + tabCap + "» es una pestaña propia de cada módulo: el botón quedará en " + tabsPropias + " pestañas distintas" + (lugares.Any(x => (bool)x["grupoNuevo"]) ? " y se creará la sección «" + grpCap + "» en cada una" : "") + ".";
+            return new Dictionary<string, object> { { "lugares", lugares }, { "total", lugares.Count }, { "gruposDistintos", grupos.Count }, { "requiere", motivo.Length > 0 }, { "motivo", motivo } };
         }
 
         private static void Validar(BotonSpec s)
