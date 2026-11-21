@@ -55,6 +55,37 @@ namespace BrosLMV.Bancos.Pruebas
         }
 
         [Fact]
+        public void LasCuentasSoloSonLasDeLaEmpresaNoLasDeProveedoresNiClientes()
+        {
+            string cad; var cb = Laboratorio(out cad); if (cb == null) return;
+            string nombre = "PRUEBA_CUENTA_PROVEEDOR_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            long idAjena = 0;
+            using (var cn = new SqlConnection(cad))
+            {
+                cn.Open();
+                long dueno, tercero;
+                using (var c = cn.CreateCommand()) { c.CommandText = "SELECT TOP 1 BusinessEntityID FROM orgBusinessEntity WHERE IsOwned=1"; dueno = Convert.ToInt64(c.ExecuteScalar()); }
+                using (var c = cn.CreateCommand()) { c.CommandText = "SELECT TOP 1 BusinessEntityID FROM orgBusinessEntity WHERE IsOwned=0"; var o = c.ExecuteScalar(); if (o == null) return; tercero = Convert.ToInt64(o); }
+                try
+                {
+                    using (var c = cn.CreateCommand())
+                    {
+                        c.CommandText = "INSERT orgFinancialEntity(BusinessEntityID, FinancialEntityTypeID, FinancialEntityName, BankName, CLABE) VALUES(@b, 1, @n, N'Banco Proveedor', N'014225655108767173'); SELECT SCOPE_IDENTITY()";
+                        c.Parameters.AddWithValue("@b", tercero); c.Parameters.AddWithValue("@n", nombre);
+                        idAjena = Convert.ToInt64(c.ExecuteScalar());
+                    }
+                    var cuentas = cb.Cuentas();
+                    Assert.DoesNotContain(cuentas, x => x.Id == idAjena);
+                    Assert.NotEmpty(cuentas);
+                }
+                finally
+                {
+                    if (idAjena != 0) using (var c = cn.CreateCommand()) { c.CommandText = "DELETE orgFinancialEntity WHERE FinancialEntityID=@i"; c.Parameters.AddWithValue("@i", idAjena); c.ExecuteNonQuery(); }
+                }
+            }
+        }
+
+        [Fact]
         public void CargarEscribeEnElEstadoDeCuentaNativoYLoCargadoSeReconoceDespues()
         {
             string cad; var cb = Laboratorio(out cad); if (cb == null) return;

@@ -124,6 +124,9 @@ namespace BrosLMV
                     case "listar":
                         Responder(web, id, admin.ListarBotones(Convert.ToString(a.ContainsKey("q") ? a["q"] : ""), a.ContainsKey("todos") && Convert.ToBoolean(a["todos"])), null);
                         break;
+                    case "plan":
+                        Responder(web, id, admin.Plan(LeerSpec(a)), null);
+                        break;
                     case "buscar":
                         Responder(web, id, new Dictionary<string, object> { { "boton", admin.Buscar(Convert.ToString(a["ejecuta"])) } }, null);
                         break;
@@ -175,7 +178,7 @@ namespace BrosLMV
         {
             var s = new BotonSpec
             {
-                AppKey = Convert.ToString(a["appKey"]), Caption = Convert.ToString(a["caption"]), Description = Convert.ToString(a["description"]),
+                AppKey = Convert.ToString(a.ContainsKey("appKey") ? a["appKey"] : ""), Caption = Convert.ToString(a.ContainsKey("caption") ? a["caption"] : ""), Description = Convert.ToString(a.ContainsKey("description") ? a["description"] : ""),
                 Icon = Convert.ToString(a["icon"]), TabCaption = Convert.ToString(a["tab"]), GroupCaption = Convert.ToString(a["group"])
             };
             s.Modules = Lista<long>(a, "modules");
@@ -184,6 +187,7 @@ namespace BrosLMV
             s.EjecutaNuevo = a.ContainsKey("ejecutaNuevo") ? Convert.ToString(a["ejecutaNuevo"]) : null;
             s.PermitirAjeno = a.ContainsKey("permitirAjeno") && Convert.ToBoolean(a["permitirAjeno"]);
             s.SoloPropiedades = a.ContainsKey("soloPropiedades") && Convert.ToBoolean(a["soloPropiedades"]);
+            s.Confirmado = a.ContainsKey("confirmado") && Convert.ToBoolean(a["confirmado"]);
             return s;
         }
 

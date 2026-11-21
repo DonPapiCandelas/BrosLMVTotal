@@ -1,0 +1,29 @@
+{
+  "id": "banamex-pdf-micuenta",
+  "banco": "Banamex",
+  "nombre": "PDF · estado de cuenta MiCuenta",
+  "version": 1,
+  "origen": "fabrica",
+  "formato": "pdf",
+  "confianza": 3,
+  "umbral": 100,
+  "reconocer": [
+    [
+      {
+        "en": "pdf",
+        "contiene": [
+          "micuenta"
+        ]
+      },
+      {
+        "en": "pdf",
+        "contiene": [
+          "detalle de operaciones"
+        ]
+      }
+    ]
+  ],
+  "pdf": {
+    "estrategia": "banamexcuenta"
+  }
+}

@@ -81,6 +81,8 @@ namespace BrosLMV.Bancos.Carga
                 a.Notas.AddRange(notas);
                 a.Deteccion = BancoArchivo.Detectar(a.Hoja.Filas, a.Nombre, layouts);
                 a.Layout = a.Deteccion.Layout;
+                // PDF: el banco y el layout son los del layout de PDF que lo leyo (la tabla que arma el lector se parece a la de BBVA y no dice de que banco es)
+                if (a.Hoja.LayoutPdf != null && !string.IsNullOrEmpty(a.Hoja.LayoutPdf.Banco)) { a.Deteccion.Banco = a.Hoja.LayoutPdf.Banco; a.Deteccion.Perfil = a.Hoja.LayoutPdf.Nombre; a.Deteccion.Confianza = Math.Max(a.Deteccion.Confianza, 2); a.Layout = a.Hoja.LayoutPdf; }
                 a.BancoSeguro = a.Deteccion.Confianza >= 2 && a.Deteccion.Banco.Length > 0;
                 a.Notas.AddRange(a.Deteccion.Notas);
                 a.Resultado = BancoArchivo.Interpretar(a.Hoja.Filas, a.Deteccion.Mapa);

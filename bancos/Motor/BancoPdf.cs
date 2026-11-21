@@ -83,6 +83,8 @@ namespace BrosLMV.Bancos.Motor
             {
                 case "estadocuenta": movs = EstadoCuenta(pags, notas, out cuenta); break;
                 case "export": movs = Export(pags, notas, out cuenta); break;
+                case "banamexcuenta": movs = BanamexCuenta(pags, notas, out cuenta); break;
+                case "banamextarjeta": movs = BanamexTarjeta(pags, notas, out cuenta); break;
                 case "bbvanet":
                 case "zonas": movs = Zonas(pags, usado.Pdf, out cuenta); break;
                 default: throw new InvalidOperationException("El layout «" + usado.Nombre + "» no dice como leer el PDF (estrategia).");
@@ -163,18 +165,31 @@ namespace BrosLMV.Bancos.Motor
             int anioFin = per.Success ? int.Parse(per.Groups[6].Value) : DateTime.Today.Year, mesFin = per.Success ? int.Parse(per.Groups[5].Value) : 12;
             var res = new List<M>(); M act = null; var tramos = new List<string>();
             Action cerrar = () => { if (act != null) { act.D = string.Join(" / ", tramos); res.Add(act); act = null; tramos = new List<string>(); } };
+            double rC = 0, rA = 0, rS = 0, rL = 0; bool hay = false;      // columnas: solo la primera pagina trae los titulos, las demas siguen con las mismas
+            bool fin = false;                                               // «Total de Movimientos»: lo que sigue (apartados, avisos) ya no son movimientos
             foreach (var pg in pags)
             {
+                if (fin) break;
                 var lins = Lineas(pg);
                 var op = pg.FirstOrDefault(w => w.T.StartsWith("OPERACI", StringComparison.OrdinalIgnoreCase) && w.L > 450);
-                if (op == null) continue;
-                var cargos = pg.FirstOrDefault(w => w.T == "CARGOS" && Math.Abs(w.Y - op.Y) < 4 && w.L > 300); var abonos = pg.FirstOrDefault(w => w.T == "ABONOS" && Math.Abs(w.Y - op.Y) < 4 && w.L > 300);
+                var cargos = op == null ? null : pg.FirstOrDefault(w => w.T == "CARGOS" && Math.Abs(w.Y - op.Y) < 4 && w.L > 300); var abonos = op == null ? null : pg.FirstOrDefault(w => w.T == "ABONOS" && Math.Abs(w.Y - op.Y) < 4 && w.L > 300);
                 var liq = pg.FirstOrDefault(w => w.T.StartsWith("LIQUIDACI", StringComparison.OrdinalIgnoreCase) && w.L > 500);
-                if (cargos == null || abonos == null) continue;
-                double rC = cargos.R, rA = abonos.R, rS = op.R, rL = liq != null ? liq.R : op.R + 68;
-                foreach (var l in lins.Where(x => x.Y > op.Y + 6))
+                double yIni;
+                if (op != null && cargos != null && abonos != null)
+                {
+                    rC = cargos.R; rA = abonos.R; rS = op.R; rL = liq != null ? liq.R : op.R + 68; hay = true; yIni = op.Y + 6;
+                }
+                else if (hay)
+                {
+                    // pagina de continuacion: el detalle empieza debajo de «No. de Cliente» (el titulo de la pagina)
+                    var cli = lins.FirstOrDefault(x => x.W.Count > 1 && x.W[0].T == "No." && x.W.Any(w => w.T.StartsWith("Cliente", StringComparison.OrdinalIgnoreCase)));
+                    yIni = cli != null ? cli.Y + 6 : 125;
+                }
+                else continue;
+                foreach (var l in lins.Where(x => x.Y > yIni))
                 {
                     string txt = l.Txt;
+                    if (Regex.IsMatch(txt, @"^Total de Movimientos", RegexOptions.IgnoreCase)) { fin = true; break; }
                     if (Regex.IsMatch(txt, @"^(Estado de Cuenta|PAGINA|No\.|Estimado Cliente)")) continue;
                     bool fila = l.W.Count >= 3 && l.W[0].L < 30 && Regex.IsMatch(l.W[0].T, @"^\d{2}/[A-Za-z]{3}$") && Regex.IsMatch(l.W[1].T, @"^\d{2}/[A-Za-z]{3}$");
                     IEnumerable<P> cuerpo;
@@ -208,6 +223,15 @@ namespace BrosLMV.Bancos.Motor
                 int Declarado(string patron) { foreach (var l in lin1) { var m = Regex.Match(l.Txt, patron); if (m.Success) return int.Parse(m.Groups[1].Value); } return -1; }
                 int dAb = Declarado(@"(?i)Dep.sitos\s*/\s*Abonos\s*\(\+\)\s+(\d+)"), dCa = Declarado(@"(?i)Retiros\s*/\s*Cargos\s*\(-\)\s+(\d+)");
                 int nAb = res.Count(m => m.Abono != 0), nCa = res.Count(m => m.Cargo != 0);
+                // Los totales de importe que trae el propio estado de cuenta (al final del detalle): si las sumas no coinciden, falta algun renglon.
+                decimal? TotalImporte(string patron) { foreach (var pg in pags) foreach (var l in Lineas(pg)) if (Regex.IsMatch(l.Txt, patron)) { var mt = l.W.FirstOrDefault(w => Monto.IsMatch(w.T)); if (mt != null) return Num(mt.T); } return null; }
+                var tCa = TotalImporte(@"(?i)^TOTAL IMPORTE CARGOS"); var tAb = TotalImporte(@"(?i)^TOTAL IMPORTE ABONOS");
+                if (tCa.HasValue && tAb.HasValue)
+                {
+                    decimal sCa = res.Sum(m => m.Cargo), sAb = res.Sum(m => m.Abono);
+                    if (sCa == tCa.Value && sAb == tAb.Value) notas.Add("Cuadra con los totales del estado de cuenta: cargos " + sCa.ToString("#,##0.00") + " y abonos " + sAb.ToString("#,##0.00") + ".");
+                    else notas.Add("OJO: el estado de cuenta suma cargos " + tCa.Value.ToString("#,##0.00") + " y abonos " + tAb.Value.ToString("#,##0.00") + ", pero se leyeron " + sCa.ToString("#,##0.00") + " y " + sAb.ToString("#,##0.00") + ". Revisa el detalle.");
+                }
                 if (dAb >= 0 && dCa >= 0)
                 {
                     if (dAb == nAb && dCa == nCa) notas.Add("Cuadra con lo que declara el estado de cuenta: " + dAb + " depósitos y " + dCa + " retiros.");

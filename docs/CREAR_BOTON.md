@@ -1,7 +1,7 @@
 # Cómo crear un botón
 
 > Desde la versión **2.95.0**. Un botón es lo que aparece en la barra (ribbon) de Comercial y ejecuta uno de tus scripts. Antes había que dar de alta el botón a mano
-> (escribir `BrosLMV.NOMBRE`, el archivo del ícono, la sección, el módulo…). Ahora lo hace un asistente de tres pasos.
+> (escribir `BrosLMV.NOMBRE`, el archivo del ícono, la sección, el módulo…). Ahora lo hace un asistente de **una sola pantalla** (desde la 3.2.7 con valores seguros: el botón nace en un solo lugar).
 
 ## Dos formas de abrirlo
 
@@ -11,7 +11,7 @@
 2. **Sin script todavía**: **Más opciones → Nuevo botón…** Escribes el nombre del botón, lo configuras y, al crearlo, la Consola crea un script mínimo
    con esa clave (cuenta los documentos seleccionados) y lo abre para que escribas qué debe hacer.
 
-## Los tres pasos
+## Las tres partes de la pantalla
 
 ### 1 · El botón
 - **Nombre:** el texto que se ve en el botón. Puede llevar espacios y acentos. La clave técnica (`BrosLMV.…`) se genera sola y se muestra debajo.
@@ -24,8 +24,10 @@
     Si Windows no deja copiar (Comercial instalado en *Program Files*), abre Comercial como administrador esa vez.
 
 ### 2 · Dónde aparece
-- **Módulos** (se elige primero): **En todos** (aparece en cualquier módulo) o **Solo en algunos…** y marcas los módulos (Facturas de compra, Gastos, XML recibidos…).
-- **Pestaña:** una existente o **＋ Nueva pestaña…** con el nombre que quieras (por ejemplo *Reportes*).
+- **Módulos** (se elige primero). Por omisión: **Solo en el módulo que tienes abierto** (el de la Consola al abrir el asistente; es lo más seguro). Otras opciones: **En algunos módulos** (los marcas) o **En todos los módulos**.
+  Lo que «en todos» o varios módulos significa en Comercial es poner el botón en cada una de esas listas, por eso la pantalla lo avisa y pide una casilla de confirmación.
+- **Pestaña:** por omisión solo se ofrecen las pestañas **compartidas** (una sola para varios módulos, como *Soluciones LMV*). Comercial repite pestañas como *General* o *Cuentas y tarjetas* una por módulo
+  (en una base típica *General* son 149 pestañas distintas): quedan detrás de **Usar la pestaña propia de cada módulo**, y con varios módulos el botón se pondría en la de cada uno. Una existente o **＋ Nueva pestaña…** con el nombre que quieras (por ejemplo *Reportes*).
   **Ojo:** en Comercial cada pestaña solo se ve en cierto tipo de vista. *Lista* se ve en las listas (Facturas, XML recibidos…), *Contabilidad* solo en el catálogo de
   cuentas contables, *General* es propia de cada módulo. Por eso, al elegir módulos el asistente **solo ofrece las pestañas que sí se ven ahí** y desactiva las demás.
   Una pestaña nueva se muestra en todos los módulos (el botón sigue apareciendo solo donde indiques).
@@ -36,6 +38,11 @@
 - **Todos los usuarios**, **Grupos** (lo ven todos los usuarios de cada grupo elegido) o **Usuarios** específicos.
   Queda habilitado en el mismo paso; ya no hay que ir usuario por usuario.
 - **Avanzado → otras empresas:** crea el mismo botón en las empresas que marques. La pestaña y la sección se buscan por nombre en cada una y se crean si faltan.
+
+### Qué va a pasar (antes de crear)
+A la derecha, antes de pulsar **Crear botón**, la pantalla calcula (sin escribir nada) **en cuántos lugares caerá el botón**: cada módulo con su pestaña y su sección, si la sección o la pestaña serían nuevas y si la pestaña es propia del módulo.
+Verde = un solo lugar. Ámbar = varios lugares (más de 3 módulos, «en todos», o la pestaña propia de varios módulos): el botón **Crear** sigue apagado hasta marcar la casilla de confirmación.
+Aunque otro programa llame directo, el servidor repite esa revisión y rechaza con «Falta confirmar…».
 
 A la derecha ves siempre **cómo quedará en el ribbon** (con el globo de la descripción) y un resumen de lo que se va a crear.
 

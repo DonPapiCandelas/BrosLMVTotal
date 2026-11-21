@@ -8,6 +8,14 @@ Formato: cada versión lista lo **Agregado**, **Cambiado**, **Corregido** o
 
 > Versiones 2.80.0 y anteriores: [`CHANGELOG_ARCHIVO.md`](archivo/CHANGELOG_ARCHIVO.md).
 
+## [3.2.7] — 2026-11-20 — Bancos: cuentas de la empresa y más PDF
+
+- **Corregido:** en bases de clientes Bancos no detectaba las cuentas bancarias. Comercial guarda en la misma tabla (`orgFinancialEntity`) las cuentas de la empresa **y** las de cada proveedor y cliente (cientos o miles en una base real: «Cuenta Proveedor», con CLABE repetida). Bancos las traía todas, la lista de cuentas salía llena de ajenas y la cuenta del archivo coincidía con varias o con ninguna. Ahora solo trae las cuentas de la empresa (las del titular marcado como propio, `orgBusinessEntity.IsOwned = 1`).
+- **Corregido (PDF de BBVA, estado de cuenta oficial «Libretón»):** solo leía la primera página (2 de 141 movimientos) porque las páginas siguientes no repiten los títulos de columna; además el último depósito perdía su importe al leer la tabla de apartados que sigue al detalle. Ahora usa las mismas columnas en todas las páginas, se detiene en «Total de Movimientos» y avisa si las sumas no cuadran con los totales del propio estado de cuenta.
+- **Crear botón rehecho (Consola):** una sola pantalla con valores seguros. Antes el botón se ponía por omisión **en todos los módulos** y la pestaña *General* (que en Comercial son 149 pestañas, una por módulo) ponía una sección y un botón en cada una: «un botón sale en muchos lados». Ahora nace **solo en el módulo que tienes abierto**, en una pestaña compartida (*Soluciones LMV*); las pestañas propias de cada módulo quedan detrás de un enlace. Antes de crear, la pantalla dice **en cuántos lugares caerá** (módulo › pestaña › sección) y, si son varios, pide confirmar con una casilla; el servidor también lo exige. Nueva operación `plan` en el asistente (`RibbonAdmin.Plan`).
+- **Nuevo (PDF de Banamex):** estado de cuenta **MiCuenta** (cheques) y de **tarjeta de crédito**. Antes decía «No reconozco este PDF». Cada uno se valida contra lo que declara el propio PDF (depósitos y retiros, o cargos regulares) y el de cheques además por la cadena de saldos. El banco y el layout del PDF ya se toman del layout que lo leyó (antes un PDF no-BBVA salía etiquetado como BBVA).
+- Pruebas: nueva prueba contra el laboratorio (una cuenta de proveedor no aparece en la lista). Para volver atrás: revertir el commit de esta versión.
+
 ## [3.2.6] — 2026-11-11 — Bancos: revisión de renglones repetidos
 
 - **Nuevo botón «Duplicados…»** en la bandeja de Bancos: busca en el estado de cuenta el **mismo movimiento cargado varias veces** (lo dejó otro cargador, una carga manual repetida…) y deja darlos de baja. Es el mismo movimiento cuando coinciden cuenta, fecha, cargo, abono, **saldo después del movimiento** y descripción: el saldo distingue dos movimientos iguales del mismo día. Sin saldo guardado no agrupa nada.
