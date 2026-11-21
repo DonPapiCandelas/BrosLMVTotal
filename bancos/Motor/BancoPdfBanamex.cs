@@ -129,7 +129,7 @@ namespace BrosLMV.Bancos.Motor
                     if (imp == null || mes == 0) continue;
                     f = new DateTime(int.Parse(d0[2]), mes, int.Parse(d0[0]));
                     // el signo («+» cargo, «-» abono) va justo a la izquierda del importe, a veces una linea arriba o abajo
-                    var signo = pg.Where(w => (w.T == "+" || w.T == "-" || w.T == "–" || w.T == "−") && w.R <= imp.L + 2 && w.R >= imp.L - 40 && Math.Abs(w.Y - imp.Y) < 6).OrderBy(w => Math.Abs(w.Y - imp.Y)).FirstOrDefault();
+                    var signo = pg.Where(w => (w.T == "+" || w.T == "-" || w.T == "–" || w.T == "−") && w.R <= imp.L + 2 && w.R >= imp.L - 40 && Math.Abs(w.Y - imp.Y) < 8).OrderBy(w => Math.Abs(w.Y - imp.Y)).FirstOrDefault();
                     decimal v = Num(imp.T.TrimStart('$'));
                     var m = new M { F = f, D = string.Join(" ", l.W.Skip(2).Where(w => w.L < 465 && w.T != "+" && w.T != "-").Select(w => w.T)) };
                     if (signo != null && signo.T != "+") m.Abono = v; else m.Cargo = v;
